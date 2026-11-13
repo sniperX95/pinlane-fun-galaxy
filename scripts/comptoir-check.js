@@ -200,11 +200,14 @@ async function lesDeuxOuverts(page) {
 }
 // Ce que la touche ecrit : ce qui reste, toujours (2026-11-08, Ansar : « jaimais bien quand
 // sur les heures yavais ce qui reste comme dispo »), en court (« reste 5 ») ; son nom dit
-// tout (« reste 5 pistes »).
+// tout (« reste 5 pistes »). Sauf une heure pendant l autre activite du ticket (2026-11-13,
+// « quand on choisi bowling a 18h [...] et que je prends lasergame a 18h30 ça dit rien ») :
+// elle dit ce qu elle en fera (« décale le laser »), `pendant`, lue a part.
 const ecritSurLaTouche = (n) => `reste ${n}`;
 const heures = (page, id) => page.evaluate((i) => [...document.querySelectorAll(`#rsZ-${i} .rs-h[data-heure]`)].map((b) => ({
   heure: b.dataset.heure,
   coince: b.classList.contains('is-coince') || b.classList.contains('is-ko'),
+  pendant: b.classList.contains('is-pendant'),
   on: b.classList.contains('is-on'),
   efface: b.classList.contains('is-efface'),
   mot: ((b.querySelector('small') || {}).textContent || '').trim(),
@@ -283,7 +286,7 @@ async function scenarioA(browser) {
     await verifie(page, 'bowling');
     await lesDeuxOuverts(page);
     // (une heure grise que le serveur ne juge pas, apres la fermeture du programme, ne dit rien)
-    const lireB = async (joueursParPiste, minutes, pistes) => (await heures(page, 'bowling')).filter((x) => !x.coince && !x.efface).map((x) => {
+    const lireB = async (joueursParPiste, minutes, pistes) => (await heures(page, 'bowling')).filter((x) => !x.coince && !x.efface && !x.pendant).map((x) => {
       const n = Math.max(0, 8 - pistesPrises(enMin(x.heure), minutes).size - pistes);
       const attendu = `reste ${n} piste${n > 1 ? 's' : ''}`;
       return { heure: x.heure, lu: x.mot, attendu, ecrit: ecritSurLaTouche(n), juste: x.mot === ecritSurLaTouche(n) && x.nom.includes(attendu), garde: x.garde, nom: x.nom };
@@ -291,7 +294,7 @@ async function scenarioA(browser) {
     const b7 = await lireB(6, 60, 2);
     ok(b7.length > 0 && b7.every((x) => x.juste), '[A] chaque heure du bowling dit ce qui reste apres le groupe : sur la touche, et son nom en entier', b7);
     ok(b7.every((x) => x.garde === ''), '[A] sans client sur internet, aucune touche ne dit « en attente »', b7.map((x) => x.garde));
-    const lireL = async (joueurs) => (await heures(page, 'laser_game')).filter((x) => !x.coince && !x.efface).map((x) => {
+    const lireL = async (joueurs) => (await heures(page, 'laser_game')).filter((x) => !x.coince && !x.efface && !x.pendant).map((x) => {
       const reste = Math.max(0, 30 - armesPrises(enMin(x.heure)) - joueurs);
       const attendu = `reste ${reste} arme${reste > 1 ? 's' : ''}`;
       return { heure: x.heure, lu: x.mot, attendu, juste: x.mot === ecritSurLaTouche(reste) && x.nom.includes(attendu) };
@@ -310,6 +313,9 @@ async function scenarioA(browser) {
     await verifie(page, 'bowling');
     const b2h = await lireB(6, 120, 1);
     ok(b2h.length > 0 && b2h.every((x) => x.juste), '[A] la duree change, ce qui reste suit', b2h);
+    // Deux heures de bowling chevauchent le laser pose a la suite : ces heures-la le disent.
+    const decalent = (await heures(page, 'bowling')).filter((x) => x.pendant);
+    ok(decalent.length > 0 && decalent.every((x) => x.mot === 'décale le laser'), '[A] une heure pendant le laser pose a la suite dit « décale le laser », a la place de ce qui reste', decalent.map((x) => ({ heure: x.heure, mot: x.mot })));
     // Les parties changent : la partie la plus serree decide.
     await page.locator('#rsV-laser_game-2').click();
     await verifie(page, 'laser_game');

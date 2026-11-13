@@ -9724,9 +9724,10 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv.rs .rs-h.is-coince b, .qb-modal.rv.rs .rs-p.is-coince b, .qb-modal.rv.rs .rs-p.is-efface b { font-weight: 500; }
 .qb-modal.rv.rs .rs-h.is-coince small, .qb-modal.rv.rs .rs-p.is-coince small { color: var(--danger); }
 /* UNE HEURE PENDANT L AUTRE ACTIVITE DU GROUPE qui la suivra (rsPendant) : elle reste une
-   heure ordinaire, touchable, et son mot dit « pendant le bowling » dans le ton d avis de la
+   heure ordinaire, touchable, et son mot dit « décale le bowling » dans le ton d avis de la
    fenetre (l orange des « Partagée avec ») ; le toucher la prend, l autre activite passe
-   apres et le ticket le dit. Celle que le serveur refuse garde le rouge de .is-coince. */
+   apres et le ticket le dit. Pendant une activite fixee (« pendant le bowling »), le plan
+   refusera : elle prend le rouge de .is-coince. */
 .qb-modal.rv.rs .rs-h.is-pendant small, .qb-modal.rv.rs .rs-p.is-pendant small { font-weight: 500; color: var(--warning); }
 .qb-modal.rv.rs .rs-heures { flex: 1 1 0; display: grid; grid-template-columns: repeat(var(--rs-n, 4), minmax(0, 1fr)); grid-template-rows: repeat(var(--rs-r, 1), minmax(0, 1fr)); min-height: calc(var(--rs-r, 1) * 62px - 6px); max-height: calc(var(--rs-r, 1) * 114px - 6px); gap: 6px; }
 .qb-modal.rv.rs .rs-heures .rs-h { height: auto; }

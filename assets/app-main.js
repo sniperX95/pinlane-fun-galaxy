@@ -32092,9 +32092,6 @@ function openQuickBook(prefill = {}) {
   syncQuickBookDuration();
   rsProposerVite();
   reconcileQuickLaneSelection();
-  // Ouverte depuis le planning sur une heure (une case, un depart du laser), il ne manque que
-  // le nombre : la question est la des l ouverture.
-  if (prefill.startTime) rsDemanderLesJoueurs();
   const overlay = document.getElementById('quickBookOverlay');
   if (overlay && !overlay.dataset.rvEcoute) {
     overlay.dataset.rvEcoute = '1';
@@ -32110,9 +32107,6 @@ function openQuickBook(prefill = {}) {
       if (!quickBookState?.submitting) closeQuickBook();
     }, { fondInerte: false });
   }
-  // (la fenetre prend le focus en s ouvrant : la question des joueurs le reprend)
-  const premiere = document.querySelector('#rsQJ [data-pax-q]');
-  if (premiere) premiere.focus({ preventScroll: true });
 }
 
 // RESERVER DEPUIS LE TABLEAU (2026-11-02, Movsar : « tout doit être interconnecté
@@ -36618,7 +36612,8 @@ function rsMotCoince(id, verdict, pendant = null) {
 // posee « juste après » suit la premiere : le laser deplace a 18:30, le bowling partait a
 // 19:00 sans un mot, et la touche 18:30 disait « reste 26 ». L heure dit maintenant ce
 // qu elle chevauche, avant le toucher : l activite du ticket dont la plage la recouvre, et
-// si cette activite suivra (`suit`, elle est « à la suite » de celle-ci) ou refusera.
+// si cette activite suivra (`suit`, elle est « à la suite » de celle-ci : « décale le
+// bowling ») ou si le plan refusera (« pendant le bowling »).
 // Les plages du ticket se lisent une fois par rangee (rsPlagesDuTicket), pas une fois par heure.
 function rsPlagesDuTicket() {
   const s = quickBookState;
@@ -36652,16 +36647,21 @@ function rsMotPendant(autre) {
   return `pendant le ${autre === 'laser_game' ? 'laser' : rvMinuscule(rsNomCourt(autre))}`;
 }
 
+function rsMotDecale(autre) {
+  return `décale le ${autre === 'laser_game' ? 'laser' : rvMinuscule(rsNomCourt(autre))}`;
+}
+
 // Ce que dit la touche d une heure : le mot du serveur si elle coince, rien tant que ce
 // poste la croit pleine et que le serveur n a pas repondu, sinon son petit mot. Une heure
 // d avant (« Plus tôt ») ne se juge pas : elle se dit « passée ». Une heure pendant une
-// autre activite du groupe le dit avant ce qui reste (rsPendant).
+// autre activite du groupe dit ce qu elle en fera, a la place de ce qui reste (rsPendant) :
+// « décale le bowling » s il suivra, « pendant le bowling » s il est fixe.
 function rsMotDeLHeure(id, x, plages) {
   if (x.passee) return 'passée';
   const coince = rsCoince(x, id);
   const pendant = rsPendant(id, x.heure, plages);
   if (coince) return rsMotCoince(id, coince, pendant);
-  if (pendant) return rsMotPendant(pendant.activite);
+  if (pendant) return pendant.suit ? rsMotDecale(pendant.activite) : rsMotPendant(pendant.activite);
   return x.verdict || x.tient !== false ? x.mot || '' : '';
 }
 

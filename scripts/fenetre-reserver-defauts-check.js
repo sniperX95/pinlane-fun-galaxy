@@ -10,7 +10,7 @@
 
    [F1] UNE HEURE PENDANT L AUTRE ACTIVITE DU GROUPE LE DIT, avant le toucher.
         Le laser a 17:00, le bowling « juste après » (17:30 a 18:30) : la touche
-        18:00 du laser dit « pendant le bowling », dans le ton d avis (elle reste
+        18:00 du laser dit « décale le bowling », dans le ton d avis (elle reste
         touchable, le bowling suivra). Elle disait « reste 8 ».
    [F2] CE QUI BOUGE TOUT SEUL SE DIT. Le laser deplace a 18:00, le bowling part
         a 18:30 : sa ligne du ticket dit « Déplacé de 17:30 à 18:30 ». Rien ne le
@@ -24,8 +24,9 @@
         ouvre « Combien de joueurs ? » (le focus y est), Echap la ferme, Créer la
         rouvre, un toucher y repond : le nombre est pris, l heure gardee.
    [F6] UN NOMBRE DEVINE N EST PAS UN NOMBRE DIT. La porte du laser du planning
-        posait 4 joueurs et la fenetre les tenait pour choisis : elle s ouvre sur
-        la question. Un nombre vraiment dit (reserverAuComptoir) reste pris.
+        posait 4 joueurs et la fenetre les tenait pour choisis : elle s ouvre sans
+        nombre choisi, le pied dit « Combien de joueurs ? » et la question s ouvre
+        a son toucher. Un nombre vraiment dit (reserverAuComptoir) reste pris.
    [F7] LES HEURES DE LA PAGE LASER PRENNENT LEUR HAUTEUR (1100 x 700) : la
         derniere ligne de touches finit dans sa rangee, au-dessus d « Arène ». Elle
         passait 120 px dessous.
@@ -201,7 +202,7 @@ async function scenarioChevauchement(browser, lettres) {
     ok(monte, '[F1] montage : le laser a 17:00, le bowling juste apres (17:30, a la suite)', l1);
     if (lettres.includes('F1')) {
       const t = await lireTouche(page, 'laser_game', '18:00');
-      ok(Boolean(t) && t.pendant && !t.coince && t.mot === 'pendant le bowling' && /Pendant le bowling de 17:30 à 18:30/.test(t.titre), '[F1] la touche 18:00 du laser dit « pendant le bowling », en avis, et le survol ce qui se passera', t);
+      ok(Boolean(t) && t.pendant && !t.coince && t.mot === 'décale le bowling' && /Pendant le bowling de 17:30 à 18:30/.test(t.titre), '[F1] la touche 18:00 du laser dit « décale le bowling », en avis, et le survol ce qui se passera', t);
     }
     if (lettres.includes('F4')) {
       const mots = await page.evaluate(() => Array.from(document.querySelectorAll('.rs-s-l .rs-h small')).filter((s) => s.getClientRects().length).map((s) => ({ mot: s.textContent.trim(), coupe: s.scrollWidth > s.clientWidth + 1 })));
@@ -276,8 +277,11 @@ async function scenarioJoueurs(browser, lettres) {
       await page.evaluate(() => openQuickBookForLaserSession(17.5, 6));
       await page.waitForTimeout(500);
       const f1 = await fenetre(page);
+      ok(f1.choisi === false && f1.pied === 'Combien de joueurs ?' && !(await carte(page)), '[F6] la porte du laser du planning ne pose plus 4 joueurs : la fenetre s ouvre sans nombre choisi', f1);
+      await page.locator('#rvCreer').click();
+      await page.waitForTimeout(300);
       const c = await carte(page);
-      ok(f1.choisi === false && f1.pied === 'Combien de joueurs ?' && Boolean(c) && c.focus, '[F6] la porte du laser du planning ne pose plus 4 joueurs : la fenetre s ouvre sur la question', { ...f1, carte: c });
+      ok(Boolean(c) && c.focus, '[F6] et son pied pose la question', c);
       await page.evaluate(() => closeQuickBook());
       await page.evaluate(() => reserverAuComptoir({ type: 'laser', startTime: '17:30', pax: 6 }));
       await page.waitForTimeout(500);

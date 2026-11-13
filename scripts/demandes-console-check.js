@@ -68,7 +68,7 @@ async function ouvrir(browser, { largeur = 1440, hauteur = 900, theme = 'light',
   // La page Demandes, par son entree du menu : un vrai clic.
   if (menu) await page.click('.fgx-menu-nav [data-fgx-menu-key="requests"]', { timeout: 10000 });
   else await page.evaluate(() => window.openStaffMenuPage('requests'));
-  await page.waitForSelector('.bdg-l', { timeout: 10000 });
+  await page.waitForSelector('.bdg-l', { state: 'attached', timeout: 10000 });
   return { banc, ctx, page, erreurs, fermer: async () => { await ctx.close(); await banc.fermer(); } };
 }
 
@@ -846,7 +846,7 @@ async function main() {
       { de: "  if (texte && item.status === 'new' && bdgPeutClasser()) setStaffCustomRequestStatus(item.id, 'in_progress', { silencieux: true, suivre: true });\n", vers: '', label: 'sans la prise en charge, une consigne laisserait la demande nouvelle', rouge: (r) => Boolean(r.panne) || !(r.statuts && r.statuts.some((s) => s.id === 801 && s.status === 'in_progress')) },
       { de: "  if (prixRetenu && typeof onQuickCustomPriceInput === 'function') onQuickCustomPriceInput(prixRetenu);\n", vers: '', label: 'sans le prix pose, Reserver reprendrait le prix du catalogue', run: reserverAMain, rouge: (r) => Boolean(r.panne) || Number(r.resa && r.resa.prix) !== 620 },
       { de: '    ...(heureRetenue ? { startTime: heureRetenue, heureSouhaitee: true } : {}),\n', vers: '', label: 'sans l heure, Reserver ne reprend pas la reservation preparee', run: reserverAMain, rouge: (r) => Boolean(r.panne) || (r.resa && r.resa.heure !== '14:00') },
-      { de: '  return bdgGrandEcran() ? getStaffRequestRows()[0] || null : null;', vers: '  return getStaffRequestRows()[0] || null;', label: 'sans la liste d abord, une demande s ouvrirait toute seule sur telephone', run: petitsEcrans, rouge: (r) => Boolean(r.tel && r.tel.liste && r.tel.liste.lecture) || Boolean(r.tel && r.tel.panne) },
+      { de: '  return bdgGrandEcran() ? getStaffRequestRows()[0] || null : null;', vers: '  return getStaffRequestRows()[0] || null;', label: 'sans la liste d abord, une demande s ouvrirait toute seule sur telephone', run: petitsEcrans, rouge: (r) => Boolean(r.panne) || Boolean(r.tel && r.tel.liste && r.tel.liste.lecture) || Boolean(r.tel && r.tel.panne) },
       { de: '  return bdgGrandEcran() ? getStaffRequestRows()[0] || null : null;', vers: '  return null;', label: 'sans l ouverture de la plus pressee, le grand ecran resterait vide a cote de la liste', rouge: (r) => Boolean(r.panne) || !(r.depart && r.depart.id === '802') },
       { de: '  if (ouverte && staffRequestSegmentOf(ouverte) !== getStaffRequestSegment()) state.staffRequestSegment = staffRequestSegmentOf(ouverte);\n', vers: '', label: 'sans l onglet qui suit, la demande ouverte d une alerte resterait sous un autre onglet', run: etapes, rouge: (r) => Boolean(r.panne) || !(r.ongletSuit && /Terminées/.test(r.ongletSuit.onglet)) },
       { de: "    return envoyee.forme === 'reservation' ? { reservation: envoyee.valeur } : { proposition: envoyee.valeur };", vers: '    return null;', label: 'sans la proposition partie, son oui ouvrirait Reserver vide au lieu de la relire', run: reserver, rouge: (r) => Boolean(r.panne) || !(r.carte && r.carte.appels.length) },
@@ -869,6 +869,9 @@ async function main() {
       let r = null;
       try {
         r = await (e.run ? e.run(browser) : parcours(browser, { captures: false }));
+      } catch (error) {
+        // Le parcours arrete net sous la coupure : c est elle qui l arrete, il passe sans elle.
+        r = { panne: String((error && error.message) || error).split(/\r?\n/)[0] };
       } finally {
         mutation = null;
       }

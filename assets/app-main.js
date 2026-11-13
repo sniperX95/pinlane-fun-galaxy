@@ -19383,7 +19383,7 @@ async function setStaffCustomRequestStatus(id, status, options = {}) {
 const STAFF_REQUEST_STATUS_TOAST = {
   in_progress: 'Demande prise en charge.',
   handled: 'Demande classée « Traitée ».',
-  archived: 'Demande archivée.',
+  archived: 'Demande classée sans suite.',
 };
 
 // La ligne a jour, rendue par le serveur, remplace l ancienne dans la file.
@@ -20006,7 +20006,9 @@ function bdgTete(item) {
     </div>
     <div class="bdg-tete-a">
       ${tel ? `<a class="bdg-b" href="tel:${escapeHtml(tel)}">Appeler</a>` : ''}
-      ${bdgPeutClasser() ? `<button type="button" class="bdg-b bdg-b-statut" onclick="setStaffCustomRequestStatus(${jid}, '${finie ? 'in_progress' : 'archived'}', { suivre: true })">${finie ? 'Rouvrir' : 'Sans suite'}</button>` : ''}
+      ${!bdgPeutClasser() ? '' : finie
+        ? `<button type="button" class="bdg-b bdg-b-statut" onclick="setStaffCustomRequestStatus(${jid}, 'in_progress', { suivre: true })">Rouvrir</button>`
+        : `<button type="button" class="bdg-b bdg-b-statut" onclick="setStaffCustomRequestStatus(${jid}, 'archived', { suivre: true })">Sans suite</button>`}
     </div>
   </div>`;
 }

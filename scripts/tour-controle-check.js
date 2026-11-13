@@ -894,7 +894,7 @@ async function contrePreuves(browser, jour) {
     ok(!vert, `[X] ${nom} : rougit${detail ? ` (${detail})` : ''}`, raison);
   };
   const FICHIER = 'lib/tour-controle.js';
-  await rouge('la garde redit tout a chaque passage', [{ fichier: FICHIER, de: 'const nouveaux = problemes.filter((p) => !precedent[p.cle]);', vers: 'const nouveaux = problemes;' }], async () => {
+  await rouge('la garde redit tout a chaque passage', [{ fichier: FICHIER, de: 'const neufs = problemes.filter((p) => !precedent[p.cle]);', vers: 'const neufs = problemes;' }], async () => {
     const t = tourReel();
     return t.deciderGarde({ a: 'A' }, [{ cle: 'a', titre: 'A', detail: '', gravite: 'critique' }]).messages.length === 0;
   });

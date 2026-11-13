@@ -222,7 +222,7 @@ async function contrePreuves() {
   await rouge('la rafale d avant', [{ fichier: 'lib/garde-alertes.js', de: "    const m = texteRafale(origine, env);", vers: "    const m = { texte: 'URGENT Pinlane\\nTrop d’alertes d’un coup : les suivantes ne partent plus pendant 10 minutes. Tout est dans la Tour de contrôle.', liens: [] };" }], async () => fautesDe((await messagesDeRafale()).serveur.text, 'alerte').length === 0);
   const garde = async () => {
     const { problemes, ouverts, regles, tour } = await messagesDeLaGarde();
-    const fautes = problemes.flatMap((p) => fautesDe(tour.deciderGarde({}, [p], { env: process.env }).messages[0].texte, 'alerte'));
+    const fautes = problemes.flatMap((p) => fautesDe(tour.blocDuConstat(p, process.env).texte, 'alerte'));
     return !fautes.length && fautesDe(ouverts.messages[0].texte, 'alerte').length === 0 && fautesDe(regles.messages[0].texte, 'regle').length === 0;
   };
   await rouge('une console plantee d avant', [{ fichier: 'lib/tour-controle.js', de: "    console: (e) => ({ quoi: `${qui(e)} : la console a eu une erreur${page(e)}`,", vers: "    console: (e) => ({ quoi: `${qui(e)} : la console a planté (plantage ${e.cle})`," }], garde);
@@ -273,18 +273,18 @@ async function preuvesGarde() {
   const manquent = FAMILLES.filter((f) => !problemes.some((p) => p.cle.startsWith(f)));
   ok(!manquent.length, '[P] chaque poste de la garde se fabrique par le vrai code', manquent);
   ok(['canal:absent', 'lecture:mails', 'integrite:illisible'].every((c) => problemes.some((p) => p.cle === c)), '[P] et les constats sans canal, de lecture et de controle illisible', problemes.map((p) => p.cle).filter((c) => /^(canal|lecture|integrite:ill)/.test(c)));
-  for (const p of problemes) {
-    const seul = tour.deciderGarde({}, [p], { env: process.env }).messages[0];
-    lisible(seul.texte, 'alerte', `[P] ${p.cle.replace(/:[0-9a-f]{6,}$/, '')}`);
-  }
+  // Chaque constat tel que la garde le dirait (ce qui se dit a l instant ne se redit qu aggrave).
+  for (const p of problemes) lisible(tour.blocDuConstat(p, process.env).texte, 'alerte', `[P] ${p.cle.replace(/:[0-9a-f]{6,}$/, '')}`);
+  const dits = problemes.filter((p) => !p.instant);
   const message = ouverts.messages[0] || { texte: '' };
   const premier = problemes.find((p) => message.texte.startsWith(`${p.quoi}.`));
-  ok(ouverts.messages.length === 1 && message.urgent === true && premier && premier.gravite === 'critique' && message.texte.split('\n\n').length === problemes.length, '[P] un seul message pour tout ce qui est neuf, l urgent en tete, et il sonne', message.texte.slice(0, 200));
+  ok(ouverts.messages.length === 1 && message.urgent === true && premier && premier.gravite === 'critique' && message.texte.split('\n\n').length === dits.length, '[P] un seul message pour tout ce qui est neuf, l urgent en tete, et il sonne', message.texte.slice(0, 200));
   const entites = charger('lib/garde-alertes.js').entitesDesLiens(message.texte, { liens: message.liens });
-  ok(entites.filter((e) => /cockpit-tour$/.test(e.url)).length >= 10 && entites.some((e) => /cockpit-incidents$/.test(e.url)) && entites.some((e) => /\/#\/staff\/secours$/.test(e.url)) && entites.some((e) => /\/#\/staff\/requests$/.test(e.url)), '[P] chaque alerte mene a sa page : la Tour, les Incidents, Secours, les Demandes', entites.map((e) => e.url.replace(/^.*#/, '')).join(' '));
+  const plantage = problemes.find((p) => p.cle.startsWith('erreur:console:'));
+  ok(entites.filter((e) => /cockpit-tour$/.test(e.url)).length >= 8 && entites.some((e) => /\/#\/staff\/secours$/.test(e.url)) && entites.some((e) => /\/#\/staff\/requests$/.test(e.url)) && /cockpit-incidents$/.test(tour.blocDuConstat(plantage, process.env).liens[0].url), '[P] chaque alerte mene a sa page : la Tour, Secours, les Demandes, les Incidents', entites.map((e) => e.url.replace(/^.*#/, '')).join(' '));
   const regle = regles.messages[0] || { texte: '' };
   lisible(regle.texte, 'regle', '[P] « Réglé » pour tout ce qui disparait');
-  ok(regles.messages.length === 1 && regle.urgent === false && regle.texte.split('\n').length === problemes.length && /^Réglé : à Gembloux, des mails ne partaient pas, depuis 14:05\.$/m.test(regle.texte), '[P] « Réglé » dit la meme chose au passe, une ligne par probleme, sans sonner', regle.texte.split('\n').slice(0, 4));
+  ok(regles.messages.length === 1 && regle.urgent === false && regle.texte.split('\n').length === dits.length && /^Réglé : à Gembloux, des mails ne partaient pas, depuis 14:05\.$/m.test(regle.texte), '[P] « Réglé » dit la meme chose au passe, une ligne par probleme, sans sonner', regle.texte.split('\n').slice(0, 4));
   const ancien = tour.deciderGarde({ 'erreur:serveur:abcdef': 'Le serveur a planté (api/ops)', 'mail:echec:gembloux:2': '2 mails ne sont pas partis à Gembloux' }, [], { env: process.env }).messages[0] || { texte: '' };
   lisible(ancien.texte, 'regle', '[P] un probleme retenu avant ce gabarit se dit regle sans son vieux jargon');
 }

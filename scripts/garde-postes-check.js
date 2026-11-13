@@ -13,6 +13,8 @@
 //   [M] les mails revenus ou signales, par le vrai webhook ;
 //   [B] le bilan du matin et le controle du texte de l IA ;
 //   [G] la garde entiere : mise en service, explication d une panne, suivis, bilan ;
+//   [N] le bruit : un nombre qui bouge ne redit rien, une aggravation se redit, une cle d avant ne
+//       redit rien a la mise en ligne, ce qui se dit a l instant ne se redit pas au quart d heure ;
 //   [K] la caisse du chef de garde ;
 //   [X] les contre-preuves.
 // Lancement : node scripts/garde-postes-check.js
@@ -495,7 +497,7 @@ function routesDeLaTour({ mailEchoue = false, suivis = false, integrite = false,
   const noms = ['garde', 'sonde', 'secours', 'dispatch-communications', 'ops-jobs', 'sauvegarde', 'agent-orchestrator'];
   route(/distinct on \(task_name\)/, () => noms.map(sain));
   route(/max\(finished_at\) as dernier_ok/, () => noms.map(sain));
-  if (mailEchoue) route(/status = 'failed' and channel = 'email'/, () => [{ center_id: 'gembloux', n: 1, dernier: new Date() }]);
+  if (mailEchoue) route(/status = 'failed' and channel = 'email'/, () => [{ center_id: 'gembloux', n: Number(mailEchoue) || 1, dernier: new Date() }]);
   if (suivis) {
     // Au comptoir, six « a verifier » a Libramont (les jours demo de la prod) : seule
     // une requete qui oublie le canal les compte.
@@ -710,6 +712,59 @@ async function preuvesGarde() {
 // ---------------------------------------------------------------------------
 // [K] La caisse du chef de garde.
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// [N] Le bruit (2026-11-13, Ansar : « quand je fais des modifs je reçois des alertes genre 5-10 après »).
+// ---------------------------------------------------------------------------
+// Un mail qui ne part pas a Gembloux, puis deux, trois, quatre, cinq, puis plus aucun : ce que chaque passage envoie.
+async function suiteDeMails() {
+  remettre();
+  sansGroupe();
+  BD.etatGarde = null;
+  const vus = [];
+  for (const n of [1, 2, 3, 4, 5, 0]) {
+    BD.routes = [];
+    routesDeLaTour({ mailEchoue: n });
+    const p = await passe();
+    vus.push(p.messages.map((m) => m.text));
+  }
+  return vus;
+}
+async function preuvesBruit() {
+  const vus = await suiteDeMails();
+  ok(vus[0].length === 1 && /^Gembloux : 1 mail n’a pas pu partir/.test(vus[0][0]), '[N] un mail qui ne part pas : un message', vus[0]);
+  ok(vus[1].length === 0 && vus[2].length === 0, '[N] deux, puis trois : le nombre bouge, rien ne se redit, ni « nouveau » ni « Réglé »', vus.slice(1, 3));
+  ok(vus[3].length === 1 && /^Gembloux : 4 mails n’ont pas pu partir/.test(vus[3][0]), '[N] quatre : une vraie aggravation se redit, avec son nombre', vus[3]);
+  ok(vus[4].length === 0, '[N] cinq : rien, l aggravation est deja dite', vus[4]);
+  ok(vus[5].length === 1 && /^Réglé : à Gembloux, des mails ne partaient pas, depuis \d\d:\d\d\.$/.test(vus[5][0]), '[N] plus aucun : « Réglé », une fois', vus[5]);
+
+  // La mise en ligne : la garde d avant retenait des cles avec leur nombre et des titres seuls.
+  remettre();
+  routesDeLaTour({ mailEchoue: 5 });
+  BD.etatGarde = { dits: { 'mail:echec:gembloux:3': '3 mails ne sont pas partis à Gembloux' } };
+  const miseEnLigne = await passe();
+  ok(miseEnLigne.messages.length === 0, '[N] la premiere garde apres la mise en ligne ne redit pas ce qui etait deja dit, sous une cle d avant', miseEnLigne.messages.map((m) => m.text));
+
+  // Ce qui se dit a l instant (un plantage, un mail revenu, une reservation ratee) ne se redit pas au quart d heure.
+  const { deciderGarde } = charger('lib/tour-controle.js');
+  const plantage = { cle: 'erreur:client:abcdef', gravite: 'critique', instant: true, titre: 'Gembloux : le formulaire en ligne a eu une erreur chez un client', quoi: 'Gembloux : le formulaire en ligne a eu une erreur chez un client', effet: 'Vu 1 fois en 24 h.', action: 'Ce que tu fais : réserve toi-même sur le site.', n: 1 };
+  const d1 = deciderGarde({}, [plantage]);
+  ok(d1.messages.length === 0 && d1.dits[plantage.cle] && d1.neufs.length === 1, '[N] un plantage deja dit a l instant ne se redit pas, mais la garde le retient (et le bilan le compte)', d1);
+  const d2 = deciderGarde(d1.dits, [{ ...plantage, n: 4 }]);
+  ok(d2.messages.length === 1 && d2.messages[0].urgent === true, '[N] s il s aggrave (quatre fois), il se redit', d2.messages);
+  const d3 = deciderGarde(d2.dits, []);
+  ok(d3.messages.length === 0, '[N] sorti de la fenetre de 24 h, un plantage ne se dit pas « Réglé » : il n est pas repare pour autant', d3.messages);
+  const d4 = deciderGarde({ 'erreur:serveur:abcdef': 'Le serveur a planté (api/ops)', 'mail:bounced:gembloux:2': '2 mails sont revenus à Gembloux' }, []);
+  ok(d4.messages.length === 0, '[N] retenus avant la mise en ligne, ils ne se disent pas « Réglé » non plus', d4.messages);
+
+  // Une partie illisible ne sonne pas.
+  remettre();
+  routesDeLaTour();
+  route(/from email_events/, () => { throw new Error('relation "email_events" does not exist'); });
+  const { problemes } = await charger('lib/tour-controle.js').lireProblemes(pool);
+  const lecture = problemes.find((p) => p.cle === 'lecture:mails') || {};
+  ok(lecture.gravite === 'attention', '[N] une partie de l etat illisible se dit sans sonnerie', lecture);
+}
+
 async function preuvesCaisse() {
   remettre();
   BD.depenses = [];
@@ -826,6 +881,32 @@ async function contrePreuves() {
     TG.length = 0;
     await charger('lib/garde-mails.js').alerterEvenementMail({ ok: true, deduped: false, communicationId: 58, type: 'bounced' });
     return TG.length === 1;
+  });
+  const suiteTient = async () => {
+    const vus = await suiteDeMails();
+    return vus[0].length === 1 && vus[1].length === 0 && vus[2].length === 0 && vus[3].length === 1 && vus[4].length === 0 && vus[5].length === 1;
+  };
+  await rouge('un nombre dans la cle refait « nouveau » et « Réglé » a chaque passage', [{ fichier: 'lib/tour-controle.js', de: 'cle: `mail:echec:${l.center_id}`,', vers: 'cle: `mail:echec:${l.center_id}:${l.n}`,' }], suiteTient);
+  await rouge('une aggravation ne se redit plus', [{ fichier: 'lib/tour-controle.js', de: '  const aggraves = problemes.filter((p) => precedent[p.cle] && aggrave(p.n, precedent[p.cle].n));', vers: '  const aggraves = [];' }], suiteTient);
+  await rouge('une cle d avant redit tout a la mise en ligne', [{ fichier: 'lib/tour-controle.js', de: 'const cleStable = (cle) => { const m = String(cle).match(AVEC_NOMBRE); return m ? m[1] : String(cle); };', vers: 'const cleStable = (cle) => String(cle);' }], async () => {
+    remettre();
+    routesDeLaTour({ mailEchoue: 5 });
+    BD.etatGarde = { dits: { 'mail:echec:gembloux:3': '3 mails ne sont pas partis à Gembloux' } };
+    return (await passe()).messages.length === 0;
+  });
+  const plantageTient = async () => {
+    const { deciderGarde } = charger('lib/tour-controle.js');
+    const plantage = { cle: 'erreur:client:abcdef', gravite: 'critique', instant: true, titre: 'Gembloux : erreur', quoi: 'Gembloux : erreur', effet: 'Vu 1 fois.', action: 'Rien à faire : rien.', n: 1 };
+    const d1 = deciderGarde({}, [plantage]);
+    return d1.messages.length === 0 && deciderGarde(d1.dits, []).messages.length === 0;
+  };
+  await rouge('un plantage deja dit a l instant se redit au quart d heure', [{ fichier: 'lib/tour-controle.js', de: '  const nouveaux = [...neufs.filter((p) => !p.instant), ...aggraves];', vers: '  const nouveaux = [...neufs, ...aggraves];' }], plantageTient);
+  await rouge('un plantage sorti de la fenetre se dit « Réglé »', [{ fichier: 'lib/tour-controle.js', de: '.filter((cle) => !actuels[cle] && !ditALInstant(cle, precedent[cle]))', vers: '.filter((cle) => !actuels[cle])' }], plantageTient);
+  await rouge('une partie illisible sonne', [{ fichier: 'lib/tour-controle.js', de: "const constatDeLecture = (nom) => constat({ cle: `lecture:${nom}`, gravite: 'attention',", vers: "const constatDeLecture = (nom) => constat({ cle: `lecture:${nom}`, gravite: 'critique'," }], async () => {
+    remettre();
+    routesDeLaTour();
+    route(/from email_events/, () => { throw new Error('relation "email_events" does not exist'); });
+    return ((await charger('lib/tour-controle.js').lireProblemes(pool)).problemes.find((p) => p.cle === 'lecture:mails') || {}).gravite === 'attention';
   });
   await rouge('une reservation du comptoir passe pour un client qui attend', [{ fichier: 'lib/tour-controle.js', de: " and channel = 'public' and date >= $1::date", vers: ' and date >= $1::date' }], async () => {
     remettre();
@@ -980,6 +1061,7 @@ async function contrePreuves() {
   await preuvesTaches();
   await preuvesBilan();
   await preuvesGarde();
+  await preuvesBruit();
   await preuvesCaisse();
   await contrePreuves();
   console.log(`\ngarde-postes-check: ${echecs ? `${echecs} ECHEC(S) sur ${total}` : `ALL OK (${total})`}`);

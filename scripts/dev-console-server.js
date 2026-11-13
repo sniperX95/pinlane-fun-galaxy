@@ -218,6 +218,8 @@ function rendreMail({ design, subject, body, person = null, signature = true, re
       title: subject, body, preheader: subject, center: CATALOGUE_CENTRE,
       design: fusionnerDesign(design),
       signature: { enabled: Boolean(signature), person: person && person.name ? { name: person.name, role: person.role || '' } : null, portee },
+      // Un mail manuel est ecrit par une personne : il se lit comme une lettre, comme en prod.
+      personnel: portee === 'manual',
       unsubscribeLine: retrait ? { text: UNSUBSCRIBE_SENTENCE, url: `${ORIGINE_APP}/api/u?k=apercu`, label: UNSUBSCRIBE_LABEL } : '',
     });
     return html.replace('<head>', '<head>\n    <!-- FIXTURE dev-console-server : rendu par emailShell (lib/ops-communications.js) -->');
@@ -738,7 +740,7 @@ function creerRepondeurFixtures({ origine = ORIGINE_APP, maintenant = null, exem
           return { sample, subject, html: rendreMail({ design, subject, body: 'Bonjour Marie,\n\nMerci pour votre message. Oui, il reste de la place samedi : je vous propose 15 h, le temps de vous installer et de lancer tout le groupe ensemble.\nDites-moi si cela vous convient, et je bloque le créneau à votre nom.', person: personne, signature: design.signatureScope.manual }) };
         }
         const subject = 'Une soirée bowling entre amis ?';
-        return { sample, subject, html: rendreMail({ design, subject, body: 'Bonjour Marie,\n\nLes soirées rallongent : c\'est le moment de réserver une piste entre amis ou en famille. Réservez en ligne, on s\'occupe du reste.', signature: design.signatureScope.campaigns, retrait: true, portee: 'campaigns' }) };
+        return { sample, subject, html: rendreMail({ design, subject, body: 'Bonjour Marie,\n\nLes soirées rallongent : c\'est le moment de réserver une piste entre amis ou en famille. Réservez en ligne, l’équipe s’occupe du reste.', signature: design.signatureScope.campaigns, retrait: true, portee: 'campaigns' }) };
       }
       case 'emailDesign': {
         const design = validerDesign(body.design || {});

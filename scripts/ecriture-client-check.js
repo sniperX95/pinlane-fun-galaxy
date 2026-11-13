@@ -261,6 +261,36 @@ function inventaire(comms) {
   return textes;
 }
 
+// --- LE PIED ET LE RETRAIT ----------------------------------------------------
+// 2026-11-13 : la phrase de reponse sous chaque mail client, la ligne de retrait
+// des campagnes, la page qui confirme le retrait et l apercu du merci apres la
+// visite se lisent aussi chez le client. Ils disaient encore « chez nous », « nos
+// actualites » et « dites-le nous » quand les mails n en avaient plus : aucun
+// d eux n etait juge ici. L apercu du merci est une chaine dans lib/ops-jobs.js,
+// lue a son ancre ; une ancre perdue rend un texte vide, que le bloc des textes
+// vides refuse.
+function piedEtRetrait(comms) {
+  const suppression = require(path.join(ROOT, 'lib/marketing-suppression.js'));
+  const { getCenter } = require(path.join(ROOT, 'lib/ops-knowledge'));
+  const texteDe = (html) => String(html || '')
+    .replace(/<(style|script|title)[\s\S]*?<\/\1>/gi, ' ').replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;|&#160;/g, ' ').replace(/&amp;/g, '&').replace(/&#39;|&rsquo;/g, '’').replace(/&quot;/g, '"')
+    .replace(/\s+/g, ' ').trim();
+  const textes = [];
+  const pied = comms.__test.footerBlock({
+    footer: '', center: getCenter('libramont'), replyLine: undefined,
+    unsubscribeLine: { text: suppression.UNSUBSCRIBE_SENTENCE, url: 'https://app.pinlane.be/api/u?k=essai', label: suppression.UNSUBSCRIBE_LABEL },
+  });
+  textes.push({ nom: 'pied d un mail client, ligne de retrait comprise', texte: texteDe(pied), etat: 'confirme' });
+  ['removed', 'restored', 'invalid'].forEach((state) => {
+    textes.push({ nom: `page de retrait « ${state} »`, texte: texteDe(suppression.renderUnsubscribePage({ state, email: 'marie@example.org', centerName: 'Fun Galaxy Libramont' })), etat: 'confirme' });
+  });
+  const jobs = fs.readFileSync(path.join(ROOT, 'lib/ops-jobs.js'), 'utf8');
+  const apercu = jobs.match(/templateId: 'post_visit_followup'[\s\S]{0,900}?preheader: (['"])(.+?)\1,/);
+  textes.push({ nom: 'apercu du merci apres la visite', texte: apercu ? apercu[2] : '', etat: 'confirme' });
+  return textes;
+}
+
 // --- LES BROUILLONS DE LA CONSOLE --------------------------------------------
 // Les modeles pre-remplis que le gerant et le staff envoient depuis la console.
 // Ils vivent dans les fichiers servis au navigateur, donc `require` ne peut pas
@@ -377,7 +407,7 @@ function main() {
   const prets = mailsPretsDuCerveau();
   record('le mail pret a coller du cerveau marketing est extrait',
     prets.length >= 1 && prets[0].texte.length > 100, `${prets.length} mail(s)`);
-  const textes = inventaire(comms).concat(brouillons, prets);
+  const textes = inventaire(comms).concat(brouillons, prets, piedEtRetrait(comms));
   record('l inventaire couvre les textes clients', textes.length >= 30, `${textes.length} textes`);
   // « Message vierge » est VIDE PAR CONSTRUCTION : c est la feuille blanche que
   // le staff remplit lui-meme. Elle est nommee ici, pas filtree par un seuil,

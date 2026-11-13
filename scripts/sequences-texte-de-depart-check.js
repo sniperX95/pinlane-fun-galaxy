@@ -29,7 +29,7 @@ const FRONT = 'assets/staff-pages-v2.js';
 const MUTATIONS = [
   { nom: 'phrase-en-moins', rouge: '[A] confirmation de reservation : le texte de depart dit les phrases du vrai mail', editions: [{ fichier: LIB, de: "      'Le montant se règle sur place le jour même, aucun paiement n’est demandé à l’avance.',\n", vers: '' }] },
   { nom: 'phrase-en-trop', rouge: '[A] rappel avant la venue : le texte de depart dit les phrases du vrai mail', editions: [{ fichier: LIB, de: "C’est ce qui permet de lancer tout le monde ensemble.',\n", vers: "C’est ce qui permet de lancer tout le monde ensemble.',\n      'Si possible, arrivez 10 minutes avant l’heure prévue.',\n" }] },
-  { nom: 'ancien-objet', rouge: '[A] confirmation de reservation : le meme objet que le vrai mail', editions: [{ fichier: LIB, de: "subject: 'Votre réservation du {{date}} est confirmée',", vers: "subject: 'Votre réservation {{centre}} est confirmée'," }] },
+  { nom: 'ancien-objet', rouge: '[A] confirmation de reservation : le meme objet que le vrai mail', editions: [{ fichier: LIB, de: "subject: 'Votre réservation du {{date}} à {{heure}} est confirmée',", vers: "subject: 'Votre réservation {{centre}} est confirmée'," }] },
   { nom: 'ancienne-fin', rouge: '[B] accuse de reception : il finit comme le vrai mail, la signature du centre est la meme', editions: [{ fichier: LIB, de: "      'Notez déjà une arrivée 10 minutes avant {{heure}}.',\n", vers: "      'Notez déjà une arrivée 10 minutes avant {{heure}}.',\n      '',\n      'Bien à vous,',\n      '{{centre}}',\n" }] },
   { nom: 'date-en-chiffres', rouge: '[A] rappel avant la venue : le meme objet que le vrai mail', editions: [{ fichier: LIB, de: '    date: formatDateLongFr(reservation.date),\n    heure: vars.startTime,', vers: '    date: vars.date,\n    heure: vars.startTime,' }] },
   { nom: 'recapitulatif-perdu', rouge: '[C] les trois mails de reservation gardent la date, l heure et l offre', editions: [{ fichier: LIB, de: "'Rendez-vous le {{date}} à {{heure}}. Merci d’arriver", vers: "'Rendez-vous à {{heure}}. Merci d’arriver" }] },
@@ -99,10 +99,11 @@ function phrases(texte) {
     .flatMap((l) => l.split(/(?<=[.!?])\s+(?=\S)/)).map((p) => p.trim()).filter(Boolean);
 }
 // Le corps que le logiciel ecrit, sans les blocs ajoutes apres lui (agenda et partage de la confirmation,
-// qu un texte du centre ne recoit pas) : ils commencent par un titre en gras.
+// qu un texte du centre ne recoit pas) : ils commencent par un titre en gras, que la version texte
+// ecrit sans ses asterisques depuis le 13/11.
 function corpsDuLogiciel(textBody) {
   const lignes = String(textBody || '').split('\n');
-  const bloc = lignes.findIndex((l) => /^\*\*.+\*\*$/.test(l.trim()));
+  const bloc = lignes.findIndex((l) => /^\*\*.+\*\*$|^Pour ceux qui viennent avec vous$/.test(l.trim()));
   return (bloc < 0 ? lignes : lignes.slice(0, bloc)).join('\n');
 }
 // Ce que la signature ajoute sous le texte : la difference entre le texte lu par le client et le corps.

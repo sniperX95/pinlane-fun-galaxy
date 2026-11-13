@@ -10,6 +10,8 @@
 //   [G] le gabarit lui-meme et ses liens ;
 //   [I] les textes d avant sont refuses (les exemples d Ansar du 13/11) ;
 //   [R] la rafale ;
+//   [P] la garde du quart d heure : chaque constat, les messages qu elle envoie, « Réglé », la mise
+//       en service des sujets ;
 //   [X] les contre-preuves.
 // Lancement : node scripts/alertes-lisibles-check.js   (port : PINLANE_ALERTES_PORT, 5307 par defaut)
 'use strict';
@@ -55,6 +57,63 @@ function purger() {
 }
 
 // Le faux Telegram : un vrai serveur HTTP local, qui note chaque message.
+// ---------------------------------------------------------------------------
+// La base en memoire, derriere le vrai module pg de lib/database.js : chaque lecture de la garde
+// rend une ligne, pour que chaque constat se fabrique. Une lecture inconnue rend vide.
+// ---------------------------------------------------------------------------
+const ROUTES = [];
+const route = (motif, rendre) => ROUTES.push({ motif, rendre });
+const rows = (lignes) => ({ rows: lignes, rowCount: lignes.length });
+function repondre(sql, p = []) {
+  const s = String(sql).replace(/\s+/g, ' ').trim();
+  for (const r of ROUTES) if (r.motif.test(s)) return rows(r.rendre(s, p));
+  return rows([]);
+}
+class FauxPool {
+  constructor() { this.options = { max: 5 }; this.waitingCount = 0; this.idleCount = 1; this.totalCount = 1; }
+  async query(sql, p) { return repondre(typeof sql === 'string' ? sql : sql.text, p); }
+  async connect() { return { query: async (sql, p) => repondre(typeof sql === 'string' ? sql : sql.text, p), release() {} }; }
+  on() {}
+  async end() {}
+}
+const cheminPg = require.resolve('pg');
+require.cache[cheminPg] = { id: cheminPg, filename: cheminPg, loaded: true, exports: { Pool: FauxPool } };
+const pool = new FauxPool();
+const il = (minutes) => new Date(Date.now() - minutes * 60000);
+// Un etat ou chaque poste de la garde a quelque chose a dire.
+function routesDeLaGarde() {
+  ROUTES.length = 0;
+  route(/from centers/, () => [
+    { id: 'libramont', name: 'Fun Galaxy Libramont', status: 'active', settings: { config: { secours: { emails: ['secours@fungalaxy.be'] }, embed: { actif: false } } } },
+    { id: 'gembloux', name: 'Fun Galaxy Gembloux', status: 'active', settings: { config: {} } },
+  ]);
+  const passage = (task_name, status, minutes, error = null) => ({ task_name, status, started_at: il(minutes), finished_at: il(minutes), error, dernier_ok: il(minutes) });
+  const sains = (echoue) => [passage('garde', 'ok', 10), passage('sonde', 'ok', 10), passage('secours', 'ok', 300), passage('dispatch-communications', 'ok', 60), echoue ? passage('ops-jobs', 'failed', 5, 'connect ECONNREFUSED 10.0.0.1:5432') : passage('ops-jobs', 'ok', 600), passage('sauvegarde', 'ok', 600), passage('agent-orchestrator', 'ok', 600)];
+  route(/distinct on \(task_name\)/, () => sains(true));
+  route(/max\(finished_at\) as dernier_ok/, () => sains(false));
+  route(/status = 'failed' and channel = 'email'/, () => [{ center_id: 'gembloux', n: 3, dernier: il(30) }]);
+  route(/where status = 'queued' and coalesce/, () => [{ center_id: 'libramont', n: 2, depuis: il(60) }]);
+  route(/from email_events where event_type in/, () => [{ center_id: 'gembloux', event_type: 'bounced', n: 1 }, { center_id: 'libramont', event_type: 'complained', n: 2 }]);
+  route(/from client_errors where occurred_at > now\(\) - interval '24 hours' and resolved_at is null/, () => [
+    { center_id: 'gembloux', stack_hash: 'a1b2c3d4e5', message: 'TypeError: x is undefined (jean@example.be)', page: 'formulaire:recap', n: 2, personnes: 1, dernier: il(5), origine: 'client' },
+    { center_id: 'plateforme', stack_hash: 'b2c3d4e5f6', message: 'connect ECONNREFUSED 10.0.0.1:5432', page: 'serveur:api/staff-reservations', n: 1, personnes: 1, dernier: il(5), origine: 'serveur' },
+    { center_id: 'libramont', stack_hash: 'c3d4e5f6a7', message: 'Cannot read properties of undefined', page: 'planning', n: 4, personnes: 2, dernier: il(5), origine: 'console' },
+  ]);
+  route(/entity_type = 'formulaire' and occurred_at > now\(\) - interval '24 hours'/, () => [{ center_id: 'gembloux', action: 'reservation.panne', raison: '', n: 2, dernier: il(10) }, { center_id: 'libramont', action: 'reservation.refusee', raison: 'horaires déjà pris', n: 16, dernier: il(10) }]);
+  route(/lower\(coalesce\(email, ''\)\) like \$1/, () => [{ center_id: 'gembloux', n: 2, premier: '2026-11-20' }]);
+  route(/validation_status = 'staff_review' and status = 'pending'/, () => [{ center_id: 'gembloux', n: 2 }]);
+  route(/from custom_requests where status = 'new'/, () => [{ center_id: 'libramont', n: 1 }]);
+  route(/and price <= 0 and created_at/, () => [{ center_id: 'gembloux', n: 1 }]);
+  route(/not exists \(select 1 from communications c where c\.reservation_id = r\.id/, () => [{ center_id: 'libramont', n: 2 }]);
+  route(/b\.lanes && a\.lanes/, () => [{ center_id: 'libramont', n: 1 }]);
+  const arene = (id, date, debut, joueurs) => ({ id, center_id: 'libramont', date, start_time: `${String(Math.floor(debut / 60)).padStart(2, '0')}:${String(debut % 60).padStart(2, '0')}:00`, duration: 1, type: 'laser', pax: joueurs, formule_id: null, lanes: [], status: 'confirmed', ops_plan: { resourceBlocks: [{ resourceType: 'laser_arena', activityId: 'laser_game', start: debut, end: debut + 20, players: joueurs, countIndex: 1 }] } });
+  route(/ops_plan::text like '%laser_arena%'/, () => [arene(501, '2026-11-15', 900, 20), arene(502, '2026-11-15', 900, 15)]);
+  route(/from availability_blocks where center_id = any/, () => [{ id: 1, center_id: 'libramont', scope_type: 'center', scope_ref: null, recurrence: 'once', date: '2026-11-15', day_of_week: null, date_from: null, date_until: null, start_time: '18:00', end_time: '24:00', reason: 'banc', created_by: 'banc' }]);
+  const enLigne = (id, date, heure, duree, lanes) => ({ id, center_id: 'libramont', date, start_time: `${heure}:00`, duration: duree, total_duration: duree, type: 'bowling', formule_id: null, lanes });
+  route(/total_duration, type, formule_id, lanes from reservations/, () => [enLigne(701, '2026-11-15', '17:00', 2, [1]), enLigne(703, '2026-11-16', '10:00', 1, [3])]);
+  route(/from formulaire_etapes where parcours = 'reservation'/, () => [{ center_id: 'libramont', n: 64, valides: 11, finis: 0 }, { center_id: 'gembloux', n: 35, valides: 4, finis: 0 }]);
+}
+
 const TG = [];
 const serveur = http.createServer((req, res) => {
   let brut = '';
@@ -74,7 +133,9 @@ for (const nom of ['error', 'warn']) { const o = console[nom]; console[nom] = (.
 
 // Un message passe-t-il le gabarit ? Rend les fautes, vides si oui.
 const fautesDe = (texte, genre) => charger('lib/alertes-texte.js').controlerTexte(texte, { genre });
+// ALERTES_MONTRER=1 imprime chaque message tel qu il part, pour le relire avec les yeux d Ansar.
 function lisible(texte, genre, nom) {
+  if (process.env.ALERTES_MONTRER) console.log(`\n----- ${nom}\n${texte}\n-----`);
   const f = fautesDe(texte, genre);
   ok(f.length === 0, `${nom} : se lit`, f.length ? `${f.join(' | ')}  >>  ${texte}` : undefined);
   ok(!PERSONNEL.test(texte), `${nom} : aucune donnee personnelle`, texte);
@@ -157,12 +218,85 @@ async function contrePreuves() {
   await rouge('le controle qui laisse passer un mot technique', [{ fichier: 'lib/alertes-texte.js', de: "  [/\\bserveurs?\\b/i, 'serveur'],\n", vers: '' }], async () => fautesDe('Pinlane : le serveur ne répond plus.\nLes clients attendent.\nCe que tu fais : attends.', 'alerte').length > 0);
   await rouge('le controle qui oublie la ligne d action', [{ fichier: 'lib/alertes-texte.js', de: "      if (actions.length !== 1) fautes.push(", vers: "      if (false) fautes.push(" }], async () => fautesDe('Gembloux : 2 mails n’ont pas pu partir.\nLes clients attendent.', 'alerte').length > 0);
   await rouge('la rafale d avant', [{ fichier: 'lib/garde-alertes.js', de: "    const m = texteRafale(origine, env);", vers: "    const m = { texte: 'URGENT Pinlane\\nTrop d’alertes d’un coup : les suivantes ne partent plus pendant 10 minutes. Tout est dans la Tour de contrôle.', liens: [] };" }], async () => fautesDe((await messagesDeRafale()).serveur.text, 'alerte').length === 0);
+  const garde = async () => {
+    const { problemes, ouverts, regles, tour } = await messagesDeLaGarde();
+    const fautes = problemes.flatMap((p) => fautesDe(tour.deciderGarde({}, [p], { env: process.env }).messages[0].texte, 'alerte'));
+    return !fautes.length && fautesDe(ouverts.messages[0].texte, 'alerte').length === 0 && fautesDe(regles.messages[0].texte, 'regle').length === 0;
+  };
+  await rouge('une console plantee d avant', [{ fichier: 'lib/tour-controle.js', de: "    console: (e) => ({ quoi: `${qui(e)} : la console a eu une erreur${page(e)}`,", vers: "    console: (e) => ({ quoi: `${qui(e)} : la console a planté (plantage ${e.cle})`," }], garde);
+  await rouge('une panne interne qui recopie le message technique', [{ fichier: 'lib/tour-controle.js', de: "effet: `${fois(e)} ${T.causeLisible(e.message)}`,", vers: "effet: `${fois(e)} ${e.message}`," }], garde);
+  await rouge('une tache qui dit « ne tourne plus » avec son nom interne', [{ fichier: 'lib/tour-controle.js', de: "quoi: `Pinlane : ${minuscule(t.nom)} est en retard`,", vers: "quoi: `Pinlane : ${t.id} ne tourne plus`," }], garde);
+  await rouge('un « Réglé » d avant', [{ fichier: 'lib/tour-controle.js', de: "  if (regles.length) messages.push({ texte: regles.map((p) => T.regle(p, instant)).join('\\n'),", vers: "  if (regles.length) messages.push({ texte: `Réglé, Pinlane\\n${regles.join('\\n')}`," }], garde);
+  await rouge('un constat sans sa ligne « ce que tu fais »', [{ fichier: 'lib/tour-controle.js', de: "const blocDuConstat = (p, env) => T.bloc({ quoi: p.quoi || p.titre, effet: p.effet || '', action: p.action || T.faire('regarde dans la Tour de contrôle.'),", vers: "const blocDuConstat = (p, env) => T.bloc({ quoi: p.quoi || p.titre, effet: p.effet || '', action: '', " }], garde);
+  await rouge('une presentation d avant', [{ fichier: 'lib/tour-controle.js', de: "      const r = await envoyerTelegram(lignes.join('\\n'), { env, fetcher, sujet });", vers: "      const r = await envoyerTelegram(`Pinlane : ce fil reçoit la garde.\\nMise en service de la garde Pinlane.\\n${lignes[1]} La sonde passe toutes les 5 minutes.`, { env, fetcher, sujet });" }], async () => (await presentationsDesSujets()).every((m) => fautesDe(m.text, 'presentation').length === 0));
   await rouge('un lien qui ne s ouvre qu une fois', [{ fichier: 'lib/garde-alertes.js', de: "    for (let i = t.indexOf(lien.texte); i >= 0; i = t.indexOf(lien.texte, i + lien.texte.length)) trouves.push(", vers: "    for (let i = t.indexOf(lien.texte); i >= 0; i = -1) trouves.push(" }], async () => {
     const t = charger('lib/alertes-texte.js');
     const b = t.bloc({ quoi: 'Gembloux : essai', action: t.faire('rien'), lien: t.lienVers('tour') });
     const deux = t.assembler([b, b]);
     return charger('lib/garde-alertes.js').entitesDesLiens(deux.texte, { liens: deux.liens }).length === 2;
   });
+}
+
+// ---------------------------------------------------------------------------
+// [P] La garde du quart d heure.
+// ---------------------------------------------------------------------------
+// Les familles de constats, chacune fabriquee par le vrai lireProblemes.
+const FAMILLES = ['tache:secours:retard', 'tache:ops-jobs:echec', 'mail:echec:gembloux', 'mail:attente:libramont', 'mail:bounced:gembloux', 'mail:complained:libramont', 'erreur:client:', 'erreur:serveur:', 'erreur:console:', 'essai:panne:gembloux', 'essai:refus:libramont', 'centre:ferme:libramont', 'secours:sans-adresse:gembloux', 'base:fabriquees:gembloux', 'suivi:a-valider:gembloux', 'suivi:demande:libramont', 'integrite:prix-zero:gembloux', 'integrite:sans-mail:libramont', 'integrite:doublon:libramont', 'integrite:laser:libramont', 'integrite:fermeture:libramont', 'integrite:horaires:libramont', 'formulaire:bloque:libramont', 'formulaire:personne-au-bout:gembloux'];
+async function constatsDeLaGarde() {
+  routesDeLaGarde();
+  const tour = charger('lib/tour-controle.js');
+  const { problemes } = await tour.lireProblemes(pool, { env: process.env, maintenant: Date.now() });
+  // Sans Telegram, une lecture qui tombe, un controle d integrite illisible.
+  ROUTES.unshift({ motif: /from email_events where event_type in/, rendre: () => { throw new Error('relation "email_events" does not exist'); } });
+  ROUTES.unshift({ motif: /b\.lanes && a\.lanes/, rendre: () => { throw new Error('syntax error at or near "x"'); } });
+  const sansCanal = (await tour.lireProblemes(pool, { env: {}, maintenant: Date.now() })).problemes;
+  routesDeLaGarde();
+  return [...problemes, ...sansCanal.filter((p) => /^(canal|lecture|integrite:illisible)/.test(p.cle))];
+}
+async function messagesDeLaGarde() {
+  const tour = charger('lib/tour-controle.js');
+  const problemes = await constatsDeLaGarde();
+  const ouverts = tour.deciderGarde({}, problemes, { env: process.env, instant: Date.parse('2026-11-14T13:05:00Z') });
+  const regles = tour.deciderGarde(ouverts.dits, [], { env: process.env, instant: Date.parse('2026-11-14T13:05:00Z') });
+  return { problemes, ouverts, regles, tour };
+}
+async function preuvesGarde() {
+  const { problemes, ouverts, regles, tour } = await messagesDeLaGarde();
+  const manquent = FAMILLES.filter((f) => !problemes.some((p) => p.cle.startsWith(f)));
+  ok(!manquent.length, '[P] chaque poste de la garde se fabrique par le vrai code', manquent);
+  ok(['canal:absent', 'lecture:mails', 'integrite:illisible'].every((c) => problemes.some((p) => p.cle === c)), '[P] et les constats sans canal, de lecture et de controle illisible', problemes.map((p) => p.cle).filter((c) => /^(canal|lecture|integrite:ill)/.test(c)));
+  for (const p of problemes) {
+    const seul = tour.deciderGarde({}, [p], { env: process.env }).messages[0];
+    lisible(seul.texte, 'alerte', `[P] ${p.cle.replace(/:[0-9a-f]{6,}$/, '')}`);
+  }
+  const message = ouverts.messages[0] || { texte: '' };
+  const premier = problemes.find((p) => message.texte.startsWith(`${p.quoi}.`));
+  ok(ouverts.messages.length === 1 && message.urgent === true && premier && premier.gravite === 'critique' && message.texte.split('\n\n').length === problemes.length, '[P] un seul message pour tout ce qui est neuf, l urgent en tete, et il sonne', message.texte.slice(0, 200));
+  const entites = charger('lib/garde-alertes.js').entitesDesLiens(message.texte, { liens: message.liens });
+  ok(entites.filter((e) => /cockpit-tour$/.test(e.url)).length >= 10 && entites.some((e) => /cockpit-incidents$/.test(e.url)) && entites.some((e) => /\/#\/staff\/secours$/.test(e.url)) && entites.some((e) => /\/#\/staff\/requests$/.test(e.url)), '[P] chaque alerte mene a sa page : la Tour, les Incidents, Secours, les Demandes', entites.map((e) => e.url.replace(/^.*#/, '')).join(' '));
+  const regle = regles.messages[0] || { texte: '' };
+  lisible(regle.texte, 'regle', '[P] « Réglé » pour tout ce qui disparait');
+  ok(regles.messages.length === 1 && regle.urgent === false && regle.texte.split('\n').length === problemes.length && /^Réglé : à Gembloux, des mails ne partaient pas, depuis 14:05\.$/m.test(regle.texte), '[P] « Réglé » dit la meme chose au passe, une ligne par probleme, sans sonner', regle.texte.split('\n').slice(0, 4));
+  const ancien = tour.deciderGarde({ 'erreur:serveur:abcdef': 'Le serveur a planté (api/ops)', 'mail:echec:gembloux:2': '2 mails ne sont pas partis à Gembloux' }, [], { env: process.env }).messages[0] || { texte: '' };
+  lisible(ancien.texte, 'regle', '[P] un probleme retenu avant ce gabarit se dit regle sans son vieux jargon');
+}
+async function presentationsDesSujets() {
+  routesDeLaGarde();
+  process.env.TELEGRAM_GROUPE = '-1001234567890';
+  process.env.TELEGRAM_SUJETS = 'pannes:2,reservations:3,modifications:4,bilans:5';
+  TG.length = 0;
+  try {
+    await charger('lib/tour-controle.js').lancerGarde({ pool, instant: new Date('2026-11-14T12:00:00Z'), llm: async () => null });
+  } finally {
+    delete process.env.TELEGRAM_GROUPE;
+    delete process.env.TELEGRAM_SUJETS;
+  }
+  return TG.filter((m) => /^Pinlane : ce fil reçoit/.test(m.text || ''));
+}
+async function preuvesPresentation() {
+  const presentations = await presentationsDesSujets();
+  ok(presentations.length === 4, '[P] le groupe branche : chaque sujet recoit sa presentation', TG.map((m) => (m.text || '').slice(0, 50)));
+  for (const m of presentations) lisible(m.text, 'presentation', `[P] la presentation du sujet ${m.message_thread_id}`);
 }
 
 (async () => {
@@ -172,6 +306,8 @@ async function contrePreuves() {
     await preuvesGabarit();
     preuvesAvant();
     await preuvesRafale();
+    await preuvesGarde();
+    await preuvesPresentation();
     await contrePreuves();
   } finally {
     serveur.close();

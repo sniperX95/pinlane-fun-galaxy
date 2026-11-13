@@ -334,10 +334,10 @@ async function preuvesServeur() {
   BD.runs.find((r) => r.task_name === 'secours').started_at = ilYA(120);
   BD.runs.push({ task_name: 'ops-jobs', status: 'failed', started_at: ilYA(1), finished_at: ilYA(1), error: 'Base occupée', result: {} });
   BD.runs.find((r) => r.task_name === 'agent-orchestrator').finished_at = ilYA(90000);
-  const { problemes: apres } = await tour.lireProblemes(pool);
+  const { problemes: apres, taches: tachesApres } = await tour.lireProblemes(pool);
   const b = (cle) => apres.find((x) => x.cle === cle);
-  ok(b('tache:secours:retard') && /ne tourne plus/.test(b('tache:secours:retard').titre), '[P] le planning de secours arrete depuis 2 h est urgent', apres.map((x) => x.cle));
-  ok(b('tache:ops-jobs:echec') && /Base occupée/.test(b('tache:ops-jobs:echec').detail), '[P] une tache ratee dit pourquoi');
+  ok(b('tache:secours:retard') && /^Pinlane : le planning de secours est en retard$/.test(b('tache:secours:retard').titre), '[P] le planning de secours arrete depuis 2 h est urgent', apres.map((x) => x.cle));
+  ok(b('tache:ops-jobs:echec') && !/Base occupée/.test(b('tache:ops-jobs:echec').detail) && (tachesApres.find((t) => t.id === 'ops-jobs') || {}).erreur === 'Base occupée', '[P] une tache ratee se dit sans recopier son message technique, qui reste dans la liste des taches', b('tache:ops-jobs:echec'));
   ok(!b('tache:agent-orchestrator:retard'), '[P] les agents marketing en retard ne sonnent pas : aucun client n est touche');
   delete process.env.TELEGRAM_JETON;
   const { problemes: sansCanal } = await tour.lireProblemes(pool);
@@ -358,13 +358,13 @@ async function preuvesServeur() {
     return { r, messages: TELEGRAM.slice() };
   };
   const p1 = await passe();
-  ok(p1.messages.length === 1 && /^URGENT Pinlane/.test(p1.messages[0]) && /Gembloux/.test(p1.messages[0]), '[G] premiere fois : un message, urgent', p1.messages);
+  ok(p1.messages.length === 1 && /^Gembloux : 1 mail n’a pas pu partir en 48 h\./.test(p1.messages[0]), '[G] premiere fois : un message, urgent', p1.messages);
   ok(!PERSONNEL.test(p1.messages.join(' ')), '[G] aucune donnee personnelle dans le message', p1.messages);
   const p2 = await passe();
   ok(p2.messages.length === 0, '[G] rien de neuf : silence', p2.messages);
   BD.mails = BD.mails.filter((m) => m.status !== 'failed');
   const p3 = await passe();
-  ok(p3.messages.length === 1 && /^Réglé, Pinlane/.test(p3.messages[0]) && /mail/.test(p3.messages[0]), '[G] c est regle : il le dit', p3.messages);
+  ok(p3.messages.length === 1 && /^Réglé : à Gembloux, des mails ne partaient pas, depuis \d\d:\d\d\.$/.test(p3.messages[0]), '[G] c est regle : il le dit', p3.messages);
   BD.centres.find((c) => c.id === 'libramont').status = 'closed';
   BD.centres.find((c) => c.id === 'libramont').status = 'active';
   BD.centres.find((c) => c.id === 'gembloux').settings = { config: { secours: { emails: ['secours@fungalaxy.be'] } } };
@@ -804,7 +804,7 @@ async function jouerConsole(browser) {
       reponseQuestion = true;
       await page.click('[data-tour-couper="gembloux"]');
       await page.waitForFunction(() => /Réservation en ligne coupée/.test(document.querySelector('[data-tour-centre="gembloux"]').textContent));
-      r.coupe = { actif: formulaireDe('gembloux'), libramont: formulaireDe('libramont'), bouton: await page.evaluate(() => document.querySelector('[data-tour-couper="gembloux"]').textContent), probleme: await page.evaluate(() => /La réservation en ligne est coupée à Gembloux/.test(document.querySelector('#tourEtat').textContent)), question: questions[questions.length - 1] };
+      r.coupe = { actif: formulaireDe('gembloux'), libramont: formulaireDe('libramont'), bouton: await page.evaluate(() => document.querySelector('[data-tour-couper="gembloux"]').textContent), probleme: await page.evaluate(() => /Gembloux : la réservation en ligne est coupée/.test(document.querySelector('#tourEtat').textContent)), question: questions[questions.length - 1] };
       if (PHOTOS) await page.screenshot({ path: path.join(PHOTOS, 'tour-coupe.png'), fullPage: false });
       await page.click('[data-tour-couper="gembloux"]');
       await page.waitForFunction(() => /Réservation en ligne ouverte/.test(document.querySelector('[data-tour-centre="gembloux"]').textContent));
@@ -825,7 +825,7 @@ async function preuvesConsole(browser) {
   const r = await jouerConsole(browser);
   ok(r.erreurs.length === 0, '[U] aucune erreur dans la page', r.erreurs);
   ok(r.depart.etat === 'urgent' && /urgent/.test(r.depart.titre), '[U] l etat general dit qu il y a de l urgent', r.depart.titre);
-  ok(r.depart.problemes.some((t) => /Gembloux n’a aucune adresse de secours/.test(t)), '[U] le probleme se lit en clair a l ecran', r.depart.problemes);
+  ok(r.depart.problemes.some((t) => /Gembloux : aucune adresse de secours/.test(t)), '[U] le probleme se lit en clair a l ecran', r.depart.problemes);
   ok(r.depart.centres.length === 2 && /GEMBLOUX|Gembloux/.test(r.depart.centres.join(' ')) && /Libramont/.test(r.depart.centres.join(' ')), '[U] les deux centres ont leur bloc', r.depart.centres);
   ok(/Aucune adresse de secours/.test(r.depart.centres.find((c) => /Gembloux/i.test(c)) || ''), '[U] le bloc de Gembloux le dit aussi', r.depart.centres);
   ok(/Planning de secours envoyé/.test(r.depart.centres.find((c) => /Libramont/i.test(c)) || ''), '[U] celui de Libramont dit son dernier envoi', r.depart.centres);

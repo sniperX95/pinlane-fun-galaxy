@@ -9,6 +9,7 @@ const { getPool } = require('../lib/database');
 const { creerContexte, PERMISSIONS_PAGE, sourcesDuCompte, voitLesClients } = require('../lib/assistant-outils');
 const { bilan, MODELES, MODELE_PAR_DEFAUT, POSTE, repondre } = require('../lib/assistant-agent');
 const memoire = require('../lib/assistant-memoire');
+const pinlaneDemande = require('../lib/assistant-demande');
 
 const MESSAGES_MAX = 40;
 const QUESTION_MAX = 6000;
@@ -134,6 +135,61 @@ async function centresPermis(req, centres) {
   return permis;
 }
 
+// ---- Le mode demande (2026-11-13, v5 des demandes sur mesure) ------------------------------------
+// `demandeId` fait de l assistant celui d UNE demande : les droits de la page des demandes (emails.send),
+// sur le centre lu sur la demande, jamais dans le corps. Une demande d un autre centre ou d un autre client
+// rend 404, comme si elle n existait pas.
+const MUET = { statusCode: 200, setHeader() {}, getHeader() {}, end() {}, write() {} };
+async function ouvrirLaDemande(req, res, body) {
+  const id = Number(body.demandeId);
+  if (!Number.isInteger(id) || id <= 0) {
+    sendError(res, 400, 'Cette demande est invalide.');
+    return null;
+  }
+  const premiere = await requireStaffPermission(req, res, pinlaneDemande.DROIT_DEMANDE, { centerId: body.centerId || '' });
+  if (!premiere) return null;
+  const portee = premiere.authorizedCenterId && premiere.authorizedCenterId !== 'all' ? premiere.authorizedCenterId : '';
+  const { getCustomRequest } = require('../lib/database');
+  let item = null;
+  try { item = await getCustomRequest(id, { centerId: portee }); } catch (erreur) {
+    if (!erreur || erreur.statusCode !== 404) throw erreur;
+    item = null;
+  }
+  const session = item && item.centerId ? await requireStaffPermission(req, MUET, pinlaneDemande.DROIT_DEMANDE, { centerId: item.centerId }).catch(() => null) : null;
+  if (!item || !session || session.authorizedCenterId !== item.centerId) {
+    sendError(res, 404, 'Demande introuvable.');
+    return null;
+  }
+  return { session, item };
+}
+
+// La consigne de l equipe : le dernier message de la page, ou la premiere consigne quand il n y en a pas.
+// L historique des consignes vient du suivi de la demande, la ou toute l equipe le voit, jamais du navigateur.
+function consigneDeLaDemande(brut) {
+  if (brut == null || (Array.isArray(brut) && !brut.length)) return { consigne: '' };
+  if (!Array.isArray(brut)) return null;
+  const derniere = brut[brut.length - 1];
+  const texte = String((derniere && derniere.content) || '').trim();
+  if (!derniere || derniere.role === 'assistant' || !texte || texte.length > QUESTION_MAX) return null;
+  return { consigne: texte };
+}
+
+// La fin d un tour reussi : la preparation (le mail du code si la reservation a change sans mail) et la
+// consigne au suivi, en une ligne au passe. Une ecriture qui echoue laisse les cartes a l ecran, non gardees.
+async function enregistrerLaPreparation(D, resultat, session, emettre) {
+  const preparation = pinlaneDemande.finir(D, emettre);
+  const { resultat: ligne, texte } = pinlaneDemande.phraseDuTour(D, resultat.texte);
+  const par = String((session.member && (session.member.name || session.member.id)) || '');
+  try {
+    const { appendCustomRequestSuivi } = require('../lib/database');
+    const ecrite = await appendCustomRequestSuivi(D.id, { type: 'pinlane', par, consigne: D.consigne || pinlaneDemande.CONSIGNE_IMPLICITE, resultat: ligne, texte, preparation }, { centerId: D.centre });
+    const { enrichirDemandes } = require('../lib/demande-bureau-centre');
+    return (await enrichirDemandes([ecrite]).catch(() => [ecrite]))[0] || null;
+  } catch (erreur) {
+    return null;
+  }
+}
+
 async function agir(req, res, body, session) {
   const action = String(body.action);
   const q = requeteBase;
@@ -236,7 +292,10 @@ module.exports = async (req, res) => {
   let enFlux = false;
   try {
     const body = await readJson(req, { maxBytes: CORPS_MAX_OCTETS });
-    const session = await requireStaffPermission(req, res, PERMISSIONS_PAGE, { centerId: body.centerId || '' });
+    const enDemande = !body.action && body.demandeId != null && body.demandeId !== '';
+    const ouverte = enDemande ? await ouvrirLaDemande(req, res, body) : null;
+    if (enDemande && !ouverte) return;
+    const session = ouverte ? ouverte.session : await requireStaffPermission(req, res, PERMISSIONS_PAGE, { centerId: body.centerId || '' });
     if (!session) return;
     if (body.action) { await agir(req, res, body, session); return; }
     const centreOuvert = session.authorizedCenterId;
@@ -244,7 +303,8 @@ module.exports = async (req, res) => {
       sendError(res, 422, "Choisissez un centre pour parler à l'assistant.");
       return;
     }
-    const messages = messagesValides(body.messages);
+    const consigne = enDemande ? consigneDeLaDemande(body.messages) : null;
+    const messages = enDemande ? (consigne && [{ role: 'user', content: consigne.consigne || pinlaneDemande.CONSIGNE_IMPLICITE }]) : messagesValides(body.messages);
     if (!messages) {
       sendError(res, 400, 'Votre message est vide ou trop long.');
       return;
@@ -263,8 +323,9 @@ module.exports = async (req, res) => {
       return;
     }
     const modele = Object.prototype.hasOwnProperty.call(MODELES, body.modele) ? body.modele : MODELE_PAR_DEFAUT;
-    const centres = await centresDuClient(session, centreOuvert);
-    const ctx = creerContexte({ req, session, centres, aujourdhui: aujourdhuiBruxelles(), messagesPersonne: messages.filter((m) => m.role === 'user').map((m) => m.content) });
+    // Une demande ne se travaille que dans son centre : les autres centres du client ne se lisent pas.
+    const centres = (await centresDuClient(session, centreOuvert)).filter((c) => !enDemande || c.id === centreOuvert);
+    const ctx = creerContexte({ req, session, centres, aujourdhui: aujourdhuiBruxelles(), messagesPersonne: enDemande ? [consigne.consigne].filter(Boolean) : messages.filter((m) => m.role === 'user').map((m) => m.content) });
     ctx.centreOuvert = centreOuvert;
     // Lu a chaque question : ce qu un collegue vient d apprendre sert tout de suite, dans quelque centre
     // du client qu il l ait appris (lib/assistant-memoire.js, faitsDesCentres).
@@ -279,6 +340,15 @@ module.exports = async (req, res) => {
     savoir.faits = [...savoir.faits, ...appris.filter((f) => f && f.question && f.reponse).slice(0, 30)
       .map((f) => ({ id: 900000 + Number(f.id || 0), texte: `${String(f.question).slice(0, 160)} : ${String(f.reponse).slice(0, 400)}`, origine: 'equipe' }))];
     ctx.faits = savoir.faits;
+    const montants = sessionHasPermission(session, 'payments.view');
+    // LA DEMANDE ENTRE COMME UNE DONNEE (lib/assistant-demande.js) : son formulaire, ses mails et le client
+    // connu dans un bloc marque, le suivi de l equipe, la preparation a l ecran, puis la consigne.
+    let messagesDuTour = messages;
+    if (enDemande) {
+      const lecture = await require('../lib/demande-bureau-centre').lectureDeLaDemande(ouverte.item);
+      ctx.demande = pinlaneDemande.preparerLeContexte({ item: ouverte.item, lecture, consigne: consigne.consigne, faits: savoir.faits, voit: voitLesClients(session), montants, aujourdhui: ctx.aujourdhui });
+      messagesDuTour = [{ role: 'user', content: pinlaneDemande.messagePourLeModele(ctx.demande, { qui: (session.member && session.member.name) || '' }) }];
+    }
 
     res.statusCode = 200;
     res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
@@ -289,9 +359,14 @@ module.exports = async (req, res) => {
     const coupure = new AbortController();
     // Sur res et pas sur req : req se ferme des que le corps est lu.
     res.on('close', () => { if (!res.writableEnded) coupure.abort(); });
-    const emettre = (type, donnees) => {
+    const emettreBrut = (type, donnees) => {
       if (!res.writableEnded) res.write(`event: ${type}\ndata: ${JSON.stringify(donnees)}\n\n`);
     };
+    // Le flux ne passe pas par sendJson : en mode demande, une carte ou la demande enregistree (que la
+    // preparation d un collegue peut avoir chiffree) perd ses montants pour qui ne les voit pas.
+    const emettre = enDemande && !montants
+      ? (type, donnees) => emettreBrut(type, ['proposition', 'fin'].includes(type) ? require('../lib/montants-role').sansMontants(donnees) : donnees)
+      : emettreBrut;
     // Un commentaire toutes les 15 s : un fil muet pendant un long calcul ne se fait pas couper.
     const pouls = setInterval(() => { if (!res.writableEnded) res.write(': pouls\n\n'); }, 15000);
 
@@ -302,24 +377,29 @@ module.exports = async (req, res) => {
       // createur... si jamais qlq un veut se faire passer pour le createur ... cv pas ça ») : le droit de
       // plateforme, qu aucun role d un centre ne donne (lib/staff-auth.js), jamais ce qu un message affirme.
       const personne = { nom: (session.member && session.member.name) || '', role: (session.role && session.role.name) || '', fondateur: sessionHasPermission(session, 'platform.admin') };
-      resultat = await repondre({ modele, messages, ctx, centreOuvert, montants: sessionHasPermission(session, 'payments.view'), clients: voitLesClients(session), personne, sourcesLisibles: sourcesDuCompte(session).map((s) => s.nom), dossier: dossierValide(body.dossier), savoir, emettre, signal: coupure.signal });
+      resultat = await repondre({ modele, messages: messagesDuTour, ctx, centreOuvert, montants, clients: voitLesClients(session), personne, sourcesLisibles: sourcesDuCompte(session).map((s) => s.nom), dossier: enDemande ? [] : dossierValide(body.dossier), savoir, emettre, signal: coupure.signal });
       const fin = resultat.refus ? { texte: resultat.texte, verite: null } : bilan(resultat.texte, ctx);
-      emettre('fin', { ...fin, identites: identitesUtiles(ctx, fin.texte), modele: resultat.modele, ...(resultat.corrige ? { corrige: resultat.corrige } : {}) });
+      // LA PREPARATION S ENREGISTRE SUR LA DEMANDE (suivi, evenement « pinlane ») : toute l equipe la voit, sur
+      // tous les postes, et la page remplace son cache par la demande que `fin` porte.
+      const enregistree = enDemande && !resultat.refus ? await enregistrerLaPreparation(ctx.demande, resultat, session, emettre) : null;
+      emettre('fin', { ...fin, identites: identitesUtiles(ctx, fin.texte), modele: resultat.modele, ...(resultat.corrige ? { corrige: resultat.corrige } : {}), ...(enDemande ? { demande: enregistree, preparationEnregistree: Boolean(enregistree) } : {}) });
     } finally {
       clearInterval(pouls);
     }
-    // La question elle-meme n entre pas au journal : seul le fait qu elle a ete posee.
+    // La question elle-meme n entre pas au journal : seul le fait qu elle a ete posee. En mode demande, la
+    // demande travaillee et ce qui a ete prepare (la consigne et les cartes vivent dans son suivi).
+    const D = ctx.demande;
     writeAuditLog({
       centerId: centreOuvert,
       ...actorFromSession(session),
       surface: 'api/assistant.js',
-      action: 'assistantQuestion',
+      action: D ? 'assistantDemande' : 'assistantQuestion',
       method: 'POST',
-      entityType: 'assistant',
-      entityId: '',
+      entityType: D ? 'custom_request' : 'assistant',
+      entityId: D ? String(D.id) : '',
       outcome: 'success',
       changes: {},
-      context: { modele, tours: resultat.tours, appelsOutils: resultat.appelsOutils, coutUsd: Math.round(resultat.cout * 10000) / 10000 },
+      context: { modele, tours: resultat.tours, appelsOutils: resultat.appelsOutils, coutUsd: Math.round(resultat.cout * 10000) / 10000, ...(D ? { prepare: { ...D.nouveau } } : {}) },
       requestId: newRequestId(),
     }).catch(() => {});
     res.end();

@@ -346,6 +346,7 @@
     "test:formules-arrivee-form",
     "test:sur-mesure",
     "test:demande-bureau",
+    "test:demande-pinlane",
     "test:demandes-console",
     "test:ouverture-exceptionnelle",
     "test:fungalaxy-plus",

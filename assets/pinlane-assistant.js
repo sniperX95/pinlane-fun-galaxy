@@ -2367,7 +2367,19 @@
   document.addEventListener('visibilitychange', () => { if (document.hidden) [...plumesActives].forEach((p) => viderPlume(p.m)); });
   const ATTENDENT_LE_TEXTE = /^event: (fin|verification|erreur)$/m;
 
-  async function lireLeFlux(envoi, m, signal = null) {
+  // LE LECTEUR DU FLUX, PARTAGE (2026-11-13) : la page Marketing et la page des demandes sur mesure
+  // lisent la meme reponse de /api/assistant. Chaque bloc « event / data » devient un appel
+  // (type, donnees) ; un commentaire (« : pouls ») ou un bloc illisible ne donne rien. `avant` peut
+  // faire attendre un bloc, la page Marketing y attend que le texte deja recu soit ecrit.
+  function evenementDu(bloc) {
+    if (bloc.startsWith(':')) return null;
+    const type = /^event: (.*)$/m.exec(bloc);
+    const data = /^data: (.*)$/m.exec(bloc);
+    if (!type || !data) return null;
+    try { return { type: type[1], donnees: JSON.parse(data[1]) }; } catch (erreur) { return null; }
+  }
+
+  async function lireEvenements(envoi, surEvenement, { signal = null, avant = null } = {}) {
     const lecteur = envoi.body.getReader();
     const decodeur = new TextDecoder();
     let tampon = '';
@@ -2380,22 +2392,26 @@
         const bloc = tampon.slice(0, fin);
         tampon = tampon.slice(fin + 2);
         // eslint-disable-next-line no-await-in-loop
-        if (ATTENDENT_LE_TEXTE.test(bloc)) await texteEcrit(m);
+        if (avant) await avant(bloc);
         if (signal && signal.aborted) throw Object.assign(new Error('Réponse arrêtée.'), { name: 'AbortError' });
-        traiter(bloc, m);
+        const evenement = evenementDu(bloc);
+        if (evenement) surEvenement(evenement.type, evenement.donnees);
         fin = tampon.indexOf('\n\n');
       }
     }
   }
 
-  function traiter(bloc, m) {
-    if (bloc.startsWith(':')) return;
-    const type = /^event: (.*)$/m.exec(bloc);
-    const data = /^data: (.*)$/m.exec(bloc);
-    if (!type || !data) return;
-    let d;
-    try { d = JSON.parse(data[1]); } catch (erreur) { return; }
-    switch (type[1]) {
+  async function lireLeFlux(envoi, m, signal = null) {
+    await lireEvenements(envoi, (type, d) => traiter(type, d, m), {
+      signal,
+      async avant(bloc) {
+        if (ATTENDENT_LE_TEXTE.test(bloc)) await texteEcrit(m);
+      },
+    });
+  }
+
+  function traiter(type, d, m) {
+    switch (type) {
       case 'debut': if (Array.isArray(d.sources)) { A.carte = d.sources; m.carte = d.sources; } break;
       case 'texte': ecrire(m, String(d.delta || '')); return;
       case 'note': oublierPlume(m); m.texte = ''; m.etapes.push({ note: true, libelle: String(d.texte).slice(0, 240) }); break;
@@ -2849,5 +2865,7 @@
     ajusterHauteur();
   };
 
-  window.PinlaneAssistant = { markdown };
+  // La page des demandes sur mesure lit le meme flux, dit ses lectures avec les memes mots et marque
+  // ce qui change dans un mail par la meme comparaison mot a mot.
+  window.PinlaneAssistant = { markdown, lireEvenements, difference, phraseFinie, mesureDe };
 })();

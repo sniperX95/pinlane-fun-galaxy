@@ -18205,15 +18205,15 @@ function getStaffUtilityPageModel(page = getStaffMenuPage()) {
   // Clients+Groupes), tous ses chemins d'accès sont aliasés vers Clients /
   // segment « À venir » (openStaffMenuPage, renderStaffData, renderStaffUtilityPage).
   if (page === 'requests') {
-    // LA PAGE DES DEMANDES SUR MESURE. Les onglets portent les comptes ; le sous-titre ne dit
-    // que ce qu ils ne disent pas, un retard.
-    const enRetard = getStaffRequestSegments().atraiter.filter((item) => { const due = staffRequestDue(item); return due && due.tone === 'late'; }).length;
+    // LA PAGE DES DEMANDES SUR MESURE porte son en-tete en tete de sa liste : le titre et le retard ;
+    // les onglets disent le reste.
     return {
       ...base,
       layout: 'requests',
       eyebrow: 'Clients & marketing',
       title: 'Demandes sur mesure',
-      subtitle: enRetard ? `${enRetard} en retard` : '',
+      subtitle: '',
+      hideHero: true,
       hidePanelHead: true,
       hideDateAction: true,
       primaryLabel: '',
@@ -18419,8 +18419,9 @@ function renderStaffUtilityPage() {
   // Le fil de la demande ouverte se charge tout seul : l'historique existait
   // deja, il fallait cliquer un bouton par carte pour le voir.
   if (model.page === 'requests') ensureStaffRequestThread();
-  // L etude du dossier ouvert : ce que le moteur dit de sa date.
-  if (model.page === 'requests') ensureStaffRequestIa();
+  // La demande ouverte : son client se lit, Pinlane prepare la reponse si rien ne l est, et le bureau
+  // prend la hauteur de l ecran.
+  if (model.page === 'requests') { ensureStaffRequestPinlane(); bdgAjusterHauteur(); }
   if ((model.page === 'emails' || model.page === 'establishment') && !opsAdminCache.loaded && !opsAdminCache.loading) requestOpsAdminLoad(false);
 }
 
@@ -19437,7 +19438,7 @@ let staffRequestOpenMessages = {};
 const STAFF_REQUEST_ETAPES = ['a-traiter', 'en-attente', 'traitee', 'archivee'];
 const STAFF_REQUEST_SEGMENTS = [
   { key: 'atraiter', etapes: ['a-traiter'], label: 'À traiter' },
-  { key: 'attente', etapes: ['en-attente'], label: 'En attente du client' },
+  { key: 'attente', etapes: ['en-attente'], label: 'En attente', long: 'En attente du client' },
   { key: 'terminees', etapes: ['traitee', 'archivee'], label: 'Terminées' },
 ];
 
@@ -19562,12 +19563,13 @@ function getStaffRequestRows() {
   return filtered.sort(staffRequestCompare(segment));
 }
 
-// La fiche ouverte. Rien d ouvert : la liste.
-
+// La demande ouverte. Sur grand ecran, rien de choisi ouvre la premiere de l onglet, la plus pressee :
+// la liste et sa demande se lisent cote a cote. Plus etroit, la liste d abord.
 function getStaffRequestSelectedItem() {
   const wanted = String(state.staffRequestSelectedId || '');
-  if (!wanted) return null;
-  return getStaffCustomRequestItems().find(item => String(item.id) === wanted) || null;
+  const choisie = wanted ? getStaffCustomRequestItems().find(item => String(item.id) === wanted) : null;
+  if (choisie) return choisie;
+  return bdgGrandEcran() ? getStaffRequestRows()[0] || null : null;
 }
 
 // ── LIRE UN MAIL, PAS SON GABARIT ──────────────────────────────────────────
@@ -19662,12 +19664,6 @@ function staffRequestMoment(value) {
   return new Date(time).toLocaleDateString('fr-BE', { day: 'numeric', month: 'short' });
 }
 
-function staffRequestFullMoment(value) {
-  const time = value ? new Date(value).getTime() : NaN;
-  if (!Number.isFinite(time)) return '';
-  return new Date(time).toLocaleString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-}
-
 // ── LES MOTS DE LA PAGE : montants, dates, durees ──────────────────────────
 function staffRequestEuro(value) {
   if (montantsMasques()) return '···';
@@ -19692,11 +19688,6 @@ function staffRequestLongDate(iso) {
 function staffRequestShortDate(iso) {
   const d = staffRequestDateOf(iso);
   return d ? d.toLocaleDateString('fr-BE', { weekday: 'short', day: 'numeric', month: 'short' }) : '';
-}
-
-function staffRequestClock(minutes) {
-  const m = Math.max(0, Math.round(Number(minutes) || 0));
-  return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 }
 
 function staffRequestDuration(ms) {
@@ -19760,7 +19751,7 @@ function staffRequestDueToneKey() {
 }
 function tickStaffRequestDues() {
   if (!isStaffUtilityActive() || getStaffMenuPage() !== 'requests') return;
-  const board = document.querySelector('#staffUtilityPage .sm[data-due-tones]');
+  const board = document.querySelector('#staffUtilityPage .bdg[data-due-tones]');
   if (!board) return;
   if (board.getAttribute('data-due-tones') !== staffRequestDueToneKey()) { renderStaffUtilityPage(); return; }
   board.querySelectorAll('[data-req-due]').forEach(node => {
@@ -19789,21 +19780,28 @@ function renderStaffRequestStageBadge(item) {
   return renderStaffCustomRequestBadge(item.status);
 }
 
-// ── LE TABLEAU : file a gauche, demande ouverte a droite ────────────────────
-// ── DEMANDES SUR MESURE ─────────────────────────────────────────────────────
-// Refaite le 2026-11-09, puis le 2026-11-10 en logiciel pro comme la page Etablissement (Ansar :
-// « un truc completement different [...] en beaucoup mieux, beau, style »). Les etapes a gauche
-// comme ses rubriques ; a droite la file en tableau, ou la demande ouverte en cartes. Toucher une
-// heure prepare le mail ; rien ne part sans le clic.
+// == LE BUREAU DES GROUPES : la liste a gauche, la demande ouverte a droite ==
+// Une boite de reception pro (v5, 2026-11-13). Sur grand ecran la liste et la demande se lisent cote
+// a cote, et la plus pressee des demandes de l onglet s ouvre d elle-meme ; plus etroit, l une puis
+// l autre, un lien ramene a la liste.
+const BDG_GRAND_ECRAN = '(min-width: 1200px)';
+function bdgGrandEcran() {
+  return typeof window.matchMedia === 'function' ? window.matchMedia(BDG_GRAND_ECRAN).matches : window.innerWidth >= 1200;
+}
+
+const BDG_LOUPE = '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M10.6 10.6 14 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+const BDG_FLECHE = '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M8 13V3M3.5 7.5 8 3l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const BDG_COCHE = '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="m3.5 8.5 3 3 6-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
 function renderStaffRequestsBoard() {
   const cache = staffCustomRequestsCache;
   const items = getStaffCustomRequestItems();
-  if (cache.loading && !items.length) return '<div class="sm"><p class="sm-vide" aria-busy="true">Chargement des demandes…</p></div>';
-  if (cache.error && !items.length) {
-    return `<div class="sm"><p class="sm-vide">${escapeHtml(cache.error)}</p><p class="sm-vide"><button type="button" class="sm-b" onclick="loadStaffCustomRequests(true)">Réessayer</button></p></div>`;
-  }
-  const ouverte = getStaffRequestSelectedItem();
-  return `<div class="sm" data-due-tones="${escapeHtml(staffRequestDueToneKey())}"><div class="sm-cadre${ouverte ? ' is-fiche' : ''}">${renderSmNav(ouverte)}<div class="sm-zone">${ouverte ? renderSmFiche(ouverte) : renderSmListe()}</div></div></div>`;
+  const ouverte = items.length ? getStaffRequestSelectedItem() : null;
+  // La liste montre l onglet de la demande ouverte : ouverte depuis une alerte avant que la file soit
+  // lue, ou rangee ailleurs par un collegue, elle ne reste pas sous un autre onglet.
+  if (ouverte && staffRequestSegmentOf(ouverte) !== getStaffRequestSegment()) state.staffRequestSegment = staffRequestSegmentOf(ouverte);
+  const lecture = ouverte ? bdgLecture(ouverte) : bdgLectureVide(cache, items);
+  return `<div class="bdg" data-due-tones="${escapeHtml(staffRequestDueToneKey())}"><div class="bdg-cadre${ouverte ? ' is-ouverte' : ''}">${bdgColonneListe(ouverte, cache, items)}${lecture}</div></div>`;
 }
 
 function staffRequestNom(item) {
@@ -19815,540 +19813,1298 @@ function staffRequestTypeDe(item) {
   return (d && d.groupTypeLabel) || STAFF_OCCASION_LABELS[String(item.occasion || '').toLowerCase()] || '';
 }
 
-// LES ETAPES A GAUCHE, comme les rubriques de la page Etablissement. Une demande ouverte garde
-// les autres de son etape sous la main : on passe de l une a l autre sans revenir a la liste.
-const SM_ETAPES_DIT = {
-  atraiter: 'Les demandes qui attendent une réponse du centre. La plus pressée est en haut.',
-  attente: 'Une proposition est partie. Le client n’a pas encore répondu.',
-  terminees: 'Les demandes réservées, terminées ou classées sans suite.',
-};
-function renderSmNav(ouverte) {
-  const segment = getStaffRequestSegment();
-  const buckets = getStaffRequestSegments();
-  const onglet = ({ key, label }) => `<button type="button" role="tab" aria-selected="${segment === key}" class="sm-onglet" onclick="setStaffRequestSegment('${key}')">${escapeHtml(label)}<b>${(buckets[key] || []).length}</b></button>`;
-  const autres = ouverte ? getStaffRequestRows().slice(0, 12) : [];
-  const etape = (STAFF_REQUEST_SEGMENTS.find(s => s.key === segment) || {}).label || '';
-  const sous = autres.length > 1
-    ? `<div class="sm-nav-s" role="group" aria-label="${escapeHtml(etape)}">${autres.map((item) => {
-        const on = String(item.id) === String(ouverte.id);
-        return `<button type="button" class="sm-nav-d${on ? ' is-on' : ''}"${on ? ' aria-current="true"' : ''} onclick="selectStaffRequest(${staffClientJs(item.id)})"><span>${escapeHtml(staffRequestNom(item))}</span><small>${escapeHtml(smQuandCourt(item))}</small></button>`;
-      }).join('')}</div>`
-    : '';
-  return `<nav class="sm-nav" aria-label="Étapes des demandes"><div class="sm-onglets" role="tablist" aria-label="Demandes">${STAFF_REQUEST_SEGMENTS.map(onglet).join('')}</div>${sous}</nav>`;
+// Le jour en toutes lettres, sans l annee qui allonge pour rien : « Dimanche 6 décembre ».
+function bdgJourLong(iso) {
+  const j = staffRequestDateOf(iso);
+  const t = j ? j.toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' }) : String(iso || '');
+  return t.charAt(0).toUpperCase() + t.slice(1);
 }
+const bdgMajuscule = (t) => { const s = String(t || ''); return s.charAt(0).toUpperCase() + s.slice(1); };
+const bdgEuro = (v) => (v == null || v === '' || !Number.isFinite(Number(v)) ? '' : staffRequestEuro(v));
+const bdgListe = (mots) => (mots.length > 1 ? `${mots.slice(0, -1).join(', ')} et ${mots[mots.length - 1]}` : mots[0] || '');
+// Un apostrophe droit venu du serveur se lit comme les autres textes de la page.
+const bdgPhrase = (t) => String(t || '').replace(/'/g, '’').trim();
 
-// Quand, en quelques mots : « dim. 6 déc. », ou ce qui en tient lieu.
-function smQuandCourt(item) {
+// Quand, en quelques mots : « Dim. 6 déc. », ou ce qui en tient lieu.
+function bdgQuandCourt(item) {
   const d = crDemande(item);
   if (!d) return String(item.requestedDate || '').trim() || 'Sans date';
   if (d.flexible) return 'Date à fixer';
-  return staffRequestShortDate(d.date) || 'Sans date';
+  return bdgMajuscule(staffRequestShortDate(d.date)) || 'Sans date';
 }
 
-// La vignette d une ligne : la photo du centre pour la premiere envie qui en a une, sinon les
-// initiales du groupe sur sa couleur.
-function smVignette(item, d) {
-  const centre = item.centerId || getActiveOpsCenterId();
-  const noms = d ? [...crNoms(d.formulas), ...(Array.isArray(d.activities) ? d.activities : []).filter(a => a && a.name).map(a => a.name)] : [];
-  for (const nom of noms) {
-    const photo = smPhotoDe(nom, centre, 'sm-l-ph');
-    if (photo) return photo;
-  }
-  const nom = staffRequestNom(item);
-  const initiales = nom.split(' ').filter(Boolean).slice(0, 2).map(mot => mot.charAt(0).toUpperCase()).join('') || '?';
-  return `<span class="sm-l-ph is-vide" data-t="${smTeinte(nom)}" aria-hidden="true">${escapeHtml(initiales)}</span>`;
+// Le debut du message, coupe a un mot, pour la liste (le message entier se lit dans la demande).
+function bdgExtrait(texte, max) {
+  const t = String(texte || '').replace(/\s+/g, ' ').trim();
+  if (t.length <= max) return t;
+  const coupe = t.slice(0, max);
+  return `${coupe.slice(0, Math.max(coupe.lastIndexOf(' '), max - 20)).trim()}…`;
 }
 
-function renderSmListe() {
-  const segment = getStaffRequestSegment();
-  const rows = getStaffRequestRows();
-  const query = String(staffRequestSearch || '').trim();
-  const etape = STAFF_REQUEST_SEGMENTS.find(s => s.key === segment) || STAFF_REQUEST_SEGMENTS[0];
-  const vide = query
-    ? `Aucune demande ne correspond à « ${query} ».`
-    : ({ atraiter: 'Aucune demande à traiter.', attente: 'Aucune demande n’attend le client.', terminees: 'Aucune demande terminée.' })[segment];
-  const loupe = '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M10.6 10.6 14 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
-  return `<div class="sm-pan-h"><h2>${escapeHtml(etape.label)}</h2><p>${escapeHtml(SM_ETAPES_DIT[segment] || '')}</p></div>
-    <section class="sm-liste-c">
-      <div class="sm-barre">
-        <label class="sm-cherche-l">${loupe}<input id="reqSearchField" type="search" class="input sm-cherche" placeholder="Rechercher un groupe" aria-label="Rechercher une demande" value="${escapeHtml(query)}" oninput="staffRequestSearchInput(this.value)" /></label>
-        <span class="sm-barre-n">${rows.length} demande${rows.length > 1 ? 's' : ''}</span>
-      </div>
-      ${rows.length
-        ? `<table class="sm-liste"><colgroup><col><col class="sm-c-q"><col class="sm-c-p"><col><col class="sm-c-r"></colgroup><thead><tr><th scope="col">Groupe</th><th scope="col">Date voulue</th><th scope="col" class="sm-th-p">Joueurs</th><th scope="col">Envies</th><th scope="col" class="sm-th-r">État</th></tr></thead><tbody>${rows.map(renderSmLigne).join('')}</tbody></table>`
-        : `<p class="sm-vide">${escapeHtml(vide)}</p>`}
-    </section>`;
-}
-
-function renderSmLigne(item) {
+// LEURS ENVIES, dans l ordre du formulaire (les formules, puis les activites). Chacune garde sa
+// couleur partout sur la page : la premiere violette, puis sarcelle, ambre et rose.
+function bdgEnvies(item) {
   const d = crDemande(item);
-  const nom = staffRequestNom(item);
-  const sous = [staffRequestTypeDe(item), nom !== item.contactName ? item.contactName : ''].filter(Boolean).join(' · ');
-  const joueurs = d ? Number(d.participants) || 0 : Number(item.pax) || 0;
-  const moment = d && d.moment && d.moment !== 'indifferent' ? String(d.momentLabel || '') : '';
-  const budget = d && Number(d.budgetPerPerson) > 0 ? `${staffRequestEuro(d.budgetPerPerson)} par personne` : '';
-  const souhaits = d ? renderSmSouhaits(d) : `<span class="sm-so-libre">${escapeHtml(String(item.message || '').replace(/\s+/g, ' ').trim())}</span>`;
-  const quand = smQuandCourt(item);
-  return `<tr class="sm-l" data-item-id="${escapeHtml(String(item.id))}" onclick="selectStaffRequest(${staffClientJs(item.id)})">
-    <td class="sm-l-g"><div class="sm-l-qui">${smVignette(item, d)}<div><button type="button" class="sm-l-n">${escapeHtml(nom)}</button>${sous ? `<small>${escapeHtml(sous)}</small>` : ''}</div></div></td>
-    <td class="sm-l-q"><b>${escapeHtml(quand.charAt(0).toUpperCase() + quand.slice(1))}</b>${moment ? `<small>${escapeHtml(moment)}</small>` : ''}</td>
-    <td class="sm-l-p">${joueurs ? `<b>${joueurs}</b><small class="sm-l-pj">joueur${joueurs > 1 ? 's' : ''}</small>` : ''}</td>
-    <td class="sm-l-s"><span class="sm-souhaits">${souhaits}</span>${budget ? `<small>${escapeHtml(budget)}</small>` : ''}</td>
-    <td class="sm-l-r">${renderSmEtatReponse(item)}</td>
-  </tr>`;
+  if (!d) return [];
+  const formules = (Array.isArray(d.formulas) ? d.formulas : []).filter(f => f && f.name).map(f => ({ id: String(f.id || f.name), nom: String(f.name), formule: true }));
+  const activites = (Array.isArray(d.activities) ? d.activities : []).filter(a => a && a.name).map(a => ({ id: String(a.id || a.name), nom: String(a.name), activite: a }));
+  return [...formules, ...activites].map((e, i) => ({ ...e, teinte: (i % 4) + 1 }));
 }
-
-// La colonne « Reponse » : ce qui reste a faire, ou ce qui a ete fait.
-function renderSmEtatReponse(item) {
-  const suivi = item.suivi || {};
-  const stage = staffRequestStage(item);
-  const prix = suivi.proposition && suivi.proposition.prix != null ? `<small>${escapeHtml(staffRequestEuro(suivi.proposition.prix))} proposés</small>` : '';
-  if (stage === 'a-traiter') {
-    const due = staffRequestDue(item);
-    const client = suivi.messageClient ? `<small class="sm-l-ecrit">${suivi.reponses ? 'Le client a répondu' : 'Le client a écrit'}</small>` : '';
-    return `${due ? `<span class="sm-du is-${due.tone}" data-req-due="${escapeHtml(String(item.id))}" title="${escapeHtml(due.long)}">${escapeHtml(due.court)}</span>` : ''}${client}`;
-  }
-  if (stage === 'en-attente') return `<span class="sm-du is-attente">Envoyée${suivi.derniereReponse ? ` ${escapeHtml(staffRequestMoment(suivi.derniereReponse.le))}` : ''}</span>${prix}`;
-  if (stage === 'traitee') return `<span class="sm-du is-fait">${suivi.reservationId ? 'Réservée' : 'Terminée'}</span>${prix}`;
-  return '<span class="sm-du is-sans">Sans suite</span>';
+// Une activite de la reservation prend la couleur de l envie qui la demandait ; une activite ajoutee
+// prend la couleur suivante.
+function bdgTeinteDe(item, activite, nom, rang) {
+  const envies = bdgEnvies(item);
+  const cle = String(activite || '').toLowerCase();
+  const trouvee = envies.find(e => !e.formule && (e.id.toLowerCase() === cle || e.nom.toLowerCase() === String(nom || '').toLowerCase()));
+  return trouvee ? trouvee.teinte : ((envies.length + rang) % 4) + 1;
 }
-
-function smTeinte(cle) {
-  const id = String(cle || '').toLowerCase();
-  if (/bowling|duckpin/.test(id)) return 1;
-  if (/laser/.test(id)) return 2;
-  if (/golf/.test(id)) return 3;
-  if (/pixel|fun.?run/.test(id)) return 4;
+function bdgTeinteDuNom(nom) {
   let h = 0;
-  for (const c of id) h = (h * 31 + c.charCodeAt(0)) % 4;
+  for (const c of String(nom || '').toLowerCase()) h = (h * 31 + c.charCodeAt(0)) % 4;
   return h + 1;
 }
 
-function renderSmSouhaits(d) {
-  const formules = (Array.isArray(d.formulas) ? d.formulas : []).filter(f => f && f.name).map(f => `<span class="sm-so">${escapeHtml(f.name)}</span>`);
-  const activites = (Array.isArray(d.activities) ? d.activities : []).filter(a => a && a.name).map(a => `<span class="sm-so" data-t="${smTeinte(a.id || a.name)}">${escapeHtml(a.name)}</span>`);
-  return [...formules, ...activites, d.advice ? '<span class="sm-so">Demande conseil</span>' : ''].join('');
+// LES VRAIES PHOTOS DU CENTRE (assets/fungalaxy). Celles de Gembloux seulement a Gembloux ; un autre
+// centre n en recoit aucune.
+const BDG_PHOTOS = {
+  libramont: [[/duck/i, 'duckpin'], [/bowling/i, 'pistes-neon'], [/laser/i, 'laser-joueur'], [/golf/i, 'minigolf'], [/arcade/i, 'arcades'], [/billard/i, 'billards-libramont'], [/pixel|fun.?run/i, 'fun-run'], [/simulateur/i, 'simulateurs'], [/plaine/i, 'plaine'], [/formule|kids|anniv/i, 'salle-bowling']],
+  gembloux: [[/bowling/i, 'gembloux-bowling'], [/laser/i, 'gembloux-laser'], [/golf/i, 'gembloux-minigolf'], [/arcade/i, 'gembloux-arcades'], [/billard/i, 'gembloux-billard'], [/formule|kids|anniv/i, 'gembloux-bowling']],
+};
+function bdgPhotoDe(nom, centerId, classe = 'bdg-photo') {
+  const trouve = (BDG_PHOTOS[String(centerId || '')] || []).find(([motif]) => motif.test(String(nom || '')));
+  return trouve ? `<img class="${classe}" src="/assets/fungalaxy/${trouve[1]}-carte.webp" alt="" loading="lazy" decoding="async" width="128" height="84" />` : '';
+}
+// La vignette d une demande : la photo de sa premiere envie qui en a une, sinon ses initiales.
+function bdgVignette(item, classe) {
+  const centre = item.centerId || getActiveOpsCenterId();
+  for (const envie of bdgEnvies(item)) {
+    const photo = bdgPhotoDe(envie.nom, centre, classe);
+    if (photo) return photo;
+  }
+  const nom = staffRequestNom(item);
+  const initiales = nom.split(/\s+/).filter(Boolean).slice(0, 2).map(mot => mot.charAt(0).toUpperCase()).join('') || '?';
+  return `<span class="${classe} is-vide" data-t="${bdgTeinteDuNom(nom)}" aria-hidden="true">${escapeHtml(initiales)}</span>`;
 }
 
-function renderSmBande(item) {
+// L etat d une demande en une pastille pleine : l heure promise tant qu elle attend l equipe.
+function bdgPastille(item) {
   const due = staffRequestDue(item);
-  if (due) return `<p class="sm-promis is-${due.tone}" data-req-due="${escapeHtml(String(item.id))}" data-req-due-long>${escapeHtml(due.long)}</p>`;
+  if (due) return `<span class="bdg-pill is-${due.tone}" data-req-due="${escapeHtml(String(item.id))}" title="${escapeHtml(due.long)}">${escapeHtml(due.court)}</span>`;
   const stage = staffRequestStage(item);
   const suivi = item.suivi || {};
-  if (stage === 'en-attente') {
-    const r = suivi.derniereReponse;
-    return `<p class="sm-promis is-attente">${r ? `Réponse envoyée ${escapeHtml(staffRequestMoment(r.le))}${r.par ? ` par ${escapeHtml(r.par)}` : ''}. ` : ''}Le client n’a pas encore répondu.</p>`;
-  }
-  if (stage === 'traitee') return `<p class="sm-promis is-fait">${suivi.reservationId ? 'Réservation créée.' : 'Demande terminée.'}</p>`;
-  if (stage === 'archivee') return '<p class="sm-promis is-attente">Demande classée sans suite.</p>';
+  if (stage === 'en-attente') return `<span class="bdg-pill is-attente">${escapeHtml(suivi.derniereReponse ? `Envoyée ${staffRequestMoment(suivi.derniereReponse.le)}` : 'Chez le client')}</span>`;
+  if (stage === 'traitee') return `<span class="bdg-pill is-fait">${suivi.reservationId ? 'Réservée' : 'Terminée'}</span>`;
+  if (stage === 'archivee') return '<span class="bdg-pill is-sans">Sans suite</span>';
   return '';
 }
-
-// La ligne sous le nom : le type de groupe, qui a ecrit, quand la demande est arrivee.
-function renderSmPhrase(item) {
-  const d = crDemande(item);
-  const nom = staffRequestNom(item);
-  const contact = item.contactName && item.contactName !== nom ? `${item.contactName}${d && d.contactRole ? `, ${d.contactRole}` : ''}` : '';
-  return `<p class="sm-tete-s">${escapeHtml([staffRequestTypeDe(item), contact, item.createdAt ? `reçue ${staffRequestStamp(item.createdAt)}` : ''].filter(Boolean).join(' · '))}</p>`;
+function bdgClientAEcrit(item) {
+  const suivi = item.suivi || {};
+  if (staffRequestStage(item) !== 'a-traiter' || !suivi.messageClient) return '';
+  return suivi.reponses ? 'Le client a répondu' : 'Le client a écrit';
 }
 
-// L etat en une pastille pleine, a cote du nom : ce qui presse, ou ou en est la demande.
-function renderSmEtatCourt(item) {
-  const due = staffRequestDue(item);
-  if (due) return `<span class="sm-du is-${due.tone}" data-req-due="${escapeHtml(String(item.id))}" title="${escapeHtml(due.long)}">${escapeHtml(due.court)}</span>`;
+// == LA LISTE ==
+const BDG_VIDES = {
+  atraiter: 'Aucune demande à traiter. Chaque groupe a sa réponse.',
+  attente: 'Aucune demande n’attend le client.',
+  terminees: 'Aucune demande terminée pour le moment.',
+};
+function bdgColonneListe(ouverte, cache, items) {
+  const segment = getStaffRequestSegment();
+  const buckets = getStaffRequestSegments();
+  const rows = getStaffRequestRows();
+  const query = String(staffRequestSearch || '').trim();
+  const enRetard = (buckets.atraiter || []).filter((item) => { const due = staffRequestDue(item); return due && due.tone === 'late'; }).length;
+  const onglets = STAFF_REQUEST_SEGMENTS.map(({ key, label, long }) => `<button type="button" role="tab" class="bdg-onglet" aria-selected="${segment === key}"${long ? ` title="${escapeHtml(long)}"` : ''} onclick="setStaffRequestSegment('${key}')"><span>${escapeHtml(label)}</span><b>${(buckets[key] || []).length}</b></button>`).join('');
+  let corps;
+  if (cache.loading && !items.length) corps = '<p class="bdg-l-vide" aria-busy="true">Chargement des demandes…</p>';
+  else if (cache.error && !items.length) corps = `<div class="bdg-l-vide"><p>${escapeHtml(cache.error)}</p><button type="button" class="bdg-b bdg-b-petit" onclick="loadStaffCustomRequests(true)">Réessayer</button></div>`;
+  else if (!items.length) corps = '<p class="bdg-l-vide">Aucune demande sur mesure pour le moment.</p>';
+  else if (!rows.length) corps = `<p class="bdg-l-vide">${escapeHtml(query ? `Aucune demande ne correspond à « ${query} ».` : BDG_VIDES[segment] || '')}</p>`;
+  else corps = `<ul class="bdg-lignes">${rows.map(item => `<li>${bdgLigne(item, ouverte)}</li>`).join('')}</ul>`;
+  return `<section class="bdg-liste-c" aria-label="Les demandes">
+    <div class="bdg-liste-t">
+      <h1 class="bdg-titre">Demandes sur mesure</h1>
+      ${enRetard ? `<p class="bdg-retard">${enRetard} en retard</p>` : ''}
+    </div>
+    <div class="bdg-onglets" role="tablist" aria-label="Étapes des demandes">${onglets}</div>
+    <label class="bdg-cherche">${BDG_LOUPE}<input id="reqSearchField" type="search" class="input" placeholder="Rechercher un groupe" aria-label="Rechercher une demande" value="${escapeHtml(query)}" oninput="staffRequestSearchInput(this.value)"></label>
+    <div class="bdg-liste-d" id="bdgListe" data-keep-scroll>${corps}</div>
+  </section>`;
+}
+
+// Une ligne de la boite : la photo, le groupe et son etat, quand et combien, ce qu ils veulent.
+function bdgLigne(item, ouverte) {
+  const d = crDemande(item);
+  const on = Boolean(ouverte) && String(ouverte.id) === String(item.id);
+  const joueurs = d ? Number(d.participants) || 0 : Number(item.pax) || 0;
+  const moment = d && !d.flexible && d.moment && d.moment !== 'indifferent' ? String(d.momentLabel || '').toLowerCase() : '';
+  const quand = [bdgQuandCourt(item), moment, joueurs ? `${joueurs} joueur${joueurs > 1 ? 's' : ''}` : ''].filter(Boolean).join(' · ');
+  const envies = d ? bdgEnvies(item).map(e => e.nom).join(', ') : bdgExtrait(item.message, 90);
+  const ecrit = bdgClientAEcrit(item);
+  return `<button type="button" class="bdg-l${on ? ' is-on' : ''}" data-item-id="${escapeHtml(String(item.id))}"${on ? ' aria-current="true"' : ''} onclick="selectStaffRequest(${staffClientJs(item.id)})">
+    ${bdgVignette(item, 'bdg-l-ph')}
+    <span class="bdg-l-c">
+      <span class="bdg-l-h"><span class="bdg-l-n">${escapeHtml(staffRequestNom(item))}</span>${bdgPastille(item)}</span>
+      <span class="bdg-l-q">${escapeHtml(quand)}</span>
+      ${envies ? `<span class="bdg-l-e">${escapeHtml(envies)}</span>` : ''}
+      ${ecrit ? `<span class="bdg-l-ecrit">${escapeHtml(ecrit)}</span>` : ''}
+    </span>
+  </button>`;
+}
+
+// Rien d ouvert : sur grand ecran, une phrase tient la place de la demande.
+function bdgLectureVide(cache, items) {
+  if (cache.loading && !items.length) return '<section class="bdg-lecture is-vide" aria-hidden="true"></section>';
+  const texte = items.length
+    ? 'Choisissez une demande dans la liste.'
+    : 'Les demandes de groupes envoyées par le formulaire du site arrivent ici. Pinlane prépare la réservation et le mail de chacune.';
+  return `<section class="bdg-lecture is-vide"><p class="bdg-vide-t">${items.length ? 'Rien d’ouvert' : 'Aucune demande pour le moment'}</p><p class="bdg-vide-p">${escapeHtml(texte)}</p></section>`;
+}
+
+// == LA DEMANDE OUVERTE ==
+function bdgLecture(item) {
+  const sid = escapeHtml(String(item.id));
+  return `<article class="bdg-lecture" data-request-id="${sid}">
+    ${bdgTete(item)}
+    <div class="bdg-corps">
+      <div class="bdg-client" id="bdgClient-${sid}" data-keep-scroll>
+        <div class="bdg-c-haut">${bdgDemande(item)}${bdgEnviesHtml(item)}${bdgMessage(item)}</div>
+        <div class="bdg-c-bas">${bdgClient(item)}${bdgMails(item)}${bdgSuivi(item)}</div>
+      </div>
+      <aside class="bdg-pin" id="bdgPin-${sid}" aria-label="Ce que Pinlane a préparé">${bdgColonnePin(item)}</aside>
+    </div>
+  </article>`;
+}
+
+// L en-tete : le groupe en grand, son etat, qui ecrit et comment le joindre, et les deux gestes qui
+// ne dependent pas de Pinlane. Une div, jamais <header> : body.staff-mode header le viderait.
+function bdgTete(item) {
+  const jid = staffClientJs(item.id);
+  const d = crDemande(item);
   const stage = staffRequestStage(item);
-  if (stage === 'en-attente') return '<span class="sm-du is-attente">En attente du client</span>';
-  if (stage === 'traitee') return `<span class="sm-du is-fait">${item.suivi && item.suivi.reservationId ? 'Réservée' : 'Terminée'}</span>`;
-  if (stage === 'archivee') return '<span class="sm-du is-sans">Sans suite</span>';
-  return '<span class="sm-du is-ok">À traiter</span>';
+  const finie = stage === 'traitee' || stage === 'archivee';
+  const tel = String(item.phone || '').replace(/\s+/g, '');
+  const nom = staffRequestNom(item);
+  const contact = item.contactName && item.contactName !== nom ? `${item.contactName}${d && d.contactRole ? `, ${d.contactRole}` : ''}` : (d && d.contactRole ? d.contactRole : '');
+  const sous = [staffRequestTypeDe(item), contact, item.createdAt ? `reçue ${staffRequestStamp(item.createdAt)}` : ''].filter(Boolean).join(' · ');
+  const due = staffRequestDue(item);
+  const joindre = [
+    tel ? `<a href="tel:${escapeHtml(tel)}">${escapeHtml(item.phone)}</a>` : '',
+    item.email ? `<a href="mailto:${escapeHtml(item.email)}">${escapeHtml(item.email)}</a>` : '',
+  ].filter(Boolean).join('');
+  return `<div class="bdg-tete">
+    <button type="button" class="bdg-retour" onclick="closeStaffRequest()">Toutes les demandes</button>
+    <div class="bdg-tete-id">
+      ${bdgVignette(item, 'bdg-tete-ph')}
+      <div class="bdg-tete-t">
+        <div class="bdg-tete-n"><h2>${escapeHtml(nom)}</h2>${bdgPastille(item)}</div>
+        ${sous ? `<p class="bdg-tete-s">${escapeHtml(sous)}</p>` : ''}
+        ${joindre ? `<p class="bdg-tete-c">${joindre}</p>` : ''}
+        ${due ? `<p class="bdg-promis is-${due.tone}" data-req-due="${escapeHtml(String(item.id))}" data-req-due-long>${escapeHtml(due.long)}</p>` : ''}
+      </div>
+    </div>
+    <div class="bdg-tete-a">
+      ${tel ? `<a class="bdg-b" href="tel:${escapeHtml(tel)}">Appeler</a>` : ''}
+      ${bdgPeutClasser() ? `<button type="button" class="bdg-b bdg-b-statut" onclick="setStaffCustomRequestStatus(${jid}, '${finie ? 'in_progress' : 'archived'}', { suivre: true })">${finie ? 'Rouvrir' : 'Sans suite'}</button>` : ''}
+    </div>
+  </div>`;
 }
 
-function renderSmClient(item) {
+// == CE QUE LE CLIENT DEMANDE (la colonne de gauche) ==
+const BDG_MOMENTS = { matin: 'le matin', 'apres-midi': 'l’après-midi', soiree: 'en soirée', journee: 'toute la journée' };
+function bdgDemande(item) {
   const d = crDemande(item);
-  const key = String(item.id);
-  const study = staffRequestStudies[key];
+  if (!d) {
+    const pax = Number(item.pax) || 0;
+    return `<section class="bdg-s bdg-demande"><h3 class="bdg-h">Ce qu’ils demandent</h3>
+      <p class="bdg-quand">${item.requestedDate ? escapeHtml(item.requestedDate) : '<span class="bdg-muet">Date pas indiquée</span>'}</p>
+      <div class="bdg-chiffres">${pax ? `<p class="bdg-chiffre"><b class="bdg-anton">${pax}</b><span>personne${pax > 1 ? 's' : ''}</span></p>` : '<p class="bdg-muet">Nombre pas indiqué</p>'}</div>
+      <p class="bdg-ancien">Demande envoyée par l’ancienne fenêtre du site, sans formulaire détaillé.</p>
+    </section>`;
+  }
+  const joueurs = Number(d.participants) || 0;
+  const accompagnants = Number(d.companions) || 0;
+  // « de 7 à 12 ans », « adultes », ou les deux : « de 7 à 12 ans, adultes ».
+  const tranches = Array.isArray(d.ages) ? d.ages : [];
+  const enfants = tranches.filter(cle => cle !== 'adultes').map(cle => String(CR_AGE_LABELS[cle] || '').toLowerCase()).filter(Boolean).join(', ');
+  const ages = [enfants ? `de ${enfants}` : '', tranches.includes('adultes') ? 'adultes' : ''].filter(Boolean).join(', ');
+  const moment = BDG_MOMENTS[d.moment] || '';
+  const quand = d.flexible
+    ? `<b>Date à fixer</b>${d.period ? `, plutôt ${escapeHtml(d.period)}` : ''}`
+    : `<b>${escapeHtml(bdgJourLong(d.date))}</b>${moment ? `, ${escapeHtml(moment)}` : ''}`;
+  const autre = !d.flexible && d.alternativeDate ? `<p class="bdg-autre">ou le ${escapeHtml(bdgJourLong(d.alternativeDate).toLowerCase())}</p>` : '';
+  const qui = `joueur${joueurs > 1 ? 's' : ''}${ages ? ` ${escapeHtml(ages)}` : ''}${accompagnants ? ` et ${accompagnants} accompagnateur${accompagnants > 1 ? 's' : ''}` : ''}`;
+  const parPersonne = Number(d.budgetPerPerson) || 0;
+  // Un role qui ne voit pas les montants ne voit pas non plus leur budget.
+  const budget = parPersonne > 0 && !montantsMasques()
+    ? `<p class="bdg-chiffre"><b class="bdg-anton">${escapeHtml(staffRequestEuro(parPersonne))}</b><span>par personne${joueurs ? `, soit ${escapeHtml(staffRequestEuro(Math.round(parPersonne * joueurs * 100) / 100))} pour ${joueurs} joueurs` : ''}</span></p>`
+    : '';
+  return `<section class="bdg-s bdg-demande"><h3 class="bdg-h">Ce qu’ils demandent</h3>
+    <p class="bdg-quand">${quand}</p>
+    ${autre}
+    <div class="bdg-chiffres">
+      ${joueurs ? `<p class="bdg-chiffre"><b class="bdg-anton">${joueurs}</b><span>${qui}</span></p>` : ''}
+      ${budget}
+    </div>
+  </section>`;
+}
+
+// Leurs envies en photos, chacune a sa couleur.
+function bdgEnviesHtml(item) {
+  const d = crDemande(item);
+  if (!d) return '';
+  const centre = item.centerId || getActiveOpsCenterId();
+  const envies = bdgEnvies(item);
+  const conseil = d.advice ? `<p class="bdg-conseil">${envies.length ? 'Ils demandent aussi conseil.' : 'Ils demandent conseil.'}</p>` : '';
+  if (!envies.length) return `<section class="bdg-s"><h3 class="bdg-h">Leurs envies</h3><p class="bdg-muet">Programme à composer avec eux.</p>${conseil}</section>`;
+  return `<section class="bdg-s"><h3 class="bdg-h">Leurs envies</h3>
+    <ul class="bdg-envies">${envies.map(e => `<li class="bdg-envie" data-t="${e.teinte}"><span class="bdg-envie-cadre">${bdgPhotoDe(e.nom, centre, 'bdg-envie-ph') || `<span class="bdg-envie-ph is-vide">${escapeHtml(e.nom.charAt(0).toUpperCase())}</span>`}</span><span class="bdg-envie-n">${escapeHtml(e.nom)}</span></li>`).join('')}</ul>
+    ${conseil}
+  </section>`;
+}
+
+function bdgMessage(item) {
+  const message = String(item.message || '').trim();
+  if (!message) return '';
+  return `<section class="bdg-s"><h3 class="bdg-h">Leur message</h3><blockquote class="bdg-mot">${escapeHtml(message)}</blockquote></section>`;
+}
+
+// Le client : qui ecrit, la facture, et ce que le centre sait de lui.
+function bdgClient(item) {
+  const d = crDemande(item);
+  const study = staffRequestStudies[String(item.id)];
   const c = study && study.client;
-  const tel = String(item.phone || '').replace(/\s+/g, '');
   const organisation = (d && d.organisation) || item.company || '';
-  const facture = d && d.invoice ? `<p class="sm-c-l">Facture${organisation ? ` au nom de ${escapeHtml(organisation)}` : ' demandée'}${d.vatNumber ? `, TVA ${escapeHtml(d.vatNumber)}` : ''}.</p>` : '';
+  const facture = d && d.invoice ? `<p>Facture${organisation ? ` au nom de ${escapeHtml(organisation)}` : ' demandée'}${d.vatNumber ? `, TVA ${escapeHtml(d.vatNumber)}` : ''}.</p>` : '';
   let passe = '';
   if (study && study.loaded && item.email) {
-    if (!c) passe = '<p class="sm-c-h">Aucune réservation avec cette adresse e-mail.</p>';
+    if (!c) passe = '<p class="bdg-muet">Aucune réservation avec cette adresse e-mail.</p>';
     else {
       const texte = staffRequestDejaVenu(c);
-      const somme = Number(c.depense) > 0 ? ` Pour ${staffRequestEuro(c.depense)} au total.` : '';
-      const absences = Number(c.absences) > 0 ? `<span class="sm-c-abs">${Number(c.absences)} absence${Number(c.absences) > 1 ? 's' : ''}</span>` : '';
-      const venues = (Array.isArray(c.venues) ? c.venues : []).slice(0, 5).map(v => `<li><time datetime="${escapeHtml(v.date)}">${escapeHtml(staffRequestShortDate(v.date))}</time><span>${escapeHtml([v.label, v.pax ? `${v.pax} joueur${v.pax > 1 ? 's' : ''}` : ''].filter(Boolean).join(', '))}</span><span class="num">${v.prix ? escapeHtml(staffRequestEuro(v.prix)) : ''}</span></li>`).join('');
-      passe = `<div class="sm-c-h"><p>${escapeHtml(texte)}${escapeHtml(somme)}${absences}</p>${venues ? `<ol class="sm-venues">${venues}</ol>` : ''}<button type="button" class="sm-lien" onclick="openStaffRequestClient(${staffClientJs(item.id)})">Voir sa fiche client</button></div>`;
+      const argent = !montantsMasques();
+      const somme = argent && Number(c.depense) > 0 ? ` Pour ${staffRequestEuro(c.depense)} au total.` : '';
+      const absences = Number(c.absences) > 0 ? ` <span class="bdg-abs">${Number(c.absences)} absence${Number(c.absences) > 1 ? 's' : ''}</span>` : '';
+      const venues = (Array.isArray(c.venues) ? c.venues : []).slice(0, 4).map(v => `<li><time datetime="${escapeHtml(v.date)}">${escapeHtml(staffRequestShortDate(v.date))}</time><span>${escapeHtml([v.label, v.pax ? `${v.pax} joueur${v.pax > 1 ? 's' : ''}` : ''].filter(Boolean).join(', '))}</span><span class="bdg-num">${argent && v.prix != null ? escapeHtml(staffRequestEuro(v.prix)) : ''}</span></li>`).join('');
+      passe = `<p>${escapeHtml(texte ? `${texte.replace(/\.$/, '')}.` : '')}${escapeHtml(somme)}${absences}</p>${venues ? `<ol class="bdg-venues">${venues}</ol>` : ''}<p class="bdg-s-act"><button type="button" class="bdg-b bdg-b-petit" onclick="openStaffRequestClient(${staffClientJs(item.id)})">Voir sa fiche client</button></p>`;
     }
-  }
-  return `<section class="sm-s sm-client"><h3>Le client</h3>
-    <p class="sm-c-n"><b>${escapeHtml(item.contactName || organisation || 'Contact')}</b>${d && d.contactRole ? `, ${escapeHtml(d.contactRole)}` : ''}</p>
-    ${tel ? `<p class="sm-c-l"><a href="tel:${escapeHtml(tel)}">${escapeHtml(item.phone)}</a></p>` : ''}
-    ${item.email ? `<p class="sm-c-l"><a href="mailto:${escapeHtml(item.email)}">${escapeHtml(item.email)}</a></p>` : ''}
+  } else if (study && study.loading) passe = '<p class="bdg-muet">Recherche de ses venues.</p>';
+  return `<section class="bdg-s bdg-qui"><h3 class="bdg-h">Le client</h3>
+    <p class="bdg-qui-n"><b>${escapeHtml(item.contactName || organisation || 'Contact')}</b>${d && d.contactRole ? `, ${escapeHtml(d.contactRole)}` : ''}</p>
     ${facture}
     ${passe}
   </section>`;
 }
 
-// Les disponibilites se montrent tant qu il reste quelque chose a proposer.
-const staffRequestAutre = {};
-function staffRequestMontreDispos(item) {
+// LES MAILS ECHANGES, comme dans une messagerie : le plus ancien en haut, le dernier mot du client
+// deja ouvert. Les mails d avant la demande (une reservation d il y a un mois) ne s y melent pas.
+function bdgMails(item) {
+  if (!item.email) return '';
   const key = String(item.id);
-  return staffRequestStage(item) === 'a-traiter' || Boolean(staffRequestAutre[key]) || Boolean(staffRequestChoix[key]);
+  const thread = staffRequestThreads[key];
+  const quandMail = (message) => message.sentAt || message.createdAt || message.scheduledAt || '';
+  // Deux heures de marge : un mail envoye juste avant le formulaire fait partie de la demande.
+  const debut = staffRequestTime(item.createdAt) ? staffRequestTime(item.createdAt) - 2 * 3600000 : 0;
+  const mails = thread && thread.loaded ? (thread.messages || []).filter(message => !debut || staffRequestTime(quandMail(message)) >= debut).sort((a, b) => staffRequestTime(quandMail(a)) - staffRequestTime(quandMail(b))) : [];
+  const evenements = item.suivi && Array.isArray(item.suivi.historique) ? item.suivi.historique : [];
+  const auteurDe = (message) => {
+    const r = evenements.find(e => e.type === 'reponse' && e.objet === message.subject && Math.abs(staffRequestTime(e.le) - staffRequestTime(quandMail(message))) < 600000);
+    return r && r.par ? r.par : '';
+  };
+  const dernierRecu = mails.filter(message => (message.direction || 'outbound') === 'inbound').pop() || null;
+  const centre = getCurrentStaffCenterName() || 'Le centre';
+  let corps;
+  if (!thread || (thread.loading && !thread.loaded)) corps = '<p class="bdg-muet" aria-busy="true">Chargement des mails.</p>';
+  else if (thread.error && !thread.loaded) corps = `<p class="bdg-muet">${escapeHtml(thread.error)} <button type="button" class="bdg-b bdg-b-petit" onclick="loadStaffRequestThread(${staffClientJs(item.id)}, true)">Réessayer</button></p>`;
+  else if (!mails.length) corps = '<p class="bdg-muet">Aucun mail échangé pour l’instant.</p>';
+  else {
+    corps = `<ol class="bdg-mails">${mails.map((message) => {
+      const recu = (message.direction || 'outbound') === 'inbound';
+      const mid = String(message.id || `${message.recipient || ''}-${quandMail(message)}`);
+      const ouvert = Boolean(staffRequestOpenMessages[mid]) || (recu && !staffRequestFermes[mid] && staffRequestStage(item) === 'a-traiter' && message === dernierRecu);
+      const brut = String(message.status || '');
+      const etat = recu || brut === 'sent' || brut === 'delivered' ? '' : (STAFF_MAIL_STATUS[brut] || [brut || 'inconnu'])[0];
+      const auteur = recu ? '' : auteurDe(message);
+      const titre = recu ? 'Le client a écrit' : `E-mail envoyé${auteur ? ` par ${auteur}` : ''}${etat ? ` (${etat})` : ''}`;
+      const texte = staffMailPlainText(message);
+      const separe = recu && window.PinlaneEmailThread && typeof window.PinlaneEmailThread.separerCitation === 'function' ? window.PinlaneEmailThread.separerCitation(texte) : null;
+      const lu = separe && separe.message ? separe.message : texte;
+      const qui = recu ? (item.contactName || item.email) : centre;
+      return `<li class="bdg-mail${recu ? ' is-recu' : ''}${ouvert ? ' is-ouvert' : ''}">
+        <span class="bdg-av${recu ? '' : ' is-centre'}" aria-hidden="true">${escapeHtml(String(qui || '?').charAt(0).toUpperCase())}</span>
+        <div class="bdg-mail-r">
+          <div class="bdg-mail-h"><button type="button" class="bdg-mail-t" aria-expanded="${ouvert}" onclick="toggleStaffRequestMessage(${staffClientJs(mid)})">${escapeHtml(titre)}</button><time datetime="${escapeHtml(String(quandMail(message)))}">${escapeHtml(staffRequestStamp(quandMail(message)))}</time></div>
+          <span class="bdg-mail-o">${escapeHtml(message.subject || '(sans objet)')}</span>
+          ${ouvert ? `<span class="bdg-mail-c">${escapeHtml(lu || 'Message vide.')}</span>` : `<span class="bdg-mail-x">${escapeHtml(bdgExtrait(lu, 110))}</span>`}
+          ${message.lastError ? `<span class="bdg-mail-err">${escapeHtml(message.lastError)}</span>` : ''}
+        </div>
+      </li>`;
+    }).join('')}</ol>`;
+  }
+  return `<section class="bdg-s bdg-mails-s"><h3 class="bdg-h">Les mails échangés</h3>${corps}</section>`;
 }
-function staffRequestAutreProposition(id) {
-  staffRequestAutre[String(id)] = true;
-  renderStaffRequestsIfOpen();
-  window.setTimeout(() => {
-    const zone = document.getElementById(`smIa-${String(id)}`);
-    if (zone) zone.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    const champ = document.getElementById(`smIaC-${String(id)}`);
-    if (champ) champ.focus({ preventScroll: true });
-  }, 60);
-}
-window.staffRequestAutreProposition = staffRequestAutreProposition;
-window.openStaffRequestClient = openStaffRequestClient;
 
-// LA FICHE, EN TRES SIMPLE (2026-11-10, Ansar : « j aime pas du tout, faut un truc completement
-// different, super simple, pas de graphique, faut tout booster avec IA pour aider sur base de ce qu on
-// demande, mais vraiment tout faire dessus »). Une colonne, de haut en bas : ce qu ils demandent en
-// trois lignes, ce que Pinlane propose (l assistant choisit, le moteur verifie), la consigne a lui
-// donner, puis le mail pret a partir. Le client et l historique ferment la page.
-function renderSmFiche(item) {
+// LE SUIVI : ce qui s est passe, en une ligne au passe chacun, les consignes donnees a Pinlane et les
+// notes de l equipe ; puis la note a ajouter.
+function bdgSuivi(item) {
   const jid = staffClientJs(item.id);
-  const sid = escapeHtml(String(item.id));
-  const stage = staffRequestStage(item);
-  const finie = stage === 'traitee' || stage === 'archivee';
-  const tel = String(item.phone || '').replace(/\s+/g, '');
-  const ecrit = !finie && Boolean(item.email) && peutGeste('ecrire') && !smIaActif(item);
-  return `<button type="button" class="sm-retour" onclick="closeStaffRequest()">Toutes les demandes</button>
-    <article class="sm-fiche" data-request-id="${sid}">
-      <div class="sm-tete">
-        <div class="sm-tete-t">
-          <div class="sm-tete-n"><h2>${escapeHtml(staffRequestNom(item))}</h2>${renderSmEtatCourt(item)}</div>
-          ${renderSmPhrase(item)}
-        </div>
-        <div class="sm-tete-a">
-          ${tel ? `<a class="sm-b" href="tel:${escapeHtml(tel)}">Appeler</a>` : ''}
-          <button type="button" class="sm-b sm-b-classer" onclick="${finie ? `setStaffCustomRequestStatus(${jid}, 'in_progress', { suivre: true })` : `setStaffCustomRequestStatus(${jid}, 'archived', { suivre: true })`}">${finie ? 'Rouvrir' : 'Sans suite'}</button>
-          ${ecrit ? `<button type="button" class="sm-p" onclick="toggleStaffRequestReply(${jid})">Écrire au client</button>` : ''}
-        </div>
-      </div>
-      <div class="sm-une">${renderSmDemande(item)}${renderSmPinlane(item)}${renderSmClient(item)}${renderSmHistorique(item)}</div>
-    </article>`;
+  const key = String(item.id);
+  const sid = escapeHtml(key);
+  const suivi = item.suivi || {};
+  const evenements = Array.isArray(suivi.historique) ? suivi.historique : [];
+  const consignes = Array.isArray(suivi.consignes) ? suivi.consignes : [];
+  const lignes = [
+    { le: item.createdAt, titre: crDemande(item) ? 'Demande reçue par le formulaire du site' : 'Demande reçue par l’ancienne fenêtre du site' },
+    ...evenements.map((e) => {
+      const par = e.par ? ` par ${e.par}` : '';
+      if (e.type === 'prise-en-charge') return { le: e.le, titre: `Prise en charge${par}` };
+      if (e.type === 'reponse') return { le: e.le, titre: `${e.proposition ? 'Proposition envoyée' : 'Réponse envoyée'}${par}`, texte: e.objet ? `« ${e.objet} »` : '' };
+      if (e.type === 'reservation') return { le: e.le, titre: `Réservation${e.reservationId ? ` n° ${e.reservationId}` : ''} créée${par}` };
+      if (e.type === 'statut') return { le: e.le, titre: `${STAFF_REQUEST_STATUS_WORDS[e.statut] || 'Statut changé'}${par}` };
+      return null;
+    }),
+    ...consignes.map(c => ({ le: c.le, titre: `${c.par || 'L’équipe'} a demandé à Pinlane « ${c.texte} »`, texte: bdgPhrase(c.resultat) })),
+    ...(Array.isArray(suivi.notes) ? suivi.notes : []).map(n => ({ le: n.le, titre: `Note de ${n.par || 'l’équipe'}`, texte: n.texte })),
+  ].filter(e => e && e.le).sort((a, b) => staffRequestTime(a.le) - staffRequestTime(b.le));
+  const note = staffRequestNotes[key] || {};
+  return `<section class="bdg-s bdg-suivi-s"><h3 class="bdg-h">Le suivi</h3>
+    <ol class="bdg-suivi">${lignes.map(e => `<li><time datetime="${escapeHtml(String(e.le))}">${escapeHtml(staffRequestStamp(e.le))}</time><span class="bdg-suivi-t">${escapeHtml(e.titre)}</span>${e.texte ? `<span class="bdg-suivi-x">${escapeHtml(e.texte)}</span>` : ''}</li>`).join('')}</ol>
+    <label class="bdg-e" for="reqNote-${sid}">Note pour l’équipe</label>
+    <textarea id="reqNote-${sid}" class="input" rows="2" placeholder="Ajouter une note" oninput="staffRequestNoteDraft(${jid}, this.value)">${escapeHtml(note.texte || '')}</textarea>
+    <div class="bdg-actions"><button type="button" class="bdg-b bdg-b-petit" ${note.busy ? 'disabled' : ''} onclick="addStaffRequestNote(${jid})">${note.busy ? 'Ajout…' : 'Ajouter la note'}</button></div>
+  </section>`;
 }
 
-// L ASSISTANT DE LA FICHE : ce que Pinlane propose pour cette demande, et ce qu on lui demande de
-// changer. Un etat par demande, garde le temps de la page : rouvrir une fiche ne repaie pas un appel.
-const staffRequestIa = {};
+// == CE QUE PINLANE A PREPARE (la colonne de droite) ==
+// Pinlane, c est l assistant de la console en mode demande (api/assistant.js) : il lit la demande, ses
+// mails, le planning et le catalogue, puis prepare la reservation et le mail. La derniere preparation
+// est enregistree sur la demande (suivi.pinlane), pour tous les postes ; il ne repart que sur une
+// consigne, ou quand le client a ecrit depuis (perimee).
+const bdgVivant = {};      // id -> le travail en cours ou le dernier fait sur ce poste
+const bdgResa = {};        // id -> la reservation simulee, puis creee
+const bdgAutre = {};       // id -> l equipe prepare une autre proposition apres un envoi
+const bdgVues = {};        // id -> 'changements' | 'propre', la vue du mail apres une consigne
 
-function smIaActif(item) {
-  const stage = staffRequestStage(item);
-  return stage !== 'traitee' && stage !== 'archivee' && peutGeste('ecrire') && staffRequestMontreDispos(item);
+// La preparation a montrer : celle du serveur ; a defaut (un serveur qui ne la renvoie pas), celle
+// que ce poste vient de recevoir.
+function bdgPreparation(item) {
+  const p = item && item.suivi && item.suivi.pinlane;
+  if (p && typeof p === 'object' && (p.reservation || p.mail)) return p;
+  const v = bdgVivant[String(item && item.id)];
+  if (v && !v.cours && !v.erreur && (v.reservation || v.mail)) {
+    return { le: new Date(v.fini || Date.now()).toISOString(), par: '', consigne: v.derniere || '', texte: v.texteFin || '', reservation: v.reservation, mail: v.mail, suggestions: v.suggestions || [], perimee: false, local: true };
+  }
+  return null;
 }
 
-function ensureStaffRequestIa() {
+function bdgPinlaneDispo() {
+  if (typeof isDemoRoute === 'function' && isDemoRoute()) return false;
+  return peutGeste('ecrire');
+}
+// Classer, rouvrir, noter : les droits de customRequestStatus et customRequestNote (api/ops.js).
+function bdgPeutClasser() {
+  return typeof canUseStaffPermission === 'function' && canUseStaffPermission(['clients.view', 'reservations.edit']);
+}
+
+// Ce qui decide d un lancement tout seul : une demande a traiter, avec son formulaire, sans
+// preparation ou avec une preparation perimee, et que ce poste n a pas deja lancee.
+function bdgDoitPreparer(item) {
+  if (!item || staffRequestStage(item) !== 'a-traiter' || !crDemande(item) || !bdgPinlaneDispo()) return false;
+  const v = bdgVivant[String(item.id)];
+  if (v && (v.cours || v.erreur || v.fini)) return false;
+  const p = item.suivi && item.suivi.pinlane;
+  return !p || p.perimee === true;
+}
+
+// Apres le rendu : la demande ouverte lit son client une fois, et Pinlane prepare si rien ne l est.
+function ensureStaffRequestPinlane() {
   const item = getStaffRequestSelectedItem();
-  if (!item || !crDemande(item)) return;
-  // Hors du travail de Pinlane (reponse partie, demande terminee), la fiche garde ce qu on sait du client.
-  if (!smIaActif(item)) { if (item.email) ensureStaffRequestStudy(); return; }
-  if (staffRequestIa[String(item.id)]) return;
-  smIaLancer(item.id, '');
+  if (!item) return;
+  if (item.email) ensureStaffRequestStudy();
+  if (bdgDoitPreparer(item)) bdgLancer(item.id, '');
 }
 
-async function smIaLancer(id, consigne = '') {
+// PINLANE AU TRAVAIL : POST /api/assistant en mode demande, la reponse au fil de l eau. Une consigne
+// plus recente coupe la precedente ; une reponse qui arrive pour une consigne remplacee ne compte pas.
+async function bdgLancer(id, consigne = '') {
   const key = String(id);
   const item = getStaffCustomRequestItems().find(entry => String(entry.id) === key);
-  if (!item || !peutGeste('ecrire')) return;
-  const texte = String(consigne || '').trim().slice(0, 400);
-  const avant = staffRequestIa[key] || {};
+  if (!item || !bdgPinlaneDispo()) return;
+  const texte = String(consigne || '').trim().slice(0, 600);
+  const avant = bdgVivant[key] || {};
+  if (avant.cours && !texte) return;
+  if (avant.coupure) avant.coupure.abort();
   const rang = (Number(avant.rang) || 0) + 1;
-  const actuelle = staffRequestChoix[key] || avant.proposition || (item.suivi && item.suivi.proposition) || null;
-  staffRequestIa[key] = { ...avant, rang, lit: true, consigne: texte, saisie: texte, erreur: '' };
-  if (staffRequestReplyState[key] && staffRequestReplyState[key].open) staffRequestReplyState[key] = { ...staffRequestReplyState[key], drafting: true };
+  const prep = bdgPreparation(item);
+  const coupure = new AbortController();
+  bdgVivant[key] = {
+    rang, cours: true, coupure, consigne: texte, saisie: '', etapes: [], texte: '', reservation: null, mail: null, gestes: [], retenir: '', erreur: '', vus: 0,
+    // Apres une consigne, l ancienne preparation reste a cote de la nouvelle : ce qui change se voit.
+    avant: texte && prep ? { reservation: prep.reservation || null, mail: prep.mail || null } : null,
+    derniere: texte,
+  };
+  delete bdgResa[key];
+  bdgVues[key] = 'changements';
   // Une consigne, c est la demande prise : la file le dit aux collegues, sans message de plus.
-  if (texte && item.status === 'new' && peutGeste('reserver')) setStaffCustomRequestStatus(item.id, 'in_progress', { silencieux: true, suivre: true });
-  renderStaffRequestsIfOpen();
+  if (texte && item.status === 'new' && bdgPeutClasser()) setStaffCustomRequestStatus(item.id, 'in_progress', { silencieux: true, suivre: true });
+  bdgRepeindre(key, true);
   try {
-    const payload = await apiRequest(API_ENDPOINTS.ops, {
+    if ((!window.PinlaneAssistant || typeof window.PinlaneAssistant.lireEvenements !== 'function') && typeof ensureStaffConsolesLoaded === 'function') await ensureStaffConsolesLoaded();
+    if (!window.PinlaneAssistant || typeof window.PinlaneAssistant.lireEvenements !== 'function') throw Object.assign(new Error('Pinlane n’est pas chargé sur ce poste. Rechargez la page.'), { lisible: true });
+    const envoi = await fetch('/api/assistant', {
       method: 'POST',
-      body: JSON.stringify({ action: 'customRequestAssist', id: item.id, centerId: getActiveOpsCenterId(), consigne: texte, ...(actuelle ? { actuelle: rqChoixPourLeServeur(actuelle) } : {}) }),
+      cache: 'no-store',
+      credentials: 'same-origin',
+      signal: coupure.signal,
+      headers: staffAuthHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ centerId: getActiveOpsCenterId(), demandeId: Number(item.id), messages: texte ? [{ role: 'user', content: texte }] : [] }),
     });
-    // Une autre consigne est partie entre-temps : cette reponse parlerait de la precedente.
-    if ((staffRequestIa[key] || {}).rang !== rang) return;
-    const p = payload && payload.proposition ? payload.proposition : null;
-    staffRequestIa[key] = {
-      rang, lit: false, pret: true, consigne: '', saisie: '', derniere: texte, erreur: '',
-      proposition: p,
-      pourquoi: String((payload && payload.pourquoi) || ''),
-      suggestions: Array.isArray(payload && payload.suggestions) ? payload.suggestions.slice(0, 3).map(String) : [],
-      suivie: !(payload && payload.consigneSuivie === false),
-      aRetenir: String((payload && payload.aRetenir) || ''),
-      geste: payload && payload.geste === 'reserver' && p ? 'reserver'
-        : (payload && (payload.geste === 'sans_suite' || (payload.geste === 'noter' && String(payload.note || '').trim())) ? payload.geste : ''),
-      note: payload && payload.geste === 'noter' ? String(payload.note || '').trim().slice(0, 300) : '',
-    };
-    if (p) staffRequestChoix[key] = p; else delete staffRequestChoix[key];
-    const b = payload && payload.brouillon;
-    if (b && String(b.corps || '').trim()) {
-      // Le mail tel que Pinlane l a ecrit : repris par l equipe avant l envoi, il devient une lecon du centre.
-      staffRequestReplyState[key] = { ...(staffRequestReplyState[key] || {}), open: true, openedAt: Date.now(), drafting: false, busy: false,
-        draftOriginal: b.source === 'ia' ? { subject: String(b.objet || ''), body: String(b.corps) } : null,
-        subject: String(b.objet || ''), body: String(b.corps), draftSource: b.source === 'ia' ? 'ia' : 'code', draftReason: String(b.raison || ''),
-        points: Array.isArray(b.pointsAVerifier) ? b.pointsAVerifier : [] };
-    } else if (staffRequestReplyState[key]) staffRequestReplyState[key] = { ...staffRequestReplyState[key], drafting: false };
-    if (payload && payload.etude) staffRequestStudies[key] = { ...(staffRequestStudies[key] || {}), loading: false, loaded: true, stale: false, error: '', etude: payload.etude, client: payload.client || null, at: Date.now() };
-  } catch (error) {
-    if ((staffRequestIa[key] || {}).rang !== rang) return;
-    staffRequestIa[key] = { ...(staffRequestIa[key] || {}), lit: false, erreur: error.message || 'Pinlane n’a pas pu préparer la proposition.' };
-    if (staffRequestReplyState[key]) staffRequestReplyState[key] = { ...staffRequestReplyState[key], drafting: false };
+    if (!/event-stream/.test(envoi.headers.get('content-type') || '')) {
+      const lu = await envoi.json().catch(() => ({}));
+      if (envoi.status === 401 && typeof clearStaffAuthSession === 'function') {
+        clearStaffAuthSession();
+        if (typeof applyAuthState === 'function') applyAuthState();
+      }
+      throw Object.assign(new Error(String(lu.message || lu.error || '')), { lisible: true, statut: envoi.status });
+    }
+    await window.PinlaneAssistant.lireEvenements(envoi, (type, d) => bdgEvenement(key, rang, type, d), { signal: coupure.signal });
+    const v = bdgVivant[key];
+    if (v && v.rang === rang && v.cours) throw Object.assign(new Error('Pinlane s’est arrêté avant la fin.'), { lisible: true });
+  } catch (erreur) {
+    const v = bdgVivant[key];
+    if (!v || v.rang !== rang) return;
+    v.cours = false;
+    v.coupure = null;
+    if (!(erreur && erreur.name === 'AbortError')) {
+      v.erreur = bdgRaisonPanne(erreur);
+      v.statut = Number(erreur && erreur.statut) || 0;
+    }
+    bdgRepeindre(key, true);
+  }
+}
+
+// La panne dite en une phrase : ce qui arrive, jamais un code. Un 404 sans mot du serveur (une adresse
+// qui n existe pas) n est pas une demande disparue.
+function bdgRaisonPanne(erreur) {
+  const statut = Number(erreur && erreur.statut) || 0;
+  const message = erreur && erreur.lisible ? bdgPhrase(erreur.message) : '';
+  if (statut === 403) return 'Votre rôle ne permet pas de préparer les réponses avec Pinlane.';
+  if (statut === 404) return message ? 'Cette demande n’est plus dans ce centre.' : 'Pinlane n’est pas disponible pour le moment.';
+  if (statut === 429) return message || 'Pinlane a atteint sa limite pour le moment.';
+  if (message && statut !== 503 && statut !== 500 && !/assistant/i.test(message)) return message;
+  return 'Pinlane n’est pas disponible pour le moment.';
+}
+
+function bdgEvenement(key, rang, type, d) {
+  const v = bdgVivant[key];
+  if (!v || v.rang !== rang) return;
+  switch (type) {
+    case 'etape': {
+      const e = v.etapes.find(x => x.id === d.id);
+      if (e) Object.assign(e, d); else v.etapes.push({ ...d, lues: 0, total: 0 });
+      break;
+    }
+    case 'lecture': {
+      const e = v.etapes.find(x => x.id === d.id);
+      if (e) { e.lues = d.lues || e.lues; e.total = d.total || e.total; e.trouvees = d.trouvees || e.trouvees; }
+      break;
+    }
+    case 'note': v.texte = ''; v.etapes.push({ note: true, libelle: String(d.texte || '').slice(0, 240) }); break;
+    case 'texte': v.texte += String(d.delta || ''); break;
+    case 'annule': v.texte = ''; break;
+    case 'proposition': bdgCarteRecue(v, d); break;
+    case 'fin': bdgFin(key, v, d); return;
+    case 'erreur': throw Object.assign(new Error(String(d.message || '')), { lisible: true });
+    default: return;
+  }
+  bdgRepeindre(key);
+}
+
+// Les cartes du flux : la reservation et le mail de la demande, un petit geste (classer, noter), ou
+// une regle a retenir pour les prochaines demandes.
+function bdgCarteRecue(v, d) {
+  if (!d || typeof d !== 'object') return;
+  if (d.type !== 'geste') { if (d.texte) v.retenir = String(d.texte).slice(0, 400); return; }
+  const carte = { resume: d.resume && typeof d.resume === 'object' ? d.resume : {}, action: d.action && typeof d.action === 'object' ? d.action : {} };
+  if (d.geste === 'reservation_demande') v.reservation = carte;
+  else if (d.geste === 'mail_demande') v.mail = carte;
+  else {
+    const geste = bdgGesteDe(carte.action, d.texte);
+    if (geste) v.gestes.push(geste);
+  }
+}
+// Les seuls petits gestes que la page sait faire elle-meme, avec ses propres droits.
+function bdgGesteDe(action, texte) {
+  const a = action || {};
+  if (a.action === 'customRequestStatus' && ['archived', 'handled', 'in_progress'].includes(a.status)) return { type: 'statut', status: a.status, texte: String(texte || ''), etat: '' };
+  if (a.action === 'customRequestNote' && String(a.texte || '').trim()) return { type: 'note', note: String(a.texte).trim().slice(0, 600), texte: String(texte || ''), etat: '' };
+  if (a.action === 'assistantGeste' && /^not(er|e)_demande$/.test(String(a.geste || '')) && a.params && String(a.params.texte || '').trim()) return { type: 'note', note: String(a.params.texte).trim().slice(0, 600), texte: String(texte || ''), etat: '' };
+  return null;
+}
+
+function bdgFin(key, v, d) {
+  v.cours = false;
+  v.coupure = null;
+  v.fini = Date.now();
+  v.texteFin = String((d && d.texte) || v.texte || '');
+  if (d && d.demande && d.demande.id != null) replaceStaffCustomRequest(d.demande, { id: key });
+  // Rien de prepare : ce que Pinlane en dit tient lieu de reponse (un jour ferme, un planning plein).
+  if (!v.reservation && !v.mail && !v.gestes.length && !v.retenir) {
+    if (bdgSansRenvois(v.texteFin)) v.vide = true;
+    else if (!(d && d.demande)) v.erreur = 'Pinlane n’a rien préparé cette fois. Dites-lui ce qu’il faut proposer.';
+  }
+  // Le texte repris a la main parlait de l ancienne preparation : le nouveau mail de Pinlane prend sa place.
+  if (staffRequestReplyState[key] && staffRequestReplyState[key].pinlane) delete staffRequestReplyState[key];
+  bdgRepeindre(key, true);
+}
+
+// Le repeint : la page entiere au debut et a la fin du travail ; entre les deux, la seule colonne de
+// Pinlane, une fois par image, a sa place de defilement.
+const bdgAPeindre = new Set();
+let bdgImage = 0;
+function bdgRepeindre(key, complet = false) {
+  if (!isStaffUtilityActive() || getStaffMenuPage() !== 'requests') return;
+  if (complet || !document.getElementById(`bdgPin-${key}`)) { bdgAPeindre.clear(); renderStaffUtilityPage(); return; }
+  bdgAPeindre.add(key);
+  if (bdgImage) return;
+  bdgImage = requestAnimationFrame(() => {
+    bdgImage = 0;
+    const cles = [...bdgAPeindre];
+    bdgAPeindre.clear();
+    cles.forEach((cle) => {
+      const colonne = document.getElementById(`bdgPin-${cle}`);
+      const item = getStaffCustomRequestItems().find(entry => String(entry.id) === cle);
+      if (!colonne || !item) return;
+      const defile = colonne.querySelector('.bdg-pin-defile');
+      const haut = defile ? defile.scrollTop : 0;
+      // La consigne en cours de frappe garde son focus et son curseur.
+      const actif = document.activeElement && colonne.contains(document.activeElement) && document.activeElement.id ? document.activeElement : null;
+      const curseur = actif && typeof actif.selectionStart === 'number' ? [actif.selectionStart, actif.selectionEnd] : null;
+      colonne.innerHTML = bdgColonnePin(item);
+      const neuf = colonne.querySelector('.bdg-pin-defile');
+      if (neuf) neuf.scrollTop = haut;
+      const repris = actif ? document.getElementById(actif.id) : null;
+      if (repris) {
+        repris.focus({ preventScroll: true });
+        if (curseur && typeof repris.setSelectionRange === 'function') { try { repris.setSelectionRange(curseur[0], curseur[1]); } catch (erreur) { /* champ sans curseur */ } }
+      }
+    });
+  });
+}
+
+// La colonne : ce qui defile, puis le pied avec les boutons de l etape.
+function bdgColonnePin(item) {
+  const sid = escapeHtml(String(item.id));
+  const { corps, pied } = bdgPinlane(item);
+  return `<div class="bdg-pin-defile" id="bdgPinD-${sid}" data-keep-scroll>${corps}</div>${pied ? `<div class="bdg-pin-pied">${pied}</div>` : ''}`;
+}
+
+function bdgPinlane(item) {
+  const key = String(item.id);
+  const stage = staffRequestStage(item);
+  const v = bdgVivant[key];
+  const resa = bdgResa[key];
+  if (resa && resa.faite) return bdgPinReservee(item, resa);
+  if (stage === 'archivee') return bdgPinSansSuite(item);
+  if (stage === 'traitee') return bdgPinReservee(item, null);
+  if (resa) return bdgPinSimulation(item, resa);
+  const reply = staffRequestReplyState[key] || {};
+  if (reply.open && !reply.pinlane) return bdgPinComposeur(item, reply);
+  if (stage === 'en-attente' && !bdgAutreEnCours(item)) return bdgPinEnAttente(item);
+  if (!bdgPinlaneDispo()) return bdgPinSansDroit(item);
+  if (v && v.cours) return bdgPinTravaille(item, v);
+  const prep = bdgPreparation(item);
+  if (v && v.erreur && !prep) return bdgPinIndisponible(item, v);
+  if (prep) return bdgPinPrete(item, prep, v);
+  if (v && v.vide) return bdgPinRien(item, v);
+  if (!crDemande(item)) return bdgPinSansFormulaire(item);
+  // Le lancement suit le rendu (ensureStaffRequestPinlane) : la colonne dit deja ce qui commence.
+  if (bdgDoitPreparer(item)) return bdgPinTravaille(item, { cours: true, etapes: [], texte: '', consigne: '' });
+  return bdgPinRien(item, v || {});
+}
+
+// « Préparer une autre proposition » vaut pour la reponse partie a ce moment-la : la suivante range a
+// nouveau la demande chez le client.
+function bdgAutreEnCours(item) {
+  const r = item.suivi && item.suivi.derniereReponse;
+  return bdgAutre[String(item.id)] === String((r && r.le) || 'oui');
+}
+
+// La tete de la colonne : son nom, et une ligne grise qui dit ce qui est fait.
+function bdgPinTete(dit, { role = '' } = {}) {
+  return `<div class="bdg-pin-tete"><p class="bdg-pin-nom">Pinlane</p><p class="bdg-pin-dit"${role ? ` role="${role}"` : ''}>${dit}</p></div>`;
+}
+
+// PINLANE QUI TRAVAILLE : ses lectures s empilent avec leur resultat, les cartes arrivent quand elles
+// sont pretes. Pas de rond qui tourne : un anneau tant qu une lecture se fait, une coche quand elle a
+// rendu son resultat.
+function bdgPinTravaille(item, v) {
+  const prep = item.suivi && item.suivi.pinlane;
+  const dit = v.consigne
+    ? `Pinlane refait la réponse avec « ${escapeHtml(v.consigne)} ».`
+    : (prep && prep.perimee ? 'Le client a écrit depuis la dernière préparation. Pinlane relit la demande et refait la réponse.' : 'Pinlane lit la demande et prépare la réponse.');
+  const etapes = (v.etapes || []).map((e, i) => bdgEtape(e, i >= (v.vus || 0))).join('');
+  v.vus = (v.etapes || []).length;
+  const texte = String(v.texte || '').trim();
+  // Les cartes arrivent quand elles sont pretes, a lire seulement : le mail se modifie une fois fini.
+  const cartes = `${v.reservation ? bdgCarteResa(item, v.reservation, v.avant && v.avant.reservation) : ''}${v.mail && item.email ? bdgCarteMail(item, v.mail, v.avant && v.avant.mail, {}, { figee: true }) : ''}`;
+  // Une autre consigne reste possible : elle remplace celle en cours.
+  const corps = `${bdgPinTete(dit, { role: 'status' })}
+    ${etapes ? `<ol class="bdg-lu" aria-label="Ce que Pinlane lit">${etapes}</ol>` : ''}
+    ${texte ? `<p class="bdg-pin-texte">${escapeHtml(bdgSansRenvois(texte))}</p>` : ''}
+    ${cartes}
+    ${crDemande(item) || v.consigne ? bdgConsigne(item, []) : ''}`;
+  const pied = `<button type="button" class="bdg-p" disabled>Envoyer la proposition</button>`;
+  return { corps, pied };
+}
+
+// Une lecture : au present tant qu elle se fait, au passe avec son resultat ensuite.
+function bdgEtape(e, neuve) {
+  const A = window.PinlaneAssistant || {};
+  if (e.note) return `<li class="bdg-lu-l is-note${neuve ? ' is-neuve' : ''}"><span class="bdg-lu-m" aria-hidden="true"></span><span class="bdg-lu-p">${escapeHtml(e.libelle)}</span></li>`;
+  const fini = e.etat === 'fini' || e.etat === 'echec';
+  const brut = String(e.phrase || e.libelle || 'Je lis vos données');
+  const phrase = fini && typeof A.phraseFinie === 'function' ? A.phraseFinie(brut) : brut;
+  const trouve = /^À valider/.test(String(e.trouve || '')) ? 'Prêt, à relire ci-dessous' : String(e.trouve || '');
+  const resultat = e.etat === 'echec' ? 'Lecture impossible' : (trouve || (typeof A.mesureDe === 'function' ? A.mesureDe(e) : ''));
+  const etat = e.etat === 'echec' ? 'echec' : (fini ? 'fini' : 'cours');
+  return `<li class="bdg-lu-l is-${etat}${neuve ? ' is-neuve' : ''}"><span class="bdg-lu-m" aria-hidden="true">${etat === 'fini' ? BDG_COCHE : ''}</span><span class="bdg-lu-p">${escapeHtml(phrase)}</span>${resultat ? `<span class="bdg-lu-r">${escapeHtml(resultat)}</span>` : ''}</li>`;
+}
+// Le texte du modele, sans ses renvois de sources ni son gras.
+const bdgSansRenvois = (t) => String(t || '').replace(/\s*\[[SGF]\d+\]/g, '').replace(/\*\*/g, '').trim();
+
+// LA REPONSE PRETE : la reservation, le mail tel que le client le lira, ce qui est a verifier, la
+// consigne et ses idees ; en pied, le geste de l etape.
+function bdgPinPrete(item, prep, v) {
+  const key = String(item.id);
+  const jid = staffClientJs(item.id);
+  const reply = staffRequestReplyState[key] || {};
+  const apres = v && v.fini && v.derniere && !v.erreur ? v : null;
+  const avant = apres ? apres.avant : null;
+  const quand = prep.le ? staffRequestMoment(prep.le) : '';
+  const parQui = prep.consigne && prep.par ? `, sur la consigne de ${prep.par}` : '';
+  const mot = bdgSansRenvois(prep.texte);
+  // Apres une consigne, ce qu elle a donne se lit juste dessous : la ligne grise ne le redit pas.
+  const dit = apres
+    ? `Pinlane a refait la réservation et le mail${quand ? ` ${escapeHtml(quand)}` : ''}.`
+    : (mot && mot.length <= 220
+      ? `${escapeHtml(bdgPhrase(mot))}${quand ? ` <span class="bdg-pin-quand">${escapeHtml(bdgMajuscule(quand))}.</span>` : ''}`
+      : `Pinlane a préparé la réservation et le mail${quand ? ` ${escapeHtml(quand)}` : ''}${escapeHtml(parQui)}.`);
+  const perimee = prep.perimee
+    ? `<p class="bdg-pin-alerte">${prep.perimeePourquoi === 'jour-passe' ? 'Le jour proposé est passé. Dites à Pinlane une autre date.' : 'Le client a écrit depuis cette préparation.'} <button type="button" class="bdg-b bdg-b-petit" onclick="bdgLancer(${jid}, '')">Refaire avec son mail</button></p>`
+    : '';
+  const consigneDite = apres ? `<p class="bdg-pin-consigne">Vous avez demandé « ${escapeHtml(apres.derniere)} ». ${escapeHtml(bdgResultatConsigne(item, apres))}</p>` : '';
+  const erreur = v && v.erreur ? `<p class="bdg-pin-alerte">${escapeHtml(v.erreur)} <button type="button" class="bdg-b bdg-b-petit" onclick="bdgLancer(${jid}, ${staffClientJs(v.derniere || '')})">Réessayer</button></p>` : '';
+  const sansMail = !item.email ? `<p class="bdg-pin-alerte">Pas d’adresse e-mail pour cette demande.${item.phone ? ` Appelez le ${escapeHtml(item.phone)} pour lui proposer cette réservation.` : ''}</p>` : '';
+  const points = prep.mail && item.email ? bdgPoints(prep.mail) : '';
+  const gestes = bdgGestesHtml(item, v);
+  const corps = `${bdgPinTete(dit)}
+    ${perimee}${consigneDite}${erreur}
+    ${prep.reservation ? bdgCarteResa(item, prep.reservation, avant && avant.reservation) : '<p class="bdg-pin-alerte">Pinlane n’a pas préparé de réservation pour cette demande.</p>'}
+    ${prep.mail && item.email ? bdgCarteMail(item, prep.mail, avant && avant.mail, reply) : sansMail}
+    ${points}
+    ${gestes}
+    ${bdgConsigne(item, prep.suggestions)}`;
+  const reserver = peutGeste('reserver') && bdgFormeResa(prep.reservation);
+  const envoyer = Boolean(prep.mail && item.email);
+  const pied = [
+    reserver ? `<button type="button" class="${envoyer ? 'bdg-b' : 'bdg-p'}" onclick="bdgReserver(${jid}, 'pinlane')">Réserver sans attendre</button>` : '',
+    envoyer ? `<button type="button" class="bdg-p" ${reply.busy ? 'disabled' : ''} onclick="bdgEnvoyer(${jid})">${reply.busy ? 'Envoi…' : 'Envoyer la proposition'}</button>` : '',
+  ].join('');
+  return { corps, pied };
+}
+
+// Ce que la consigne a donne, en une ligne au passe : celle du serveur, sinon ce qui a change.
+function bdgResultatConsigne(item, v) {
+  const consignes = item.suivi && Array.isArray(item.suivi.consignes) ? item.suivi.consignes : [];
+  const derniere = consignes[consignes.length - 1];
+  if (derniere && derniere.texte === v.derniere && derniere.resultat) return bdgPhrase(derniere.resultat);
+  if (v.vide) return bdgPhrase(bdgSansRenvois(v.texteFin));
+  return 'Pinlane a refait la réservation et le mail. Ce qui change est marqué.';
+}
+
+// La forme qui part au serveur pour reserver ce que Pinlane a prepare.
+function bdgFormeResa(carte) {
+  const r = carte && carte.action && carte.action.reservation;
+  return r && typeof r === 'object' && r.date && r.startTime ? r : null;
+}
+
+// == LA CARTE DE LA RESERVATION ==
+// Les memes champs que la carte de l assistant Marketing : quand, l heure et le prix en grand, une
+// ligne par activite a sa couleur, les supplements, le prix convenu et sa raison, la note pour
+// l equipe. Apres une consigne, l ancienne valeur barree reste a cote de la nouvelle.
+function bdgCarteResa(item, carte, avantCarte, { titre = 'La réservation', verifiee = true } = {}) {
+  const r = (carte && carte.resume) || {};
+  const a = bdgFormeResa(carte) || {};
+  const ra = avantCarte ? ((avantCarte && avantCarte.resume) || {}) : null;
+  const aa = avantCarte ? (bdgFormeResa(avantCarte) || {}) : null;
+  const date = a.date || r.date || '';
+  const jour = r.quand ? bdgMajuscule(r.quand) : bdgJourLong(date);
+  const heure = String(r.heure || a.startTime || r.debut || '');
+  const fin = String(r.fin || '');
+  const joueurs = Number(r.joueurs || a.pax) || 0;
+  const prix = r.prix != null ? Number(r.prix) : (a.prix != null && a.prix !== '' ? Number(a.prix) : null);
+  const vieux = (nouveau, ancien) => (ra && ancien != null && ancien !== '' && String(ancien) !== String(nouveau) ? `<s class="bdg-avant">${escapeHtml(String(ancien))}</s>` : '');
+  const avantJour = ra ? (ra.quand ? bdgMajuscule(ra.quand) : bdgJourLong(aa.date || ra.date || '')) : '';
+  const avantPrix = ra && ra.prix != null ? bdgEuro(ra.prix) : '';
+  const parJoueur = prix != null && joueurs ? bdgEuro(Math.round((prix / joueurs) * 100) / 100) : '';
+  const d = crDemande(item);
+  const budget = d ? Number(d.budgetPerPerson) || 0 : 0;
+  const ecart = budget && prix != null && joueurs ? Math.round(((prix / joueurs) - budget) * 100) / 100 : null;
+  const situe = ecart == null || montantsMasques() ? '' : (ecart > 0.009 ? `${staffRequestEuro(ecart)} de plus par personne que leur budget.` : 'Dans leur budget.');
+  const lignes = Array.isArray(r.lignes) ? r.lignes : [];
+  const avantLignes = ra && Array.isArray(ra.lignes) ? ra.lignes.map(l => `${l.nom}|${l.debut}|${l.fin}|${l.detail}`) : null;
+  const lignesHtml = lignes.map((l, i) => {
+    const neuve = avantLignes && !avantLignes.includes(`${l.nom}|${l.debut}|${l.fin}|${l.detail}`);
+    const plage = l.debut ? (l.fin ? `${l.debut} à ${l.fin}` : l.debut) : '';
+    return `<li class="bdg-resa-ligne${neuve ? ' is-neuve' : ''}" data-t="${bdgTeinteDe(item, l.activite, l.nom, i)}"><span class="bdg-pt" aria-hidden="true"></span><span class="bdg-resa-act"><b>${escapeHtml(l.nom || l.activite || 'Activité')}</b>${plage ? `<span class="bdg-resa-plage">${escapeHtml(plage)}</span>` : ''}</span>${l.detail ? `<span class="bdg-resa-detail">${escapeHtml(l.detail)}</span>` : ''}</li>`;
+  }).join('');
+  const supplements = Array.isArray(r.supplements) && r.supplements.length
+    ? `Avec ${bdgListe(r.supplements.map(s => `${s.nom} × ${s.qte}${s.parPersonne ? ', un par joueur' : ''}`))}.`
+    : '';
+  const avantSupplements = ra && Array.isArray(ra.supplements) && ra.supplements.length ? `Avec ${bdgListe(ra.supplements.map(s => `${s.nom} × ${s.qte}${s.parPersonne ? ', un par joueur' : ''}`))}.` : '';
+  const note = String(r.note || a.note || '').trim();
+  const raison = r.prixNegocie ? String(r.prixRaison || a.raisonPrix || '').trim() : '';
+  const habituel = r.prixNegocie && r.prixHabituel != null ? bdgEuro(r.prixHabituel) : '';
+  const conflits = Array.isArray(r.conflits) ? r.conflits.filter(Boolean) : [];
+  const tient = r.disponible !== false && !conflits.length && !r.refus;
+  const details = [
+    habituel ? ['Prix habituel', `<s>${escapeHtml(habituel)}</s>`] : null,
+    raison ? ['Raison du prix', escapeHtml(bdgPhrase(raison))] : null,
+    note ? ['Note pour l’équipe', escapeHtml(bdgPhrase(note))] : null,
+  ].filter(Boolean);
+  return `<section class="bdg-carte bdg-resa" aria-label="${escapeHtml(titre)}">
+    <p class="bdg-carte-type">${escapeHtml(titre)}</p>
+    <p class="bdg-resa-jour">${vieux(jour, avantJour)}${escapeHtml(jour)}</p>
+    <div class="bdg-resa-gros">
+      <p class="bdg-resa-g"><span class="bdg-resa-e">Heure</span><span class="bdg-resa-v">${vieux(heure, ra ? (ra.heure || aa.startTime) : '')}<b class="bdg-anton">${escapeHtml(heure || '?')}</b>${fin ? `<span class="bdg-resa-s">à ${escapeHtml(fin)}</span>` : ''}</span></p>
+      <p class="bdg-resa-g"><span class="bdg-resa-e">Joueurs</span><span class="bdg-resa-v">${vieux(joueurs, ra ? (ra.joueurs || aa.pax) : '')}<b class="bdg-anton">${joueurs || '?'}</b></span></p>
+      ${prix != null ? `<p class="bdg-resa-g is-prix"><span class="bdg-resa-e">${r.prixNegocie ? 'Prix convenu' : 'Prix'}</span><span class="bdg-resa-v">${vieux(bdgEuro(prix), avantPrix)}<b class="bdg-anton">${escapeHtml(bdgEuro(prix))}</b>${parJoueur && joueurs > 1 ? `<span class="bdg-resa-s">soit ${escapeHtml(parJoueur)} par joueur</span>` : ''}</span></p>` : ''}
+    </div>
+    ${situe ? `<p class="bdg-resa-budget${ecart > 0.009 ? ' is-plus' : ''}">${escapeHtml(situe)}</p>` : ''}
+    ${lignesHtml ? `<ul class="bdg-resa-l">${lignesHtml}</ul>` : ''}
+    ${supplements || avantSupplements ? `<p class="bdg-resa-sup">${avantSupplements && avantSupplements !== supplements ? `<s class="bdg-avant">${escapeHtml(avantSupplements)}</s> ` : ''}${escapeHtml(supplements || 'Sans supplément.')}</p>` : ''}
+    ${details.length ? `<dl class="bdg-resa-d">${details.map(([k, val]) => `<div><dt>${escapeHtml(k)}</dt><dd>${val}</dd></div>`).join('')}</dl>` : ''}
+    ${conflits.length ? `<p class="bdg-resa-non">Ce créneau n’est plus libre. ${escapeHtml(bdgPhrase(conflits[0]))}</p>` : ''}
+    ${r.refus ? `<p class="bdg-resa-non">${escapeHtml(bdgPhrase(r.refus))}</p>` : ''}
+    ${date ? `<div class="bdg-resa-v2">${verifiee && tient ? `<span class="bdg-resa-ok">${BDG_COCHE}Vérifiée sur le planning</span>` : '<span></span>'}<button type="button" class="bdg-b bdg-b-petit bdg-voir-jour" onclick="openStaffRequestDay('${escapeJsString(date)}')">Voir le planning de ce jour</button></div>` : ''}
+  </section>`;
+}
+
+// == LE MAIL, TEL QUE LE CLIENT LE LIRA ==
+// De qui, pour qui, l objet, le texte entier. « Modifier le texte » le rend modifiable ; la version de
+// Pinlane reste l original qui part avec l envoi, pour que la correction serve de lecon au centre.
+function bdgMailDe(carte) {
+  const a = (carte && carte.action) || {};
+  const r = (carte && carte.resume) || {};
+  return { objet: String(a.subject || r.objet || ''), corps: String(a.body || r.corps || ''), a: String(a.to || r.a || '') };
+}
+function bdgMarques(avant, apres) {
+  const A = window.PinlaneAssistant || {};
+  const diff = typeof A.difference === 'function' ? A.difference(avant, apres) : null;
+  if (!diff || diff.commun < 0.3) return null;
+  return diff.morceaux.map((m) => {
+    if (m.t === '=') return escapeHtml(m.s);
+    const [, motTexte, blanc] = /^([\s\S]*?)(\s*)$/.exec(m.s);
+    const balise = m.t === '+' ? 'ins' : 'del';
+    return `${motTexte ? `<${balise} class="bdg-${balise}">${escapeHtml(motTexte)}</${balise}>` : ''}${escapeHtml(blanc)}`;
+  }).join('');
+}
+function bdgCarteMail(item, carte, avantCarte, reply, { figee = false } = {}) {
+  const key = String(item.id);
+  const jid = staffClientJs(item.id);
+  const sid = escapeHtml(key);
+  const mail = bdgMailDe(carte);
+  const ancien = avantCarte ? bdgMailDe(avantCarte) : null;
+  const centre = getCurrentStaffCenterName() || 'Le centre';
+  const tete = `<div class="bdg-mailc-tete"><span class="bdg-av is-centre" aria-hidden="true">${escapeHtml(centre.charAt(0).toUpperCase())}</span><div class="bdg-mailc-qui"><p><b>${escapeHtml(centre)}</b></p><p>à ${escapeHtml(item.email || mail.a)}</p></div></div>`;
+  if (reply && reply.pinlane && reply.open) {
+    return `<section class="bdg-carte bdg-mailc is-modif" aria-label="Le mail au client" id="reqComposer-${sid}">
+      <p class="bdg-carte-type">Le mail au client</p>
+      ${tete}
+      <label class="bdg-e" for="reqSubject-${sid}">Objet</label>
+      <input id="reqSubject-${sid}" class="input" value="${escapeHtml(reply.subject || '')}" oninput="staffRequestReplyDraft(${jid}, 'subject', this.value)" />
+      <label class="bdg-e" for="reqBody-${sid}">Message</label>
+      <textarea id="reqBody-${sid}" class="input bdg-mailc-champ" rows="14" oninput="staffRequestReplyDraft(${jid}, 'body', this.value)" onkeydown="staffRequestComposerKey(event, ${jid})">${escapeHtml(reply.body || '')}</textarea>
+      <div class="bdg-mailc-pied"><button type="button" class="bdg-b bdg-b-petit" onclick="bdgTexteDePinlane(${jid})">Revenir au texte de Pinlane</button></div>
+    </section>`;
+  }
+  const vue = ancien && bdgVues[key] !== 'propre' ? 'changements' : 'propre';
+  const objetMarque = vue === 'changements' && ancien ? bdgMarques(ancien.objet, mail.objet) : null;
+  const corpsMarque = vue === 'changements' && ancien ? bdgMarques(ancien.corps, mail.corps) : null;
+  const reecrit = vue === 'changements' && ancien && ancien.corps !== mail.corps && !corpsMarque;
+  const parLeCode = carte && carte.source === 'code';
+  return `<section class="bdg-carte bdg-mailc" aria-label="Le mail au client">
+    <div class="bdg-carte-h"><p class="bdg-carte-type">Le mail au client</p>${ancien ? `<div class="bdg-vues" role="group" aria-label="Afficher le mail"><button type="button" aria-pressed="${vue === 'changements'}" onclick="bdgVueMail(${jid}, 'changements')">Ce qui change</button><button type="button" aria-pressed="${vue === 'propre'}" onclick="bdgVueMail(${jid}, 'propre')">Tel qu’il partira</button></div>` : ''}</div>
+    ${tete}
+    <p class="bdg-mailc-o">${objetMarque || escapeHtml(mail.objet || 'Sans objet')}</p>
+    <div class="bdg-mailc-c">${corpsMarque || escapeHtml(mail.corps)}</div>
+    ${reecrit ? '<p class="bdg-muet">Le texte est réécrit en entier.</p>' : ''}
+    ${parLeCode ? '<p class="bdg-muet">Ce mail suit le modèle du centre. Le texte de Pinlane ne passait pas le contrôle des chiffres.</p>' : ''}
+    ${figee ? '' : `<div class="bdg-mailc-pied"><button type="button" class="bdg-b bdg-b-petit" onclick="bdgModifierMail(${jid})">Modifier le texte</button></div>`}
+  </section>`;
+}
+// Ce qu il faut verifier avant d envoyer, quand Pinlane le signale.
+function bdgPoints(carte) {
+  const r = (carte && carte.resume) || {};
+  const points = (Array.isArray(r.points) ? r.points : []).map(p => bdgPhrase(p)).filter(Boolean);
+  if (!points.length) return '';
+  return `<div class="bdg-verif" role="note"><p class="bdg-verif-t">À vérifier avant d’envoyer</p><ul>${points.map(p => `<li>${escapeHtml(p)}</li>`).join('')}</ul></div>`;
+}
+
+function bdgModifierMail(id) {
+  const key = String(id);
+  const item = getStaffCustomRequestItems().find(entry => String(entry.id) === key);
+  const prep = item ? bdgPreparation(item) : null;
+  if (!prep || !prep.mail) return;
+  const mail = bdgMailDe(prep.mail);
+  const courant = staffRequestReplyState[key] && staffRequestReplyState[key].pinlane ? staffRequestReplyState[key] : null;
+  staffRequestReplyState[key] = { ...(courant || {}), pinlane: true, open: true, busy: false, subject: courant ? courant.subject : mail.objet, body: courant ? courant.body : mail.corps };
+  renderStaffRequestsIfOpen();
+  window.setTimeout(() => { const champ = document.getElementById(`reqBody-${key}`); if (champ) champ.focus({ preventScroll: false }); }, 40);
+}
+function bdgTexteDePinlane(id) {
+  const key = String(id);
+  if (staffRequestReplyState[key] && staffRequestReplyState[key].pinlane) delete staffRequestReplyState[key];
+  renderStaffRequestsIfOpen();
+}
+function bdgVueMail(id, vue) {
+  bdgVues[String(id)] = vue === 'propre' ? 'propre' : 'changements';
+  bdgRepeindre(String(id));
+}
+
+// ENVOYER LA PROPOSITION : le mail tel qu il est a l ecran, la reservation preparee avec lui (le
+// serveur la range dans le suivi, pour « Réserver ce qui a été proposé »), et le texte de Pinlane comme
+// original. Le meme envoi trace que le studio mails (sendDirectEmail) ; rien ne part sans ce clic.
+function bdgEnvoyer(id) {
+  if (!peutGeste('ecrire')) return;
+  const key = String(id);
+  const item = getStaffCustomRequestItems().find(entry => String(entry.id) === key);
+  const prep = item ? bdgPreparation(item) : null;
+  if (!item || !prep || !prep.mail) return;
+  const mail = bdgMailDe(prep.mail);
+  const action = prep.mail.action || {};
+  const courant = staffRequestReplyState[key] && staffRequestReplyState[key].pinlane ? staffRequestReplyState[key] : null;
+  const proposition = action.proposition && typeof action.proposition === 'object' ? action.proposition : bdgFormeResa(prep.reservation);
+  staffRequestReplyState[key] = {
+    ...(courant || {}),
+    pinlane: true,
+    open: Boolean(courant && courant.open),
+    subject: courant ? courant.subject : mail.objet,
+    body: courant ? courant.body : mail.corps,
+    draftSource: prep.mail.source === 'code' ? 'code' : 'ia',
+    draftOriginal: { subject: mail.objet, body: mail.corps },
+    ...(proposition ? { proposition } : {}),
+  };
+  staffRequestSendReply(id);
+}
+
+// LA CONSIGNE : une phrase, et trois idees a toucher. La frappe se garde : un repeint ne la perd pas.
+// Rien de prepare encore : on dit a Pinlane quoi proposer, plus quoi changer.
+function bdgConsigne(item, suggestions, { proposer = false } = {}) {
+  const key = String(item.id);
+  const jid = staffClientJs(item.id);
+  const sid = escapeHtml(key);
+  const v = bdgVivant[key] || {};
+  const idees = (Array.isArray(suggestions) ? suggestions : []).map(s => String(s || '').trim()).filter(Boolean).slice(0, 3);
+  const exemple = proposer ? 'Par exemple, bowling puis laser le samedi à 14:00' : 'Par exemple, le laser en deux groupes de 10 et 14';
+  return `<form class="bdg-consigne" onsubmit="bdgConsigneEnvoyee(event, ${jid})">
+    <label class="bdg-e" for="bdgC-${sid}">${proposer ? 'Dites à Pinlane ce qu’il faut proposer' : 'Dites à Pinlane ce qu’il faut changer'}</label>
+    <div class="bdg-consigne-l">
+      <input id="bdgC-${sid}" class="input" type="text" autocomplete="off" maxlength="600" placeholder="${exemple}" value="${escapeHtml(v.saisie || '')}" oninput="bdgFrappe(${jid}, this.value)">
+      <button type="submit" class="bdg-envoi" aria-label="Envoyer la consigne à Pinlane">${BDG_FLECHE}</button>
+    </div>
+    ${idees.length ? `<div class="bdg-idees">${idees.map(s => `<button type="button" class="bdg-idee" data-idee="${escapeHtml(s)}" onclick="bdgLancer(${jid}, this.dataset.idee)">${escapeHtml(s)}</button>`).join('')}</div>` : ''}
+  </form>`;
+}
+function bdgFrappe(id, valeur) {
+  const key = String(id);
+  const v = bdgVivant[key] || (bdgVivant[key] = {});
+  v.saisie = String(valeur || '');
+}
+// Une consigne envoyee pendant que Pinlane travaille remplace celle en cours (bdgLancer coupe l appel).
+function bdgConsigneEnvoyee(event, id) {
+  if (event) event.preventDefault();
+  const key = String(id);
+  const v = bdgVivant[key] || {};
+  const champ = document.getElementById(`bdgC-${key}`);
+  const texte = String((champ && champ.value) || v.saisie || '').trim();
+  if (!texte) { if (champ) champ.focus(); return; }
+  bdgLancer(id, texte);
+}
+
+// Les petits gestes que Pinlane propose (classer, noter) et la regle a retenir : rien ne se fait sans
+// le clic, avec les droits de la personne, dans le centre ouvert.
+function bdgGestesListe(item) {
+  const v = bdgVivant[String(item.id)];
+  const prep = bdgPreparation(item);
+  const gestes = [...((v && v.gestes) || [])];
+  if (prep && prep.geste && prep.geste.action && !(v && v.gestesVus)) {
+    const g = bdgGesteDe(prep.geste.action, prep.geste.resume && prep.geste.resume.texte);
+    if (g && !gestes.some(x => x.type === g.type)) gestes.push({ ...g, deLaPreparation: true });
+  }
+  return gestes;
+}
+// Un geste de la preparation enregistree passe dans ceux de ce poste au premier clic : son etat se garde.
+function bdgGestePris(id, rang) {
+  const key = String(id);
+  const item = getStaffCustomRequestItems().find(entry => String(entry.id) === key);
+  const g = item ? bdgGestesListe(item)[rang] : null;
+  if (!g) return null;
+  const v = bdgVivant[key] || (bdgVivant[key] = {});
+  if (!v.gestes) v.gestes = [];
+  if (g.deLaPreparation && !v.gestes.includes(g)) { v.gestes.push(g); v.gestesVus = true; }
+  return g;
+}
+function bdgGestesHtml(item, v) {
+  const jid = staffClientJs(item.id);
+  const html = bdgGestesListe(item).map((g, i) => {
+    if (g.etat === 'fait') return `<p class="bdg-pin-fait">${escapeHtml(g.fait || 'C’est fait.')}</p>`;
+    if (g.etat === 'non') return '';
+    const titre = g.type === 'note' ? 'Pinlane propose d’ajouter cette note au suivi.' : (g.status === 'archived' ? 'Pinlane propose de classer cette demande sans suite.' : 'Pinlane propose de changer l’étape de cette demande.');
+    const verbe = g.type === 'note' ? 'Ajouter la note' : (g.status === 'archived' ? 'Classer sans suite' : 'Changer l’étape');
+    return `<div class="bdg-petit-geste"><p>${escapeHtml(titre)}</p>${g.type === 'note' ? `<p class="bdg-petit-geste-x">« ${escapeHtml(g.note)} »</p>` : ''}<div class="bdg-actions"><button type="button" class="bdg-b bdg-b-petit" onclick="bdgGesteNon(${jid}, ${i})"${g.etat === 'cours' ? ' disabled' : ''}>Non merci</button><button type="button" class="bdg-b bdg-b-petit" onclick="bdgGesteFait(${jid}, ${i})"${g.etat === 'cours' ? ' disabled' : ''}>${escapeHtml(verbe)}</button></div></div>`;
+  }).join('');
+  const retenir = v && v.retenir && !v.retenu
+    ? `<div class="bdg-petit-geste"><p>Pinlane propose de retenir cette règle pour les prochaines demandes.</p><p class="bdg-petit-geste-x">« ${escapeHtml(v.retenir)} »</p><div class="bdg-actions"><button type="button" class="bdg-b bdg-b-petit" onclick="bdgPasRetenir(${jid})">Non merci</button><button type="button" class="bdg-b bdg-b-petit" onclick="bdgRetenir(${jid})"${v.retient ? ' disabled' : ''}>Retenir</button></div></div>`
+    : (v && v.retenu ? '<p class="bdg-pin-fait">Pinlane s’en souviendra pour les prochaines demandes.</p>' : '');
+  return html + retenir;
+}
+async function bdgGesteFait(id, rang) {
+  const key = String(id);
+  const g = bdgGestePris(id, rang);
+  if (!g || g.etat === 'cours') return;
+  g.etat = 'cours';
+  bdgRepeindre(key);
+  if (g.type === 'statut') {
+    const ok = await setStaffCustomRequestStatus(id, g.status, { suivre: true, silencieux: true });
+    g.etat = ok ? 'fait' : '';
+    g.fait = g.status === 'archived' ? 'Demande classée sans suite.' : 'Étape changée.';
+    if (!ok) toast('La demande n’a pas pu changer d’étape.');
+  } else {
+    try {
+      const payload = await apiRequest(API_ENDPOINTS.ops, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'customRequestNote', id, texte: g.note, centerId: getActiveOpsCenterId() }),
+      });
+      replaceStaffCustomRequest(payload && payload.customRequest, { id });
+      g.etat = 'fait';
+      g.fait = 'Note ajoutée au suivi.';
+    } catch (error) {
+      g.etat = '';
+      toast((error && error.message) || 'La note n’a pas pu s’enregistrer.');
+    }
   }
   renderStaffRequestsIfOpen();
-  // « Réserve » dit a Pinlane : la carte de confirmation s ouvre d elle-meme, rien ne se cree sans le clic.
-  const fin = staffRequestIa[key] || {};
-  if (texte && fin.rang === rang && fin.geste === 'reserver' && fin.proposition && peutGeste('reserver')) smReserver(id);
 }
-window.smIaLancer = smIaLancer;
-
-// RETENIR UNE REGLE (2026-11-11) : elle rejoint ce que le centre a appris (teachAgentFact), que Pinlane
-// relit pour les demandes et les mails suivants. Rien ne s apprend sans ce clic.
-async function smRetenir(id) {
+function bdgGesteNon(id, rang) {
+  const g = bdgGestePris(id, rang);
+  if (!g) return;
+  g.etat = 'non';
+  bdgRepeindre(String(id));
+}
+// RETENIR UNE REGLE : elle rejoint ce que le centre a appris (teachAgentFact), que Pinlane relit pour
+// les demandes et les mails suivants.
+async function bdgRetenir(id) {
   const key = String(id);
-  const etat = staffRequestIa[key] || {};
-  const regle = String(etat.aRetenir || '').trim();
-  if (!regle || etat.retient || !peutGeste('ecrire')) return;
-  staffRequestIa[key] = { ...etat, retient: true };
-  renderStaffRequestsIfOpen();
+  const v = bdgVivant[key] || {};
+  const regle = String(v.retenir || '').trim();
+  if (!regle || v.retient || !peutGeste('ecrire')) return;
+  v.retient = true;
+  bdgRepeindre(key);
   try {
     await apiRequest(API_ENDPOINTS.ops, {
       method: 'POST',
       body: JSON.stringify({ action: 'teachAgentFact', centerId: getActiveOpsCenterId(), question: `Règle de l’équipe pour les demandes de groupe : ${regle}`.slice(0, 300), reponse: regle }),
     });
-    staffRequestIa[key] = { ...(staffRequestIa[key] || {}), retient: false, aRetenir: '', retenu: true };
+    v.retenu = true;
   } catch (error) {
-    staffRequestIa[key] = { ...(staffRequestIa[key] || {}), retient: false };
     toast((error && error.message) || 'Pinlane n’a pas pu retenir cette règle.');
   }
-  renderStaffRequestsIfOpen();
+  v.retient = false;
+  bdgRepeindre(key);
 }
-window.smRetenir = smRetenir;
-function smPasRetenir(id) {
-  const key = String(id);
-  staffRequestIa[key] = { ...(staffRequestIa[key] || {}), aRetenir: '' };
-  renderStaffRequestsIfOpen();
-}
-window.smPasRetenir = smPasRetenir;
-
-// CLASSER OU NOTER SUR UN MOT (2026-11-11) : « laisse tomber » ou « note que… » se propose sur la fiche.
-// Rien ne se fait sans ce clic, et le serveur revoit les droits et le centre (api/ops.js).
-async function smGesteDit(id) {
-  const key = String(id);
-  const etat = staffRequestIa[key] || {};
-  const noter = etat.geste === 'noter' && Boolean(etat.note);
-  if (etat.gesteEnCours || (etat.geste !== 'sans_suite' && !noter)) return;
-  staffRequestIa[key] = { ...etat, gesteEnCours: true };
-  renderStaffRequestsIfOpen();
-  let fait = '';
-  if (!noter) {
-    if (await setStaffCustomRequestStatus(id, 'archived', { suivre: true })) fait = 'Demande classée sans suite.';
-  } else {
-    try {
-      const payload = await apiRequest(API_ENDPOINTS.ops, {
-        method: 'POST',
-        body: JSON.stringify({ action: 'customRequestNote', id, texte: etat.note, centerId: getActiveOpsCenterId() }),
-      });
-      replaceStaffCustomRequest(payload && payload.customRequest, { id });
-      fait = 'Note ajoutée au suivi.';
-    } catch (error) {
-      toast((error && error.message) || 'Note non enregistrée.');
-    }
-  }
-  staffRequestIa[key] = { ...(staffRequestIa[key] || {}), gesteEnCours: false, ...(fait ? { geste: '', note: '', gesteFait: fait } : {}) };
-  renderStaffRequestsIfOpen();
-}
-window.smGesteDit = smGesteDit;
-function smGesteNon(id) {
-  const key = String(id);
-  staffRequestIa[key] = { ...(staffRequestIa[key] || {}), geste: '', note: '' };
-  renderStaffRequestsIfOpen();
-}
-window.smGesteNon = smGesteNon;
-
-function smIaConsigne(event, id) {
-  if (event) event.preventDefault();
-  const etat = staffRequestIa[String(id)] || {};
-  const champ = document.getElementById(`smIaC-${String(id)}`);
-  const texte = String((champ && champ.value) || etat.saisie || '').trim();
-  if (!texte || etat.lit) { if (champ) champ.focus(); return; }
-  smIaLancer(id, texte);
-}
-window.smIaConsigne = smIaConsigne;
-
-// La frappe se garde : un repeint de la page (un mail qui arrive) ne la perd pas.
-function smIaFrappe(id, valeur) {
-  const key = String(id);
-  staffRequestIa[key] = { ...(staffRequestIa[key] || {}), saisie: String(valeur || '') };
-}
-window.smIaFrappe = smIaFrappe;
-
-// Le jour sans l annee, qui allonge pour rien : « Dimanche 6 décembre ».
-function smJourLong(iso) {
-  const j = staffRequestDateOf(iso);
-  const t = j ? j.toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' }) : String(iso || '');
-  return t.charAt(0).toUpperCase() + t.slice(1);
+function bdgPasRetenir(id) {
+  const v = bdgVivant[String(id)];
+  if (v) v.retenir = '';
+  bdgRepeindre(String(id));
 }
 
-// « Bowling + Laser Game » se dit « Bowling et Laser Game ».
-function smEnPhrase(nom) {
-  const parts = String(nom || '').split(' + ').map(x => x.trim()).filter(Boolean);
-  return parts.length > 1 ? `${parts.slice(0, -1).join(', ')} et ${parts[parts.length - 1]}` : parts.join('');
-}
-
-// Ce qui part au client, en trois lignes : quand, quoi, combien.
-function renderSmPropositionIa(item, p) {
-  const d = crDemande(item);
-  const quand = `${smJourLong(p.date)}, ${p.fin ? `de ${p.heure} à ${p.fin}` : `à ${p.heure}`}`;
-  const quoi = `${smEnPhrase(p.nom)}${p.joueurs ? ` pour ${p.joueurs} joueur${p.joueurs > 1 ? 's' : ''}` : ''}`;
-  const budget = d ? Number(d.budgetPerPerson) || 0 : 0;
-  const ecart = budget && p.parJoueur != null ? Math.round((Number(p.parJoueur) - budget) * 100) / 100 : null;
-  const situe = ecart == null ? '' : ecart > 0 ? ` C’est ${escapeHtml(staffRequestEuro(ecart))} de plus par personne que leur budget.` : ' C’est dans leur budget.';
-  const prix = p.prix != null
-    ? `<b>${escapeHtml(staffRequestEuro(p.prix))}</b>${p.parJoueur != null ? `, soit ${escapeHtml(staffRequestEuro(p.parJoueur))} par joueur.` : '.'}${situe}`
-    : 'Prix à confirmer avec l’équipe.';
-  return `<div class="sm-ia-p">
-    <p class="sm-ia-quand">${escapeHtml(quand)}</p>
-    <p class="sm-ia-quoi">${escapeHtml(quoi)}</p>
-    ${smExtrasTexte(p) ? `<p class="sm-ia-extras">${escapeHtml(smExtrasTexte(p))}</p>` : ''}
-    <p class="sm-ia-prix">${prix}</p>
-    <button type="button" class="sm-lien sm-ia-plan" onclick="openStaffRequestDay('${escapeJsString(p.date)}')">Voir le planning de ce jour</button>
-  </div>`;
-}
-
-// Ce que dit Pinlane pendant qu il travaille : la demande ou la consigne, jamais une roue qui tourne.
-function smIaAttente(item, etat) {
-  if (etat.consigne) return `Pinlane refait la proposition avec « ${etat.consigne} ».`;
-  const d = crDemande(item);
-  const joueurs = d ? Number(d.participants) || 0 : 0;
-  return d && !d.flexible && staffRequestDateOf(d.date)
-    ? `Pinlane étudie le ${smJourLong(d.date).toLowerCase()}${joueurs ? ` pour ${joueurs} joueurs` : ''}.`
-    : 'Pinlane lit la demande.';
-}
-
-// PINLANE PROPOSE, puis le mail. Hors de ce travail (reponse partie, reservation faite), la suite de
-// la demande telle qu elle etait.
-function renderSmPinlane(item) {
+// == LES AUTRES ETAPES DE LA COLONNE ==
+// La proposition est partie : elle attend le client. Le geste principal reserve ce qui lui a ete
+// propose ; « Préparer une autre proposition » rend la main a Pinlane.
+function bdgPinEnAttente(item) {
   const jid = staffClientJs(item.id);
-  // La reservation faite depuis cette fiche : sa carte prend la place de la suite.
-  if (staffRequestResa[String(item.id)] && staffRequestResa[String(item.id)].faite) return renderSmResa(item);
-  if (!smIaActif(item)) {
-    const suite = renderSmReponse(item);
-    if (suite) return `${suite}${renderSmResa(item)}`;
-    const bande = renderSmBande(item);
-    const creer = staffRequestStage(item) === 'a-traiter' && peutGeste('reserver') ? `<div class="sm-actions"><button type="button" class="sm-p" onclick="staffRequestToBooking(${jid})">Créer la réservation</button></div>` : '';
-    return bande || creer ? `<section class="sm-s sm-reponse sm-suivi"><h3>Suivi</h3>${bande}${creer}</section>` : '';
+  const suivi = item.suivi || {};
+  const r = suivi.derniereReponse;
+  const envoyee = bdgPropositionEnvoyee(item);
+  const dit = `${r ? `${envoyee ? 'Proposition envoyée' : 'Réponse envoyée'} ${escapeHtml(staffRequestMoment(r.le))}${r.par ? ` par ${escapeHtml(r.par)}` : ''}. ` : ''}Le client n’a pas encore répondu.`;
+  const carte = envoyee ? bdgCarteEnvoyee(item, envoyee) : '';
+  const reserver = peutGeste('reserver');
+  const corps = `${bdgPinTete(dit)}${carte}${envoyee ? '' : '<p class="bdg-pin-alerte">Aucune réservation n’est partie avec cette réponse.</p>'}`;
+  const pied = [
+    bdgPinlaneDispo() && crDemande(item) ? `<button type="button" class="bdg-b" onclick="bdgAutreProposition(${jid})">Préparer une autre proposition</button>` : '',
+    reserver ? (envoyee
+      ? `<button type="button" class="bdg-p" onclick="bdgReserver(${jid}, 'envoyee')">Réserver ce qui a été proposé</button>`
+      : `<button type="button" class="bdg-p" onclick="staffRequestToBooking(${jid})">Créer la réservation</button>`) : '',
+  ].join('');
+  return { corps, pied };
+}
+
+// La proposition partie avec le dernier mail : la forme de la v5 (la reservation de Pinlane), ou celle
+// d avant (une offre et une heure), que le serveur sait encore reserver.
+function bdgPropositionEnvoyee(item) {
+  const p = item.suivi && item.suivi.proposition;
+  if (!p || typeof p !== 'object') return null;
+  if (p.startTime || Array.isArray(p.programme)) return { forme: 'reservation', valeur: p };
+  if (p.date && p.heure) return { forme: 'proposition', valeur: p };
+  return null;
+}
+// La carte de ce qui est parti, lue sur la forme gardee dans le suivi. La preparation de Pinlane qui
+// l a donnee, quand elle est encore la, en dit les heures de chaque activite et le prix.
+function bdgCarteEnvoyee(item, envoyee) {
+  const p = envoyee.valeur;
+  const prep = item.suivi && item.suivi.pinlane;
+  const sienne = prep && prep.reservation ? bdgFormeResa(prep.reservation) : null;
+  if (envoyee.forme === 'reservation' && sienne && sienne.date === p.date && sienne.startTime === p.startTime && Number(sienne.pax) === Number(p.pax)) {
+    return bdgCarteResa(item, { resume: prep.reservation.resume, action: { reservation: p } }, null, { titre: 'La proposition envoyée', verifiee: false });
   }
-  const sid = escapeHtml(String(item.id));
-  const key = String(item.id);
-  const etat = staffRequestIa[key] || (crDemande(item) ? { lit: true } : {});
-  const reserve = peutGeste('reserver');
-  const p = etat.proposition || null;
-  let corps;
-  if (etat.lit) corps = `<p class="sm-ia-lit" role="status">${escapeHtml(smIaAttente(item, etat))}</p>`;
-  else if (etat.erreur && !etat.pret) corps = `<p class="sm-note">${escapeHtml(etat.erreur)} <button type="button" class="sm-lien" onclick="smIaLancer(${jid}, '')">Réessayer</button></p>`;
-  else if (!etat.pret) corps = '<p class="sm-ia-lit">Cette demande n’a pas de formulaire détaillé. Dites à Pinlane ce qu’il faut proposer, il prépare la proposition et le mail.</p>';
-  else corps = `${p ? renderSmPropositionIa(item, p) : '<p class="sm-ia-lit">Pinlane n’a rien à proposer sans autre précision. Dites-lui ce qu’il faut proposer, ou lisez le mail ci-dessous.</p>'}
-    ${etat.pourquoi ? `<p class="sm-ia-pq">${escapeHtml(etat.pourquoi)}</p>` : ''}
-    ${etat.geste === 'reserver' && !etat.derniere ? '<p class="sm-ia-oui">Le client est d’accord dans son dernier mail : il reste à réserver.</p>' : ''}
-    ${etat.aRetenir ? `<div class="sm-ia-ret"><p>À retenir pour les prochaines demandes : « ${escapeHtml(etat.aRetenir)} »</p><div class="sm-ia-ret-g"><button type="button" class="sm-b" onclick="smRetenir(${jid})"${etat.retient ? ' disabled' : ''}>Retenir</button><button type="button" class="sm-lien" onclick="smPasRetenir(${jid})">Non</button></div></div>` : ''}
-    ${etat.retenu ? '<p class="sm-ia-pq">Pinlane s’en souviendra pour les prochaines demandes.</p>' : ''}
-    ${etat.geste === 'sans_suite' || (etat.geste === 'noter' && etat.note) ? `<div class="sm-ia-ret sm-ia-geste"><p>${etat.geste === 'noter' ? `Noter dans le suivi : « ${escapeHtml(etat.note)} »` : `${etat.derniere ? '' : 'Le client renonce dans son dernier mail. '}Classer cette demande sans suite ?`}</p><div class="sm-ia-ret-g"><button type="button" class="sm-b" onclick="smGesteDit(${jid})"${etat.gesteEnCours ? ' disabled' : ''}>${etat.geste === 'noter' ? 'Noter' : 'Classer sans suite'}</button><button type="button" class="sm-lien" onclick="smGesteNon(${jid})">Non</button></div></div>` : ''}
-    ${etat.gesteFait ? `<p class="sm-ia-pq">${escapeHtml(etat.gesteFait)}</p>` : ''}
-    ${etat.derniere && etat.suivie === false ? `<p class="sm-note">Pinlane n’a pas pu suivre « ${escapeHtml(etat.derniere)} ». Réessayez dans un instant.</p>` : ''}
-    ${etat.erreur ? `<p class="sm-note">${escapeHtml(etat.erreur)}</p>` : ''}`;
-  const idees = !etat.lit && Array.isArray(etat.suggestions) && etat.suggestions.length
-    ? `<div class="sm-ia-s">${etat.suggestions.map(s => `<button type="button" class="sm-ia-sg" onclick="smIaLancer(${jid}, '${escapeJsString(s)}')">${escapeHtml(s)}</button>`).join('')}</div>`
+  if (envoyee.forme === 'reservation') {
+    const lignes = (Array.isArray(p.programme) ? p.programme : []).map((l) => {
+      const act = typeof getCenterActivity === 'function' ? getCenterActivity(l.activityId) : null;
+      const detail = [
+        l.duration ? `${String(l.duration).replace('.', ',')} h` : '',
+        l.games ? `${l.games} partie${l.games > 1 ? 's' : ''}` : '',
+        l.participants ? `${l.participants} joueur${l.participants > 1 ? 's' : ''}${Array.isArray(l.groupes) && l.groupes.length > 1 ? ` en ${l.groupes.length} groupes (${l.groupes.join(' puis ')})` : ''}` : '',
+      ].filter(Boolean).join(', ');
+      return { activite: l.activityId, nom: (act && act.name) || l.activityId, detail };
+    });
+    const resume = { date: p.date, heure: p.startTime, joueurs: p.pax, lignes, prix: p.prix, ...(p.raisonPrix ? { prixNegocie: true, prixRaison: p.raisonPrix } : {}), note: p.note };
+    return bdgCarteResa(item, { resume, action: { reservation: p } }, null, { titre: 'La proposition envoyée', verifiee: false });
+  }
+  const resume = { date: p.date, heure: p.heure, fin: p.fin || '', joueurs: p.joueurs, lignes: p.nom ? [{ nom: String(p.nom).split(' + ').join(' et '), detail: '' }] : [], prix: p.prix };
+  return bdgCarteResa(item, { resume, action: { reservation: { date: p.date, startTime: p.heure } } }, null, { titre: 'La proposition envoyée', verifiee: false });
+}
+
+function bdgAutreProposition(id) {
+  const item = getStaffCustomRequestItems().find(entry => String(entry.id) === String(id));
+  const r = item && item.suivi && item.suivi.derniereReponse;
+  bdgAutre[String(id)] = String((r && r.le) || 'oui');
+  renderStaffRequestsIfOpen();
+  window.setTimeout(() => { const champ = document.getElementById(`bdgC-${String(id)}`); if (champ) champ.focus({ preventScroll: false }); }, 60);
+}
+
+// RESERVER : le premier toucher demande au serveur ce que la reservation donnerait, sans rien creer ;
+// la carte le relit et seul « Confirmer la réservation » la cree, avec la confirmation au client.
+function bdgQuoiReserver(item, depuis) {
+  if (depuis === 'envoyee') {
+    const envoyee = bdgPropositionEnvoyee(item);
+    if (!envoyee) return null;
+    return envoyee.forme === 'reservation' ? { reservation: envoyee.valeur } : { proposition: envoyee.valeur };
+  }
+  const prep = bdgPreparation(item);
+  const forme = prep ? bdgFormeResa(prep.reservation) : null;
+  return forme ? { reservation: forme } : null;
+}
+async function bdgReserver(id, depuis = 'pinlane', confirme = false) {
+  if (!peutGeste('reserver')) return;
+  const key = String(id);
+  const item = getStaffCustomRequestItems().find(entry => String(entry.id) === key);
+  if (!item) return;
+  const avant = bdgResa[key] || {};
+  if (avant.cours || avant.faite) return;
+  const quoi = confirme && avant.quoi ? avant.quoi : bdgQuoiReserver(item, depuis);
+  // Rien de prepare : la fenetre Reserver s ouvre preremplie, par-dessus la page.
+  if (!quoi) { staffRequestToBooking(id); return; }
+  bdgResa[key] = { ...avant, depuis: confirme ? avant.depuis : depuis, quoi, cours: true, confirme, erreur: '' };
+  renderStaffRequestsIfOpen();
+  try {
+    const r = await apiRequest(API_ENDPOINTS.ops, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'customRequestBook', id: item.id, centerId: getActiveOpsCenterId(), ...quoi, confirme }),
+    });
+    if (r && r.simulation === false && r.reservation) {
+      bdgResa[key] = { depuis: bdgResa[key].depuis, quoi, faite: true, resume: r.resume || avant.resume || null, reservation: r.reservation, confirmation: Boolean(r.confirmation) };
+      replaceStaffCustomRequest(r.demande, { id: item.id, status: 'handled' });
+      followStaffRequest(item.id);
+      if (r.reservation.date && typeof syncDateReservations === 'function') syncDateReservations(r.reservation.date, { silent: true, skipRender: true }).catch(() => {});
+      loadStaffCustomRequests(true);
+    } else {
+      bdgResa[key] = { depuis: bdgResa[key].depuis, quoi, resume: (r && r.resume) || null };
+    }
+  } catch (error) {
+    bdgResa[key] = { ...avant, depuis: (bdgResa[key] || {}).depuis || depuis, quoi, cours: false, erreur: bdgPhrase((error && error.message) || 'La réservation n’a pas pu se faire. Réessayez.') };
+  }
+  renderStaffRequestsIfOpen();
+}
+function bdgReserverFermer(id) {
+  delete bdgResa[String(id)];
+  renderStaffRequestsIfOpen();
+}
+// Tout regler a la main : la fenetre Reserver s ouvre avec la reservation de la carte.
+function bdgDansReserver(id) {
+  const e = bdgResa[String(id)] || {};
+  const quoi = e.quoi || {};
+  staffRequestToBooking(id, quoi.reservation ? { reservation: quoi.reservation } : (quoi.proposition ? { proposition: quoi.proposition } : {}));
+}
+
+// LA SIMULATION : ce qui sera cree, ce qui l empeche, et le seul bouton qui cree.
+function bdgPinSimulation(item, e) {
+  const jid = staffClientJs(item.id);
+  const r = e.resume || null;
+  const conflits = r && Array.isArray(r.conflits) ? r.conflits.filter(Boolean) : [];
+  const bloque = !r || e.cours || Boolean(r.refus) || conflits.length > 0 || r.disponible === false;
+  const email = (r && r.email) || item.email || '';
+  const quoi = e.quoi || {};
+  const forme = quoi.reservation || null;
+  const carte = r
+    ? bdgCarteResa(item, { resume: { ...r, ...(r.lignes ? {} : { lignes: r.nom ? [{ nom: String(r.nom).split(' + ').join(' et '), detail: (Array.isArray(r.pistes) && r.pistes.length ? `piste${r.pistes.length > 1 ? 's' : ''} ${r.pistes.join(', ')}` : '') }] : [] }) }, action: { reservation: forme || { date: r.date, startTime: r.heure } } }, null, { titre: 'La réservation à créer', verifiee: !bloque })
     : '';
-  const consigne = `<form class="sm-ia-c" onsubmit="smIaConsigne(event, ${jid})">
-      <label class="sm-e" for="smIaC-${sid}">Dites à Pinlane ce qu’il faut changer</label>
-      <div class="sm-ia-l">
-        <input id="smIaC-${sid}" class="input" type="text" autocomplete="off" maxlength="400" placeholder="Par exemple « plutôt 15 h », « 20 € par personne » ou « le samedi d’après »" value="${escapeHtml(etat.saisie || '')}" oninput="smIaFrappe(${jid}, this.value)"${etat.lit ? ' readonly' : ''}>
-        <button type="submit" class="sm-p"${etat.lit ? ' disabled' : ''}>Changer</button>
-      </div>
-      ${idees}
-    </form>`;
-  const reply = staffRequestReplyState[key] || {};
-  // Sans proposition prete (pas de formulaire, panne, rien a proposer) ou sans son mail, l equipe garde
-  // ses deux gestes : ecrire elle-meme, reserver. Quand le mail de la proposition est la, il les porte.
-  const ecrire = item.email && !reply.open && !etat.lit ? `<button type="button" class="sm-b" onclick="toggleStaffRequestReply(${jid})">Écrire au client</button>` : '';
-  // Avec une proposition, « Créer la réservation » la reserve telle quelle (carte de confirmation) ;
-  // sans elle, la fenetre Reserver s ouvre preremplie.
-  const carte = renderSmResa(item);
-  const reserver = reserve && !etat.lit && !carte && !(p && (reply.open || !item.email)) ? `<button type="button" class="${p ? 'sm-p' : 'sm-b'}" onclick="${p ? 'smReserver' : 'staffRequestToBooking'}(${jid})">Créer la réservation</button>` : '';
-  const gestes = ecrire || reserver ? `<div class="sm-actions sm-ia-g">${ecrire}${reserver}</div>` : '';
-  const mail = item.email
-    ? (reply.open ? `<section class="sm-s sm-mail"><h3>Le mail au client</h3>${renderSmCourrier(item, reply, p, reserve && !carte, { resume: false, annuler: !p })}</section>` : '')
-    : `<section class="sm-s sm-mail"><h3>Le client</h3><p class="sm-note">Pas d’adresse e-mail pour cette demande.${item.phone ? ` Appelez le ${escapeHtml(item.phone)}.` : ''}</p>${p && reserve && !carte ? `<div class="sm-actions"><button type="button" class="sm-p" onclick="smReserver(${jid})">Le client accepte, créer la réservation</button></div>` : ''}</section>`;
-  return `<section class="sm-s sm-ia" id="smIa-${sid}"><h3>Pinlane propose</h3>${renderSmBande(item)}${corps}${consigne}${gestes}</section>${carte}${mail}`;
+  const dit = e.cours
+    ? (e.confirme ? 'Pinlane crée la réservation.' : 'Pinlane vérifie la réservation sur le planning.')
+    : (bloque ? 'Cette réservation ne peut pas se créer telle quelle.' : 'Pinlane a vérifié cette réservation sur le planning à l’instant. Rien n’est créé avant votre clic.');
+  const mot = r && !bloque ? (email ? `La confirmation partira au client par e-mail, à ${email}.` : 'Pas d’adresse e-mail pour ce client. La confirmation ne partira pas.') : '';
+  const corps = `${bdgPinTete(dit, { role: 'status' })}
+    ${carte}
+    ${e.erreur ? `<p class="bdg-pin-alerte">${escapeHtml(e.erreur)}</p>` : ''}
+    ${bloque && r ? '<p class="bdg-pin-alerte">Dites à Pinlane une autre heure, ou ouvrez Réserver pour la régler à la main.</p>' : ''}
+    ${mot ? `<p class="bdg-pin-mot">${escapeHtml(mot)}</p>` : ''}`;
+  const pied = [
+    `<button type="button" class="bdg-b" onclick="bdgReserverFermer(${jid})"${e.cours ? ' disabled' : ''}>Annuler</button>`,
+    `<button type="button" class="bdg-b" onclick="bdgDansReserver(${jid})"${e.cours ? ' disabled' : ''}>Modifier dans Réserver</button>`,
+    `<button type="button" class="bdg-p" onclick="bdgReserver(${jid}, '', true)"${bloque ? ' disabled' : ''}>${e.cours && e.confirme ? 'Création…' : 'Confirmer la réservation'}</button>`,
+  ].join('');
+  return { corps, pied };
 }
 
-// Ce que le client a rempli, ligne par ligne, avec ses mots a lui.
-const SM_PHOTOS = {
-  libramont: [[/duck/i, 'duckpin'], [/bowling/i, 'pistes-neon'], [/laser/i, 'laser-joueur'], [/golf/i, 'minigolf'], [/arcade/i, 'arcades'], [/billard/i, 'billards-libramont'], [/pixel|fun.?run/i, 'fun-run'], [/simulateur/i, 'simulateurs'], [/plaine/i, 'plaine'], [/formule|kids|anniv/i, 'salle-bowling']],
-  gembloux: [[/bowling/i, 'gembloux-bowling'], [/laser/i, 'gembloux-laser'], [/golf/i, 'gembloux-minigolf'], [/arcade/i, 'gembloux-arcades'], [/billard/i, 'gembloux-billard'], [/formule|kids|anniv/i, 'gembloux-bowling']],
-};
-function smPhotoDe(nom, centerId, classe = 'sm-photo') {
-  const trouve = (SM_PHOTOS[String(centerId || '')] || []).find(([motif]) => motif.test(String(nom || '')));
-  return trouve ? `<img class="${classe}" src="/assets/fungalaxy/${trouve[1]}-carte.webp" alt="" loading="lazy" decoding="async" width="84" height="56" />` : '';
-}
-
-// LA DEMANDE : en haut les trois chiffres qui decident (quand, combien, quel budget), puis ce qu ils
-// veulent faire avec la photo du centre, puis leur message tel qu ils l ont ecrit.
-function renderSmDemande(item) {
-  const d = crDemande(item);
-  const message = String(item.message || '').trim();
-  const mot = message ? `<blockquote class="sm-dem-mot"><span>Leur message</span>${escapeHtml(message)}</blockquote>` : '';
-  // LEURS ENVIES EN EVIDENCE (2026-11-11, Ansar : « mettre en evidence bien visible les choses qu ils
-  // veulent ») : une etiquette, la valeur en grand ; ce qu ils veulent faire en pastilles.
-  const rangee = (etiquette, valeur, classe = '') => (valeur ? `<div class="sm-dem-r${classe ? ` ${classe}` : ''}"><dt>${etiquette}</dt><dd>${valeur}</dd></div>` : '');
-  if (!d) {
-    const pax = Number(item.pax) || 0;
-    return `<section class="sm-s sm-demande"><h3>Ce qu’ils demandent</h3>
-      <dl class="sm-dem">
-        ${rangee('Quand', item.requestedDate ? escapeHtml(item.requestedDate) : '<span class="sm-dem-vide">Date pas indiquée</span>', 'is-fort')}
-        ${rangee('Qui', pax ? `${pax} personne${pax > 1 ? 's' : ''}` : '<span class="sm-dem-vide">Nombre pas indiqué</span>', 'is-fort')}
-      </dl>
-      ${mot}
-    </section>`;
+// RESERVEE : la reservation nee de la demande, en fenetre au toucher.
+function bdgPinReservee(item, e) {
+  const jid = staffClientJs(item.id);
+  const suivi = item.suivi || {};
+  const historique = Array.isArray(suivi.historique) ? suivi.historique : [];
+  const evenement = historique.filter(x => x.type === 'reservation').slice(-1)[0] || null;
+  const numero = (e && e.reservation && e.reservation.id) || (evenement && evenement.reservationId) || suivi.reservationId || null;
+  if (!numero) {
+    const statut = historique.filter(x => x.type === 'statut' && x.statut === 'handled').slice(-1)[0];
+    const dit = `Demande terminée${statut ? ` ${escapeHtml(staffRequestMoment(statut.le))}${statut.par ? ` par ${escapeHtml(statut.par)}` : ''}` : ''}, sans réservation liée.`;
+    return { corps: bdgPinTete(dit), pied: '' };
   }
-  const joueurs = Number(d.participants) || 0;
-  const accompagnants = Number(d.companions) || 0;
-  const ages = (Array.isArray(d.ages) ? d.ages : []).map(cle => String(CR_AGE_LABELS[cle] || '').toLowerCase()).filter(Boolean).join(', ');
-  const moment = ({ matin: 'le matin', 'apres-midi': 'l’après-midi', soiree: 'en soirée', journee: 'toute la journée' })[d.moment] || '';
-  const qui = `${joueurs} joueur${joueurs > 1 ? 's' : ''}${ages ? ` de ${escapeHtml(ages)}` : ''}${accompagnants ? ` et ${accompagnants} accompagnateur${accompagnants > 1 ? 's' : ''}` : ''}.`;
-  const quand = d.flexible
-    ? `Date à fixer${d.period ? `, plutôt ${escapeHtml(d.period)}` : ''}`
-    : `${escapeHtml(smJourLong(d.date))}${moment ? ` ${moment}` : ''}`;
-  const autre = !d.flexible && d.alternativeDate ? ` <small>ou le ${escapeHtml(smJourLong(d.alternativeDate).toLowerCase())}</small>` : '';
-  const envies = [...crNoms(d.formulas), ...(Array.isArray(d.activities) ? d.activities : []).filter(a => a && a.name).map(a => a.name)];
-  const pastilles = [
-    ...envies.map(nom => `<span class="sm-dem-envie">${escapeHtml(nom)}</span>`),
-    d.advice ? '<span class="sm-dem-envie is-conseil">Ils demandent conseil</span>' : '',
-  ].filter(Boolean).join(' ');
-  const parPersonne = Number(d.budgetPerPerson) || 0;
-  const budget = parPersonne > 0 ? `${escapeHtml(staffRequestEuro(parPersonne))} par personne${joueurs ? ` <small>soit ${escapeHtml(staffRequestEuro(Math.round(parPersonne * joueurs * 100) / 100))} pour ${joueurs} joueurs</small>` : ''}` : '';
-  const groupe = [d.groupTypeLabel, d.organisation].map(x => String(x || '').trim()).filter(Boolean).map(escapeHtml).join(' · ');
-  return `<section class="sm-s sm-demande"><h3>Ce qu’ils demandent</h3>
-    <dl class="sm-dem">
-      ${rangee('Quand', `${quand}${autre}`, 'is-fort')}
-      ${rangee('Qui', qui.replace(/\.$/, ''), 'is-fort')}
-      ${rangee('Envies', pastilles ? `<span class="sm-dem-envies">${pastilles}</span>` : 'Programme à composer avec eux')}
-      ${rangee('Budget', budget)}
-      ${rangee('Groupe', `${groupe}${d.invoice ? (groupe ? ' <small>Facture demandée</small>' : 'Facture demandée') : ''}`)}
-    </dl>
-    ${mot}
-  </section>`;
+  const quand = e ? 'à l’instant' : (evenement ? staffRequestMoment(evenement.le) : '');
+  const par = !e && evenement && evenement.par ? ` par ${evenement.par}` : '';
+  const dit = `Réservation n° ${escapeHtml(String(numero))} créée${quand ? ` ${escapeHtml(quand)}` : ''}${escapeHtml(par)}.`;
+  const v = e && e.reservation ? e.reservation : {};
+  const mot = e ? (e.confirmation && v.email ? `La confirmation part au client par e-mail, à ${v.email}.` : `Pas d’e-mail pour ce client. Prévenez-le${item.phone ? ` au ${item.phone}` : ''}.`) : '';
+  const envoyee = bdgPropositionEnvoyee(item);
+  const carte = e && e.resume
+    ? bdgCarteResa(item, { resume: e.resume, action: { reservation: (e.quoi && e.quoi.reservation) || { date: e.resume.date || v.date, startTime: e.resume.heure || v.startTime } } }, null, { titre: 'La réservation créée', verifiee: false })
+    : (envoyee ? bdgCarteEnvoyee(item, envoyee) : '');
+  const corps = `${bdgPinTete(dit, { role: e ? 'status' : '' })}${mot ? `<p class="bdg-pin-mot">${escapeHtml(mot)}</p>` : ''}${carte}`;
+  // Le numero ouvre la reservation en fenetre, par-dessus la demande.
+  const pied = `<button type="button" class="bdg-p" onclick="ouvrirReservationNumero(${staffClientJs(numero)})">Voir la réservation</button>`;
+  return { corps, pied };
 }
+
+function bdgPinSansSuite(item) {
+  const historique = item.suivi && Array.isArray(item.suivi.historique) ? item.suivi.historique : [];
+  const statut = historique.filter(x => x.type === 'statut' && x.statut === 'archived').slice(-1)[0];
+  const dit = `Demande classée sans suite${statut ? ` ${escapeHtml(staffRequestMoment(statut.le))}${statut.par ? ` par ${escapeHtml(statut.par)}` : ''}` : ''}. Rouvrez-la pour lui proposer autre chose.`;
+  return { corps: bdgPinTete(dit), pied: '' };
+}
+
+// UN ROLE SANS DROIT D ENVOI : Pinlane prepare pour les roles qui ecrivent aux clients.
+function bdgPinSansDroit(item) {
+  const jid = staffClientJs(item.id);
+  const demo = typeof isDemoRoute === 'function' && isDemoRoute();
+  const dit = demo ? 'Pinlane ne prépare rien dans la démonstration.' : 'Votre rôle ne permet pas d’écrire aux clients. Pinlane prépare la réponse pour les rôles qui envoient les mails.';
+  const pied = peutGeste('reserver') ? `<button type="button" class="bdg-p" onclick="staffRequestToBooking(${jid})">Créer la réservation</button>` : '';
+  return { corps: bdgPinTete(dit), pied };
+}
+
+// PINLANE N EST PAS LA (pas de cle, plafond, panne) : la page le dit en une phrase, les gestes restent
+// a la main, le mail du code et la fenetre Reserver.
+function bdgPinIndisponible(item, v) {
+  const jid = staffClientJs(item.id);
+  const raison = v && v.erreur ? v.erreur : 'Pinlane n’est pas disponible pour le moment.';
+  const corps = `${bdgPinTete(`${escapeHtml(raison)} Les gestes restent à la main.`, { role: 'status' })}
+    <p class="bdg-pin-reessai"><button type="button" class="bdg-b bdg-b-petit" onclick="bdgLancer(${jid}, ${staffClientJs((v && v.derniere) || '')})">Réessayer avec Pinlane</button></p>`;
+  const pied = [
+    peutGeste('reserver') ? `<button type="button" class="bdg-b" onclick="staffRequestToBooking(${jid})">Créer la réservation</button>` : '',
+    item.email ? `<button type="button" class="bdg-p" onclick="startStaffRequestDraft(${jid})">Écrire au client</button>` : '',
+  ].join('');
+  return { corps, pied };
+}
+
+// RIEN DE PREPARE : ce que Pinlane en dit (un jour ferme, un planning plein), et la consigne attend.
+function bdgPinRien(item, v) {
+  const jid = staffClientJs(item.id);
+  const mot = bdgSansRenvois(v.texteFin || '');
+  const dit = mot ? escapeHtml(bdgPhrase(mot)) : 'Rien n’est préparé pour cette demande. Dites à Pinlane ce qu’il faut proposer.';
+  const corps = `${bdgPinTete(dit)}${bdgConsigne(item, [], { proposer: true })}`;
+  const pied = [
+    peutGeste('reserver') ? `<button type="button" class="bdg-b" onclick="staffRequestToBooking(${jid})">Créer la réservation</button>` : '',
+    item.email && peutGeste('ecrire') ? `<button type="button" class="bdg-b" onclick="startStaffRequestDraft(${jid})">Écrire au client</button>` : '',
+  ].join('');
+  return { corps, pied };
+}
+
+// LA DEMANDE DE L ANCIENNE FENETRE, sans formulaire : Pinlane attend qu on lui dise quoi proposer.
+// « Écrire au client » ouvre un mail vierge et ses deux departs (sans formulaire, le modele du centre
+// n a rien a remplir).
+function bdgPinSansFormulaire(item) {
+  const jid = staffClientJs(item.id);
+  const corps = `${bdgPinTete('Cette demande n’a pas de formulaire détaillé. Dites à Pinlane ce qu’il faut proposer, il prépare la réservation et le mail.')}
+    ${bdgConsigne(item, [], { proposer: true })}`;
+  const pied = [
+    peutGeste('reserver') ? `<button type="button" class="bdg-b" onclick="staffRequestToBooking(${jid})">Créer la réservation</button>` : '',
+    item.email ? `<button type="button" class="bdg-b" onclick="toggleStaffRequestReply(${jid})">Écrire au client</button>` : '',
+  ].join('');
+  return { corps, pied };
+}
+
+// LE MAIL ECRIT A LA MAIN : le modele du centre (customRequestDraft sans IA) ou deux departs de
+// message qui laissent leurs blancs ; l envoi passe par le meme chemin trace.
+function bdgPinComposeur(item, reply) {
+  const jid = staffClientJs(item.id);
+  const sid = escapeHtml(String(item.id));
+  const occupe = reply.busy || reply.drafting;
+  const points = Array.isArray(reply.points) ? reply.points.filter(Boolean) : [];
+  const sansTexte = reply.drafting && !String(reply.body || '').trim();
+  const corps = `${bdgPinTete('Le mail au client, écrit à la main. Rien ne part avant votre clic.')}
+    <div class="bdg-carte bdg-compo" id="reqComposer-${sid}"${reply.drafting ? ' aria-busy="true"' : ''}>
+      <p class="bdg-compo-a">À <b>${escapeHtml(item.email || '')}</b></p>
+      <div class="bdg-modeles" role="group" aria-label="Départs de message">${STAFF_REQUEST_PRESETS.map(preset => `<button type="button" class="bdg-idee" onclick="applyStaffRequestPreset(${jid}, '${preset.id}')">${escapeHtml(preset.label)}</button>`).join('')}</div>
+      ${sansTexte ? '<p class="bdg-muet" role="status">Préparation du message.</p>' : `
+      <label class="bdg-e" for="reqSubject-${sid}">Objet</label>
+      <input id="reqSubject-${sid}" class="input" value="${escapeHtml(reply.subject || '')}" ${reply.drafting ? 'readonly' : ''} oninput="staffRequestReplyDraft(${jid}, 'subject', this.value)" />
+      <label class="bdg-e" for="reqBody-${sid}">Message</label>
+      <textarea id="reqBody-${sid}" class="input bdg-mailc-champ" rows="12" ${reply.drafting ? 'readonly' : ''} oninput="staffRequestReplyDraft(${jid}, 'body', this.value)" onkeydown="staffRequestComposerKey(event, ${jid})">${escapeHtml(reply.body || '')}</textarea>`}
+      ${!reply.drafting && points.length ? `<div class="bdg-verif" role="note"><p class="bdg-verif-t">À vérifier avant d’envoyer</p><ul>${points.map(p => `<li>${escapeHtml(bdgPhrase(p))}</li>`).join('')}</ul></div>` : ''}
+    </div>`;
+  const pied = `<button type="button" class="bdg-b" onclick="staffRequestAnnulerReponse(${jid})">Annuler</button><button type="button" class="bdg-p" ${occupe ? 'disabled' : ''} onclick="staffRequestSendReply(${jid})">${reply.busy ? 'Envoi…' : 'Envoyer la réponse'}</button>`;
+  return { corps, pied };
+}
+function staffRequestAnnulerReponse(id) {
+  const key = String(id);
+  staffRequestDraftRang[key] = (staffRequestDraftRang[key] || 0) + 1;
+  staffRequestReplyState[key] = { open: false, busy: false, subject: '', body: '' };
+  renderStaffRequestsIfOpen();
+}
+
+// Le changement de taille d ecran fait passer de la liste seule a la liste et sa demande.
+if (typeof window.matchMedia === 'function') {
+  const grand = window.matchMedia(BDG_GRAND_ECRAN);
+  const suivre = () => renderStaffRequestsIfOpen();
+  if (typeof grand.addEventListener === 'function') grand.addEventListener('change', suivre);
+}
+
+// La hauteur du bureau sur grand ecran : ce qui reste sous son bord haut, la page ne defile pas.
+function bdgAjusterHauteur() {
+  const bureau = document.querySelector('#staffUtilityPage .bdg');
+  if (!bureau) return;
+  const haut = Math.max(0, Math.round(bureau.getBoundingClientRect().top + window.scrollY));
+  bureau.style.setProperty('--bdg-haut', `${haut}px`);
+}
+window.addEventListener('resize', () => { if (isStaffUtilityActive() && getStaffMenuPage() === 'requests') bdgAjusterHauteur(); }, { passive: true });
 
 // Le client connu du centre (lib/email-agent matchClient). La lecture est
 // bornee a vingt reservations : au-dela, on dit « au moins vingt ».
@@ -20363,30 +21119,29 @@ function staffRequestDejaVenu(client) {
   return texte ? `${texte.charAt(0).toUpperCase()}${texte.slice(1)}` : '';
 }
 
-// ── CE JOUR-LA : ce que le moteur de reservation dit de la demande ──────────
-// Les memes heures et les memes prix que le formulaire public, pour cet
-// effectif (lib/demande-bureau, via la disponibilite publique). Rien n est
-// retenu : c est une lecture.
+// == LE CLIENT CONNU : lu une fois a l ouverture de la demande (customRequestStudy) ==
+// La meme lecture donne aussi ce que le moteur dit de sa date ; la page n en garde que le client.
 let staffRequestStudies = {};
 
-// ── UNE FENETRE, SANS QUITTER LA PAGE (2026-11-09, Ansar : « ça doit le montrer sous forme de
-// pop up pas nous redirigé c chiant de fou »). Une seule a la fois ; Echap, le fond et la croix
-// la ferment ; le focus suit la regle des autres fenetres (containStaffDialog).
+// == UNE FENETRE, SANS QUITTER LA PAGE (Ansar, 2026-11-09 : « ça doit le montrer sous forme de pop up
+// pas nous redirigé c chiant de fou ») ==
+// Une seule a la fois ; Echap, le fond et la croix la ferment ; le focus revient a ce qui l a ouverte
+// (containStaffDialog). Le tableau de bord et la fenetre Reserver s en servent aussi.
 let smFenetre = null;
-const SM_CROIX = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+const BDG_CROIX = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
 
 function smFenetreOuvrir({ titre, sous = '', corps, classe = '', quandFermee = null }) {
   smFenetreFermer();
   const fond = document.createElement('div');
-  fond.className = 'overlay-backdrop sm-fen-fond';
-  fond.innerHTML = `<div class="modal-surface sm sm-fen${classe ? ` ${classe}` : ''}" role="dialog" aria-modal="true" aria-labelledby="smFenT">
-    <div class="sm-fen-t"><div><h3 id="smFenT">${titre}</h3>${sous ? `<p>${sous}</p>` : ''}</div><button type="button" class="sm-fen-x" id="smFenX" aria-label="Fermer" onclick="smFenetreFermer()">${SM_CROIX}</button></div>
-    <div class="sm-fen-c" id="smFenC">${corps}</div>
+  fond.className = 'overlay-backdrop bdg-fen-fond';
+  fond.innerHTML = `<div class="modal-surface bdg bdg-fen${classe ? ` ${classe}` : ''}" role="dialog" aria-modal="true" aria-labelledby="bdgFenT">
+    <div class="bdg-fen-t"><div><h3 id="bdgFenT">${titre}</h3>${sous ? `<p>${sous}</p>` : ''}</div><button type="button" class="bdg-fen-x" id="bdgFenX" aria-label="Fermer" onclick="smFenetreFermer()">${BDG_CROIX}</button></div>
+    <div class="bdg-fen-c" id="bdgFenC">${corps}</div>
   </div>`;
   fond.addEventListener('pointerdown', (event) => { if (event.target === fond) smFenetreFermer(); });
   document.body.appendChild(fond);
   // (le fond ne devient pas inert : tout le planning se recalculerait, a l ouverture et a la fermeture)
-  const liberer = containStaffDialog(fond, '.sm-fen', 'input:not([type="hidden"]), textarea, #smFenX', smFenetreFermer, { fondInerte: false });
+  const liberer = containStaffDialog(fond, '.bdg-fen', 'input:not([type="hidden"]), textarea, #bdgFenX', smFenetreFermer, { fondInerte: false });
   smFenetre = { fond, liberer, quandFermee };
 }
 
@@ -20398,18 +21153,19 @@ function smFenetreFermer() {
   liberer();
   if (typeof quandFermee === 'function') quandFermee();
 }
+window.smFenetreFermer = smFenetreFermer;
 
-// ── LE PLANNING D UN JOUR, EN FENETRE ─────────────────────────────────────
-// Le vrai planning complet, epingle a ce jour (data-gf-jour), en lecture : toucher un groupe
-// ouvre son dossier a la place de la fenetre, le reste ne s y joue pas, la page dessous ne bouge
-// pas. Le meme element resert a chaque ouverture : le planning branche ses ecouteurs une fois.
+// == LE PLANNING D UN JOUR, EN FENETRE ==
+// Le vrai planning complet, epingle a ce jour (data-gf-jour), en lecture : toucher un groupe ouvre son
+// dossier a la place de la fenetre, le reste ne s y joue pas, la page dessous ne bouge pas. Le meme
+// element resert a chaque ouverture : le planning branche ses ecouteurs une fois.
 let smJourEnveloppe = null;
 let smJourMinuteur = 0;
 
 function smJourEpingle() {
   if (smJourEnveloppe) return smJourEnveloppe;
   const wrap = document.createElement('div');
-  wrap.className = 'sm-fen-planning';
+  wrap.className = 'bdg-fen-planning';
   wrap.addEventListener('click', (event) => {
     if (!event.target.closest) return;
     event.stopPropagation();
@@ -20437,7 +21193,7 @@ async function openStaffRequestDay(iso) {
     titre: `Planning du ${escapeHtml(smDateDansLaPhrase(iso))}`,
     sous: plage ? escapeHtml(`Ouvert de ${numToTime(plage.open)} à ${smHeureVue(plage.close)}${plage.exceptionnelle ? ', ouverture exceptionnelle' : ''}`) : 'Centre fermé ce jour-là',
     classe: 'is-large',
-    corps: '<div class="planning-box" id="smFenPlanning"><p class="sm-note" id="smFenAttente" aria-busy="true">Chargement du planning…</p></div>',
+    corps: '<div class="planning-box" id="bdgFenPlanning"><p class="bdg-muet bdg-fen-attente" id="bdgFenAttente" aria-busy="true">Chargement du planning.</p></div>',
     quandFermee: () => { clearInterval(smJourMinuteur); smJourMinuteur = 0; },
   });
   try {
@@ -20445,9 +21201,9 @@ async function openStaffRequestDay(iso) {
   } catch (error) {
     // (la journee deja chargee sur ce poste s affiche quand meme)
   }
-  const hote = document.getElementById('smFenPlanning');
+  const hote = document.getElementById('bdgFenPlanning');
   if (!hote || wrap.dataset.gfJour !== iso) return;
-  const attente = document.getElementById('smFenAttente');
+  const attente = document.getElementById('bdgFenAttente');
   if (attente) attente.remove();
   hote.appendChild(wrap);
   smPeindreJour();
@@ -20458,13 +21214,13 @@ async function openStaffRequestDay(iso) {
 }
 window.openStaffRequestDay = openStaffRequestDay;
 
-// ── LE CLIENT, EN FENETRE ──────────────────────────────────────────────────
+// == LE CLIENT, EN FENETRE ==
 function openStaffRequestClient(id) {
   const item = getStaffCustomRequestItems().find(entry => String(entry.id) === String(id));
   const study = item && staffRequestStudies[String(item.id)];
   const c = study && study.client;
   if (!item || !c) return;
-  const venues = (Array.isArray(c.venues) ? c.venues : []).map(v => `<li><time datetime="${escapeHtml(v.date)}">${escapeHtml(staffRequestShortDate(v.date))}</time><span>${escapeHtml([v.label, v.pax ? `${v.pax} joueur${v.pax > 1 ? 's' : ''}` : ''].filter(Boolean).join(', '))}</span><span class="num">${v.prix != null ? escapeHtml(staffRequestEuro(v.prix)) : ''}</span></li>`).join('');
+  const venues = (Array.isArray(c.venues) ? c.venues : []).map(v => `<li><time datetime="${escapeHtml(v.date)}">${escapeHtml(staffRequestShortDate(v.date))}</time><span>${escapeHtml([v.label, v.pax ? `${v.pax} joueur${v.pax > 1 ? 's' : ''}` : ''].filter(Boolean).join(', '))}</span><span class="bdg-num">${v.prix != null ? escapeHtml(staffRequestEuro(v.prix)) : ''}</span></li>`).join('');
   const chiffres = [
     ['Venues', String(Number(c.visits) || (Array.isArray(c.venues) ? c.venues.length : 0))],
     ...(Number(c.depense) > 0 ? [['Dépensé', staffRequestEuro(c.depense)]] : []),
@@ -20474,13 +21230,14 @@ function openStaffRequestClient(id) {
   smFenetreOuvrir({
     titre: escapeHtml(item.contactName || staffRequestNom(item) || 'Client'),
     sous: escapeHtml(staffRequestDejaVenu(c)),
-    corps: `<dl class="sm-fen-chiffres">${chiffres.map(([mot, n]) => `<div><dt>${escapeHtml(mot)}</dt><dd>${escapeHtml(n)}</dd></div>`).join('')}</dl>
-      ${venues ? `<ol class="sm-venues">${venues}</ol>` : '<p class="sm-note">Aucune venue enregistrée.</p>'}
-      <div class="sm-actions">${tel ? `<a class="sm-b" href="tel:${escapeHtml(tel)}">Appeler</a>` : ''}${item.email ? `<a class="sm-b" href="mailto:${escapeHtml(item.email)}">Écrire</a>` : ''}</div>`,
+    corps: `<dl class="bdg-fen-chiffres">${chiffres.map(([mot, n]) => `<div><dt>${escapeHtml(mot)}</dt><dd class="bdg-anton">${escapeHtml(n)}</dd></div>`).join('')}</dl>
+      ${venues ? `<ol class="bdg-venues">${venues}</ol>` : '<p class="bdg-muet">Aucune venue enregistrée.</p>'}
+      <div class="bdg-actions">${tel ? `<a class="bdg-b" href="tel:${escapeHtml(tel)}">Appeler</a>` : ''}${item.email ? `<a class="bdg-b" href="mailto:${escapeHtml(item.email)}">Écrire</a>` : ''}</div>`,
   });
 }
+window.openStaffRequestClient = openStaffRequestClient;
 
-// ── LES HORAIRES D UN JOUR ─────────────────────────────────────────────────
+// == LES HORAIRES D UN JOUR (la fenetre Reserver l ouvre : « Changer les horaires ») ==
 function smPoserOuvertures(liste) {
   const index = {};
   (Array.isArray(liste) ? liste : []).forEach((o) => { if (o && o.date) index[o.date] = o; });
@@ -20522,19 +21279,19 @@ function smHorairesFenetre(date, { open = '', close = '', motif = '', apres = nu
     titre: `Horaires du ${escapeHtml(smDateDansLaPhrase(date))}`,
     sous: normal ? `Habituellement de ${escapeHtml(numToTime(normal.open))} à ${escapeHtml(smHeureVue(normal.close))}` : 'Habituellement fermé ce jour-là',
     classe: 'is-petite',
-    corps: `<form class="sm-hf" onsubmit="smHorairesEnregistrer(event, '${sd}')" novalidate>
-      <div class="sm-hf-l">
-        <label class="sm-champ"><span>Ouverture</span><input class="input" id="smHfOuvre" type="time" step="900" required value="${escapeHtml(ouvre)}" oninput="smHorairesDit()"></label>
-        <label class="sm-champ"><span>Fermeture</span><input class="input" id="smHfFerme" type="time" step="900" required value="${escapeHtml(ferme)}" oninput="smHorairesDit()"></label>
+    corps: `<form class="bdg-hf" onsubmit="smHorairesEnregistrer(event, '${sd}')" novalidate>
+      <div class="bdg-hf-l">
+        <label class="bdg-champ"><span>Ouverture</span><input class="input" id="smHfOuvre" type="time" step="900" required value="${escapeHtml(ouvre)}" oninput="smHorairesDit()"></label>
+        <label class="bdg-champ"><span>Fermeture</span><input class="input" id="smHfFerme" type="time" step="900" required value="${escapeHtml(ferme)}" oninput="smHorairesDit()"></label>
       </div>
-      <p class="sm-hf-dit" id="smHfDit"></p>
-      <label class="sm-champ"><span>Pour qui, pour quoi</span><input class="input" id="smHfMotif" maxlength="120" autocomplete="off" value="${escapeHtml(raison)}" placeholder="Facultatif"></label>
-      <p class="sm-note">Seule l’équipe peut réserver dans ces horaires. Les clients en ligne gardent les horaires habituels.</p>
-      <p class="sm-hf-err" id="smHfErr" role="alert" hidden></p>
-      <div class="sm-actions">
-        <button type="submit" class="sm-p" id="smHfOk">Enregistrer</button>
-        <button type="button" class="sm-b" onclick="smFenetreFermer()">Annuler</button>
-        ${exception ? `<button type="button" class="sm-lien" id="smHfRetirer" onclick="smHorairesRetirer('${sd}')">Revenir aux horaires habituels</button>` : ''}
+      <p class="bdg-hf-dit" id="smHfDit"></p>
+      <label class="bdg-champ"><span>Pour qui, pour quoi</span><input class="input" id="smHfMotif" maxlength="120" autocomplete="off" value="${escapeHtml(raison)}" placeholder="Facultatif"></label>
+      <p class="bdg-muet">Seule l’équipe peut réserver dans ces horaires. Les clients en ligne gardent les horaires habituels.</p>
+      <p class="bdg-hf-err" id="smHfErr" role="alert" hidden></p>
+      <div class="bdg-actions">
+        ${exception ? `<button type="button" class="bdg-b" id="smHfRetirer" onclick="smHorairesRetirer('${sd}')">Revenir aux horaires habituels</button>` : ''}
+        <button type="button" class="bdg-b" onclick="smFenetreFermer()">Annuler</button>
+        <button type="submit" class="bdg-p" id="smHfOk">Enregistrer</button>
       </div>
     </form>`,
   });
@@ -20614,273 +21371,10 @@ async function smHorairesRetirer(date) {
   }
 }
 
-// Le choix de cette demande : celui qu on est en train de faire, ou celui qui est parti.
-const staffRequestChoix = {};
-function staffRequestChoixDe(item) {
-  return staffRequestChoix[String(item.id)] || (item.suivi && item.suivi.proposition) || null;
-}
-
-// La proposition en trois lignes : ce qui part au client, ou ce qui est parti.
-function renderSmResume(p) {
-  const jour = staffRequestShortDate(p.date);
-  const quand = `${jour.charAt(0).toUpperCase()}${jour.slice(1)} à ${p.heure}${p.fin ? `, fin vers ${p.fin}` : ''}${p.type === 'libre' && p.joueurs ? `, ${p.joueurs} joueurs` : ''}`;
-  return `<div class="sm-resume">
-    <div><b>${escapeHtml(p.nom)}</b><span>${escapeHtml(quand)}</span>${smExtrasTexte(p) ? `<span>${escapeHtml(smExtrasTexte(p))}</span>` : ''}</div>
-    <div class="sm-o-p">${p.prix != null ? `<b>${escapeHtml(staffRequestEuro(p.prix))}</b>` : '<em>À confirmer</em>'}${p.parJoueur != null ? `<small>${escapeHtml(staffRequestEuro(p.parJoueur))} par joueur</small>` : ''}</div>
-  </div>`;
-}
-
-function renderSmReponse(item) {
-  const jid = staffClientJs(item.id);
-  const key = String(item.id);
-  const stage = staffRequestStage(item);
-  const ecrit = Boolean(item.email) && peutGeste('ecrire');
-  const reserve = peutGeste('reserver');
-  const reply = staffRequestReplyState[key] || {};
-  const suivi = item.suivi || {};
-  const local = staffRequestChoix[key] || null;
-  const envoyee = suivi.proposition || null;
-  const bloc = (titre, corps) => `<section class="sm-s sm-reponse"><h3>${escapeHtml(titre)}</h3>${stage === 'traitee' ? '' : renderSmBande(item)}${corps}</section>`;
-  const bouton = (cls, label, action) => `<button type="button" class="${cls}" onclick="${action}">${escapeHtml(label)}</button>`;
-  const creer = (cls, label) => (reserve ? bouton(cls, label, `staffRequestToBooking(${jid})`) : '');
-  // Le oui du client sur la proposition partie : elle se reserve telle quelle, apres la carte qui la relit.
-  const reserverEnvoyee = (cls, label) => (reserve && !staffRequestResa[key] ? bouton(cls, label, `smReserver(${jid}, false, 'envoyee')`) : '');
-
-  if (stage === 'archivee') return '';
-  if (stage === 'traitee') {
-    return bloc(suivi.reservationId ? 'Réservation créée' : 'Demande terminée', `${envoyee ? renderSmResume(envoyee) : ''}${suivi.reservationId ? `<div class="sm-actions">${bouton('sm-p', 'Voir la réservation', `openStaffRequestReservation(${jid})`)}</div>` : ''}`);
-  }
-  if (local || reply.open) {
-    if (!ecrit) {
-      return bloc('Réponse au client', `${local ? renderSmResume(local) : ''}<p class="sm-note">${item.email ? 'Votre rôle ne permet pas d’écrire au client.' : `Pas d’adresse e-mail pour cette demande.${item.phone ? ` Appelez le ${escapeHtml(item.phone)}.` : ''}`}</p><div class="sm-actions">${creer('sm-p', 'Créer la réservation')}${bouton('sm-b', 'Annuler', `staffRequestAnnulerReponse(${jid})`)}</div>`);
-    }
-    return bloc('Réponse au client', renderSmCourrier(item, reply, local, reserve));
-  }
-  if (envoyee || stage === 'en-attente') {
-    return bloc(envoyee ? 'Proposition envoyée' : 'Réponse envoyée', `${envoyee ? renderSmResume(envoyee) : ''}
-      <div class="sm-actions">
-        ${reserverEnvoyee('sm-p', 'Le client accepte, créer la réservation')}
-        ${crDemande(item) && !staffRequestMontreDispos(item) ? bouton('sm-b', 'Autre proposition', `staffRequestAutreProposition(${jid})`) : ''}
-      </div>`);
-  }
-  // Rien a montrer tant que rien n est choisi : ecrire est en tete de fiche, composer dans le sur mesure.
-  return '';
-}
-
-// Le mail : objet et message, envoyes par le meme canal trace que le studio mails
-// (sendDirectEmail). Rien ne part sans le clic de l equipe.
-function renderSmCourrier(item, reply, choix, reserve, opts = {}) {
-  const jid = staffClientJs(item.id);
-  const sid = escapeHtml(String(item.id));
-  const occupe = reply.busy || reply.drafting;
-  const points = Array.isArray(reply.points) ? reply.points.filter(Boolean) : [];
-  const sansTexte = reply.drafting && !String(reply.body || '').trim();
-  const modeles = choix ? '' : `<p class="sm-modeles">${STAFF_REQUEST_PRESETS.map(preset => `<button type="button" class="sm-lien" onclick="applyStaffRequestPreset(${jid}, '${preset.id}')">${escapeHtml(preset.label)}</button>`).join('')}</p>`;
-  return `<div class="sm-courrier" id="reqComposer-${sid}" ${reply.drafting ? 'aria-busy="true"' : ''}>
-    ${choix && opts.resume !== false ? renderSmResume(choix) : ''}
-    <p class="sm-a">À <b>${escapeHtml(item.email || '')}</b></p>
-    ${modeles}
-    ${sansTexte ? '<p class="sm-note" role="status">Préparation du message…</p>' : `
-    <label class="sm-e" for="reqSubject-${sid}">Objet</label>
-    <input id="reqSubject-${sid}" class="input" value="${escapeHtml(reply.subject || '')}" ${reply.drafting ? 'readonly' : ''} oninput="staffRequestReplyDraft(${jid}, 'subject', this.value)" />
-    <label class="sm-e" for="reqBody-${sid}">Message</label>
-    <textarea id="reqBody-${sid}" class="input" rows="12" ${reply.drafting ? 'readonly' : ''} oninput="staffRequestReplyDraft(${jid}, 'body', this.value)" onkeydown="staffRequestComposerKey(event, ${jid})">${escapeHtml(reply.body || '')}</textarea>`}
-    ${!reply.drafting && points.length ? `<div class="sm-verif" role="note"><b>À vérifier avant d’envoyer</b>${points.map(p => `<span>${escapeHtml(p)}</span>`).join('')}</div>` : ''}
-    <div class="sm-actions">
-      <button type="button" class="sm-p" ${occupe ? 'disabled' : ''} onclick="staffRequestSendReply(${jid})">${reply.busy ? 'Envoi…' : choix ? 'Envoyer la proposition' : 'Envoyer la réponse'}</button>
-      ${opts.annuler === false ? '' : `<button type="button" class="sm-b" onclick="staffRequestAnnulerReponse(${jid})">Annuler</button>`}
-      ${choix && reserve ? `<button type="button" class="sm-lien" onclick="smReserver(${jid})">Réserver directement</button>` : ''}
-    </div>
-  </div>`;
-}
-
-function staffRequestAnnulerReponse(id) {
-  const key = String(id);
-  delete staffRequestChoix[key];
-  delete staffRequestAutre[key];
-  staffRequestDraftRang[key] = (staffRequestDraftRang[key] || 0) + 1;
-  staffRequestReplyState[key] = { open: false, busy: false, subject: '', body: '' };
-  renderStaffRequestsIfOpen();
-}
-window.staffRequestAnnulerReponse = staffRequestAnnulerReponse;
-
-// Ce que Pinlane ajoute pour le groupe (soft, gateau…), deja compris dans le prix.
-function smExtrasTexte(p) {
-  const x = p && Array.isArray(p.extras) ? p.extras.filter(e => e && e.nom && Number(e.quantite) > 0) : [];
-  if (!x.length) return '';
-  const noms = x.map(e => `${e.nom} × ${e.quantite}`);
-  const liste = noms.length > 1 ? `${noms.slice(0, -1).join(', ')} et ${noms[noms.length - 1]}` : noms[0];
-  const total = Math.round(x.reduce((t, e) => t + (Number(e.total) || 0), 0) * 100) / 100;
-  return `Avec ${liste}${total > 0 ? ` (${staffRequestEuro(total)}, compris dans le prix)` : ''}.`;
-}
-
-// RESERVER EN UN CLIC (2026-11-11, Ansar : « faut que il fasse la resa, on doit confirmer »). Le premier
-// toucher demande au serveur ce que la reservation donnerait, sans rien creer ; la carte le relit et
-// seul « Confirmer la réservation » la cree, avec la confirmation que la creation envoie au client.
-const staffRequestResa = {};
-// La proposition a reserver : celle qui est a l ecran, ou, sur le oui du client, celle qui lui est partie.
-function smPropositionDe(item, depuis = '') {
-  const key = String(item.id);
-  const ia = staffRequestIa[key];
-  const envoyee = (item.suivi && item.suivi.proposition) || null;
-  if (depuis === 'envoyee' && envoyee) return envoyee;
-  return staffRequestChoix[key] || (ia && ia.proposition) || envoyee;
-}
-async function smReserver(id, confirme = false, depuis = '') {
-  if (!peutGeste('reserver')) return;
-  const key = String(id);
-  const item = getStaffCustomRequestItems().find(entry => String(entry.id) === key);
-  if (!item) return;
-  const avant = staffRequestResa[key] || {};
-  if (avant.cours || avant.faite) return;
-  // La confirmation cree exactement ce que la carte a relu.
-  const p = confirme && avant.proposition ? avant.proposition : smPropositionDe(item, depuis);
-  // Une offre touchee dans les disponibilites, ou rien de propose : la fenetre Reserver garde la main.
-  if (!p || p.type !== 'libre' || !(Number(p.joueurs) > 0)) { staffRequestToBooking(id, p ? { proposition: p } : {}); return; }
-  const proposition = rqChoixPourLeServeur(p);
-  const garde = { depuis: confirme ? avant.depuis : depuis, quoi: JSON.stringify(proposition), proposition: p };
-  staffRequestResa[key] = { ...avant, ...garde, cours: true, confirme, erreur: '' };
-  renderStaffRequestsIfOpen();
-  try {
-    const r = await apiRequest(API_ENDPOINTS.ops, {
-      method: 'POST',
-      body: JSON.stringify({ action: 'customRequestBook', id: item.id, centerId: getActiveOpsCenterId(), proposition, confirme }),
-    });
-    if (r && r.simulation === false && r.reservation) {
-      staffRequestResa[key] = { ...garde, faite: true, resume: r.resume || avant.resume || null, reservation: r.reservation, confirmation: Boolean(r.confirmation) };
-      replaceStaffCustomRequest(r.demande, { id: item.id, status: 'handled' });
-    } else {
-      staffRequestResa[key] = { ...garde, resume: (r && r.resume) || null };
-    }
-  } catch (error) {
-    staffRequestResa[key] = { ...avant, ...garde, cours: false, erreur: (error && error.message) || 'La réservation n’a pas pu se faire. Réessayez.' };
-  }
-  renderStaffRequestsIfOpen();
-}
-window.smReserver = smReserver;
-function smReserverFermer(id) {
-  delete staffRequestResa[String(id)];
-  renderStaffRequestsIfOpen();
-}
-window.smReserverFermer = smReserverFermer;
-// Tout regler a la main : la fenetre Reserver s ouvre avec la proposition de la carte.
-function smOuvrirDansReserver(id) {
-  const e = staffRequestResa[String(id)] || {};
-  staffRequestToBooking(id, e.proposition ? { proposition: e.proposition } : {});
-}
-window.smOuvrirDansReserver = smOuvrirDansReserver;
-
-function smResaLignes(r) {
-  const jour = staffRequestShortDate(r.date);
-  const quand = `${jour.charAt(0).toUpperCase()}${jour.slice(1)}, ${r.fin ? `de ${r.heure} à ${r.fin}` : `à ${r.heure}`}`;
-  const pistes = Array.isArray(r.pistes) && r.pistes.length ? `, piste${r.pistes.length > 1 ? 's' : ''} ${r.pistes.join(', ')}` : '';
-  const qui = `${smEnPhrase(r.nom || 'Le programme')}${r.joueurs ? ` pour ${r.joueurs} joueur${r.joueurs > 1 ? 's' : ''}` : ''}${pistes}`;
-  const extras = smExtrasTexte(r);
-  return `<div class="sm-resa-l">
-    <p class="sm-ia-quand">${escapeHtml(quand)}</p>
-    <p>${escapeHtml(qui)}</p>
-    ${extras ? `<p>${escapeHtml(extras)}</p>` : ''}
-    <p class="sm-resa-prix">${r.prix != null ? `<b>${escapeHtml(staffRequestEuro(r.prix))}</b>` : 'Prix à confirmer'}</p>
-  </div>`;
-}
-
-// La carte : ce qui sera cree, ce qui l empeche, et le seul bouton qui cree.
-function renderSmResa(item) {
-  const key = String(item.id);
-  const e = staffRequestResa[key];
-  if (!e) return '';
-  const jid = staffClientJs(item.id);
-  const bouton = (cls, label, action, off) => `<button type="button" class="${cls}"${off ? ' disabled' : ''} onclick="${action}">${escapeHtml(label)}</button>`;
-  if (e.faite) {
-    const v = e.reservation || {};
-    const mot = e.confirmation && v.email ? `La confirmation part au client par e-mail, à ${v.email}.` : `Pas d’e-mail pour ce client : prévenez-le${item.phone ? ` au ${item.phone}` : ''}.`;
-    return `<section class="sm-s sm-resa sm-resa-faite" role="status"><h3>Réservation créée</h3>
-      ${e.resume ? smResaLignes(e.resume) : ''}
-      <p class="sm-resa-x">${escapeHtml(mot)}</p>
-      ${v.id != null ? `<div class="sm-actions">${bouton('sm-p', 'Voir la réservation', `ouvrirReservationNumero(${staffClientJs(v.id)})`)}</div>` : ''}
-    </section>`;
-  }
-  // Une demande reservee ailleurs, ou une proposition changee depuis : la carte n a plus d objet.
-  const stage = staffRequestStage(item);
-  const p = smPropositionDe(item, e.depuis);
-  if (stage === 'traitee' || stage === 'archivee' || !p || (e.quoi && JSON.stringify(rqChoixPourLeServeur(p)) !== e.quoi)) return '';
-  const r = e.resume || null;
-  const pris = r && Array.isArray(r.conflits) && r.conflits.length ? r.conflits[0] : '';
-  const bloque = !r || e.cours || Boolean(r.refus) || Boolean(pris);
-  const mot = r ? (r.email ? `Le client recevra la confirmation par e-mail, à ${r.email}.` : 'Pas d’e-mail pour ce client : la confirmation ne partira pas.') : '';
-  return `<section class="sm-s sm-resa"${e.cours ? ' aria-busy="true"' : ''}><h3>Réserver pour ce groupe</h3>
-    ${e.cours ? `<p class="sm-ia-lit" role="status">${e.confirme ? 'Pinlane crée la réservation.' : 'Pinlane prépare la réservation.'}</p>` : ''}
-    ${r ? smResaLignes(r) : ''}
-    ${pris ? `<p class="sm-note">Ce créneau n’est plus libre (${escapeHtml(pris)}). Changez l’heure avec Pinlane, ou ouvrez la réservation pour la régler.</p>` : ''}
-    ${r && r.refus ? `<p class="sm-note">${escapeHtml(r.refus)}</p>` : ''}
-    ${e.erreur ? `<p class="sm-note">${escapeHtml(e.erreur)}</p>` : ''}
-    ${mot && !pris && !(r && r.refus) ? `<p class="sm-resa-x">${escapeHtml(mot)}</p>` : ''}
-    <div class="sm-actions">
-      ${bouton('sm-p', 'Confirmer la réservation', `smReserver(${jid}, true)`, bloque)}
-      ${bouton('sm-b', 'Ouvrir dans Réserver', `smOuvrirDansReserver(${jid})`, e.cours)}
-      ${bouton('sm-lien', 'Annuler', `smReserverFermer(${jid})`, e.cours)}
-    </div>
-  </section>`;
-}
-
 // ── LE SUIVI : ce qui s est passe, et les notes de l equipe ─────────────────
 let staffRequestNotes = {};
 
 const STAFF_REQUEST_STATUS_WORDS = { handled: 'Terminée', archived: 'Classée sans suite', new: 'Remise en nouvelle', in_progress: 'Rouverte' };
-
-function renderSmHistorique(item) {
-  const jid = staffClientJs(item.id);
-  const key = String(item.id);
-  const sid = escapeHtml(key);
-  const suivi = item.suivi || {};
-  const thread = staffRequestThreads[key];
-  const quandMail = (message) => message.sentAt || message.createdAt || message.scheduledAt || '';
-  // Deux heures de marge : un mail envoye juste avant le formulaire fait partie de la demande.
-  const debut = staffRequestTime(item.createdAt) ? staffRequestTime(item.createdAt) - 2 * 3600000 : 0;
-  const mails = thread && thread.loaded ? (thread.messages || []).filter(message => !debut || staffRequestTime(quandMail(message)) >= debut) : [];
-  const evenements = Array.isArray(suivi.historique) ? suivi.historique : [];
-  // Un e-mail envoye depuis la fiche est a la fois un evenement du suivi et un mail du fil : une seule ligne.
-  const auteurDe = (message) => {
-    const r = evenements.find(e => e.type === 'reponse' && e.objet === message.subject && Math.abs(staffRequestTime(e.le) - staffRequestTime(quandMail(message))) < 600000);
-    return r && r.par ? r.par : '';
-  };
-  const lignes = [
-    { le: item.createdAt, titre: 'Demande reçue par le formulaire' },
-    ...evenements.map((e) => {
-      const par = e.par ? ` par ${e.par}` : '';
-      if (e.type === 'reponse') return mails.length ? null : { le: e.le, titre: `Réponse envoyée${par}`, texte: e.objet ? `« ${e.objet} »` : '' };
-      if (e.type === 'reservation') return { le: e.le, titre: `Réservation créée${par}` };
-      if (e.type === 'statut') return { le: e.le, titre: `${STAFF_REQUEST_STATUS_WORDS[e.statut] || 'Statut changé'}${par}` };
-      return null;
-    }),
-    ...(Array.isArray(suivi.notes) ? suivi.notes : []).map(n => ({ le: n.le, titre: `Note de ${n.par || 'l’équipe'}`, texte: n.texte })),
-    ...mails.map(message => ({ le: quandMail(message), mail: message })),
-  ].filter(e => e && e.le).sort((a, b) => staffRequestTime(a.le) - staffRequestTime(b.le));
-  const dernierRecu = mails.filter(message => (message.direction || 'outbound') === 'inbound').pop() || null;
-  const ligneMail = (message) => {
-    const recu = (message.direction || 'outbound') === 'inbound';
-    const mid = String(message.id || `${message.recipient || ''}-${quandMail(message)}`);
-    const ouvert = Boolean(staffRequestOpenMessages[mid]) || (recu && !staffRequestFermes[mid] && staffRequestStage(item) === 'a-traiter' && message === dernierRecu);
-    const brut = String(message.status || '');
-    const etat = recu || brut === 'sent' || brut === 'delivered' ? '' : (STAFF_MAIL_STATUS[brut] || [brut || 'inconnu'])[0];
-    const auteur = recu ? '' : auteurDe(message);
-    return `<button type="button" class="sm-hi-m" aria-expanded="${ouvert}" onclick="toggleStaffRequestMessage(${staffClientJs(mid)})">${recu ? 'Le client a écrit' : `E-mail envoyé${auteur ? ` par ${escapeHtml(auteur)}` : ''}`}${etat ? ` (${escapeHtml(etat)})` : ''}</button>
-      <span class="sm-hi-o">${escapeHtml(message.subject || '(sans objet)')}</span>
-      ${ouvert ? `<span class="sm-hi-c">${escapeHtml(staffMailPlainText(message) || 'Message vide.')}</span>` : ''}
-      ${message.lastError ? `<span class="sm-depasse">${escapeHtml(message.lastError)}</span>` : ''}`;
-  };
-  const note = staffRequestNotes[key] || {};
-  const attente = item.email && (!thread || (thread.loading && !thread.loaded))
-    ? '<p class="sm-note" aria-busy="true">Chargement des e-mails…</p>'
-    : (thread && thread.error && !thread.loaded ? `<p class="sm-note">${escapeHtml(thread.error)} <button type="button" class="sm-lien" onclick="loadStaffRequestThread(${jid}, true)">Réessayer</button></p>` : '');
-  return `<section class="sm-s sm-historique"><h3>Historique</h3>
-    <ol class="sm-hi">${lignes.map(e => `<li><time datetime="${escapeHtml(String(e.le))}">${escapeHtml(staffRequestStamp(e.le))}</time><div>${e.mail ? ligneMail(e.mail) : `${escapeHtml(e.titre)}${e.texte ? `<span class="sm-hi-o">${escapeHtml(e.texte)}</span>` : ''}`}</div></li>`).join('')}</ol>
-    ${attente}
-    <label class="sm-e" for="reqNote-${sid}">Note pour l’équipe</label>
-    <textarea id="reqNote-${sid}" class="input" rows="1" placeholder="Ajouter une note" oninput="staffRequestNoteDraft(${jid}, this.value)">${escapeHtml(note.texte || '')}</textarea>
-    <div class="sm-actions"><button type="button" class="sm-b" ${note.busy ? 'disabled' : ''} onclick="addStaffRequestNote(${jid})">${note.busy ? 'Ajout…' : 'Ajouter la note'}</button></div>
-  </section>`;
-}
 
 function staffRequestComposerKey(event, id) {
   if (!event || event.key !== 'Enter' || !(event.ctrlKey || event.metaKey)) return;
@@ -20926,7 +21420,7 @@ function ensureStaffRequestThread() {
 const staffRequestFermes = {};
 function toggleStaffRequestMessage(messageId) {
   const key = String(messageId);
-  const bouton = [...document.querySelectorAll('.sm-hi-m')].find(n => n.getAttribute('onclick') === `toggleStaffRequestMessage(${staffClientJs(messageId)})`);
+  const bouton = [...document.querySelectorAll('.bdg-mail-t')].find(n => n.getAttribute('onclick') === `toggleStaffRequestMessage(${staffClientJs(messageId)})`);
   if (bouton && bouton.getAttribute('aria-expanded') === 'true') { delete staffRequestOpenMessages[key]; staffRequestFermes[key] = true; }
   else { staffRequestOpenMessages[key] = Date.now(); delete staffRequestFermes[key]; }
   renderStaffUtilityPage();
@@ -21010,49 +21504,30 @@ function focusStaffRequestComposer(id) {
 }
 window.focusStaffRequestComposer = focusStaffRequestComposer;
 
-// PREPARER LE MAIL (serveur : lib/demande-bureau). Le serveur relit les disponibilites et remplit
-// le modele : les prix, les heures et les noms viennent de l etude, le texte ne s invente pas.
-// Ce qui part au serveur pour ecrire le mail : l heure touchee sur une offre, ou toute la proposition
-// libre (le serveur la borne, il ne la croit pas sur parole).
-function rqChoixPourLeServeur(choix) {
-  const base = { date: choix.date, type: choix.type, ref: choix.ref, heure: choix.heure };
-  if (choix.type !== 'libre') return base;
-  return { ...base, fin: choix.fin, nom: choix.nom, prix: choix.prix, joueurs: choix.joueurs, formule: choix.formule, activites: choix.activites, plus: choix.plus, prixLibre: choix.prixLibre, extras: Array.isArray(choix.extras) ? choix.extras : [] };
-}
-
+// LE MAIL DU CODE (serveur : lib/demande-bureau, customRequestDraft sans IA). Quand Pinlane n est pas
+// la, le modele du centre remplit le mail avec les heures et les prix de l etude : le texte ne
+// s invente pas, et rien ne part sans le clic de l equipe.
 async function startStaffRequestDraft(id) {
   if (!peutGeste('ecrire')) return;
   const key = String(id);
   const item = getStaffCustomRequestItems().find(entry => String(entry.id) === key);
   if (!item) return;
-  if (!item.email) { toast('Cette demande n’a pas d’adresse email : répondez par téléphone.'); return; }
+  if (!item.email) { toast('Cette demande n’a pas d’adresse e-mail. Répondez par téléphone.'); return; }
   const current = staffRequestReplyState[key] || {};
-  const choix = staffRequestChoix[key] || null;
-  const quoi = choix ? JSON.stringify(rqChoixPourLeServeur(choix)) : '';
-  // Une autre heure touchee pendant la redaction relance le mail : il doit parler de la derniere.
-  if (current.busy || (current.drafting && current.draftQuoi === quoi)) return;
+  if (current.busy || (current.drafting && !current.pinlane)) return;
   const rang = (staffRequestDraftRang[key] = (staffRequestDraftRang[key] || 0) + 1);
-  staffRequestReplyState[key] = { ...current, open: true, openedAt: current.open ? current.openedAt : Date.now(), drafting: true, draftQuoi: quoi };
+  staffRequestReplyState[key] = { open: true, openedAt: Date.now(), drafting: true, busy: false, subject: '', body: '' };
   renderStaffRequestsIfOpen();
   focusStaffRequestComposer(id);
   try {
     const payload = await apiRequest(API_ENDPOINTS.ops, {
       method: 'POST',
-      body: JSON.stringify({ action: 'customRequestDraft', id: item.id, centerId: getActiveOpsCenterId(), sansIA: true, ...(choix ? { choix: rqChoixPourLeServeur(choix) } : {}) }),
+      body: JSON.stringify({ action: 'customRequestDraft', id: item.id, centerId: getActiveOpsCenterId(), sansIA: true }),
     });
-    // Une autre heure a ete touchee entre-temps : ce mail parlerait de la precedente.
+    // Annule entre-temps, ou un autre depart demande : ce texte ne compte plus.
     if (rang !== staffRequestDraftRang[key]) return;
-    // Le planning a bouge : l heure choisie n est plus possible, on ne l ecrit pas au client.
-    if (payload && payload.choixPerime) {
-      delete staffRequestChoix[key];
-      staffRequestReplyState[key] = { ...(staffRequestReplyState[key] || {}), drafting: false, open: false };
-      if (payload.etude) staffRequestStudies[key] = { ...(staffRequestStudies[key] || {}), loading: false, loaded: true, stale: false, error: '', etude: payload.etude, at: Date.now() };
-      toast(choix && choix.type === 'libre' ? 'Cette proposition ne tient pas : choisissez un jour à venir et une heure valable.' : 'Cette heure n’est plus possible : le planning a bougé. Choisissez-en une autre.');
-      renderStaffRequestsIfOpen();
-      return;
-    }
     const brouillon = payload && payload.brouillon;
-    if (!brouillon || !String(brouillon.corps || '').trim()) throw new Error('Le message n’a pas pu être préparé : votre texte est inchangé.');
+    if (!brouillon || !String(brouillon.corps || '').trim()) throw new Error('Le message n’a pas pu être préparé. Écrivez-le, ou partez d’un des deux départs de message.');
     const after = staffRequestReplyState[key] || {};
     staffRequestReplyState[key] = {
       ...after,
@@ -21063,14 +21538,10 @@ async function startStaffRequestDraft(id) {
       draftReason: String(brouillon.raison || ''),
       points: Array.isArray(brouillon.pointsAVerifier) ? brouillon.pointsAVerifier : [],
     };
-    // Le serveur vient d etudier la date : l etude affichee est la sienne.
-    if (payload.etude) {
-      staffRequestStudies[key] = { ...(staffRequestStudies[key] || {}), loading: false, loaded: true, stale: false, error: '', etude: payload.etude, at: Date.now() };
-    }
   } catch (error) {
     if (rang !== staffRequestDraftRang[key]) return;
     staffRequestReplyState[key] = { ...(staffRequestReplyState[key] || {}), drafting: false };
-    toast(error.message || 'Le message n’a pas pu être préparé : votre texte est inchangé.');
+    toast(error.message || 'Le message n’a pas pu être préparé. Écrivez-le, ou partez d’un des deux départs de message.');
   }
   renderStaffRequestsIfOpen();
 }
@@ -21132,13 +21603,12 @@ async function staffRequestSendReply(id) {
         customRequestId: item.id,
         ...(reply.draftSource ? { draftSource: reply.draftSource } : {}),
         ...(reply.draftSource === 'ia' && reply.draftOriginal ? { draftOriginal: reply.draftOriginal } : {}),
-        ...(staffRequestChoix[key] ? { proposition: staffRequestChoix[key] } : {}),
+        // La reservation preparee part avec le mail : le oui du client la retrouve dans le suivi.
+        ...(reply.proposition ? { proposition: reply.proposition } : {}),
       })),
     });
     replaceStaffCustomRequest(payload && payload.customRequest, { id: item.id });
-    delete staffRequestChoix[key];
-    delete staffRequestAutre[key];
-    toast('Réponse enregistrée : son état d’envoi se lit dans l’historique.');
+    toast('Réponse enregistrée. Son état d’envoi se lit dans les mails échangés.');
     // Le fil se recharge : le mail qui vient de partir doit apparaitre ici,
     // sinon le staff doute de l'envoi et le renvoie une seconde fois.
     loadStaffRequestThread(id, true);
@@ -21161,15 +21631,20 @@ async function staffRequestSendReply(id) {
 // fixee et a venir, la formule quand il n en a choisi qu une que ce centre
 // connait. Le reste part en note pour le comptoir ; l heure reste a choisir
 // avec le client.
+// `reservation` : la reservation preparee par Pinlane (sa carte), a regler a la main dans Reserver : son
+// jour, son heure, ses joueurs, ses activites et son prix convenu. `proposition` : une offre partie
+// avant la v5 (une heure sur une formule ou un programme), reprise telle qu elle a ete proposee.
 function staffRequestToBooking(id, options = {}) {
   const item = getStaffCustomRequestItems().find(entry => String(entry.id) === String(id));
   if (!item) return;
   const d = crDemande(item);
-  const date = d && !d.flexible && staffRequestDateOf(d.date) && d.date >= todayStr() ? d.date : '';
+  const aVenir = (iso) => Boolean(staffRequestDateOf(iso)) && iso >= todayStr();
+  const date = d && !d.flexible && aVenir(d.date) ? d.date : '';
   const formules = d && Array.isArray(d.formulas) ? d.formulas : [];
   const formule = formules.length === 1 && typeof resolveDisplayFormule === 'function' && resolveDisplayFormule(formules[0].id) ? formules[0].id : '';
   const joueurs = d ? Number(d.participants) || 0 : Number(item.pax) || 0;
-  const choix = options.proposition || staffRequestChoixDe(item);
+  const forme = options.reservation && typeof options.reservation === 'object' ? options.reservation : null;
+  const choix = !forme && options.proposition && typeof options.proposition === 'object' ? options.proposition : null;
   const noteParts = [
     'Demande sur mesure',
     d && d.organisation ? d.organisation : '',
@@ -21180,22 +21655,31 @@ function staffRequestToBooking(id, options = {}) {
     !d && item.requestedDate ? `souhait : ${item.requestedDate}` : '',
     item.message ? String(item.message).slice(0, 160) : '',
     choix ? `proposition : ${choix.nom}, ${choix.heure}${choix.prix != null ? `, ${staffRequestEuro(choix.prix)}` : ''}` : '',
-    choix && smExtrasTexte(choix) ? smExtrasTexte(choix).replace(/\.$/, '') : '',
+    forme && forme.raisonPrix ? `prix convenu, ${String(forme.raisonPrix).slice(0, 160)}` : '',
+    forme && forme.note ? String(forme.note).slice(0, 200) : '',
   ].filter(Boolean);
-  // Le sur mesure compose sur la fiche fait foi : sa formule, ou ses activites (jamais les deux).
-  const compose = Array.isArray(options.activites);
-  // Une proposition libre faite au client compose a son tour : ses activites, ses joueurs, son prix.
-  const libre = !compose && choix && choix.type === 'libre' ? choix : null;
-  const activitesComposees = compose ? options.activites.filter(a => getCenterActivity(a)) : libre ? (libre.activites || []).map(a => String(a && a.id)).filter(a => getCenterActivity(a)) : [];
-  const paxRetenu = compose && Math.trunc(Number(options.joueurs)) > 0 ? Math.trunc(Number(options.joueurs)) : libre && Number(libre.joueurs) > 0 ? Number(libre.joueurs) : joueurs;
-  const prixPose = compose ? String(options.prix ?? '').trim().replace(',', '.') : libre && libre.prixLibre && libre.prix != null ? String(libre.prix) : '';
+  const libre = choix && choix.type === 'libre' ? choix : null;
+  // Les activites a poser : celles de la reservation de Pinlane, avec ses joueurs et ses reglages, ou
+  // celles d une proposition libre. Une activite que le client avait demandee garde ses reglages.
+  const demandees = d && Array.isArray(d.activities) ? d.activities : [];
+  const programme = forme
+    ? (Array.isArray(forme.programme) ? forme.programme : []).filter(l => l && getCenterActivity(l.activityId)).map(l => ({
+      ...(demandees.find(a => a && String(a.id) === String(l.activityId)) || {}),
+      id: l.activityId,
+      ...(Number(l.participants) > 0 ? { participants: Number(l.participants) } : {}),
+      ...(l.duration != null ? { duration: l.duration } : {}),
+      ...(l.games != null ? { games: l.games } : {}),
+    }))
+    : libre ? (libre.activites || []).map(a => String(a && a.id)).filter(a => getCenterActivity(a)).map(aid => demandees.find(a => a && String(a.id) === aid) || { id: aid }) : [];
+  const paxRetenu = forme && Number(forme.pax) > 0 ? Number(forme.pax) : libre && Number(libre.joueurs) > 0 ? Number(libre.joueurs) : joueurs;
+  const prixPose = forme ? (forme.prix != null && forme.prix !== '' ? String(forme.prix) : '') : libre && libre.prixLibre && libre.prix != null ? String(libre.prix) : '';
   const prixRetenu = prixPose !== '' && Number.isFinite(Number(prixPose)) && Number(prixPose) >= 0 ? prixPose : '';
   // Sinon une proposition choisie ; sans elle, ce que le client a demande.
-  const formuleRetenue = compose
-    ? (!activitesComposees.length && options.formule && typeof resolveDisplayFormule === 'function' && resolveDisplayFormule(options.formule) ? options.formule : '')
-    : choix ? ((choix.type === 'formule' || (libre && !activitesComposees.length)) && typeof resolveDisplayFormule === 'function' && resolveDisplayFormule(choix.ref) ? choix.ref : '') : formule;
-  const dateRetenue = options.date || (choix ? choix.date : date);
-  const heureRetenue = options.heure || (choix && (!options.date || options.date === choix.date) ? choix.heure : '');
+  const formuleRetenue = forme ? '' : choix
+    ? ((choix.type === 'formule' || (libre && !programme.length)) && typeof resolveDisplayFormule === 'function' && resolveDisplayFormule(choix.ref) ? choix.ref : '')
+    : formule;
+  const dateRetenue = forme ? (aVenir(forme.date) ? forme.date : '') : choix ? choix.date : date;
+  const heureRetenue = forme ? (dateRetenue ? String(forme.startTime || '') : '') : choix ? choix.heure : '';
   openQuickBook({
     name: item.contactName || '',
     email: item.email || '',
@@ -21210,31 +21694,12 @@ function staffRequestToBooking(id, options = {}) {
     // en « Traitee » une fois la creation reussie, reservation liee.
     sourceRequestId: item.id,
   });
-  if (compose || libre) {
-    // Une activite que le client avait demandee garde ses reglages (duree, parties) ; une ajoutee part avec les defauts.
-    const demandees = d && Array.isArray(d.activities) ? d.activities : [];
-    if (activitesComposees.length) applyStaffRequestActivitiesToQuickBook({ participants: paxRetenu, activities: activitesComposees.map(aid => demandees.find(a => a && String(a.id) === String(aid)) || { id: aid }) });
-    if ((compose ? options.plus : libre.plus) && typeof setQuickSurMesure === 'function') setQuickSurMesure(true);
-    // Le prix pose a la main, dans le sur mesure ou dans la proposition partie, reste le sien.
-    if (prixRetenu && typeof onQuickCustomPriceInput === 'function') onQuickCustomPriceInput(prixRetenu);
-    return;
-  }
-  if (!formuleRetenue && d) applyStaffRequestActivitiesToQuickBook(d);
+  if (programme.length) applyStaffRequestActivitiesToQuickBook({ participants: paxRetenu, activities: programme });
+  else if (!forme && !libre && !formuleRetenue && d) applyStaffRequestActivitiesToQuickBook(d);
+  if (libre && libre.plus && typeof setQuickSurMesure === 'function') setQuickSurMesure(true);
+  // Le prix convenu, par Pinlane ou dans la proposition partie, reste le sien.
+  if (prixRetenu && typeof onQuickCustomPriceInput === 'function') onQuickCustomPriceInput(prixRetenu);
 }
-
-// La reservation nee de la demande : sa fiche quand ce poste l a chargee,
-// sinon le planning de son jour.
-function openStaffRequestReservation(id) {
-  const item = getStaffCustomRequestItems().find(entry => String(entry.id) === String(id));
-  const historique = item && item.suivi && Array.isArray(item.suivi.historique) ? item.suivi.historique : [];
-  const evenement = historique.filter(e => e.type === 'reservation').slice(-1)[0];
-  if (!evenement) return;
-  // Le numero de la reservation nee de la demande l ouvre, a son jour.
-  if (evenement.reservationId) { ouvrirReservationNumero(evenement.reservationId); return; }
-  if (evenement.date) { openStaffRequestDay(evenement.date); return; }
-  toast('Réservation introuvable sur ce poste : ouvrez le planning à sa date.');
-}
-window.openStaffRequestReservation = openStaffRequestReservation;
 
 // ── LES NOTES DE L EQUIPE ───────────────────────────────────────────────────
 function staffRequestNoteDraft(id, value) {
@@ -21431,10 +21896,9 @@ function openStaffCustomRequest(id) {
 }
 window.openStaffCustomRequest = openStaffCustomRequest;
 
-// « Repondre » depuis une autre page : le dossier s ouvre et l IA redige.
+// « Répondre » depuis une autre page : la demande s ouvre, Pinlane y prepare la reponse.
 function openStaffRequestReply(id) {
   openStaffRequestsPage(id);
-  startStaffRequestDraft(id);
 }
 window.openStaffRequestReply = openStaffRequestReply;
 
@@ -24810,6 +25274,8 @@ function renderStaffShell(dayReservations = todaysReservations()) {
   // d un :has() qui recalculait toute la console a chaque noeud ecrit)
   document.getElementById('staffView')?.classList.toggle('avec-onglets', !(dashboardActive || reservationsActive || clientsActive || pricingActive || emailsActive || campaignsActive || utilityActive || cockpitActive));
   if (!campaignsActive) document.querySelector('#staffView .staff-wrap')?.classList.remove('a-bureau-mkw');
+  // Le bureau des demandes tient dans l ecran : la page ne garde que sa marge du bas.
+  document.querySelector('#staffView .staff-wrap')?.classList.toggle('a-bureau-bdg', utilityActive && getStaffMenuPage() === 'requests');
   const d = parseLocalDate(state.currentDate);
   const view = getStaffResourceView();
   const scopedReservations = dayReservations.filter(r => reservationMatchesStaffResource(r, view));

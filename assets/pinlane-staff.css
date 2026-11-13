@@ -20903,340 +20903,385 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
 @media (prefers-reduced-motion: reduce) {
   .establishment-page.eb :is(.eb-pan, .eb-bar, .eb-m, .eb-pt, .eb-k-b, .eb-k-b::after, .eb-j), .eb-jour { animation: none; transition: none; }
 }
-/* ── DEMANDES SUR MESURE, EN LOGICIEL PRO (2026-11-10) ───────────────────────
-   Refaite comme la page Etablissement (Ansar : « un truc completement different, un peu comme pour
-   Etablissement mais en beaucoup mieux, beau, style »). A gauche les etapes, comme ses rubriques ; a
-   droite la file en tableau, ou la demande ouverte en cartes : ce qu ils veulent et ce qu on peut leur
-   proposer, avec la suite et le client sur le cote. Les vraies photos du centre, l etat en aplat
-   plein (jamais la couleur d un client en dur : test:second-client), une activite garde sa couleur partout. Aucune animation d entree : la page se repeint a
-   chaque nouvelle du reseau, une entree rejouerait a chaque fois. */
-.sm { --sm-1: #8a4ba6; --sm-2: #3fa796; --sm-3: #e3b341; --sm-4: #f0648c; --sm-pris: #a3a9b7; --sm-ease: cubic-bezier(.23, 1, .32, 1); --sm-r: 12px; font-size: 14px; line-height: 1.5; color: var(--text); font-variant-numeric: tabular-nums; }
-:root[data-theme="dark"] .sm { --sm-1: #b583cf; --sm-2: #67baac; --sm-pris: #5d6474; }
-.sm [data-t="1"] { --t: var(--sm-1); }
-.sm [data-t="2"] { --t: var(--sm-2); }
-.sm [data-t="3"] { --t: var(--sm-3); }
-.sm [data-t="4"] { --t: var(--sm-4); }
-.sm :where(h2, h3, h4, p, dl, dt, dd, ol, ul, figure) { margin: 0; padding: 0; }
-.sm :where(ol, ul) { list-style: none; }
-.sm small { display: block; font-size: 12.5px; color: var(--muted); }
-.sm a { color: var(--accent-strong); text-underline-offset: 2px; }
-.sm .input { width: 100%; box-sizing: border-box; }
-.sm textarea.input { height: auto; min-height: 44px; padding: 10px 12px; resize: vertical; line-height: 1.55; font-family: inherit; }
-.sm .sm-courrier textarea.input { min-height: 280px; }
+/* == LE BUREAU DES GROUPES (demandes sur mesure, v5, 2026-11-13) =====================================
+   Ansar : « refaire tout la categorie demande sur mesure du logiciel prcq vrm cv pas ». Les quatre
+   versions d avant empilaient des cartes a bord fin dans une colonne de 2 300 px. Ici, une boite de
+   reception pro : la liste a gauche (photo, groupe, quand et combien, l echeance en pastille pleine),
+   la demande ouverte a droite, ce que le client demande d un cote et ce que Pinlane a prepare de
+   l autre, colle a l ecran. Les vraies photos et quatre couleurs pour les donnees (une par activite,
+   dans l ordre), l heure, les joueurs et le prix en Anton ; la partie Pinlane reste neutre, une seule
+   famille de bleus. Pas de trait entre les lignes, pas d aplat violet, pas de grille de cartes. Aucune
+   animation d entree sur la page, qui se repeint a chaque nouvelle du reseau : seules les lectures et
+   les cartes neuves de Pinlane arrivent en fondu. */
+.bdg {
+  --bdg-1: #8a4ba6; --bdg-2: #2f9a8a; --bdg-3: #d9a21b; --bdg-4: #e8517c;
+  --bdg-r: 12px;
+  --bdg-pin: color-mix(in srgb, var(--accent) 5%, var(--page, var(--subtle)));
+  --bdg-carte: var(--surface);
+  --bdg-ombre: 0 1px 2px rgb(0 0 0 / 0.06), 0 6px 20px -10px rgb(0 0 0 / 0.22);
+  --bdg-anton: Anton, Impact, "Arial Narrow", sans-serif;
+  font-size: 14px; line-height: 1.5; color: var(--text); font-variant-numeric: tabular-nums;
+}
+:root[data-theme="dark"] .bdg { --bdg-1: #b583cf; --bdg-2: #67baac; --bdg-3: #e3b341; --bdg-4: #f0648c; --bdg-pin: #0b0e13; --bdg-carte: var(--raised, #151517); --bdg-ombre: 0 0 0 1px rgb(255 255 255 / 0.07); }
+.bdg [data-t="1"] { --t: var(--bdg-1); }
+.bdg [data-t="2"] { --t: var(--bdg-2); }
+.bdg [data-t="3"] { --t: var(--bdg-3); }
+.bdg [data-t="4"] { --t: var(--bdg-4); }
+.bdg :where(h1, h2, h3, h4, p, dl, dt, dd, ol, ul, figure, blockquote) { margin: 0; padding: 0; }
+.bdg :where(ol, ul) { list-style: none; }
+.bdg .input { width: 100%; box-sizing: border-box; }
+.bdg textarea.input { height: auto; min-height: 44px; padding: 10px 12px; resize: vertical; line-height: 1.55; font-family: inherit; }
+.bdg-anton { font-family: var(--bdg-anton); font-weight: 400; letter-spacing: 0.01em; line-height: 1; }
+.bdg-muet { color: var(--muted); }
 
-/* Les boutons : le geste principal plein, les autres a contour, comme sur Etablissement. */
-.sm .sm-b, .sm .sm-p { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 36px; padding: 0 14px; font: inherit; font-size: 13.5px; font-weight: 550; text-decoration: none; border-radius: 6px; cursor: pointer; white-space: nowrap; transition: background-color 120ms ease, border-color 120ms ease, transform 120ms ease; }
-.sm .sm-b { color: var(--text); background: var(--surface); border: 1px solid var(--control-border, var(--line-strong)); }
-.sm .sm-b:hover { background: var(--subtle); }
-.sm .sm-p { color: #fff; background: var(--console-selected); border: 1px solid var(--console-selected); }
-.sm .sm-p:hover { filter: brightness(.93); }
-.sm .sm-b:active,
-.sm .sm-p:active { transform: scale(.975); }
-.sm .sm-p:disabled, .sm .sm-b:disabled { opacity: .55; cursor: default; }
-.sm .sm-lien { padding: 0; font: inherit; color: var(--accent-strong); background: none; border: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
-.sm-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 16px; }
-.sm-vide { padding: 56px 0; color: var(--muted); text-align: center; }
-.sm-note { color: var(--muted); }
+/* Les boutons de la console : le principal bleu plein, le second blanc a bord, 40 px. */
+.bdg .bdg-b, .bdg .bdg-p { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 40px; padding: 0 16px; font: inherit; font-size: 14px; font-weight: 600; line-height: 1; text-decoration: none; white-space: nowrap; border-radius: 8px; cursor: pointer; transition: background-color 120ms ease, transform 120ms ease, filter 120ms ease; }
+.bdg .bdg-p { color: var(--console-selected-text, #fff); background: var(--console-selected); border: 1px solid var(--console-selected); }
+.bdg .bdg-p:hover:not(:disabled) { filter: brightness(0.93); }
+.bdg .bdg-b { color: var(--text); background: var(--surface); border: 1px solid var(--control-border); }
+.bdg .bdg-b:hover:not(:disabled) { background: var(--subtle); }
+.bdg .bdg-b:active:not(:disabled), .bdg .bdg-p:active:not(:disabled) { transform: scale(0.975); }
+.bdg .bdg-b:disabled, .bdg .bdg-p:disabled { opacity: 0.5; cursor: default; }
+.bdg .bdg-b-petit { height: 32px; padding: 0 12px; font-size: 13px; }
+.bdg-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
 
-/* L etat, en aplat plein : rouge en retard, ambre quand ca presse, violet chez le client, vert reserve. */
-.sm-du { display: inline-flex; align-items: center; height: 24px; padding: 0 9px; font-size: 12.5px; font-weight: 600; line-height: 1; white-space: nowrap; color: var(--text); background: var(--subtle); border-radius: 6px; }
-.sm-du.is-ok { box-shadow: inset 0 0 0 1px var(--line); }
-.sm-du.is-soon { color: #2a2008; background: #e3b341; }
-.sm-du.is-late { color: #fff; background: #c9372c; }
-.sm-du.is-attente { color: #fff; background: #8a4ba6; }
-.sm-du.is-fait { color: #fff; background: #1f7a5c; }
-.sm-du.is-sans { color: var(--muted); }
-.sm .sm-l-ecrit { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin-top: 6px; font-weight: 550; color: var(--accent-strong); }
-.sm .sm-l-ecrit::before { content: ""; flex: none; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+/* Les pastilles d etat, en aplat plein : rouge en retard, ambre quand ca presse, violet chez le client,
+   vert reserve. */
+.bdg-pill { flex: none; display: inline-flex; align-items: center; height: 22px; padding: 0 8px; font-size: 12px; font-weight: 650; line-height: 1; white-space: nowrap; color: var(--text); background: var(--subtle); border-radius: 6px; }
+.bdg-pill.is-ok { box-shadow: inset 0 0 0 1px var(--line-strong); background: transparent; }
+.bdg-pill.is-soon { color: #2a2008; background: #e3b341; }
+.bdg-pill.is-late { color: #fff; background: #c9372c; }
+.bdg-pill.is-attente { color: #fff; background: #7c3f99; }
+.bdg-pill.is-fait { color: #fff; background: #1f7a5c; }
+.bdg-pill.is-sans { color: var(--muted); }
 
-/* Une activite : un carre plein a sa couleur, la meme que sur le dessin de la journee. */
-.sm-so { display: inline-flex; align-items: baseline; gap: 7px; }
-.sm-so::before { content: ""; flex: none; width: 8px; height: 8px; background: var(--t, var(--text)); border-radius: 2px; transform: translateY(-.5px); }
-.sm-souhaits { display: flex; flex-wrap: wrap; gap: 2px 14px; }
-.sm-so-libre { display: -webkit-box; overflow: hidden; -webkit-line-clamp: 2; -webkit-box-orient: vertical; color: var(--muted); }
+/* LE CADRE. Plus etroit qu une tablette en paysage : la liste, ou la demande, en pleine largeur. */
+.bdg-cadre { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.bdg-cadre.is-ouverte > .bdg-liste-c { display: none; }
+.bdg-cadre:not(.is-ouverte) > .bdg-lecture { display: none; }
 
-/* Le cadre : les etapes a gauche, comme les rubriques d Etablissement ; la file ou la demande a droite. */
-.sm-cadre { display: grid; grid-template-columns: 212px minmax(0, 1fr); gap: 36px; align-items: start; }
-.sm-nav { position: sticky; top: 16px; display: flex; flex-direction: column; gap: 18px; }
-.sm-onglets { display: flex; flex-direction: column; gap: 2px; }
-.sm .sm-onglet { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-height: 38px; padding: 0 10px 0 12px; font: inherit; font-size: 14px; font-weight: 500; color: var(--muted); text-align: left; background: transparent; border: 0; border-radius: 6px; cursor: pointer; transition: background-color 120ms ease, color 120ms ease; }
-.sm .sm-onglet:hover { color: var(--text); background: var(--subtle); }
-.sm .sm-onglet[aria-selected="true"] { color: var(--text); font-weight: 600; background: var(--subtle); }
-.sm .sm-onglet[aria-selected="true"]::before { content: ""; position: absolute; top: 10px; bottom: 10px; left: 0; width: 2px; border-radius: 2px; background: var(--accent); }
-.sm .sm-onglet b { min-width: 24px; padding: 2px 7px; font-size: 12px; font-weight: 600; line-height: 1.3; text-align: center; color: var(--muted); background: var(--surface); border-radius: 999px; box-shadow: inset 0 0 0 1px var(--line); }
-.sm .sm-onglet[aria-selected="true"] b { color: var(--text); }
-.sm-nav-s { display: flex; flex-direction: column; gap: 1px; margin-left: 12px; padding-left: 8px; border-left: 1px solid var(--line); }
-.sm .sm-nav-d { display: block; width: 100%; padding: 6px 10px; font: inherit; text-align: left; color: var(--muted); background: transparent; border: 0; border-radius: 6px; cursor: pointer; transition: background-color 120ms ease, color 120ms ease; }
-.sm .sm-nav-d span { display: block; overflow: hidden; font-size: 13px; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
-.sm .sm-nav-d small { margin-top: 1px; font-size: 12px; }
-.sm .sm-nav-d:hover, .sm .sm-nav-d.is-on { color: var(--text); background: var(--subtle); }
-.sm .sm-nav-d.is-on span { font-weight: 600; }
-.sm-zone { min-width: 0; }
+/* La liste */
+.bdg-liste-c { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.bdg-liste-t { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 2px 4px 0; }
+.bdg-titre { font-size: 20px; font-weight: 650; line-height: 1.25; letter-spacing: -0.02em; }
+.bdg-retard { font-size: 13px; font-weight: 650; color: var(--danger); white-space: nowrap; }
+.bdg-onglets { display: flex; gap: 2px; padding: 3px; background: var(--subtle); border-radius: 10px; }
+.bdg .bdg-onglet { flex: 1 1 0; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; height: 34px; padding: 0 8px; font: inherit; font-size: 13px; font-weight: 550; color: var(--muted); background: transparent; border: 0; border-radius: 8px; cursor: pointer; transition: background-color 120ms ease, color 120ms ease; }
+.bdg .bdg-onglet span { white-space: nowrap; }
+.bdg .bdg-onglet b { min-width: 20px; padding: 1px 6px; font-size: 11.5px; font-weight: 650; line-height: 1.4; color: var(--muted); background: color-mix(in srgb, var(--text) 8%, transparent); border-radius: 999px; }
+.bdg .bdg-onglet:hover { color: var(--text); }
+.bdg .bdg-onglet[aria-selected="true"] { color: var(--text); font-weight: 650; background: var(--surface); box-shadow: 0 1px 2px rgb(0 0 0 / 0.08); }
+:root[data-theme="dark"] .bdg .bdg-onglet[aria-selected="true"] { background: var(--raised, #151517); box-shadow: 0 0 0 1px rgb(255 255 255 / 0.08); }
+.bdg .bdg-onglet[aria-selected="true"] b { color: var(--text); }
+.bdg-cherche { position: relative; display: block; }
+.bdg-cherche svg { position: absolute; top: 50%; left: 12px; width: 15px; height: 15px; color: var(--muted); transform: translateY(-50%); pointer-events: none; }
+.bdg .bdg-cherche .input { height: 38px; min-height: 0; padding-left: 36px; border-radius: 10px; }
+.bdg-liste-d { min-height: 0; }
+.bdg-lignes { display: flex; flex-direction: column; gap: 2px; }
+.bdg .bdg-l { position: relative; display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 12px; align-items: start; width: 100%; padding: 11px 12px; font: inherit; text-align: left; color: var(--text); background: transparent; border: 0; border-radius: 10px; cursor: pointer; transition: background-color 120ms ease; }
+.bdg .bdg-l:hover { background: color-mix(in srgb, var(--text) 5%, transparent); }
+.bdg .bdg-l.is-on { background: var(--surface); box-shadow: var(--bdg-ombre); }
+:root[data-theme="dark"] .bdg .bdg-l.is-on { background: var(--raised, #151517); }
+.bdg .bdg-l.is-on::before { content: ""; position: absolute; top: 12px; bottom: 12px; left: 0; width: 3px; border-radius: 0 3px 3px 0; background: var(--console-selected); }
+.bdg-l-ph { display: block; width: 44px; height: 44px; object-fit: cover; border-radius: 10px; background: var(--subtle); }
+/* Les initiales sur la couleur du groupe : en blanc sur le violet du clair, en encre sur les autres. */
+.bdg-l-ph.is-vide, .bdg-tete-ph.is-vide { display: inline-flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 650; color: #14161a; background: var(--t, var(--bdg-1)); }
+:root:not([data-theme="dark"]) .bdg :is(.bdg-l-ph, .bdg-tete-ph).is-vide[data-t="1"] { color: #fff; }
+.bdg-l-c { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.bdg-l-h { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.bdg-l-n { min-width: 0; font-size: 14.5px; font-weight: 650; line-height: 1.35; overflow-wrap: anywhere; }
+.bdg-l-q { font-size: 13px; color: var(--text); }
+.bdg-l-e { font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; }
+.bdg-l-ecrit { display: inline-flex; align-items: center; gap: 6px; margin-top: 3px; font-size: 12.5px; font-weight: 650; color: var(--accent-strong); }
+.bdg-l-ecrit::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.bdg-l-vide { padding: 32px 12px; color: var(--muted); text-align: center; }
+.bdg-l-vide p { margin-bottom: 10px; }
 
-/* La file : l etape en titre, puis un tableau, comme les commandes d un logiciel de vente. */
-.sm-pan-h { margin-bottom: 16px; }
-.sm-pan-h h2 { font-size: 20px; font-weight: 600; line-height: 1.25; letter-spacing: -.02em; }
-.sm-pan-h p { max-width: 68ch; margin-top: 4px; font-size: 14px; color: var(--muted); }
-.sm-liste-c { overflow: hidden; background: var(--surface); border: 1px solid var(--line); border-radius: var(--sm-r); }
-.sm-barre { display: flex; align-items: center; justify-content: space-between; gap: 12px 20px; flex-wrap: wrap; padding: 12px 16px; border-bottom: 1px solid var(--line); }
-.sm-cherche-l { position: relative; flex: 0 1 320px; min-width: 0; }
-.sm-cherche-l svg { position: absolute; top: 50%; left: 11px; width: 15px; height: 15px; color: var(--muted); transform: translateY(-50%); pointer-events: none; }
-.sm .sm-cherche { height: 36px; min-height: 0; padding-left: 34px; }
-.sm-barre-n { font-size: 13px; color: var(--muted); }
-.sm .sm-liste { width: 100%; border-collapse: collapse; table-layout: fixed; }
-.sm-c-q { width: 150px; }
-.sm-c-p { width: 92px; }
-.sm-c-r { width: 200px; }
-.sm-liste th { padding: 9px 20px; font-size: 12.5px; font-weight: 550; text-align: left; color: var(--muted); background: var(--subtle); }
-.sm .sm-liste .sm-th-p, .sm .sm-l-p, .sm .sm-liste .sm-th-r, .sm .sm-l-r { text-align: right; }
-.sm-liste td { padding: 14px 20px; vertical-align: middle; text-align: left; border-top: 1px solid var(--line); transition: background-color 120ms ease; }
-.sm-l { cursor: pointer; }
-.sm-l:hover td { background: var(--subtle); }
-.sm-l-qui { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.sm-l-qui > div { min-width: 0; }
-.sm-l-ph { flex: none; width: 40px; height: 40px; object-fit: cover; border-radius: 8px; background: var(--subtle); }
-.sm-l-ph.is-vide { display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 650; color: #fff; background: var(--t, var(--sm-1)); }
-.sm .sm-l-n { display: block; max-width: 100%; overflow: hidden; padding: 0; font: inherit; font-size: 14px; font-weight: 600; color: var(--text); text-align: left; text-overflow: ellipsis; white-space: nowrap; background: none; border: 0; cursor: pointer; }
-.sm-l-qui small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sm-l-q b { font-weight: 550; }
-.sm-l-p b { font-size: 15px; font-weight: 600; }
-.sm .sm-l-pj { display: none; }
+/* La demande ouverte : une surface, son en-tete, puis le client a gauche et Pinlane a droite. */
+.bdg-lecture { display: flex; flex-direction: column; min-width: 0; background: var(--surface); border-radius: var(--bdg-r); box-shadow: 0 0 0 1px var(--line); }
+.bdg-lecture.is-vide { align-items: center; justify-content: center; padding: 40px 24px; text-align: center; }
+.bdg-vide-t { font-size: 16px; font-weight: 650; }
+.bdg-vide-p { max-width: 46ch; margin-top: 6px; color: var(--muted); }
+.bdg-tete { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 14px 24px; padding: 20px 24px 18px; }
+.bdg .bdg-retour { flex: 1 1 100%; display: none; align-items: center; gap: 9px; height: 32px; padding: 0; font: inherit; font-size: 13.5px; font-weight: 600; color: var(--muted); background: none; border: 0; cursor: pointer; }
+.bdg .bdg-retour::before { content: ""; width: 7px; height: 7px; border-bottom: 1.6px solid currentColor; border-left: 1.6px solid currentColor; transform: translateX(2px) rotate(45deg); }
+.bdg .bdg-retour:hover { color: var(--text); }
+.bdg-tete-id { display: flex; gap: 14px; min-width: 0; flex: 1 1 380px; }
+.bdg-tete-ph { flex: none; display: block; width: 56px; height: 56px; object-fit: cover; border-radius: 12px; background: var(--subtle); }
+.bdg-tete-t { min-width: 0; }
+.bdg-tete-n { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; }
+.bdg-tete h2 { font-size: 22px; font-weight: 650; line-height: 1.2; letter-spacing: -0.02em; overflow-wrap: anywhere; }
+.bdg-tete-s { margin-top: 4px; font-size: 13.5px; color: var(--muted); }
+.bdg-tete-c { display: flex; flex-wrap: wrap; gap: 2px 16px; margin-top: 4px; font-size: 13.5px; }
+.bdg-tete-c a { font-weight: 600; color: var(--accent-strong); text-decoration: none; }
+.bdg-tete-c a:hover { text-decoration: underline; text-underline-offset: 2px; }
+.bdg-promis { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 13.5px; font-weight: 600; }
+.bdg-promis::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--line-strong); }
+.bdg-promis.is-soon::before { background: #e3b341; }
+.bdg-promis.is-late { color: var(--danger); }
+.bdg-promis.is-late::before { background: #c9372c; }
+.bdg-tete-a { display: flex; flex-wrap: wrap; gap: 8px; }
 
-/* La demande ouverte : son nom et son etat en tete, comme le nom du centre sur Etablissement. */
-.sm .sm-retour { display: inline-flex; align-items: center; gap: 9px; margin-bottom: 14px; padding: 0; font: inherit; font-size: 13.5px; font-weight: 550; color: var(--muted); background: none; border: 0; cursor: pointer; transition: color 120ms ease; }
-.sm .sm-retour:hover { color: var(--text); }
-.sm .sm-retour::before { content: ""; width: 7px; height: 7px; border-bottom: 1.5px solid currentColor; border-left: 1.5px solid currentColor; transform: translateX(2px) rotate(45deg); }
-.sm-tete { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px 24px; flex-wrap: wrap; margin-bottom: 24px; padding-bottom: 20px; border-bottom: 1px solid var(--line); }
-.sm-tete-t { min-width: 0; }
-.sm-tete-n { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; }
-.sm-tete h2 { font-size: 24px; font-weight: 600; line-height: 1.2; letter-spacing: -.02em; }
-.sm-tete-s { margin-top: 5px; font-size: 14px; color: var(--muted); }
-.sm-tete-a { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.bdg-corps { display: grid; grid-template-columns: minmax(0, 1fr); min-height: 0; }
+.bdg-client { min-width: 0; padding: 4px 24px 24px; }
+.bdg-c-haut, .bdg-c-bas { display: flex; flex-direction: column; gap: 22px; }
+.bdg-c-bas { margin-top: 22px; }
+.bdg-s { min-width: 0; }
+.bdg-h { margin-bottom: 10px; font-size: 11.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
 
-/* Une carte, comme un groupe de reglages d Etablissement : son titre sur un filet, puis son contenu. */
-.sm-s { padding: 0 20px 20px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--sm-r); }
-.sm-s > h3 { margin: 0 -20px 18px; padding: 15px 20px; font-size: 15px; font-weight: 600; letter-spacing: -.01em; border-bottom: 1px solid var(--line); }
-.sm-s > :first-child:not(h3) { margin-top: 20px; }
-.sm-s h4 { font-size: 13px; font-weight: 600; color: var(--muted); }
+/* Ce qu ils demandent : le jour en clair, les joueurs et le budget en grand. */
+.bdg-quand { font-size: 17px; line-height: 1.35; }
+.bdg-quand b { font-weight: 650; }
+.bdg-autre { margin-top: 2px; color: var(--muted); }
+.bdg-chiffres { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+.bdg-chiffre { display: flex; align-items: baseline; gap: 10px; }
+.bdg-chiffre .bdg-anton { flex: none; min-width: 2ch; font-size: 30px; }
+.bdg-chiffre span { color: var(--text); }
+.bdg-ancien { margin-top: 12px; color: var(--muted); }
 
-/* La demande : les trois chiffres qui decident, bord a bord sous le titre. */
-
-.sm-envies { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px 20px; }
-.sm-envies li { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.sm-photo { flex: none; width: 64px; height: 48px; object-fit: cover; border-radius: 8px; background: var(--t, var(--subtle)); }
-.sm-envies .sm-so { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; min-width: 0; }
-.sm-envies .sm-so::before { display: none; }
-.sm-envies .sm-so b { font-size: 14px; font-weight: 600; }
-.sm-envies .sm-so span { font-size: 13px; color: var(--muted); }
-
-/* Ce qu on peut proposer : un jour, ses offres en lignes avec leur photo et leurs heures a toucher,
-   puis la journee dessinee avec ce qui est deja pris. */
-
-.sm-o-p { flex: none; text-align: right; }
-.sm-o-p b { display: block; font-size: 17px; font-weight: 650; line-height: 1.25; letter-spacing: -.01em; }
-.sm-o-p em { display: block; font-style: normal; font-weight: 600; }
-
-.sm-depasse { display: block; font-size: 12.5px; font-weight: 550; color: var(--danger); }
-
-/* La journee dessinee : ce qui est deja pris en gris, le groupe a sa couleur quand une heure est choisie. */
-
-@keyframes sm-trace { from { opacity: 0; transform: scaleX(.25); } to { opacity: 1; transform: none; } }
-@keyframes sm-pose { from { opacity: 0; transform: scaleX(.8); } to { opacity: 1; transform: none; } }
-
-/* La suite : la phrase de suivi, puis ce qui part ou ce qui est parti. */
-.sm-promis { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 14px; font-weight: 550; line-height: 1.45; }
-.sm-promis::before { content: ""; flex: none; width: 8px; height: 8px; margin-top: 6px; border-radius: 50%; background: var(--muted); }
-.sm-promis.is-ok::before { background: var(--text); }
-.sm-promis.is-soon::before { background: #e3b341; }
-.sm-promis.is-late { color: #c9372c; }
-.sm-promis.is-late::before { background: #c9372c; }
-.sm-promis.is-attente::before { background: #8a4ba6; }
-.sm-promis.is-fait::before { background: #1f7a5c; }
-.sm-promis:last-child { margin-bottom: 0; }
-
-.sm-resume { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; padding: 12px 14px; background: var(--subtle); border-radius: 8px; }
-.sm-resume > div:first-child b { font-size: 14.5px; font-weight: 600; }
-.sm-resume span { display: block; color: var(--muted); }
-.sm-a { margin-bottom: 4px; }
-.sm-a b { font-weight: 550; }
-.sm-modeles { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 8px 0 2px; }
-.sm-e { display: block; margin: 12px 0 4px; font-size: 12.5px; font-weight: 550; color: var(--muted); }
-.sm-verif { display: grid; gap: 2px; margin-top: 12px; padding: 11px 14px; color: #2a2008; background: #f4dfa4; border-radius: 8px; }
-.sm-verif b { font-weight: 650; }
+/* Leurs envies en photos, chacune a sa couleur. */
+.bdg-envies { display: flex; flex-wrap: wrap; gap: 14px 12px; }
+.bdg-envie { width: 128px; }
+.bdg-envie-cadre { position: relative; display: block; overflow: hidden; border-radius: 10px; }
+.bdg-envie-cadre::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: var(--t); }
+.bdg-envie-ph { display: block; width: 128px; height: 84px; object-fit: cover; background: var(--subtle); }
+.bdg-envie-ph.is-vide { display: flex; align-items: center; justify-content: center; font-family: var(--bdg-anton); font-size: 32px; color: color-mix(in srgb, var(--t) 58%, #000); background: color-mix(in srgb, var(--t) 14%, var(--surface)); }
+:root[data-theme="dark"] .bdg-envie-ph.is-vide { color: var(--t); }
+.bdg-envie-n { display: flex; align-items: center; gap: 7px; margin-top: 7px; font-size: 13.5px; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+.bdg-envie-n::before { content: ""; flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--t); }
+.bdg-conseil { display: inline-flex; margin-top: 12px; padding: 4px 10px; font-size: 13px; font-weight: 600; background: var(--subtle); border-radius: 999px; }
+.bdg-mot { padding: 14px 16px; font-size: 14.5px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--subtle); border-radius: 10px; }
 
 /* Le client */
-.sm-c-n { font-size: 14.5px; }
-.sm-c-n b { font-weight: 600; }
-.sm-c-l { margin-top: 3px; }
-.sm-c-h { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
-.sm-c-abs { margin-left: 8px; padding: 1px 7px; font-size: 12.5px; font-weight: 600; white-space: nowrap; color: #fff; background: #c9372c; border-radius: 4px; }
-.sm-venues { display: grid; gap: 4px; margin: 10px 0; font-size: 13px; }
-.sm-venues li { display: grid; grid-template-columns: 96px minmax(0, 1fr) auto; gap: 10px; }
-.sm-venues time, .sm-venues .num { color: var(--muted); }
+.bdg-qui p + p { margin-top: 4px; }
+.bdg-qui-n b { font-weight: 650; }
+.bdg-abs { display: inline-block; margin-left: 4px; padding: 0 7px; font-size: 12px; font-weight: 650; line-height: 20px; white-space: nowrap; color: #fff; background: #c9372c; border-radius: 5px; }
+.bdg-venues { display: grid; gap: 4px; margin: 10px 0 0; font-size: 13px; }
+.bdg-venues li { display: grid; grid-template-columns: 92px minmax(0, 1fr) auto; gap: 10px; }
+.bdg-venues time, .bdg-num { color: var(--muted); }
+.bdg-s-act { margin-top: 12px; }
 
-/* L historique */
-.sm-hi li { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 12px; padding: 6px 0; }
-.sm-hi time { font-size: 12.5px; color: var(--muted); }
-.sm .sm-hi-m { padding: 0; font: inherit; font-weight: 550; color: var(--text); text-align: left; background: none; border: 0; cursor: pointer; text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 2px; }
-.sm-hi-o { display: block; font-size: 13px; color: var(--muted); }
-.sm-hi-c { display: block; margin-top: 6px; padding: 10px 12px; white-space: pre-wrap; background: var(--subtle); border-radius: 8px; }
-.sm-historique textarea:placeholder-shown ~ .sm-actions { display: none; }
-.sm-historique .sm-e { margin-top: 14px; }
-.sm-historique .sm-actions { margin-top: 8px; }
+/* Les mails echanges, comme une messagerie. */
+.bdg-mails { display: flex; flex-direction: column; gap: 4px; }
+.bdg-mail { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 12px; padding: 10px 12px; border-radius: 10px; transition: background-color 120ms ease; }
+.bdg-mail:hover { background: color-mix(in srgb, var(--text) 4%, transparent); }
+.bdg-mail.is-ouvert { background: var(--subtle); }
+.bdg-av { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; font-size: 13px; font-weight: 700; color: #fff; background: #5b6472; border-radius: 50%; }
+.bdg-av.is-centre { background: var(--console-selected); }
+.bdg-mail-r { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.bdg-mail-h { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.bdg .bdg-mail-t { padding: 0; font: inherit; font-weight: 650; color: var(--text); text-align: left; background: none; border: 0; cursor: pointer; }
+.bdg .bdg-mail-t::after { content: ""; position: absolute; inset: 0; }
+.bdg-mail { position: relative; }
+.bdg-mail-h time { flex: none; font-size: 12px; color: var(--muted); }
+.bdg-mail-o { font-size: 13.5px; font-weight: 550; overflow-wrap: anywhere; }
+.bdg-mail-x { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.bdg-mail-c { display: block; margin-top: 6px; font-size: 14px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.bdg-mail-err { font-size: 12.5px; font-weight: 600; color: var(--danger); }
 
+/* Le suivi */
+.bdg-suivi { display: grid; gap: 8px; }
+.bdg-suivi li { display: grid; grid-template-columns: 116px minmax(0, 1fr); gap: 2px 12px; }
+.bdg-suivi time { grid-row: span 2; font-size: 12.5px; color: var(--muted); }
+.bdg-suivi-t { overflow-wrap: anywhere; }
+.bdg-suivi-x { grid-column: 2; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.bdg-e { display: block; margin: 16px 0 6px; font-size: 12.5px; font-weight: 600; color: var(--muted); }
+
+/* PINLANE : une colonne neutre, ses cartes posees dessus, le geste de l etape en pied. */
+.bdg-pin { display: flex; flex-direction: column; min-width: 0; background: var(--bdg-pin); }
+.bdg-pin-defile { display: flex; flex-direction: column; gap: 14px; padding: 18px 20px 22px; }
+.bdg-pin-tete { display: flex; flex-direction: column; gap: 3px; }
+.bdg-pin-nom { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent-strong); }
+.bdg-pin-nom::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+.bdg-pin-dit { font-size: 13.5px; line-height: 1.5; color: var(--muted); }
+.bdg-pin-quand { color: var(--muted); }
+.bdg-pin-texte { font-size: 13.5px; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; }
+.bdg-pin-consigne { padding: 10px 12px; font-size: 13.5px; background: color-mix(in srgb, var(--accent) 10%, var(--surface)); border-radius: 10px; }
+.bdg-pin-alerte { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; font-size: 13.5px; font-weight: 550; }
+.bdg-pin-mot { font-size: 13.5px; color: var(--text); }
+.bdg-pin-fait { font-size: 13.5px; font-weight: 600; color: var(--success, #0f7b3c); }
+.bdg-pin-reessai { margin-top: -4px; }
+.bdg-pin-pied { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; padding: 12px 20px; background: color-mix(in srgb, var(--text) 4%, var(--surface)); }
+:root[data-theme="dark"] .bdg-pin-pied { background: #101317; }
+
+/* Ses lectures, qui s empilent avec leur resultat : un anneau tant qu elle se fait, une coche ensuite. */
+.bdg-lu { display: flex; flex-direction: column; gap: 7px; }
+.bdg-lu-l { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: baseline; gap: 10px; font-size: 13.5px; }
+.bdg-lu-m { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; color: #fff; border: 1.6px solid var(--accent); border-radius: 50%; transform: translateY(2px); box-sizing: border-box; }
+.bdg-lu-l.is-fini .bdg-lu-m { background: var(--accent); }
+.bdg-lu-l.is-fini .bdg-lu-m svg { width: 9px; height: 9px; }
+.bdg-lu-l.is-echec .bdg-lu-m { border-color: var(--danger); }
+.bdg-lu-l.is-note .bdg-lu-m { width: 6px; height: 6px; margin-left: 4px; border: 0; background: var(--line-strong); }
+.bdg-lu-p { min-width: 0; overflow-wrap: anywhere; }
+.bdg-lu-l.is-note .bdg-lu-p { color: var(--muted); }
+.bdg-lu-r { font-size: 12.5px; color: var(--muted); text-align: right; }
+.bdg-lu-l.is-neuve, .bdg-carte.is-neuve { animation: bdg-arrive 260ms cubic-bezier(0.23, 1, 0.32, 1) both; }
+@keyframes bdg-arrive { from { opacity: 0; transform: translateY(4px); } }
+
+/* Une carte de Pinlane */
+.bdg-carte { padding: 16px 18px; background: var(--bdg-carte); border-radius: var(--bdg-r); box-shadow: var(--bdg-ombre); }
+.bdg-carte-h { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.bdg-carte-type { font-size: 11.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+
+/* La reservation : le jour, puis l heure, les joueurs et le prix en grand ; une ligne par activite. */
+.bdg-resa-jour { margin-top: 6px; font-size: 16px; font-weight: 650; }
+.bdg-resa-gros { display: flex; flex-wrap: wrap; gap: 12px 26px; margin-top: 12px; }
+.bdg-resa-g { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.bdg-resa-e { font-size: 12px; font-weight: 600; color: var(--muted); }
+.bdg-resa-v { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
+.bdg-resa-v .bdg-anton { font-size: 30px; }
+.bdg-resa-s { font-size: 13px; color: var(--muted); }
+.bdg-avant { font-size: 13.5px; color: var(--muted); text-decoration: line-through; text-decoration-thickness: 1.5px; }
+.bdg-resa-budget { margin-top: 8px; font-size: 13px; font-weight: 600; color: var(--success, #0f7b3c); }
+.bdg-resa-budget.is-plus { color: var(--warning); }
+.bdg-resa-l { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+.bdg-resa-ligne { display: grid; grid-template-columns: 10px minmax(0, 1fr); gap: 2px 10px; align-items: baseline; padding: 6px 8px; margin: 0 -8px; border-radius: 8px; }
+.bdg-resa-ligne.is-neuve { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.bdg-pt { width: 10px; height: 10px; border-radius: 50%; background: var(--t, var(--muted)); transform: translateY(1px); }
+.bdg-resa-act { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 12px; min-width: 0; }
+.bdg-resa-act b { font-weight: 650; }
+.bdg-resa-plage { font-size: 13.5px; font-weight: 600; }
+.bdg-resa-detail { grid-column: 2; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.bdg-resa-sup { margin-top: 10px; font-size: 13.5px; }
+.bdg-resa-d { display: grid; gap: 6px; margin-top: 12px; }
+.bdg-resa-d div { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 12px; }
+.bdg-resa-d dt { font-size: 12.5px; font-weight: 600; color: var(--muted); }
+.bdg-resa-d dd { font-size: 13.5px; overflow-wrap: anywhere; }
+.bdg-resa-non { margin-top: 10px; font-size: 13.5px; font-weight: 600; color: var(--danger); }
+.bdg-resa-v2 { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-top: 14px; }
+.bdg-resa-ok { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--success, #0f7b3c); }
+
+/* Le mail, tel que le client le lira */
+.bdg-mailc-tete { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+.bdg-mailc-qui { min-width: 0; font-size: 13px; line-height: 1.35; }
+.bdg-mailc-qui p:last-child { color: var(--muted); overflow-wrap: anywhere; }
+.bdg-mailc-o { margin: 14px 0 8px; font-size: 15px; font-weight: 650; line-height: 1.35; overflow-wrap: anywhere; }
+.bdg-mailc-c { font-size: 14px; line-height: 1.62; white-space: pre-wrap; overflow-wrap: anywhere; }
+.bdg-mailc-pied { display: flex; justify-content: flex-end; margin-top: 12px; }
+.bdg .bdg-mailc-champ { min-height: 300px; }
+.bdg-ins { background: color-mix(in srgb, var(--accent) 22%, transparent); text-decoration: none; border-radius: 3px; }
+.bdg-del { color: var(--muted); text-decoration: line-through; }
+.bdg-vues { display: inline-flex; gap: 2px; padding: 2px; background: var(--subtle); border-radius: 8px; }
+.bdg .bdg-vues button { height: 26px; padding: 0 10px; font: inherit; font-size: 12.5px; font-weight: 600; color: var(--muted); background: transparent; border: 0; border-radius: 6px; cursor: pointer; }
+.bdg .bdg-vues button[aria-pressed="true"] { color: var(--text); background: var(--surface); box-shadow: 0 1px 2px rgb(0 0 0 / 0.08); }
+.bdg-verif { padding: 12px 14px; color: #2a2008; background: #f4dfa4; border-radius: 10px; }
+.bdg-verif-t { font-weight: 700; }
+.bdg-verif ul { display: grid; gap: 2px; margin-top: 4px; }
+
+/* La consigne et ses idees */
+.bdg-consigne .bdg-e { margin-top: 2px; }
+.bdg-consigne-l { position: relative; }
+.bdg .bdg-consigne .input { height: 46px; min-height: 0; padding-right: 50px; border-radius: 12px; background: var(--surface); }
+.bdg .bdg-envoi { position: absolute; top: 7px; right: 7px; display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; color: var(--text); background: var(--surface); border: 1px solid var(--control-border); border-radius: 8px; cursor: pointer; }
+.bdg .bdg-envoi:hover:not(:disabled) { background: var(--subtle); }
+.bdg .bdg-envoi:disabled { opacity: 0.45; cursor: default; }
+.bdg-idees, .bdg-modeles { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.bdg .bdg-idee { min-height: 30px; padding: 4px 12px; font: inherit; font-size: 13px; line-height: 1.35; color: var(--text); text-align: left; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 999px; cursor: pointer; }
+.bdg .bdg-idee:hover:not(:disabled) { border-color: var(--control-border); background: var(--subtle); }
+.bdg .bdg-idee:disabled { opacity: 0.5; cursor: default; }
+.bdg-petit-geste { padding: 12px 14px; background: var(--bdg-carte); border-radius: 10px; box-shadow: var(--bdg-ombre); }
+.bdg-petit-geste-x { margin-top: 4px; font-weight: 600; overflow-wrap: anywhere; }
+.bdg-petit-geste .bdg-actions { margin-top: 10px; }
+.bdg-compo-a { font-size: 13.5px; }
+.bdg-compo-a b { font-weight: 650; }
+.bdg-compo .bdg-modeles { margin-top: 10px; }
+
+/* LE CLAVIER ET L ECRAN DU COMPTOIR : a partir de 900 px, la demande garde ses deux colonnes et tient
+   dans l ecran ; le client et Pinlane defilent chacun pour lui, le geste de l etape reste en vue. */
+@media (min-width: 900px) {
+  .staff-wrap.a-bureau-bdg { padding-bottom: 16px; }
+  .staff-wrap.a-bureau-bdg #staffUtilityPage { padding-bottom: 0; }
+  .bdg-cadre { height: calc(100dvh - var(--bdg-haut, 40px) - 16px); min-height: 540px; }
+  .bdg-liste-c { min-height: 0; }
+  .bdg-liste-d { flex: 1 1 auto; overflow-y: auto; overscroll-behavior: contain; margin: 0 -6px; padding: 0 6px 8px; }
+  .bdg-lecture { min-height: 0; overflow: hidden; }
+  .bdg-corps { flex: 1 1 auto; grid-template-columns: minmax(0, 1fr) clamp(360px, 33vw, 452px); grid-template-rows: minmax(0, 1fr); }
+  .bdg-client { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+  .bdg-pin { min-height: 0; border-radius: 0 0 var(--bdg-r) 0; overflow: hidden; }
+  .bdg-pin-defile { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+  .bdg-pin-pied { flex: none; }
+}
+@media (min-width: 1200px) {
+  .bdg-cadre, .bdg-cadre.is-ouverte { grid-template-columns: clamp(296px, 23vw, 340px) minmax(0, 1fr); gap: 16px; }
+  .bdg-cadre.is-ouverte > .bdg-liste-c { display: flex; }
+  .bdg-cadre:not(.is-ouverte) > .bdg-lecture { display: flex; }
+  .bdg .bdg-retour { display: none; }
+}
+@media (max-width: 1199px) {
+  .bdg .bdg-retour { display: inline-flex; }
+}
+/* Au telephone, une seule colonne : la demande, ce que Pinlane a prepare, puis le client et ses mails.
+   Le geste de l etape reste colle au bas de l ecran. */
+@media (max-width: 899px) {
+  .bdg-lecture { box-shadow: none; background: transparent; }
+  .bdg-tete { padding: 4px 2px 16px; }
+  .bdg-tete-id { flex-basis: 100%; }
+  .bdg-tete h2 { font-size: 20px; }
+  .bdg-tete-a { flex: 1 1 100%; }
+  .bdg-tete-a > * { flex: 1 1 0; }
+  .bdg-client { display: contents; }
+  .bdg-corps { display: flex; flex-direction: column; gap: 22px; }
+  .bdg-c-haut { order: 1; padding: 0 2px; }
+  .bdg-pin { order: 2; margin: 0 -12px; }
+  .bdg-c-bas { order: 3; margin-top: 0; padding: 0 2px 24px; }
+  .bdg-pin-defile { padding: 18px 12px 20px; }
+  /* Le geste de l etape, fixe au bas de l ecran : il se touche sans chercher, ou que l on soit. */
+  .bdg-cadre.is-ouverte { padding-bottom: 80px; }
+  .bdg-pin-pied { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; flex-wrap: nowrap; gap: 8px; padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); background: var(--surface); box-shadow: 0 -8px 20px -14px rgb(0 0 0 / 0.45); }
+  .bdg .bdg-pin-pied > .bdg-b, .bdg .bdg-pin-pied > .bdg-p { flex: 1 1 0; min-width: 0; height: auto; min-height: 44px; padding: 8px 10px; line-height: 1.25; white-space: normal; text-align: center; }
+  .bdg-envies { gap: 12px 10px; }
+  .bdg-envie { width: calc(50% - 5px); }
+  .bdg-envie-ph { width: 100%; height: 96px; }
+  .bdg-suivi li { grid-template-columns: minmax(0, 1fr); }
+  .bdg-suivi time { grid-row: auto; }
+  .bdg-suivi-x { grid-column: 1; }
+  .bdg-resa-d div { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .bdg-venues li { grid-template-columns: 76px minmax(0, 1fr) auto; }
+}
 @media (prefers-reduced-motion: reduce) {
-  
-  .sm .sm-b,
-.sm .sm-p { transition: none; }
+  .bdg .bdg-b, .bdg .bdg-p, .bdg .bdg-l, .bdg .bdg-onglet, .bdg-mail { transition: none; }
+  .bdg-lu-l.is-neuve, .bdg-carte.is-neuve, .bdg-fen { animation: none; }
 }
 
-/* Plus etroit : les etapes passent en haut, en une rangee ; une demande ouverte prend toute la place. */
-@media (max-width: 1099px) {
-  .sm-cadre { grid-template-columns: minmax(0, 1fr); gap: 18px; }
-  .sm-nav { position: static; }
-  .sm-onglets { flex-direction: row; gap: 4px; overflow-x: auto; scrollbar-width: none; }
-  .sm .sm-onglet { flex: none; width: auto; }
-  .sm .sm-onglet[aria-selected="true"]::before { top: auto; right: 12px; bottom: 0; left: 12px; width: auto; height: 2px; }
-  .sm-nav-s, .sm-cadre.is-fiche .sm-nav { display: none; }
+/* Une fenetre, sans quitter la page : le planning d un jour, le client, les horaires d un jour.
+   Au-dessus de Reserver quand elle en vient. */
+.bdg-fen-fond { position: fixed; inset: 0; z-index: 470; display: flex; align-items: center; justify-content: center; padding: 24px; background: var(--scrim); }
+.bdg-fen { display: flex; flex-direction: column; box-sizing: border-box; width: 100%; max-width: 560px; max-height: calc(100vh - 48px); overflow: hidden; animation: bdg-fen-entre 200ms cubic-bezier(0.23, 1, 0.32, 1) both; }
+.bdg-fen.is-petite { max-width: 440px; }
+.bdg-fen.is-large { max-width: min(1320px, 100%); height: calc(100vh - 48px); }
+@keyframes bdg-fen-entre { from { opacity: 0; transform: translateY(6px) scale(0.985); } }
+.bdg-fen-t { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 18px 20px 14px; }
+.bdg-fen-t h3 { font-size: 18px; font-weight: 650; }
+.bdg-fen-t p { margin-top: 2px; color: var(--muted); }
+.bdg .bdg-fen-x { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; color: var(--muted); background: none; border: 0; border-radius: 8px; cursor: pointer; }
+.bdg .bdg-fen-x:hover { color: var(--text); background: var(--subtle); }
+.bdg-fen-c { flex: 1 1 auto; min-height: 0; padding: 4px 20px 20px; overflow-y: auto; }
+.bdg-fen.is-large .bdg-fen-c { display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+.bdg-fen.is-large .planning-box { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; border: 0; border-radius: 0; box-shadow: none; }
+.bdg-fen-attente { padding: 18px 20px; }
+.bdg-fen-planning, .bdg-fen-planning .gf { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.bdg-fen-planning .gf-defile { flex: 1 1 auto; min-height: 0; height: auto !important; }
+.bdg-fen-planning .gf-t { --c-etat: 0px; }
+.bdg-fen-planning :is(.gf-th--etat, td.gf-etat) { display: none; }
+.bdg-fen-planning .gf-t td[data-gf-reserver] { cursor: default; }
+.bdg-fen-chiffres { display: flex; flex-wrap: wrap; gap: 12px 28px; margin-bottom: 14px; }
+.bdg-fen-chiffres dt { font-size: 12.5px; color: var(--muted); }
+.bdg-fen-chiffres dd { margin-top: 4px; font-size: 26px; }
+.bdg-champ { display: flex; flex-direction: column; gap: 4px; min-width: 0; font-size: 12.5px; font-weight: 600; color: var(--muted); }
+.bdg-hf { display: flex; flex-direction: column; gap: 12px; }
+.bdg-hf-l { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.bdg-hf-dit { min-height: 19px; font-weight: 600; }
+.bdg-hf-err { color: var(--danger); font-weight: 600; }
+.bdg-hf .bdg-actions { justify-content: flex-end; margin-top: 0; }
+@media (max-width: 640px) {
+  .bdg-fen-fond { padding: 0; }
+  .bdg-fen, .bdg-fen.is-large { max-width: none; max-height: none; height: 100%; border-radius: 0; }
 }
-
-@media (max-width: 720px) {
-  .sm-pan-h h2 { font-size: 18px; }
-  .sm-barre { padding: 10px 12px; }
-  .sm-cherche-l { flex: 1 1 100%; }
-  .sm-barre-n { display: none; }
-  .sm-liste thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-  .sm .sm-liste, .sm-liste tbody { display: block; }
-  .sm-liste .sm-l { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; padding: 14px 16px; border-top: 1px solid var(--line); }
-  .sm-liste tbody .sm-l:first-child { border-top: 0; }
-  .sm-liste .sm-l td { display: block; padding: 0; text-align: left; border: 0; }
-  .sm-liste .sm-l .sm-l-g { grid-column: 1 / -1; }
-  .sm-liste .sm-l .sm-l-q { grid-column: 1; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 6px; padding-left: 52px; }
-  .sm-liste .sm-l .sm-l-q small::before { content: "· "; }
-  .sm-liste .sm-l .sm-l-p { grid-column: 2; grid-row: 2; display: flex; align-items: baseline; gap: 4px; }
-  .sm .sm-l-pj { display: inline; }
-  .sm-liste .sm-l .sm-l-s, .sm-liste .sm-l .sm-l-r { grid-column: 1 / -1; padding-left: 52px; text-align: left; }
-  .sm .sm-l-ecrit { justify-content: flex-start; }
-  .sm-tete { align-items: flex-start; margin-bottom: 18px; padding-bottom: 16px; }
-  .sm-tete h2 { font-size: 21px; }
-  .sm-tete-a { flex: 1 1 100%; }
-  .sm-tete-a > * { flex: 1 1 auto; }
-  .sm-s { padding: 0 16px 16px; }
-  .sm-s > h3 { margin: 0 -16px 16px; padding: 13px 16px; }
-  .sm-s > :first-child:not(h3) { margin-top: 16px; }
-  
-  
-  
-  
-  .sm-envies { grid-template-columns: minmax(0, 1fr); }
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  .sm-hi li { grid-template-columns: 1fr; gap: 0; }
-  .sm-venues li { grid-template-columns: 82px minmax(0, 1fr) auto; }
-}
-
-/* Une fenetre, sans quitter la page : au-dessus de Reserver quand elle en vient. */
-.sm-fen-fond { position: fixed; inset: 0; z-index: 470; display: flex; align-items: center; justify-content: center; padding: 24px; background: var(--scrim); }
-/* LA FICHE SIMPLE (2026-11-10, Ansar : « super simple, pas de graphique, tout booster avec IA ») :
-   une colonne, la demande en trois lignes, ce que Pinlane propose en aplat, sa consigne, le mail. */
-.sm .sm-une { display: flex; flex-direction: column; gap: 16px; max-width: 820px; }
-/* Leurs envies en evidence (2026-11-11) : l etiquette a gauche, la valeur en grand, les envies en pastilles. */
-.sm-dem { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 10px 16px; margin: 0; }
-.sm-dem-r { display: contents; }
-.sm-dem dt { padding-top: 3px; font-size: 13px; font-weight: 550; color: var(--muted); }
-.sm-dem dd { margin: 0; font-size: 15px; line-height: 1.45; }
-.sm-dem .is-fort dd { font-size: 17px; font-weight: 600; letter-spacing: -0.005em; }
-.sm-dem dd small { display: block; margin-top: 1px; font-size: 13.5px; font-weight: 400; color: var(--muted); }
-.sm-dem-envies { display: flex; flex-wrap: wrap; gap: 6px; }
-.sm-dem-envie { display: inline-flex; align-items: center; min-height: 30px; padding: 3px 12px; font-size: 14.5px; font-weight: 550; background: var(--subtle); border: 1px solid var(--line); border-radius: 999px; }
-.sm-dem-envie.is-conseil { border-style: dashed; }
-.sm-dem-vide { font-weight: 400; color: var(--muted); }
-.sm-dem-mot { margin: 12px 0 0; padding: 10px 14px; font-size: 14px; color: var(--text); background: var(--subtle); border-radius: 8px; }
-.sm-dem-mot span { display: block; margin-bottom: 2px; font-size: 12.5px; font-weight: 550; color: var(--muted); }
-.sm-ia-p, .sm-ia-lit { margin: 0; padding: 18px 20px; background: var(--subtle); border-radius: 10px; }
-.sm-ia-lit { color: var(--muted); }
-.sm-ia-quand { margin: 0; font-size: 22px; font-weight: 650; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
-.sm-ia-quoi { margin: 4px 0 0; font-size: 16px; }
-.sm-ia-prix { margin: 10px 0 0; font-size: 15px; font-variant-numeric: tabular-nums; }
-.sm-ia-prix b { font-size: 20px; font-weight: 650; }
-.sm-ia-plan { display: inline-block; margin-top: 10px; font-size: 13px; }
-.sm-ia-pq { margin: 10px 0 0; font-size: 14px; color: var(--muted); }
-.sm-ia-c { margin-top: 16px; }
-.sm-ia-l { display: flex; gap: 8px; margin-top: 6px; }
-.sm-ia-l .input { flex: 1 1 auto; min-width: 0; }
-.sm-ia-s { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
-.sm .sm-ia-sg { min-height: 36px; padding: 6px 14px; font: inherit; font-size: 13.5px; color: var(--text); text-align: left; background: var(--subtle); border: 0; border-radius: 999px; cursor: pointer; }
-.sm .sm-ia-sg:hover { background: var(--line); }
-.sm-ia-extras { margin: 4px 0 0; font-size: 14.5px; color: var(--muted); }
-.sm-ia-oui { margin: 10px 0 0; font-size: 14.5px; font-weight: 600; }
-.sm-ia-ret { margin-top: 12px; padding: 12px 14px; border: 1px dashed var(--line-strong); border-radius: 10px; }
-.sm-ia-ret p { margin: 0; font-size: 14px; }
-.sm-ia-ret-g { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
-/* RESERVER EN UN CLIC (2026-11-11) : la carte relit ce qui sera cree, avant le seul clic qui le cree. */
-.sm-resa-l { padding: 16px 20px; background: var(--subtle); border-radius: 10px; }
-.sm-resa-l p { margin: 0; font-size: 15px; }
-.sm-resa-l p + p { margin-top: 2px; }
-.sm-resa-l .sm-ia-quand { margin-bottom: 4px; }
-.sm-resa-l .sm-resa-prix { margin-top: 8px; font-variant-numeric: tabular-nums; }
-.sm-resa-prix b { font-size: 18px; font-weight: 650; }
-.sm-resa-x { margin: 10px 0 0; font-size: 14px; color: var(--muted); }
-.sm-resa .sm-actions { margin-top: 14px; }
-@media (max-width: 720px) {
-  .sm-dem { grid-template-columns: minmax(0, 1fr); gap: 2px; }
-  .sm-dem dd { margin-bottom: 10px; }
-  .sm-ia-l { flex-direction: column; }
-  .sm-ia-quand { font-size: 19px; }
-}
-
-.sm-fen { display: flex; flex-direction: column; box-sizing: border-box; width: 100%; max-width: 560px; max-height: calc(100vh - 48px); overflow: hidden; animation: sm-fen-entre 200ms cubic-bezier(.23, 1, .32, 1) both; }
-.sm-fen.is-petite { max-width: 440px; }
-.sm-fen.is-large { max-width: min(1320px, 100%); height: calc(100vh - 48px); }
-@keyframes sm-fen-entre { from { opacity: 0; transform: translateY(6px) scale(.985); } }
-.sm-fen-t { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 18px 20px 14px; border-bottom: 1px solid var(--line); }
-.sm-fen-t h3 { font-size: 18px; font-weight: 650; }
-.sm-fen-t p { margin-top: 2px; color: var(--muted); }
-.sm-fen-x { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; color: var(--muted); background: none; border: 0; border-radius: 6px; cursor: pointer; }
-.sm-fen-x:hover { color: var(--text); background: var(--subtle); }
-.sm-fen-c { flex: 1 1 auto; min-height: 0; padding: 16px 20px 20px; overflow-y: auto; }
-.sm-fen.is-large .sm-fen-c { display: flex; flex-direction: column; padding: 0; overflow: hidden; }
-.sm-fen.is-large .planning-box { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; border: 0; border-radius: 0; box-shadow: none; }
-.sm-fen.is-large .sm-note { padding: 18px 20px; }
-.sm-fen-planning, .sm-fen-planning .gf { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
-.sm-fen-planning .gf-defile { flex: 1 1 auto; min-height: 0; height: auto !important; }
-.sm-fen-planning .gf-t { --c-etat: 0px; }
-.sm-fen-planning :is(.gf-th--etat, td.gf-etat) { display: none; }
-.sm-fen-planning .gf-t td[data-gf-reserver] { cursor: default; }
-.sm-fen-chiffres { display: flex; gap: 28px; margin-bottom: 14px; }
-.sm-fen-chiffres dt { font-size: 12.5px; color: var(--muted); }
-.sm-fen-chiffres dd { font-family: Anton, Impact, "Arial Narrow", sans-serif; font-size: 26px; line-height: 1.2; }
-.sm-champ { display: flex; flex-direction: column; gap: 4px; min-width: 0; font-size: 12.5px; font-weight: 550; color: var(--muted); }
-.sm-hf { display: flex; flex-direction: column; gap: 12px; }
-.sm-hf-l { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.sm-hf-dit { min-height: 19px; font-weight: 550; }
-.sm-hf-err { color: var(--danger); font-weight: 550; }
-.sm-hf .sm-actions { margin-top: 0; }
-.sm-hf .sm-lien { margin-left: auto; }
-
-/* LA PROPOSITION LIBRE (2026-11-10) : cinq champs en grille, le prix calcule dessous, les gestes a droite. */
-
+/* La ligne des horaires du jour dans la fenetre Reserver (« Changer les horaires », smHorairesFenetre). */
 .qb-modal.rv.rs .rs-horaires { margin-top: -6px; }
 .qb-modal.rv.rs .rs-horaires p { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; margin: 0; font-size: 13px; color: var(--muted); }
 .qb-modal.rv.rs .rs-horaires b { padding: 1px 6px; font-size: 12px; font-weight: 600; color: var(--warning); background: var(--warning-soft); border-radius: 3px; }
 .qb-modal.rv.rs .rs-horaires .rs-lien { text-decoration: underline; text-underline-offset: 2px; }
-@media (max-width: 640px) {
-  .sm-fen-fond { padding: 0; }
-  .sm-fen, .sm-fen.is-large { max-width: none; max-height: none; height: 100%; border-radius: 0; }
-  
-  
-}
-@media (prefers-reduced-motion: reduce) { .sm-fen { animation: none; } }
 /* ============================================================================
    EMAILS & RELANCES : L ESPACE DE TRAVAIL (2026-11-10, lot 1a)
    Ansar : « un truc bcp plus pro beau », « en logiciel pro, comme Shopify ou

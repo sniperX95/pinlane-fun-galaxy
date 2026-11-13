@@ -15,6 +15,9 @@ const BASE_URL = `http://127.0.0.1:${PORT}`;
 const BROWSER_PATH = process.env.E2E_BROWSER_PATH || 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.woff2': 'font/woff2' };
 
+// La coupure de la contre-epreuve : servie au navigateur, jamais ecrite dans le depot.
+let mutation = null;
+let mutationPosee = false;
 function serveStatic() {
   const server = http.createServer((req, res) => {
     const url = new URL(req.url, BASE_URL);
@@ -23,8 +26,13 @@ function serveStatic() {
     if (!filePath.startsWith(ROOT)) { res.writeHead(403); res.end('Forbidden'); return; }
     fs.readFile(filePath, (err, content) => {
       if (err) { res.writeHead(404); res.end('Not found'); return; }
+      let corps = content;
+      if (mutation && url.pathname === '/assets/app-main.js') {
+        const t = content.toString('utf8').replace(/\r\n/g, '\n');
+        if (t.includes(mutation.de)) { corps = t.split(mutation.de).join(mutation.vers); mutationPosee = true; }
+      }
       res.writeHead(200, { 'Content-Type': MIME[path.extname(filePath).toLowerCase()] || 'application/octet-stream', 'Cache-Control': 'no-store' });
-      res.end(content);
+      res.end(corps);
     });
   });
   return new Promise((resolve, reject) => { server.once('error', reject); server.listen(PORT, '127.0.0.1', () => resolve(server)); });
@@ -124,13 +132,13 @@ async function main() {
     console.log('\n[Ouvrir le planning reste sur place : une fenetre, pas une autre page]');
     const avant = await page.evaluate(() => state.staffMenuPage);
     await page.click('#staffDashboardDetailOverlay button:has-text("Ouvrir le planning")');
-    await page.waitForSelector('.sm-fen #smFenPlanning', { timeout: 8000 });
-    const fenetre = await page.evaluate(() => ({ detailFerme: !document.getElementById('staffDashboardDetailOverlay'), page: state.staffMenuPage, texte: (document.querySelector('.sm-fen') || {}).textContent || '' }));
+    await page.waitForSelector('.bdg-fen #bdgFenPlanning', { timeout: 8000 });
+    const fenetre = await page.evaluate(() => ({ detailFerme: !document.getElementById('staffDashboardDetailOverlay'), page: state.staffMenuPage, texte: (document.querySelector('.bdg-fen') || {}).textContent || '' }));
     ok(/Planning du /.test(fenetre.texte), 'la fenetre dit de quel jour est le planning');
     ok(fenetre.detailFerme, 'le detail du tableau de bord se ferme derriere');
     ok(fenetre.page === avant, 'on reste sur la meme page (' + fenetre.page + ')');
     await page.keyboard.press('Escape');
-    await page.waitForFunction(() => !document.querySelector('.sm-fen'), null, { timeout: 5000 });
+    await page.waitForFunction(() => !document.querySelector('.bdg-fen'), null, { timeout: 5000 });
     await page.evaluate(() => window.openStaffDashboardDetail('alerts', 'lead'));
     await page.waitForSelector('.alert-lead', { timeout: 8000 });
 
@@ -141,44 +149,66 @@ async function main() {
       // Mesure par le DOM : ce que l ecran MONTRE, pas une variable interne
       // (state n est pas expose sur window, une sonde qui l interroge rend
       // undefined et croit a une regression).
-      onRequestsPage: !!document.querySelector('#staffUtilityPage .sm'),
+      onRequestsPage: !!document.querySelector('#staffUtilityPage .bdg'),
       pageTitle: ((document.querySelector('#staffUtilityPage h1, #staffUtilityPage .util-title') || {}).textContent || '').trim(),
       overlayGone: !document.getElementById('staffDashboardDetailOverlay'),
-      cardVisible: !!document.querySelector('.sm-fiche[data-request-id="501"]'),
-      lignes: document.querySelectorAll('.sm-l').length,
-      boardText: (document.querySelector('.sm') || {}).textContent || '',
+      cardVisible: !!document.querySelector('.bdg-lecture[data-request-id="501"]'),
+      allumee: (document.querySelector('.bdg-l[aria-current="true"]') || { dataset: {} }).dataset.itemId || '',
+      boardText: (document.querySelector('.bdg') || {}).textContent || '',
     }));
     ok(landed.onRequestsPage, 'on atterrit sur la page Demandes sur mesure (titre : ' + landed.pageTitle + ')');
     ok(landed.overlayGone, 'le panneau d alertes se referme derriere nous');
-    ok(landed.cardVisible, 'la fiche de LA demande cliquee est ouverte');
-    ok(landed.lignes === 0, 'elle prend la page : on ne cherche pas laquelle dans une liste');
+    ok(landed.cardVisible, 'la demande cliquee est ouverte');
+    ok(landed.allumee === '501', 'elle est ouverte d office, sa ligne allumee dans la boite : on ne la cherche pas dans une liste (' + (landed.allumee || 'aucune') + ')');
     ok(/Asso Les Lucioles/.test(landed.boardText), 'la page porte bien le contact attendu');
-    // La REGLE, pas le libelle : la fiche porte l action de repondre et celle de reserver.
+    // La REGLE, pas le libelle : la demande porte l action de repondre et celle de reserver.
     ok(/Écrire au client/.test(landed.boardText) && /Créer la réservation/.test(landed.boardText), 'et les actions de traitement, la ou elles vivent');
 
-    console.log('\n[Contre-epreuve : une demande DEJA TRAITEE ouvre SON segment]');
+    console.log('\n[Contre-epreuve : une demande DEJA TRAITEE ouvre SON onglet]');
     await page.evaluate(() => window.openStaffRequestsPage(502));
     await page.waitForTimeout(1000);
-    const handled = await page.evaluate(() => ({ cardVisible: !!document.querySelector('.sm-fiche[data-request-id="502"]') }));
-    await page.click('.sm-retour');
+    const handled = await page.evaluate(() => ({
+      cardVisible: !!document.querySelector('.bdg-lecture[data-request-id="502"]'),
+      activeSegment: ((document.querySelector('.bdg-onglet[aria-selected="true"]') || {}).textContent || '').trim(),
+      ligne: !!document.querySelector('.bdg-l[data-item-id="502"][aria-current="true"]'),
+    }));
+    ok(handled.cardVisible, 'sa demande s ouvre : la page n est pas vide sur un clic valide');
+    ok(/Terminées/.test(handled.activeSegment) && handled.ligne, 'et la boite a cote est sur son onglet, sa ligne allumee (' + handled.activeSegment + ')');
+    // Sur une tablette, la demande prend l ecran : le retour a la liste, d un vrai clic.
+    await page.setViewportSize({ width: 1024, height: 768 });
     await page.waitForTimeout(500);
-    handled.activeSegment = await page.evaluate(() => ((document.querySelector('.sm-onglet[aria-selected="true"]') || {}).textContent || '').trim());
-    handled.ligne = await page.evaluate(() => !!document.querySelector('.sm-l[data-item-id="502"]'));
-    ok(handled.cardVisible, 'sa fiche s ouvre : la page n est pas vide sur un clic valide');
-    ok(/Terminées/.test(handled.activeSegment) && handled.ligne, 'et le retour a la liste tombe dans le bon onglet (' + handled.activeSegment + ')');
-    await page.evaluate(() => window.openStaffRequestsPage(502));
+    await page.click('.bdg-lecture[data-request-id="502"] .bdg-retour');
     await page.waitForTimeout(500);
+    const retour = await page.evaluate(() => ({
+      activeSegment: ((document.querySelector('.bdg-onglet[aria-selected="true"]') || {}).textContent || '').trim(),
+      ligne: !!document.querySelector('.bdg-l[data-item-id="502"]'),
+      ouverte: !!document.querySelector('.bdg-lecture[data-request-id]'),
+    }));
+    ok(/Terminées/.test(retour.activeSegment) && retour.ligne && !retour.ouverte, 'et le retour a la liste tombe dans le bon onglet (' + retour.activeSegment + ')');
+    await page.setViewportSize({ width: 1400, height: 900 });
+    ok(errs.length === 0, 'zero erreur console (' + errs.length + (errs.length ? ' : ' + errs[0] : '') + ')');
 
     console.log('\n[Contre-epreuve : ce gate sait-il rougir ?]');
-    const blinded = await page.evaluate(() => {
-      const card = document.querySelector('.sm-fiche[data-request-id="502"]');
-      if (!card) return null;
-      card.setAttribute('data-request-id', 'casse');
-      return !document.querySelector('.sm-fiche[data-request-id="502"]');
-    });
-    ok(blinded === true, 'cible retiree expres : la sonde ne trouve plus la carte -> le gate ROUGIRAIT');
-
-    ok(errs.length === 0, 'zero erreur console (' + errs.length + (errs.length ? ' : ' + errs[0] : '') + ')');
+    // Le lien qui n emporterait plus SA demande (ni son onglet) : la page s ouvrirait sur la
+    // premiere venue des demandes a traiter.
+    mutation = {
+      de: "  if (typeof closeStaffDashboardDetail === 'function') closeStaffDashboardDetail();\n  const item = getStaffCustomRequestItems().find(entry => String(entry.id) === String(id));\n",
+      vers: "  if (typeof closeStaffDashboardDetail === 'function') closeStaffDashboardDetail();\n  const item = null; id = null;\n",
+    };
+    const coupee = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+    await installMock(coupee);
+    await coupee.goto(BASE_URL + '/?v=leadlink-coupe-' + Date.now(), { waitUntil: 'domcontentloaded', timeout: 45000 });
+    await coupee.waitForFunction(() => typeof window.setView === 'function', null, { timeout: 15000 });
+    await coupee.evaluate(() => window.setView('staff'));
+    await coupee.evaluate(() => { if (typeof ensureStaffCustomRequests === 'function') ensureStaffCustomRequests(); });
+    await coupee.waitForFunction(() => typeof window.getStaffActiveCustomRequestCount === 'function' && window.getStaffActiveCustomRequestCount() > 0, null, { timeout: 10000 });
+    await coupee.evaluate(() => window.openStaffRequestsPage(502));
+    await coupee.waitForTimeout(1000);
+    const aveugle = await coupee.evaluate(() => !!document.querySelector('.bdg-lecture[data-request-id="502"]'));
+    ok(mutationPosee, 'la coupure est posee dans app-main.js servi (le lien perd sa demande)');
+    ok(aveugle === false, 'avec la coupure, la demande 502 ne s ouvre plus : la sonde le voit -> le gate ROUGIRAIT');
+    await coupee.close();
+    mutation = null;
   } finally {
     await browser.close();
     server.close();

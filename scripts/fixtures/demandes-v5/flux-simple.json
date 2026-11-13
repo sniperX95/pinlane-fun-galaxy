@@ -1,0 +1,1607 @@
+{
+ "origine": "Projects/pinlane/assets/sur-mesure-2026-11-13/flux/simple.json (banc-vrai-modele.cjs, vrai modele, 2026-11-13)",
+ "demande": {
+  "nom": "simple",
+  "id": 51,
+  "consigne": "",
+  "demande": {
+   "id": 51,
+   "contactName": "Sophie Martin",
+   "email": "sophie.martin@exemple.be",
+   "phone": "0471 23 45 67",
+   "requestedDate": "2026-11-21",
+   "pax": 15,
+   "occasion": "amis",
+   "message": "Bonjour, nous voudrions venir à 15 pour un bowling et un laser samedi après-midi. Merci !",
+   "payload": {
+    "demande": {
+     "version": 1,
+     "groupType": "amis",
+     "groupTypeLabel": "Amis, famille",
+     "organisation": "",
+     "participants": 15,
+     "companions": 0,
+     "ages": [
+      "adultes"
+     ],
+     "flexible": false,
+     "date": "2026-11-21",
+     "alternativeDate": "",
+     "period": "",
+     "moment": "apres-midi",
+     "momentLabel": "Après-midi",
+     "formulas": [],
+     "activities": [
+      {
+       "id": "bowling",
+       "name": "Bowling",
+       "participants": 15,
+       "duration": 1
+      },
+      {
+       "id": "laser_game",
+       "name": "Laser Game",
+       "participants": 15,
+       "games": 1
+      }
+     ],
+     "advice": false,
+     "budgetPerPerson": 0,
+     "contactRole": "",
+     "invoice": false,
+     "vatNumber": ""
+    }
+   }
+  },
+  "conversation": []
+ },
+ "statut": 200,
+ "evenements": [
+  {
+   "type": "debut",
+   "donnees": {
+    "modele": "Sonnet 5.5",
+    "centres": [
+     {
+      "id": "libramont",
+      "name": "Fun Galaxy Libramont"
+     }
+    ],
+    "sources": [
+     {
+      "cle": "reservations",
+      "nom": "Réservations"
+     },
+     {
+      "cle": "planning",
+      "nom": "Planning"
+     },
+     {
+      "cle": "clients",
+      "nom": "Clients"
+     },
+     {
+      "cle": "catalogue",
+      "nom": "Catalogue"
+     },
+     {
+      "cle": "mails",
+      "nom": "Mails"
+     },
+     {
+      "cle": "communications",
+      "nom": "Communications"
+     },
+     {
+      "cle": "campagnes",
+      "nom": "Campagnes"
+     },
+     {
+      "cle": "notes",
+      "nom": "Notes"
+     },
+     {
+      "cle": "demandes",
+      "nom": "Demandes"
+     },
+     {
+      "cle": "equipe",
+      "nom": "Équipe"
+     },
+     {
+      "cle": "journal",
+      "nom": "Journal"
+     },
+     {
+      "cle": "meteo",
+      "nom": "Météo"
+     },
+     {
+      "cle": "site",
+      "nom": "Site"
+     },
+     {
+      "cle": "concurrents",
+      "nom": "Concurrents"
+     },
+     {
+      "cle": "savoir",
+      "nom": "Savoir"
+     }
+    ]
+   }
+  },
+  {
+   "type": "etape",
+   "donnees": {
+    "id": "toolu_011DvJJ4waBGmJi4cBGkwYd2",
+    "etat": "cours",
+    "cleSource": "planning",
+    "nomSource": "Planning",
+    "phrase": "Je cherche l'heure calme samedi après-midi pour 15 joueurs",
+    "libelle": "Je cherche l'heure calme samedi après-midi pour 15 joueurs",
+    "periode": "",
+    "centre": "Fun Galaxy Libramont",
+    "unite": "lignes"
+   }
+  },
+  {
+   "type": "source",
+   "donnees": {
+    "id": "S1",
+    "outil": "heures_qui_tiennent",
+    "titre": "Heures possibles le 2026-11-21",
+    "detail": "Fun Galaxy Libramont, ouvert 10h - Minuit. Programme essayé : bowling 1 h pour 15, laser_game 1 parties pour 15, 15 joueurs.",
+    "colonnes": [
+     {
+      "cle": "heure",
+      "nom": "Départ",
+      "type": "texte"
+     },
+     {
+      "cle": "tient",
+      "nom": "Tout tient",
+      "type": "texte"
+     },
+     {
+      "cle": "fin",
+      "nom": "Fin",
+      "type": "texte"
+     },
+     {
+      "cle": "laser_partage",
+      "nom": "Laser partagé",
+      "type": "texte"
+     },
+     {
+      "cle": "groupes_presents",
+      "nom": "Groupes déjà là",
+      "type": "entier"
+     },
+     {
+      "cle": "joueurs_presents",
+      "nom": "Joueurs déjà là",
+      "type": "entier"
+     },
+     {
+      "cle": "raison",
+      "nom": "Pourquoi pas",
+      "type": "texte"
+     }
+    ],
+    "lignes": [
+     {
+      "heure": "10:00",
+      "tient": "oui",
+      "fin": "11:25",
+      "laser_partage": "non",
+      "groupes_presents": 0,
+      "joueurs_presents": 0,
+      "raison": ""
+     },
+     {
+      "heure": "10:30",
+      "tient": "oui",
+      "fin": "11:55",
+      "laser_partage": "non",
+      "groupes_presents": 0,
+      "joueurs_presents": 0,
+      "raison": ""
+     },
+     {
+      "heure": "11:00",
+      "tient": "oui",
+      "fin": "12:25",
+      "laser_partage": "non",
+      "groupes_presents": 0,
+      "joueurs_presents": 0,
+      "raison": ""
+     },
+     {
+      "heure": "11:30",
+      "tient": "oui",
+      "fin": "12:55",
+      "laser_partage": "non",
+      "groupes_presents": 0,
+      "joueurs_presents": 0,
+      "raison": ""
+     },
+     {
+      "heure": "12:00",
+      "tient": "oui",
+      "fin": "13:25",
+      "laser_partage": "non",
+      "groupes_presents": 0,
+      "joueurs_presents": 0,
+      "raison": ""
+     },
+     {
+      "heure": "12:30",
+      "tient": "oui",
+      "fin": "13:55",
+      "laser_partage": "non",
+      "groupes_presents": 0,
+      "joueurs_presents": 0,
+      "raison": ""
+     },
+     {
+      "heure": "13:00",
+      "tient": "oui",
+      "fin": "14:25",
+      "laser_partage": "non",
+      "groupes_presents": 1,
+      "joueurs_presents": 16,
+      "raison": ""
+     },
+     {
+      "heure": "13:30",
+      "tient": "oui",
+      "fin": "14:55",
+      "laser_partage": "non",
+      "groupes_presents": 1,
+      "joueurs_presents": 16,
+      "raison": ""
+     },
+     {
+      "heure": "14:00",
+      "tient": "oui",
+      "fin": "15:25",
+      "laser_partage": "non",
+      "groupes_presents": 2,
+      "joueurs_presents": 24,
+      "raison": ""
+     },
+     {
+      "heure": "14:30",
+      "tient": "non",
+      "fin": "",
+      "laser_partage": "non",
+      "groupes_presents": 2,
+      "joueurs_presents": 24,
+      "raison": "Pas assez de pistes libres à 14:30 : il en faut 3."
+     },
+     {
+      "heure": "15:00",
+      "tient": "oui",
+      "fin": "16:25",
+      "laser_partage": "non",
+      "groupes_presents": 1,
+      "joueurs_presents": 8,
+      "raison": ""
+     },
+     {
+      "heure": "15:30",
+      "tient": "oui",
+      "fin": "16:55",
+      "laser_partage": "non",
+      "groupes_presents": 1,
+      "joueurs_presents": 8,
+      "raison": ""
+     },
+     {
+      "heure": "16:00",
+      "tient": "oui",
+      "fin": "17:25",
+      "laser_partage": "non",
+      "groupes_presents": 0,
+      "joueurs_presents": 0,
+      "raison": ""
+     },
+     {
+      "heure": "16:30",
+      "tient": "oui",
+      "fin": "17:55",
+      "laser_partage": "non",
+      "groupes_presents": 0,
+      "joueurs_presents": 0,
+      "raison": ""
+     },
+     {
+      "heure": "17:00",
+      "tient": "oui",
+      "fin": "18:25",
+      "laser_partage": "non",
+      "groupes_presents": 0,
+      "joueurs_presents": 0,
+      "raison": ""
+     },
+     {
+      "heure": "17:30",
+      "tient": "oui",
+      "fin": "18:55",
+      "laser_partage": "non",
+      "groupes_presents": 0,
+      "joueurs_presents": 0,
+      "raison": ""
+     },
+     {
+      "heure": "18:00",
+      "tient": "oui",
+      "fin": "19:25",
+      "laser_partage": "non",
+      "groupes_presents": 0,
+      "joueurs_presents": 0,
+      "raison": ""
+     },
+     {
+      "heure": "18:30",
+      "tient": "oui",
+      "fin": "19:55",
+      "laser_partage": "non",
+      "groupes_presents": 0,
+      "joueurs_presents": 0,
+      "raison": ""
+     },
+     {
+      "heure": "19:00",
+      "tient": "oui",
+      "fin": "20:25",
+      "laser_partage": "non",
+      "groupes_presents": 0,
+      "joueurs_presents": 0,
+      "raison": ""
+     },
+     {
+      "heure": "19:30",
+      "tient": "oui",
+      "fin": "20:55",
+      "laser_partage": "non",
+      "groupes_presents": 0,
+      "joueurs_presents": 0,
+      "raison": ""
+     },
+     {
+      "heure": "20:00",
+      "tient": "oui",
+      "fin": "21:25",
+      "laser_partage": "non",
+      "groupes_presents": 0,
+      "joueurs_presents": 0,
+      "raison": ""
+     },
+     {
+      "heure": "20:30",
+      "tient": "oui",
+      "fin": "21:55",
+      "laser_partage": "non",
+      "groupes_presents": 0,
+      "joueurs_presents": 0,
+      "raison": ""
+     },
+     {
+      "heure": "21:00",
+      "tient": "oui",
+      "fin": "22:25",
+      "laser_partage": "non",
+      "groupes_presents": 0,
+      "joueurs_presents": 0,
+      "raison": ""
+     },
+     {
+      "heure": "21:30",
+      "tient": "oui",
+      "fin": "22:55",
+      "laser_partage": "non",
+      "groupes_presents": 0,
+      "joueurs_presents": 0,
+      "raison": ""
+     },
+     {
+      "heure": "22:00",
+      "tient": "oui",
+      "fin": "23:25",
+      "laser_partage": "non",
+      "groupes_presents": 0,
+      "joueurs_presents": 0,
+      "raison": ""
+     },
+     {
+      "heure": "22:30",
+      "tient": "oui",
+      "fin": "23:55",
+      "laser_partage": "non",
+      "groupes_presents": 0,
+      "joueurs_presents": 0,
+      "raison": ""
+     },
+     {
+      "heure": "23:00",
+      "tient": "oui",
+      "fin": "24:00",
+      "laser_partage": "non",
+      "groupes_presents": 0,
+      "joueurs_presents": 0,
+      "raison": ""
+     },
+     {
+      "heure": "23:30",
+      "tient": "non",
+      "fin": "",
+      "laser_partage": "non",
+      "groupes_presents": 0,
+      "joueurs_presents": 0,
+      "raison": "Ces heures ne rentrent pas dans les horaires du centre pour cette formule."
+     }
+    ],
+    "sections": [
+     {
+      "titre": "Lignes",
+      "colonnes": [
+       {
+        "cle": "heure",
+        "nom": "Heure",
+        "type": "texte"
+       },
+       {
+        "cle": "tient",
+        "nom": "Tient",
+        "type": "texte"
+       },
+       {
+        "cle": "fin",
+        "nom": "Fin",
+        "type": "texte"
+       },
+       {
+        "cle": "laser_partage",
+        "nom": "Laser partage",
+        "type": "texte"
+       },
+       {
+        "cle": "groupes_presents",
+        "nom": "Groupes presents",
+        "type": "dec"
+       },
+       {
+        "cle": "joueurs_presents",
+        "nom": "Joueurs presents",
+        "type": "dec"
+       },
+       {
+        "cle": "raison",
+        "nom": "Raison",
+        "type": "texte"
+       }
+      ],
+      "lignes": [
+       {
+        "heure": "10:00",
+        "tient": "oui",
+        "fin": "11:25",
+        "laser_partage": "non",
+        "groupes_presents": 0,
+        "joueurs_presents": 0,
+        "raison": ""
+       },
+       {
+        "heure": "10:30",
+        "tient": "oui",
+        "fin": "11:55",
+        "laser_partage": "non",
+        "groupes_presents": 0,
+        "joueurs_presents": 0,
+        "raison": ""
+       },
+       {
+        "heure": "11:00",
+        "tient": "oui",
+        "fin": "12:25",
+        "laser_partage": "non",
+        "groupes_presents": 0,
+        "joueurs_presents": 0,
+        "raison": ""
+       },
+       {
+        "heure": "11:30",
+        "tient": "oui",
+        "fin": "12:55",
+        "laser_partage": "non",
+        "groupes_presents": 0,
+        "joueurs_presents": 0,
+        "raison": ""
+       },
+       {
+        "heure": "12:00",
+        "tient": "oui",
+        "fin": "13:25",
+        "laser_partage": "non",
+        "groupes_presents": 0,
+        "joueurs_presents": 0,
+        "raison": ""
+       },
+       {
+        "heure": "12:30",
+        "tient": "oui",
+        "fin": "13:55",
+        "laser_partage": "non",
+        "groupes_presents": 0,
+        "joueurs_presents": 0,
+        "raison": ""
+       },
+       {
+        "heure": "13:00",
+        "tient": "oui",
+        "fin": "14:25",
+        "laser_partage": "non",
+        "groupes_presents": 1,
+        "joueurs_presents": 16,
+        "raison": ""
+       },
+       {
+        "heure": "13:30",
+        "tient": "oui",
+        "fin": "14:55",
+        "laser_partage": "non",
+        "groupes_presents": 1,
+        "joueurs_presents": 16,
+        "raison": ""
+       },
+       {
+        "heure": "14:00",
+        "tient": "oui",
+        "fin": "15:25",
+        "laser_partage": "non",
+        "groupes_presents": 2,
+        "joueurs_presents": 24,
+        "raison": ""
+       },
+       {
+        "heure": "14:30",
+        "tient": "non",
+        "fin": "",
+        "laser_partage": "non",
+        "groupes_presents": 2,
+        "joueurs_presents": 24,
+        "raison": "Pas assez de pistes libres à 14:30 : il en faut 3."
+       },
+       {
+        "heure": "15:00",
+        "tient": "oui",
+        "fin": "16:25",
+        "laser_partage": "non",
+        "groupes_presents": 1,
+        "joueurs_presents": 8,
+        "raison": ""
+       },
+       {
+        "heure": "15:30",
+        "tient": "oui",
+        "fin": "16:55",
+        "laser_partage": "non",
+        "groupes_presents": 1,
+        "joueurs_presents": 8,
+        "raison": ""
+       },
+       {
+        "heure": "16:00",
+        "tient": "oui",
+        "fin": "17:25",
+        "laser_partage": "non",
+        "groupes_presents": 0,
+        "joueurs_presents": 0,
+        "raison": ""
+       },
+       {
+        "heure": "16:30",
+        "tient": "oui",
+        "fin": "17:55",
+        "laser_partage": "non",
+        "groupes_presents": 0,
+        "joueurs_presents": 0,
+        "raison": ""
+       },
+       {
+        "heure": "17:00",
+        "tient": "oui",
+        "fin": "18:25",
+        "laser_partage": "non",
+        "groupes_presents": 0,
+        "joueurs_presents": 0,
+        "raison": ""
+       },
+       {
+        "heure": "17:30",
+        "tient": "oui",
+        "fin": "18:55",
+        "laser_partage": "non",
+        "groupes_presents": 0,
+        "joueurs_presents": 0,
+        "raison": ""
+       },
+       {
+        "heure": "18:00",
+        "tient": "oui",
+        "fin": "19:25",
+        "laser_partage": "non",
+        "groupes_presents": 0,
+        "joueurs_presents": 0,
+        "raison": ""
+       },
+       {
+        "heure": "18:30",
+        "tient": "oui",
+        "fin": "19:55",
+        "laser_partage": "non",
+        "groupes_presents": 0,
+        "joueurs_presents": 0,
+        "raison": ""
+       },
+       {
+        "heure": "19:00",
+        "tient": "oui",
+        "fin": "20:25",
+        "laser_partage": "non",
+        "groupes_presents": 0,
+        "joueurs_presents": 0,
+        "raison": ""
+       },
+       {
+        "heure": "19:30",
+        "tient": "oui",
+        "fin": "20:55",
+        "laser_partage": "non",
+        "groupes_presents": 0,
+        "joueurs_presents": 0,
+        "raison": ""
+       },
+       {
+        "heure": "20:00",
+        "tient": "oui",
+        "fin": "21:25",
+        "laser_partage": "non",
+        "groupes_presents": 0,
+        "joueurs_presents": 0,
+        "raison": ""
+       },
+       {
+        "heure": "20:30",
+        "tient": "oui",
+        "fin": "21:55",
+        "laser_partage": "non",
+        "groupes_presents": 0,
+        "joueurs_presents": 0,
+        "raison": ""
+       },
+       {
+        "heure": "21:00",
+        "tient": "oui",
+        "fin": "22:25",
+        "laser_partage": "non",
+        "groupes_presents": 0,
+        "joueurs_presents": 0,
+        "raison": ""
+       },
+       {
+        "heure": "21:30",
+        "tient": "oui",
+        "fin": "22:55",
+        "laser_partage": "non",
+        "groupes_presents": 0,
+        "joueurs_presents": 0,
+        "raison": ""
+       },
+       {
+        "heure": "22:00",
+        "tient": "oui",
+        "fin": "23:25",
+        "laser_partage": "non",
+        "groupes_presents": 0,
+        "joueurs_presents": 0,
+        "raison": ""
+       },
+       {
+        "heure": "22:30",
+        "tient": "oui",
+        "fin": "23:55",
+        "laser_partage": "non",
+        "groupes_presents": 0,
+        "joueurs_presents": 0,
+        "raison": ""
+       },
+       {
+        "heure": "23:00",
+        "tient": "oui",
+        "fin": "24:00",
+        "laser_partage": "non",
+        "groupes_presents": 0,
+        "joueurs_presents": 0,
+        "raison": ""
+       },
+       {
+        "heure": "23:30",
+        "tient": "non",
+        "fin": "",
+        "laser_partage": "non",
+        "groupes_presents": 0,
+        "joueurs_presents": 0,
+        "raison": "Ces heures ne rentrent pas dans les horaires du centre pour cette formule."
+       }
+      ]
+     },
+     {
+      "titre": "Programme",
+      "colonnes": [
+       {
+        "cle": "activityId",
+        "nom": "Activity id",
+        "type": "texte"
+       },
+       {
+        "cle": "participants",
+        "nom": "Participants",
+        "type": "dec"
+       },
+       {
+        "cle": "duration",
+        "nom": "Duration",
+        "type": "dec"
+       },
+       {
+        "cle": "games",
+        "nom": "Games",
+        "type": "dec"
+       }
+      ],
+      "lignes": [
+       {
+        "activityId": "bowling",
+        "participants": 15,
+        "duration": 1
+       },
+       {
+        "activityId": "laser_game",
+        "participants": 15,
+        "games": 1
+       }
+      ]
+     },
+     {
+      "titre": "Général",
+      "colonnes": [
+       {
+        "cle": "ligne",
+        "nom": "",
+        "type": "texte"
+       },
+       {
+        "cle": "valeur",
+        "nom": "Valeur",
+        "type": "dec"
+       }
+      ],
+      "lignes": [
+       {
+        "ligne": "Centre",
+        "valeur": "libramont"
+       },
+       {
+        "ligne": "Date",
+        "valeur": "2026-11-21"
+       },
+       {
+        "ligne": "Horaire",
+        "valeur": "10h - Minuit"
+       },
+       {
+        "ligne": "Joueurs",
+        "valeur": 15
+       },
+       {
+        "ligne": "Heures possibles",
+        "valeur": 26
+       },
+       {
+        "ligne": "La plus calme",
+        "valeur": "10:00"
+       }
+      ]
+     }
+    ],
+    "ouvrables": false,
+    "lien": {
+     "page": "planning"
+    }
+   }
+  },
+  {
+   "type": "etape",
+   "donnees": {
+    "id": "toolu_011DvJJ4waBGmJi4cBGkwYd2",
+    "etat": "fini",
+    "source": "S1",
+    "trouve": "26 heures possibles sur 28",
+    "lues": 0,
+    "duree": 83,
+    "lecture": {
+     "outil": "heures_qui_tiennent",
+     "entree": {
+      "date": "2026-11-21",
+      "joueurs": 15,
+      "activites": [
+       {
+        "activite": "bowling",
+        "duree_heures": 1,
+        "participants": 15
+       },
+       {
+        "activite": "laser_game",
+        "parties": 1,
+        "participants": 15
+       }
+      ]
+     },
+     "empreinte": "315a6b3f9adc"
+    }
+   }
+  },
+  {
+   "type": "etape",
+   "donnees": {
+    "id": "toolu_013iktZRZx5Lap7YRQ6yZcKZ",
+    "etat": "cours",
+    "cleSource": "savoir",
+    "nomSource": "Savoir",
+    "phrase": "Je prépare bowling puis laser samedi 16 h pour 15",
+    "libelle": "Je prépare bowling puis laser samedi 16 h pour 15",
+    "periode": "",
+    "centre": "Fun Galaxy Libramont",
+    "unite": "lignes"
+   }
+  },
+  {
+   "type": "proposition",
+   "donnees": {
+    "type": "geste",
+    "geste": "reservation_demande",
+    "centre": "libramont",
+    "demande": 51,
+    "texte": "Réservation du samedi 21 novembre à 16:00 pour 15 joueurs, Bowling (1 h, 15 joueurs, pistes 1, 2, 3), Laser Game (1 partie, 15 joueurs).",
+    "resume": {
+     "quand": "samedi 21 novembre",
+     "date": "2026-11-21",
+     "heure": "16:00",
+     "joueurs": 15,
+     "disponible": true,
+     "debut": "16:00",
+     "fin": "17:25",
+     "lignes": [
+      {
+       "activite": "bowling",
+       "nom": "Bowling",
+       "debut": "16:00",
+       "fin": "17:00",
+       "detail": "1 h, 15 joueurs, pistes 1, 2, 3"
+      },
+      {
+       "activite": "laser_game",
+       "nom": "Laser Game",
+       "debut": "17:00",
+       "fin": "17:25",
+       "detail": "1 partie, 15 joueurs"
+      }
+     ],
+     "supplements": [],
+     "prix": 267,
+     "refus": "",
+     "conflits": [],
+     "nom": "Sophie Martin",
+     "telephone": "0471 23 45 67",
+     "email": "sophie.martin@exemple.be"
+    },
+    "action": {
+     "action": "customRequestBook",
+     "id": 51,
+     "reservation": {
+      "date": "2026-11-21",
+      "startTime": "16:00",
+      "pax": 15,
+      "programme": [
+       {
+        "activityId": "bowling",
+        "participants": 15,
+        "duration": 1
+       },
+       {
+        "activityId": "laser_game",
+        "participants": 15,
+        "games": 1
+       }
+      ],
+      "supplements": [],
+      "prix": null,
+      "raisonPrix": "",
+      "note": ""
+     }
+    }
+   }
+  },
+  {
+   "type": "etape",
+   "donnees": {
+    "id": "toolu_013iktZRZx5Lap7YRQ6yZcKZ",
+    "etat": "fini",
+    "source": "",
+    "trouve": "À valider sous la réponse",
+    "lues": 0,
+    "duree": 7
+   }
+  },
+  {
+   "type": "etape",
+   "donnees": {
+    "id": "toolu_01GeNerUgQZFWiUGJTgT3DTW",
+    "etat": "cours",
+    "cleSource": "savoir",
+    "nomSource": "Savoir",
+    "phrase": "J'écris la proposition de samedi 16 h à Sophie",
+    "libelle": "J'écris la proposition de samedi 16 h à Sophie",
+    "periode": "",
+    "centre": "Fun Galaxy Libramont",
+    "unite": "lignes"
+   }
+  },
+  {
+   "type": "etape",
+   "donnees": {
+    "id": "toolu_01GeNerUgQZFWiUGJTgT3DTW",
+    "etat": "echec",
+    "source": "",
+    "trouve": "",
+    "lues": 0,
+    "duree": 4
+   }
+  },
+  {
+   "type": "etape",
+   "donnees": {
+    "id": "toolu_01Ssf47FxC7vssBYKsDfrU2N",
+    "etat": "cours",
+    "cleSource": "savoir",
+    "nomSource": "Savoir",
+    "phrase": "Je corrige le mail de Sophie pour samedi 16 h",
+    "libelle": "Je corrige le mail de Sophie pour samedi 16 h",
+    "periode": "",
+    "centre": "Fun Galaxy Libramont",
+    "unite": "lignes"
+   }
+  },
+  {
+   "type": "proposition",
+   "donnees": {
+    "type": "geste",
+    "geste": "mail_demande",
+    "centre": "libramont",
+    "demande": 51,
+    "source": "ia",
+    "texte": "Envoyer la proposition à Sophie Martin <sophie.martin@exemple.be>.",
+    "resume": {
+     "a": "Sophie Martin <sophie.martin@exemple.be>",
+     "objet": "Votre bowling et laser game, samedi 21 novembre",
+     "corps": "Bonjour Sophie,\n\nMerci pour votre demande. Pour votre groupe de 15 adultes, l’équipe propose le samedi 21 novembre 2026, avec une arrivée à 16 h.\n\nLe programme comprend une heure de bowling de 16 h à 17 h sur trois pistes, puis une partie de laser game de 17 h à 17 h 25. Le prix pour le groupe est de 267 €, soit 17,80 € par joueur.\n\nL’horaire est retenu dès votre accord, il vous suffit de répondre à ce message. Si vous préférez une autre heure dans l’après-midi, indiquez-la et l’équipe vérifie ce qui est possible.\n\nBien cordialement,\nL’équipe Fun Galaxy Libramont",
+     "points": []
+    },
+    "action": {
+     "action": "sendDirectEmail",
+     "customRequestId": 51,
+     "to": "sophie.martin@exemple.be",
+     "name": "Sophie Martin",
+     "subject": "Votre bowling et laser game, samedi 21 novembre",
+     "body": "Bonjour Sophie,\n\nMerci pour votre demande. Pour votre groupe de 15 adultes, l’équipe propose le samedi 21 novembre 2026, avec une arrivée à 16 h.\n\nLe programme comprend une heure de bowling de 16 h à 17 h sur trois pistes, puis une partie de laser game de 17 h à 17 h 25. Le prix pour le groupe est de 267 €, soit 17,80 € par joueur.\n\nL’horaire est retenu dès votre accord, il vous suffit de répondre à ce message. Si vous préférez une autre heure dans l’après-midi, indiquez-la et l’équipe vérifie ce qui est possible.\n\nBien cordialement,\nL’équipe Fun Galaxy Libramont",
+     "category": "direct",
+     "templateRef": "demande-sur-mesure",
+     "draftSource": "ia",
+     "draftOriginal": {
+      "subject": "Votre bowling et laser game, samedi 21 novembre",
+      "body": "Bonjour Sophie,\n\nMerci pour votre demande. Pour votre groupe de 15 adultes, l’équipe propose le samedi 21 novembre 2026, avec une arrivée à 16 h.\n\nLe programme comprend une heure de bowling de 16 h à 17 h sur trois pistes, puis une partie de laser game de 17 h à 17 h 25. Le prix pour le groupe est de 267 €, soit 17,80 € par joueur.\n\nL’horaire est retenu dès votre accord, il vous suffit de répondre à ce message. Si vous préférez une autre heure dans l’après-midi, indiquez-la et l’équipe vérifie ce qui est possible.\n\nBien cordialement,\nL’équipe Fun Galaxy Libramont"
+     },
+     "proposition": {
+      "date": "2026-11-21",
+      "startTime": "16:00",
+      "pax": 15,
+      "programme": [
+       {
+        "activityId": "bowling",
+        "participants": 15,
+        "duration": 1
+       },
+       {
+        "activityId": "laser_game",
+        "participants": 15,
+        "games": 1
+       }
+      ],
+      "supplements": [],
+      "prix": null,
+      "raisonPrix": "",
+      "note": ""
+     }
+    }
+   }
+  },
+  {
+   "type": "etape",
+   "donnees": {
+    "id": "toolu_01Ssf47FxC7vssBYKsDfrU2N",
+    "etat": "fini",
+    "source": "",
+    "trouve": "À valider sous la réponse",
+    "lues": 0,
+    "duree": 2
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": "J'ai préparé la"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": " réservation du samedi "
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": "21 novembre."
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": " El"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": "le prév"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": "oit une ar"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": "rivée l"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": "'après-midi, av"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": "ec une"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": " heure de bowling pu"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": "is une partie de laser p"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": "our les"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": " 15 joueurs."
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": " J'ai p"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": "ris l'heure où"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": " le centre est"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": " le pl"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": "us cal"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": "me, c'est-à-"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": "dire s"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": "ans aut"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": "re groupe prés"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": "ent. J"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": "'ai a"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": "ussi préparé le mail"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": " qui la propose à"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": " Sophie, au"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": " prix cal"
+   }
+  },
+  {
+   "type": "texte",
+   "donnees": {
+    "delta": "culé par le moteur."
+   }
+  },
+  {
+   "type": "fin",
+   "donnees": {
+    "texte": "J'ai préparé la réservation du samedi 21 novembre. Elle prévoit une arrivée l'après-midi, avec une heure de bowling puis une partie de laser pour les 15 joueurs. J'ai pris l'heure où le centre est le plus calme, c'est-à-dire sans autre groupe présent. J'ai aussi préparé le mail qui la propose à Sophie, au prix calculé par le moteur.",
+    "faitsCites": [],
+    "preuves": [
+     {
+      "d": 150,
+      "f": 152,
+      "t": "15",
+      "e": "lu",
+      "s": "S1",
+      "l": "Programme, laser_game, Participants",
+      "z": [
+       1,
+       1,
+       "participants"
+      ],
+      "a": [
+       {
+        "l": "Programme, bowling, Participants",
+        "z": [
+         1,
+         0,
+         "participants"
+        ]
+       },
+       {
+        "l": "Général, Joueurs",
+        "z": [
+         2,
+         3,
+         "valeur"
+        ]
+       }
+      ]
+     }
+    ],
+    "verite": {
+     "sourcesCitees": [],
+     "sourcesInconnues": [],
+     "chiffres": 1,
+     "chiffresSansSource": []
+    },
+    "identites": {},
+    "modele": "claude-sonnet-5-5",
+    "demande": {
+     "id": 51,
+     "centerId": "libramont",
+     "contactName": "Sophie Martin",
+     "company": "",
+     "email": "sophie.martin@exemple.be",
+     "phone": "0471 23 45 67",
+     "requestedDate": "2026-11-21",
+     "pax": 15,
+     "occasion": "amis",
+     "message": "Bonjour, nous voudrions venir à 15 pour un bowling et un laser samedi après-midi. Merci !",
+     "source": "client",
+     "status": "new",
+     "payload": {
+      "demande": {
+       "version": 1,
+       "groupType": "amis",
+       "groupTypeLabel": "Amis, famille",
+       "organisation": "",
+       "participants": 15,
+       "companions": 0,
+       "ages": [
+        "adultes"
+       ],
+       "flexible": false,
+       "date": "2026-11-21",
+       "alternativeDate": "",
+       "period": "",
+       "moment": "apres-midi",
+       "momentLabel": "Après-midi",
+       "formulas": [],
+       "activities": [
+        {
+         "id": "bowling",
+         "name": "Bowling",
+         "participants": 15,
+         "duration": 1
+        },
+        {
+         "id": "laser_game",
+         "name": "Laser Game",
+         "participants": 15,
+         "games": 1
+        }
+       ],
+       "advice": false,
+       "budgetPerPerson": 0,
+       "contactRole": "",
+       "invoice": false,
+       "vatNumber": ""
+      },
+      "suivi": {
+       "pinlane": {
+        "le": "2026-11-13T13:18:03.356Z",
+        "par": "Seb",
+        "consigne": "Prépare la réponse à cette demande.",
+        "texte": "J'ai préparé la réservation du samedi 21 novembre. Elle prévoit une arrivée l'après-midi, avec une heure de bowling puis une partie de laser pour les 15 joueurs. J'ai pris l'heure où le centre est le plus calme, c'est-à-dire sans autre groupe présent. J'ai aussi préparé le mail qui la propose à Sophie, au prix calculé par le moteur.",
+        "reservation": {
+         "resume": {
+          "quand": "samedi 21 novembre",
+          "date": "2026-11-21",
+          "heure": "16:00",
+          "joueurs": 15,
+          "disponible": true,
+          "debut": "16:00",
+          "fin": "17:25",
+          "lignes": [
+           {
+            "activite": "bowling",
+            "nom": "Bowling",
+            "debut": "16:00",
+            "fin": "17:00",
+            "detail": "1 h, 15 joueurs, pistes 1, 2, 3"
+           },
+           {
+            "activite": "laser_game",
+            "nom": "Laser Game",
+            "debut": "17:00",
+            "fin": "17:25",
+            "detail": "1 partie, 15 joueurs"
+           }
+          ],
+          "supplements": [],
+          "prix": 267,
+          "refus": "",
+          "conflits": [],
+          "nom": "Sophie Martin",
+          "telephone": "0471 23 45 67",
+          "email": "sophie.martin@exemple.be"
+         },
+         "action": {
+          "action": "customRequestBook",
+          "id": 51,
+          "reservation": {
+           "date": "2026-11-21",
+           "startTime": "16:00",
+           "pax": 15,
+           "programme": [
+            {
+             "activityId": "bowling",
+             "participants": 15,
+             "duration": 1
+            },
+            {
+             "activityId": "laser_game",
+             "participants": 15,
+             "games": 1
+            }
+           ],
+           "supplements": [],
+           "prix": null,
+           "raisonPrix": "",
+           "note": ""
+          }
+         }
+        },
+        "mail": {
+         "resume": {
+          "a": "Sophie Martin <sophie.martin@exemple.be>",
+          "objet": "Votre bowling et laser game, samedi 21 novembre",
+          "corps": "Bonjour Sophie,\n\nMerci pour votre demande. Pour votre groupe de 15 adultes, l’équipe propose le samedi 21 novembre 2026, avec une arrivée à 16 h.\n\nLe programme comprend une heure de bowling de 16 h à 17 h sur trois pistes, puis une partie de laser game de 17 h à 17 h 25. Le prix pour le groupe est de 267 €, soit 17,80 € par joueur.\n\nL’horaire est retenu dès votre accord, il vous suffit de répondre à ce message. Si vous préférez une autre heure dans l’après-midi, indiquez-la et l’équipe vérifie ce qui est possible.\n\nBien cordialement,\nL’équipe Fun Galaxy Libramont",
+          "points": []
+         },
+         "action": {
+          "action": "sendDirectEmail",
+          "customRequestId": 51,
+          "to": "sophie.martin@exemple.be",
+          "name": "Sophie Martin",
+          "subject": "Votre bowling et laser game, samedi 21 novembre",
+          "body": "Bonjour Sophie,\n\nMerci pour votre demande. Pour votre groupe de 15 adultes, l’équipe propose le samedi 21 novembre 2026, avec une arrivée à 16 h.\n\nLe programme comprend une heure de bowling de 16 h à 17 h sur trois pistes, puis une partie de laser game de 17 h à 17 h 25. Le prix pour le groupe est de 267 €, soit 17,80 € par joueur.\n\nL’horaire est retenu dès votre accord, il vous suffit de répondre à ce message. Si vous préférez une autre heure dans l’après-midi, indiquez-la et l’équipe vérifie ce qui est possible.\n\nBien cordialement,\nL’équipe Fun Galaxy Libramont",
+          "category": "direct",
+          "templateRef": "demande-sur-mesure",
+          "draftSource": "ia",
+          "draftOriginal": {
+           "subject": "Votre bowling et laser game, samedi 21 novembre",
+           "body": "Bonjour Sophie,\n\nMerci pour votre demande. Pour votre groupe de 15 adultes, l’équipe propose le samedi 21 novembre 2026, avec une arrivée à 16 h.\n\nLe programme comprend une heure de bowling de 16 h à 17 h sur trois pistes, puis une partie de laser game de 17 h à 17 h 25. Le prix pour le groupe est de 267 €, soit 17,80 € par joueur.\n\nL’horaire est retenu dès votre accord, il vous suffit de répondre à ce message. Si vous préférez une autre heure dans l’après-midi, indiquez-la et l’équipe vérifie ce qui est possible.\n\nBien cordialement,\nL’équipe Fun Galaxy Libramont"
+          },
+          "proposition": {
+           "date": "2026-11-21",
+           "startTime": "16:00",
+           "pax": 15,
+           "programme": [
+            {
+             "activityId": "bowling",
+             "participants": 15,
+             "duration": 1
+            },
+            {
+             "activityId": "laser_game",
+             "participants": 15,
+             "games": 1
+            }
+           ],
+           "supplements": [],
+           "prix": null,
+           "raisonPrix": "",
+           "note": ""
+          }
+         },
+         "source": "ia"
+        },
+        "geste": null,
+        "suggestions": [
+         "Plutôt samedi 15 h",
+         "Ajouter 15 assiettes apéro",
+         "Bowling 1 h 30"
+        ]
+       },
+       "historique": [
+        {
+         "type": "pinlane",
+         "le": "2026-11-13T13:18:03.356Z",
+         "par": "Seb",
+         "consigne": "Prépare la réponse à cette demande.",
+         "resultat": "J'ai préparé la réservation du samedi 21 novembre. Elle prévoit une arrivée l'après-midi, avec une heure de bowling puis une partie de laser pour les 15 joueurs. J'ai pris l'heure où le centre est le plus calme, c'est-à-dire sans autre grou"
+        }
+       ]
+      }
+     },
+     "createdAt": "2026-11-12T08:00:00.000Z",
+     "updatedAt": "2026-11-13T13:18:03.357Z",
+     "echeance": {
+      "date": "2026-11-13",
+      "heure": "09:00",
+      "instant": "2026-11-13T08:00:00.000Z"
+     },
+     "suivi": {
+      "etape": "a-traiter",
+      "priseEnCharge": null,
+      "reponses": 0,
+      "derniereReponse": null,
+      "proposition": null,
+      "messageClient": null,
+      "reservationId": null,
+      "notes": [],
+      "historique": [
+       {
+        "type": "pinlane",
+        "le": "2026-11-13T13:18:03.356Z",
+        "par": "Seb",
+        "consigne": "Prépare la réponse à cette demande.",
+        "resultat": "J'ai préparé la réservation du samedi 21 novembre. Elle prévoit une arrivée l'après-midi, avec une heure de bowling puis une partie de laser pour les 15 joueurs. J'ai pris l'heure où le centre est le plus calme, c'est-à-dire sans autre grou"
+       }
+      ],
+      "pinlane": {
+       "le": "2026-11-13T13:18:03.356Z",
+       "par": "Seb",
+       "consigne": "Prépare la réponse à cette demande.",
+       "texte": "J'ai préparé la réservation du samedi 21 novembre. Elle prévoit une arrivée l'après-midi, avec une heure de bowling puis une partie de laser pour les 15 joueurs. J'ai pris l'heure où le centre est le plus calme, c'est-à-dire sans autre groupe présent. J'ai aussi préparé le mail qui la propose à Sophie, au prix calculé par le moteur.",
+       "reservation": {
+        "resume": {
+         "quand": "samedi 21 novembre",
+         "date": "2026-11-21",
+         "heure": "16:00",
+         "joueurs": 15,
+         "disponible": true,
+         "debut": "16:00",
+         "fin": "17:25",
+         "lignes": [
+          {
+           "activite": "bowling",
+           "nom": "Bowling",
+           "debut": "16:00",
+           "fin": "17:00",
+           "detail": "1 h, 15 joueurs, pistes 1, 2, 3"
+          },
+          {
+           "activite": "laser_game",
+           "nom": "Laser Game",
+           "debut": "17:00",
+           "fin": "17:25",
+           "detail": "1 partie, 15 joueurs"
+          }
+         ],
+         "supplements": [],
+         "prix": 267,
+         "refus": "",
+         "conflits": [],
+         "nom": "Sophie Martin",
+         "telephone": "0471 23 45 67",
+         "email": "sophie.martin@exemple.be"
+        },
+        "action": {
+         "action": "customRequestBook",
+         "id": 51,
+         "reservation": {
+          "date": "2026-11-21",
+          "startTime": "16:00",
+          "pax": 15,
+          "programme": [
+           {
+            "activityId": "bowling",
+            "participants": 15,
+            "duration": 1
+           },
+           {
+            "activityId": "laser_game",
+            "participants": 15,
+            "games": 1
+           }
+          ],
+          "supplements": [],
+          "prix": null,
+          "raisonPrix": "",
+          "note": ""
+         }
+        }
+       },
+       "mail": {
+        "resume": {
+         "a": "Sophie Martin <sophie.martin@exemple.be>",
+         "objet": "Votre bowling et laser game, samedi 21 novembre",
+         "corps": "Bonjour Sophie,\n\nMerci pour votre demande. Pour votre groupe de 15 adultes, l’équipe propose le samedi 21 novembre 2026, avec une arrivée à 16 h.\n\nLe programme comprend une heure de bowling de 16 h à 17 h sur trois pistes, puis une partie de laser game de 17 h à 17 h 25. Le prix pour le groupe est de 267 €, soit 17,80 € par joueur.\n\nL’horaire est retenu dès votre accord, il vous suffit de répondre à ce message. Si vous préférez une autre heure dans l’après-midi, indiquez-la et l’équipe vérifie ce qui est possible.\n\nBien cordialement,\nL’équipe Fun Galaxy Libramont",
+         "points": []
+        },
+        "action": {
+         "action": "sendDirectEmail",
+         "customRequestId": 51,
+         "to": "sophie.martin@exemple.be",
+         "name": "Sophie Martin",
+         "subject": "Votre bowling et laser game, samedi 21 novembre",
+         "body": "Bonjour Sophie,\n\nMerci pour votre demande. Pour votre groupe de 15 adultes, l’équipe propose le samedi 21 novembre 2026, avec une arrivée à 16 h.\n\nLe programme comprend une heure de bowling de 16 h à 17 h sur trois pistes, puis une partie de laser game de 17 h à 17 h 25. Le prix pour le groupe est de 267 €, soit 17,80 € par joueur.\n\nL’horaire est retenu dès votre accord, il vous suffit de répondre à ce message. Si vous préférez une autre heure dans l’après-midi, indiquez-la et l’équipe vérifie ce qui est possible.\n\nBien cordialement,\nL’équipe Fun Galaxy Libramont",
+         "category": "direct",
+         "templateRef": "demande-sur-mesure",
+         "draftSource": "ia",
+         "draftOriginal": {
+          "subject": "Votre bowling et laser game, samedi 21 novembre",
+          "body": "Bonjour Sophie,\n\nMerci pour votre demande. Pour votre groupe de 15 adultes, l’équipe propose le samedi 21 novembre 2026, avec une arrivée à 16 h.\n\nLe programme comprend une heure de bowling de 16 h à 17 h sur trois pistes, puis une partie de laser game de 17 h à 17 h 25. Le prix pour le groupe est de 267 €, soit 17,80 € par joueur.\n\nL’horaire est retenu dès votre accord, il vous suffit de répondre à ce message. Si vous préférez une autre heure dans l’après-midi, indiquez-la et l’équipe vérifie ce qui est possible.\n\nBien cordialement,\nL’équipe Fun Galaxy Libramont"
+         },
+         "proposition": {
+          "date": "2026-11-21",
+          "startTime": "16:00",
+          "pax": 15,
+          "programme": [
+           {
+            "activityId": "bowling",
+            "participants": 15,
+            "duration": 1
+           },
+           {
+            "activityId": "laser_game",
+            "participants": 15,
+            "games": 1
+           }
+          ],
+          "supplements": [],
+          "prix": null,
+          "raisonPrix": "",
+          "note": ""
+         }
+        },
+        "source": "ia"
+       },
+       "geste": null,
+       "suggestions": [
+        "Plutôt samedi 15 h",
+        "Ajouter 15 assiettes apéro",
+        "Bowling 1 h 30"
+       ],
+       "perimee": false
+      },
+      "consignes": [
+       {
+        "le": "2026-11-13T13:18:03.356Z",
+        "par": "Seb",
+        "texte": "Prépare la réponse à cette demande.",
+        "resultat": "J'ai préparé la réservation du samedi 21 novembre. Elle prévoit une arrivée l'après-midi, avec une heure de bowling puis une partie de laser pour les 15 joueurs. J'ai pris l'heure où le centre est le plus calme, c'est-à-dire sans autre grou"
+       }
+      ]
+     }
+    },
+    "preparationEnregistree": true
+   }
+  }
+ ]
+}

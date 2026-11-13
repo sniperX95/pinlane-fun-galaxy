@@ -12325,8 +12325,10 @@ details.mk-auto-preview { grid-area: voir; align-self: center; }
 .estab-embed-geste.est-contour:hover { background: var(--subtle); }
 .estab-embed-geste.est-plein { color: var(--console-selected-text, #fff); background: var(--console-selected, var(--accent)); border-color: var(--console-selected, var(--accent)); }
 .estab-embed-geste.est-plein:hover { background: color-mix(in srgb, var(--console-selected, var(--accent)) 86%, #000); }
-.estab-embed-geste.est-danger { color: #fff; background: var(--danger, var(--text)); border-color: var(--danger, var(--text)); }
-.estab-embed-geste.est-danger:hover { background: color-mix(in srgb, var(--danger, var(--text)) 86%, #000); }
+/* Le texte prend la couleur de la page, comme le bouton rouge de l assistant : blanc sur le rouge du clair (5,4:1),
+   noir sur le rouge clair du sombre (6:1). Le blanc sur #f75555 ne tenait que 3,3:1 en sombre (vu le 13/11). */
+.estab-embed-geste.est-danger { color: var(--surface); background: var(--danger, var(--text)); border-color: var(--danger, var(--text)); }
+.estab-embed-geste.est-danger:hover { background: color-mix(in srgb, var(--danger, var(--text)) 86%, var(--text)); }
 @media (max-width: 560px) {
   .estab-embed-question-boutons { flex-direction: column; align-items: stretch; }
 }

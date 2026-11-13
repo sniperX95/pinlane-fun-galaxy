@@ -20666,7 +20666,8 @@ function bdgCarteMail(item, carte, avantCarte, reply, { figee = false } = {}) {
 // Ce qu il faut verifier avant d envoyer, quand Pinlane le signale.
 function bdgPoints(carte) {
   const r = (carte && carte.resume) || {};
-  const points = (Array.isArray(r.points) ? r.points : []).map(p => bdgPhrase(p)).filter(Boolean);
+  // Un montant ne se coupe pas de son unite en fin de ligne (« 453 » puis « € » seul, vu le 13/11).
+  const points = (Array.isArray(r.points) ? r.points : []).map(p => bdgPhrase(p).replace(/(\d) (?=(?:€|%|h\b))/g, '$1 ')).filter(Boolean);
   if (!points.length) return '';
   return `<div class="bdg-verif" role="note"><p class="bdg-verif-t">À vérifier avant d’envoyer</p><ul>${points.map(p => `<li>${escapeHtml(p)}</li>`).join('')}</ul></div>`;
 }

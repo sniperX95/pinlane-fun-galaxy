@@ -35539,7 +35539,12 @@ function rvRetirerActivite(id) {
   if (s.heures) delete s.heures[id];
   if (s.ouverte === id) s.ouverte = '';
   if (s.horloge && s.horloge.id === id) s.horloge = null;
-  if (id === 'laser_game') s.partiesEcarts = null;
+  if (id === 'laser_game') {
+    s.partiesEcarts = null;
+    // (le laser remis plus tard repart avec tous ses joueurs a chaque partie)
+    const options = ((s.visit || {}).options || {}).laser_game;
+    if (options) delete options.joueursParPartie;
+  }
   s.forcer = false;
   toggleQuickListe(id);
 }

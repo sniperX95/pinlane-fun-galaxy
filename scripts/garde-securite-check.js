@@ -137,7 +137,7 @@ async function signalerPlantage(ip, stack) {
 const ANCRE = {
   urgentSiPlusieurs: '    const urgent = visiteurs >= 2;',
   rafaleSeparee: "  const rafale = rafales[origine === 'public' ? 'public' : 'serveur'];",
-  autreClientSonne: "      urgent: true,\n      texte: `${pluriel(autreClient.length, 'tentative', 'tentatives')} d’ouvrir les données d’un centre d’un autre client",
+  autreClientSonne: "      urgent: true,\n      quoi: `Pinlane : ${pluriel(autreClient.length, 'tentative', 'tentatives')} d’ouvrir les données d’un autre client",
   lundiSeulement: "  if (jourBelge(instant) !== semaine.lundi || heure < HEURE_BILAN || heure >= FIN_BILAN || dejaEnvoye === semaine.lundi) {",
   inconnuJamaisZero: "  if (s.codesFaux === null) lignes.push(`Codes faux : ${inconnu}.`);",
 };
@@ -164,11 +164,11 @@ function quartDHeureAgite() {
   charger();
   {
     await signalerPlantage('192.0.2.10', 'TypeError: x\n at a (fungalaxy-booking.js:10:2)');
-    ok(TELEGRAM.length === 1 && TELEGRAM[0].sujet === 'pannes' && !TELEGRAM[0].sonne && /^À regarder/.test(TELEGRAM[0].texte), '[K] un seul visiteur : le message part dans Pannes, sans sonnerie', TELEGRAM);
+    ok(TELEGRAM.length === 1 && TELEGRAM[0].sujet === 'pannes' && !TELEGRAM[0].sonne && /^Libramont : le formulaire en ligne a eu une erreur chez un client/.test(TELEGRAM[0].texte), '[K] un seul visiteur : le message part dans Pannes, sans sonnerie', TELEGRAM);
     await signalerPlantage('192.0.2.10', 'TypeError: x\n at a (fungalaxy-booking.js:10:2)');
     ok(TELEGRAM.length === 1, '[K] le meme visiteur qui le renvoie ne fait pas un deuxieme message', TELEGRAM.length);
     await signalerPlantage('192.0.2.11', 'TypeError: x\n at a (fungalaxy-booking.js:10:2)');
-    ok(TELEGRAM.length === 2 && TELEGRAM[1].sonne && /^URGENT/.test(TELEGRAM[1].texte) && /2 clients différents/.test(TELEGRAM[1].texte), '[K] un deuxieme visiteur voit le meme plantage : ca sonne', TELEGRAM);
+    ok(TELEGRAM.length === 2 && TELEGRAM[1].sonne && /^Libramont : le formulaire en ligne a eu la même erreur chez 2 clients différents/.test(TELEGRAM[1].texte), '[K] un deuxieme visiteur voit le meme plantage : ca sonne', TELEGRAM);
     ok(TELEGRAM.every((m) => !/192\.0\.2|x is not a function|fungalaxy-booking\.js:10/.test(m.texte)), '[K] rien de ce que le navigateur envoie n est recopie, ni son adresse');
   }
   charger();
@@ -178,7 +178,7 @@ function quartDHeureAgite() {
     const avant = TELEGRAM.length;
     await alerter('serveur:vraie-panne', 'URGENT Pinlane\nPanne du serveur, api/public-reservations.');
     ok(TELEGRAM.length === avant + 1 && /Panne du serveur/.test(TELEGRAM[TELEGRAM.length - 1].texte), '[K] treize faux plantages publics ne font pas taire une vraie panne du serveur', TELEGRAM.slice(-2));
-    ok(TELEGRAM.some((m) => /Trop de plantages signalés par des navigateurs/.test(m.texte) && !m.sonne), '[K] la rafale publique se dit une fois, sans sonnerie');
+    ok(TELEGRAM.some((m) => /beaucoup d’erreurs signalées d’un coup par des navigateurs/.test(m.texte) && !m.sonne), '[K] la rafale publique se dit une fois, sans sonnerie');
   }
   charger([[F.meta, ANCRE.urgentSiPlusieurs, '    const urgent = true;']]);
   {
@@ -204,18 +204,18 @@ function quartDHeureAgite() {
     const neuf = await g.relireLesRefus(new FakePool(), null, { env: process.env, fetcher: fauxTelegram, maintenant: Date.parse('2026-11-08T10:05:00Z') });
     ok(neuf.curseur === Math.max(...LIGNES.map((l) => l.id)) && TELEGRAM.length === 0, '[L] premier passage d un groupe neuf : l historique ne se rejoue pas, la presentation des sujets la porte', { curseur: neuf.curseur, TELEGRAM });
     const premier = await g.relireLesRefus(new FakePool(), null, { env: process.env, fetcher: fauxTelegram, maintenant: Date.parse('2026-11-08T10:05:00Z'), annoncer: true });
-    ok(premier.curseur === Math.max(...LIGNES.map((l) => l.id)) && TELEGRAM.length === 1 && TELEGRAM[0].sujet === 'bilans' && /Mise en service de la garde de sécurité/.test(TELEGRAM[0].texte), '[L] premier passage sur un groupe deja en service : la mise en service part dans Bilans, l historique ne se rejoue pas', { curseur: premier.curseur, TELEGRAM });
+    ok(premier.curseur === Math.max(...LIGNES.map((l) => l.id)) && TELEGRAM.length === 1 && TELEGRAM[0].sujet === 'bilans' && /^Pinlane : la garde de sécurité est en service\./.test(TELEGRAM[0].texte), '[L] premier passage sur un groupe deja en service : la mise en service part dans Bilans, l historique ne se rejoue pas', { curseur: premier.curseur, TELEGRAM });
     TELEGRAM = [];
     const nonPartie = await g.relireLesRefus(new FakePool(), null, { env: process.env, fetcher: async () => ({ ok: false, status: 502 }), maintenant: Date.parse('2026-11-08T10:05:00Z'), annoncer: true });
     ok(nonPartie.curseur === null, '[L] une mise en service non partie se redira au passage suivant', nonPartie);
     const r = await g.relireLesRefus(new FakePool(), 100, { env: process.env, fetcher: fauxTelegram, maintenant: Date.parse('2026-11-08T10:05:00Z') });
-    const urgent = TELEGRAM.find((m) => /^URGENT/.test(m.texte));
-    const calme = TELEGRAM.find((m) => /^À regarder/.test(m.texte));
+    const urgent = TELEGRAM.find((m) => /d’ouvrir les données d’un autre client/.test(m.texte));
+    const calme = TELEGRAM.find((m) => /codes faux en 15 minutes/.test(m.texte));
     ok(urgent && urgent.sonne && urgent.sujet === 'pannes' && /autre client/.test(urgent.texte), '[L] une tentative vers un autre client : URGENT, dans Pannes, ca sonne', TELEGRAM);
     ok(calme && !calme.sonne && calme.sujet === 'pannes', '[L] le reste arrive dans Pannes, sans sonnerie', TELEGRAM);
     ok(calme && /6 codes faux/.test(calme.texte) && /1 appareil/.test(calme.texte), '[L] les codes faux en serie se comptent, par appareil', calme && calme.texte);
-    ok(calme && /Marius est entré à Libramont après 6 codes faux/.test(calme.texte), '[L] une personne entree apres des codes faux se nomme', calme && calme.texte);
-    ok(calme && /Flavy \(Libramont\) : 5 gestes refusés faute de droit/.test(calme.texte), '[L] une rafale de gestes refuses a la meme personne se dit', calme && calme.texte);
+    ok(calme && /Libramont : Marius est entré après 6 codes faux/.test(calme.texte), '[L] une personne entree apres des codes faux se nomme', calme && calme.texte);
+    ok(calme && /Libramont : Flavy, 5 gestes refusés faute de droit/.test(calme.texte), '[L] une rafale de gestes refuses a la meme personne se dit', calme && calme.texte);
     ok(calme && /a voulu afficher ou changer un code d’accès sans en avoir le droit/.test(calme.texte), '[L] un code lu sans le droit se dit', calme && calme.texte);
     ok(TELEGRAM.every((m) => !/198\.51\.100|@|\+32/.test(m.texte)), '[L] ni adresse IP, ni mail, ni telephone dans les messages');
     ok(r.curseur === Math.max(...LIGNES.map((l) => l.id)), '[L] le curseur avance quand tout est parti', r.curseur);
@@ -233,7 +233,7 @@ function quartDHeureAgite() {
     const g = require(F.securite);
     LIGNES = quartDHeureAgite();
     await g.relireLesRefus(new FakePool(), 100, { env: process.env, fetcher: fauxTelegram, maintenant: Date.parse('2026-11-08T10:05:00Z') });
-    ok(!TELEGRAM.some((m) => /^URGENT/.test(m.texte) && m.sonne), '[L] contre-preuve : une tentative vers un autre client qui ne sonne plus (ce gate le verrait)', TELEGRAM.map((m) => m.texte.slice(0, 40)));
+    ok(!TELEGRAM.some((m) => /d’ouvrir les données d’un autre client/.test(m.texte) && m.sonne), '[L] contre-preuve : une tentative vers un autre client qui ne sonne plus (ce gate le verrait)', TELEGRAM.map((m) => m.texte.slice(0, 40)));
   }
 
   // =========================================================================
@@ -247,7 +247,7 @@ function quartDHeureAgite() {
     const b = TELEGRAM[0];
     ok(r.envoye && r.semaine === '2026-11-09' && b && b.sujet === 'bilans', '[M] lundi 8 h 15 : le bilan part dans Bilans', { r, TELEGRAM });
     ok(b && /Bilan sécurité de la semaine, du lundi 2 novembre au dimanche 8 novembre/.test(b.texte), '[M] il nomme la semaine finie', b && b.texte.split('\n')[0]);
-    ok(b && /Verdict : à regarder, 1 tentative vers un autre client ; 1 mail piégé/.test(b.texte), '[M] il donne un verdict, analyse', b && b.texte.split('\n')[1]);
+    ok(b && /^Bilan sécurité[^\n]*\nÀ regarder : 1 tentative vers un autre client ; 1 mail piégé pour l’IA\.\nCe que tu fais : /.test(b.texte), '[M] le plus important d abord : ce qu il y a a regarder, puis ce que tu fais', b && b.texte.split('\n').slice(1, 3));
     ok(b && /Connexions réussies : 15 \(Libramont 12, Gembloux 3\)/.test(b.texte) && /Codes faux : 3, depuis 2 appareils/.test(b.texte) && /Sauvegardes de la nuit : 7 sur 7/.test(b.texte), '[M] chaque chiffre vient de la base', b && b.texte);
     ok(b && /2 personne ajoutée|personne ajoutée/.test(b.texte) && /Codes d’accès affichés : Ansar 2/.test(b.texte), '[M] les acces changes et les codes affiches se comptent', b && b.texte);
     TELEGRAM = [];
@@ -285,16 +285,16 @@ function quartDHeureAgite() {
     const g = require(F.securite);
     await g.signalerMailSuspect({ centerId: 'libramont', securite: { consigneCachee: true, numeroAutreClient: false }, env: process.env, fetcher: fauxTelegram });
     const m = TELEGRAM[0];
-    ok(m && m.sujet === 'pannes' && !m.sonne && /consignes adressées à l’IA/.test(m.texte) && /Libramont/.test(m.texte), '[N] un mail qui donne des ordres a l IA : Pannes, sans sonnerie', TELEGRAM);
+    ok(m && m.sujet === 'pannes' && !m.sonne && /^Libramont : un mail de client donne des consignes à l’IA\./.test(m.texte), '[N] un mail qui donne des ordres a l IA : Pannes, sans sonnerie', TELEGRAM);
     await g.signalerMailSuspect({ centerId: 'libramont', securite: { consigneCachee: true, numeroAutreClient: false }, env: process.env, fetcher: fauxTelegram });
     ok(TELEGRAM.length === 1, '[N] une vague de mails pieges ne fait pas une vague de messages', TELEGRAM.length);
     await g.signalerMailSuspect({ centerId: 'gembloux', securite: { consigneCachee: false, numeroAutreClient: true }, env: process.env, fetcher: fauxTelegram });
     ok(TELEGRAM.length === 2 && /numéro de réservation d’un autre client/.test(TELEGRAM[1].texte), '[N] le numero d un autre client se signale aussi', TELEGRAM.map((x) => x.texte.slice(0, 60)));
     TELEGRAM = [];
     await g.signalerWebhookRefuse({ signeParLeFournisseur: true, env: process.env, fetcher: fauxTelegram });
-    ok(TELEGRAM[0] && !TELEGRAM[0].sonne && /signé comme venant de Resend/.test(TELEGRAM[0].texte), '[N] webhook signe mais refuse : le message part sans sonnerie (son en-tete se fabrique)', TELEGRAM);
+    ok(TELEGRAM[0] && !TELEGRAM[0].sonne && /portait la signature du service qui reçoit les mails/.test(TELEGRAM[0].texte), '[N] webhook signe mais refuse : le message part sans sonnerie (son en-tete se fabrique)', TELEGRAM);
     await g.signalerWebhookRefuse({ signeParLeFournisseur: false, env: process.env, fetcher: fauxTelegram });
-    ok(TELEGRAM[1] && !TELEGRAM[1].sonne && /sans signature valide/.test(TELEGRAM[1].texte), '[N] envoi sans signature : sans sonnerie', TELEGRAM);
+    ok(TELEGRAM[1] && !TELEGRAM[1].sonne && /pas de signature valide/.test(TELEGRAM[1].texte), '[N] envoi sans signature : sans sonnerie', TELEGRAM);
     await g.signalerWebhookRefuse({ signeParLeFournisseur: false, env: process.env, fetcher: fauxTelegram });
     ok(TELEGRAM.length === 2, '[N] une fois par heure au plus', TELEGRAM.length);
   }

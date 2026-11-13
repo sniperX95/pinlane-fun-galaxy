@@ -9,6 +9,7 @@
 //   [F] le vrai formulaire remonte ses plantages, et pas ceux d une extension ni d un reseau coupe ;
 //   [U] la vraie console : les deux centres, les filtres, la recherche, le dossier, le rafraichissement qui ne casse
 //       rien, et le menu qui ne s ouvre qu au proprietaire ;
+//   [V] la console signale ses erreurs avec sa version, et sans le bruit du navigateur (2026-11-13) ;
 //   [X] les contre-preuves : le code d avant, compile ou servi en memoire. Le disque n est jamais ecrit.
 //
 // Le refus cote serveur (403 pour une Direction) vit dans scripts/founder-cockpit-check.js, avec les autres actions.
@@ -279,9 +280,9 @@ const tourReel = () => charger('lib/tour-controle.js');
 
 // Appel direct d un gestionnaire.
 const { Readable } = require('stream');
-async function appeler(handler, methode, url, corps) {
+async function appeler(handler, methode, url, corps, entetes = {}) {
   const req = Readable.from(corps === undefined ? [] : [Buffer.from(JSON.stringify(corps))]);
-  Object.assign(req, { method: methode, url, headers: { host: 'localhost', 'content-type': 'application/json', 'user-agent': 'banc' } });
+  Object.assign(req, { method: methode, url, headers: { host: 'localhost', 'content-type': 'application/json', 'user-agent': 'banc', ...entetes } });
   const res = { statusCode: 200, entetes: {}, corps: '', setHeader(k, v) { this.entetes[k.toLowerCase()] = v; }, getHeader(k) { return this.entetes[k.toLowerCase()]; }, end(b) { this.corps = String(b || ''); } };
   await handler(req, res);
   let json = {};
@@ -334,10 +335,10 @@ async function preuvesServeur() {
   BD.runs.find((r) => r.task_name === 'secours').started_at = ilYA(120);
   BD.runs.push({ task_name: 'ops-jobs', status: 'failed', started_at: ilYA(1), finished_at: ilYA(1), error: 'Base occupée', result: {} });
   BD.runs.find((r) => r.task_name === 'agent-orchestrator').finished_at = ilYA(90000);
-  const { problemes: apres } = await tour.lireProblemes(pool);
+  const { problemes: apres, taches: tachesApres } = await tour.lireProblemes(pool);
   const b = (cle) => apres.find((x) => x.cle === cle);
-  ok(b('tache:secours:retard') && /ne tourne plus/.test(b('tache:secours:retard').titre), '[P] le planning de secours arrete depuis 2 h est urgent', apres.map((x) => x.cle));
-  ok(b('tache:ops-jobs:echec') && /Base occupée/.test(b('tache:ops-jobs:echec').detail), '[P] une tache ratee dit pourquoi');
+  ok(b('tache:secours:retard') && /^Pinlane : le planning de secours est en retard$/.test(b('tache:secours:retard').titre), '[P] le planning de secours arrete depuis 2 h est urgent', apres.map((x) => x.cle));
+  ok(b('tache:ops-jobs:echec') && !/Base occupée/.test(b('tache:ops-jobs:echec').detail) && (tachesApres.find((t) => t.id === 'ops-jobs') || {}).erreur === 'Base occupée', '[P] une tache ratee se dit sans recopier son message technique, qui reste dans la liste des taches', b('tache:ops-jobs:echec'));
   ok(!b('tache:agent-orchestrator:retard'), '[P] les agents marketing en retard ne sonnent pas : aucun client n est touche');
   delete process.env.TELEGRAM_JETON;
   const { problemes: sansCanal } = await tour.lireProblemes(pool);
@@ -358,13 +359,13 @@ async function preuvesServeur() {
     return { r, messages: TELEGRAM.slice() };
   };
   const p1 = await passe();
-  ok(p1.messages.length === 1 && /^URGENT Pinlane/.test(p1.messages[0]) && /Gembloux/.test(p1.messages[0]), '[G] premiere fois : un message, urgent', p1.messages);
+  ok(p1.messages.length === 1 && /^Gembloux : 1 mail n’a pas pu partir en 48 h\./.test(p1.messages[0]), '[G] premiere fois : un message, urgent', p1.messages);
   ok(!PERSONNEL.test(p1.messages.join(' ')), '[G] aucune donnee personnelle dans le message', p1.messages);
   const p2 = await passe();
   ok(p2.messages.length === 0, '[G] rien de neuf : silence', p2.messages);
   BD.mails = BD.mails.filter((m) => m.status !== 'failed');
   const p3 = await passe();
-  ok(p3.messages.length === 1 && /^Réglé, Pinlane/.test(p3.messages[0]) && /mail/.test(p3.messages[0]), '[G] c est regle : il le dit', p3.messages);
+  ok(p3.messages.length === 1 && /^Réglé : à Gembloux, des mails ne partaient pas, depuis \d\d:\d\d\.$/.test(p3.messages[0]), '[G] c est regle : il le dit', p3.messages);
   BD.centres.find((c) => c.id === 'libramont').status = 'closed';
   BD.centres.find((c) => c.id === 'libramont').status = 'active';
   BD.centres.find((c) => c.id === 'gembloux').settings = { config: { secours: { emails: ['secours@fungalaxy.be'] } } };
@@ -380,7 +381,7 @@ async function preuvesServeur() {
   // Le bilan du matin (2026-11-06, il etait a 22 h) : 08:30 a Bruxelles (09:30 l ete), une fois, et rien l apres-midi.
   const matin = aLaGarde(JOUR_GARDE, '07:30');
   const p7 = await passe({ instant: matin, llm: async () => null });
-  ok(p7.messages.length === 1 && /^Bilan Pinlane du/.test(p7.messages[0]) && /LIBRAMONT/.test(p7.messages[0]) && /GEMBLOUX/.test(p7.messages[0]), '[G] le matin, un bilan des deux centres', p7.messages);
+  ok(p7.messages.length === 1 && /^Pinlane : bilan du /.test(p7.messages[0]) && /\nLibramont : /.test(p7.messages[0]) && /\nGembloux : /.test(p7.messages[0]), '[G] le matin, un bilan des deux centres', p7.messages);
   ok(!PERSONNEL.test(p7.messages.join(' ')), '[G] le bilan ne cite personne', p7.messages);
   const p8 = await passe({ instant: aLaGarde(JOUR_GARDE, '07:45'), llm: async () => null });
   ok(p8.messages.length === 0, '[G] un seul bilan par matin', p8.messages);
@@ -399,6 +400,23 @@ async function preuvesServeur() {
 }
 
 // [C] Le client qui rate sa reservation.
+// Ce que la salle d essai envoie (scripts/salle-essai-client.js) : la meme demande, avec son en-tete.
+const ENTETE_ESSAI = { 'x-pinlane-essai': 'salle-essai' };
+async function reservationDEssai(handler, jour) {
+  require('../lib/garde-annonces').reprendreLesAnnonces();
+  TELEGRAM.length = 0;
+  const r = await appeler(handler, 'POST', '/api/public-reservations', corpsDemande(jour, { startTime: '16:00' }), ENTETE_ESSAI);
+  const ligne = BD.journal.filter((j) => j.action === 'createReservation').pop();
+  const contexte = ligne ? (typeof ligne.context === 'string' ? JSON.parse(ligne.context) : (ligne.context || {})) : {};
+  return { statut: r.statut, annoncee: TELEGRAM.some((t) => /nouvelle réservation/.test(t)), annonce: contexte.annonce };
+}
+async function demandeDEssai(handler, demande) {
+  TELEGRAM.length = 0;
+  const r = await appeler(handler, 'POST', '/api/custom-request', demande, ENTETE_ESSAI);
+  const ligne = BD.journal.filter((j) => j.action === 'createCustomRequest').pop();
+  const contexte = ligne ? (typeof ligne.context === 'string' ? JSON.parse(ligne.context) : (ligne.context || {})) : {};
+  return { statut: r.statut, annoncee: TELEGRAM.some((t) => /nouvelle demande de groupe/.test(t)), annonce: contexte.annonce };
+}
 function corpsDemande(jour, c = {}) {
   return { name: 'Jean Essai', phone: '0471234567', email: 'jean.essai@example.be', date: jour, startTime: '11:00', pax: 4, channel: 'public', type: 'visite', label: 'Votre visite', price: 50, quotedPrice: 50, centerId: 'gembloux', program: [{ activityId: 'golf_oclock', participants: 4 }], ...c };
 }
@@ -413,7 +431,7 @@ async function preuvesClient(jour) {
   const panne = await appeler(reservations, 'POST', '/api/public-reservations', corpsDemande(jour));
   panneBase = false;
   ok(panne.statut === 503, '[C] la base tombe a la confirmation : le client a un message', panne);
-  ok(TELEGRAM.length === 1 && /^URGENT Pinlane/.test(TELEGRAM[0]) && /gembloux/.test(TELEGRAM[0]) && TELEGRAM[0].includes(jour), '[C] Ansar le sait tout de suite, avec le centre et le jour', TELEGRAM);
+  ok(TELEGRAM.length === 1 && /^Gembloux : une réservation en ligne a échoué à cause d’une panne\./.test(TELEGRAM[0]) && TELEGRAM[0].toLowerCase().includes(require('../lib/garde-annonces').jourLisible(jour)), '[C] Ansar le sait tout de suite, avec le centre et le jour', TELEGRAM);
   ok(/n’a pas pu partir/.test(TELEGRAM[0] || ''), '[C] Gembloux sans adresse : le message dit que la demande n est pas partie', TELEGRAM);
   ok(!PERSONNEL.test(TELEGRAM.join(' ')), '[C] ni nom, ni telephone, ni e-mail sur Telegram', TELEGRAM);
   const trace = BD.journal.find((j) => j.action === 'reservation.panne');
@@ -431,7 +449,7 @@ async function preuvesClient(jour) {
   const transmise = await appeler(reservations, 'POST', '/api/public-reservations', corpsDemande(jour, { centerId: 'libramont', price: 30, quotedPrice: 30, program: [{ activityId: 'fun_run', minutes: 15, participants: 4 }] }));
   panneBase = false;
   ok(transmise.statut === 503 && RESEND.length === 1, '[C] Libramont a une boite de secours : la demande y part', { transmise, resend: RESEND.length });
-  ok(TELEGRAM.some((t) => /boîte de secours/.test(t) && /libramont/.test(t)), '[C] et le message le dit', TELEGRAM);
+  ok(TELEGRAM.some((t) => /boîte de secours/.test(t) && /^Libramont : /.test(t)), '[C] et le message le dit', TELEGRAM);
 
   const refus = await appeler(reservations, 'POST', '/api/public-reservations', corpsDemande(jour, { centerId: 'libramont', program: [{ activityId: 'golf_oclock' }] }));
   ok(refus.statut >= 400 && refus.statut < 500, '[C] temoin : le Golf o Clock refuse a Libramont', refus);
@@ -452,7 +470,7 @@ async function preuvesClient(jour) {
   panneBase = true;
   const blocage = await appeler(reservations, 'POST', '/api/public-reservations?action=hold', corpsDemande(jour, { name: '', phone: '', email: '' }));
   panneBase = false;
-  ok(blocage.statut === 503 && TELEGRAM.some((t) => /ne se retiennent plus/.test(t)), '[C] les horaires qui ne se retiennent plus : un message', { blocage, TELEGRAM });
+  ok(blocage.statut === 503 && TELEGRAM.some((t) => /^Gembloux : le formulaire en ligne n’arrive plus à garder les horaires de côté/.test(t)), '[C] les horaires qui ne se retiennent plus : un message', { blocage, TELEGRAM });
 
   // LES ANNONCES (2026-11-06) : par le vrai formulaire, une reservation qui aboutit part dans
   // Reservations, sans donnee personnelle, et son sort s ecrit au journal.
@@ -461,7 +479,7 @@ async function preuvesClient(jour) {
   TELEGRAM.length = 0;
   const reussie = await appeler(reservations, 'POST', '/api/public-reservations', corpsDemande(jour));
   ok(reussie.statut === 201, '[C] temoin : une reservation en ligne qui aboutit', reussie);
-  const annonce = TELEGRAM.find((t) => /^Nouvelle réservation, Gembloux, en ligne/.test(t));
+  const annonce = TELEGRAM.find((t) => /^Gembloux : nouvelle réservation en ligne, /.test(t));
   ok(Boolean(annonce) && annonce.includes('Réservation n° 900') && annonce.includes('4 personnes'), '[C] elle s annonce a Ansar, avec son dossier', TELEGRAM);
   ok(!PERSONNEL.test(annonce || 'Jean Essai'), '[C] l annonce ne cite ni nom, ni telephone, ni e-mail', annonce);
   const contexte = (j) => (typeof j.context === 'string' ? JSON.parse(j.context) : (j.context || {}));
@@ -473,20 +491,25 @@ async function preuvesClient(jour) {
   const ligneRatee = BD.journal.filter((j) => j.action === 'createReservation').pop();
   ok(sansTelegram.statut === 201 && ligneRatee && contexte(ligneRatee).annonce === 'non', '[C] Telegram en panne : la reservation passe, et le journal dit que l annonce reste a faire', { statut: sansTelegram.statut, annonce: ligneRatee && contexte(ligneRatee).annonce });
   require('../lib/garde-annonces').reprendreLesAnnonces();
+  // SES ESSAIS NE LUI REVIENNENT PAS (2026-11-13) : la salle d essai le dit par son en-tete.
+  const essai = await reservationDEssai(reservations, jour);
+  ok(essai.statut === 201 && !essai.annoncee && essai.annonce === 'essai', '[C] une reservation de la salle d essai passe, sans annonce, et le journal le dit', essai);
 
   TELEGRAM.length = 0;
   const demande = { centerId: 'gembloux', contactName: 'Jean Essai', email: 'jean.essai@example.be', phone: '0471234567', message: 'Anniversaire de Jean', pax: 35, occasion: 'anniversaire', requestedDate: 'samedi 21 novembre' };
   const lead = await appeler(meta, 'POST', '/api/custom-request', demande);
-  const annonceDemande = TELEGRAM.find((t) => /^Nouvelle demande de groupe, Gembloux/.test(t));
+  const annonceDemande = TELEGRAM.find((t) => /^Gembloux : nouvelle demande de groupe\./.test(t));
   ok(lead.statut === 201 && Boolean(annonceDemande) && annonceDemande.includes('Anniversaire, 35 personnes') && annonceDemande.includes('À traiter dans la console') && !annonceDemande.includes('n° 77'), '[C] une demande de groupe s annonce aussi, sans numero de demande', { statut: lead.statut, TELEGRAM });
   ok(!PERSONNEL.test(annonceDemande || 'Jean Essai'), '[C] sans le contact', annonceDemande);
   const ligneDemande = BD.journal.filter((j) => j.action === 'createCustomRequest').pop();
   ok(ligneDemande && contexte(ligneDemande).annonce === 'ok', '[C] et son sort s ecrit au journal', ligneDemande && contexte(ligneDemande));
+  const demandeEssai = await demandeDEssai(meta, demande);
+  ok(demandeEssai.statut === 201 && !demandeEssai.annoncee && demandeEssai.annonce === 'essai', '[C] une demande de la salle d essai s enregistre, sans annonce', demandeEssai);
   TELEGRAM.length = 0;
   panneDemande = true;
   const perdue = await appeler(meta, 'POST', '/api/custom-request', demande);
   panneDemande = false;
-  ok(perdue.statut === 503 && TELEGRAM.length === 1 && /^URGENT Pinlane\nUne demande de groupe n’a pas pu s’enregistrer à Gembloux/.test(TELEGRAM[0]) && !PERSONNEL.test(TELEGRAM[0]), '[C] une demande qui ne s enregistre pas sonne, sans le contact', { statut: perdue.statut, TELEGRAM });
+  ok(perdue.statut === 503 && TELEGRAM.length === 1 && /^Gembloux : une demande de groupe n’a pas pu s’enregistrer/.test(TELEGRAM[0]) && !PERSONNEL.test(TELEGRAM[0]), '[C] une demande qui ne s enregistre pas sonne, sans le contact', { statut: perdue.statut, TELEGRAM });
 
   const tour = tourReel();
   const { essais } = await tour.lireProblemes(database.getPool());
@@ -563,7 +586,7 @@ async function preuvesReserver(browser) {
   await p.addScriptTag({ url: `${BASE}/assets/banc-reserver.js` }).catch(() => {});
   await p.waitForTimeout(600);
   ok(signaux.length === 1 && signaux[0].centerId === 'gembloux' && signaux[0].scene === 'reserver', '[F] /reserver : un plantage chez un client part au serveur, avec son centre', signaux);
-  ok(TELEGRAM.some((t) => /formulaire de Gembloux a planté chez un client, étape reserver/.test(t)) && !TELEGRAM.some((t) => /jean\.essai|plantage du formulaire/.test(t)), '[F] et Ansar le sait, sans rien de ce que le navigateur a envoye', TELEGRAM);
+  ok(TELEGRAM.some((t) => /^Gembloux : le formulaire en ligne a eu une erreur chez un client, dans le formulaire\./.test(t)) && !TELEGRAM.some((t) => /jean\.essai|plantage du formulaire/.test(t)), '[F] et Ansar le sait, sans rien de ce que le navigateur a envoye', TELEGRAM);
   await p.evaluate(() => { window.dispatchEvent(new ErrorEvent('error', { message: 'bruit d une extension', filename: 'chrome-extension://abc/x.js', lineno: 1 })); });
   await p.evaluate(() => { window.dispatchEvent(Object.assign(new Event('unhandledrejection'), { reason: new TypeError('Failed to fetch') })); });
   await p.waitForTimeout(300);
@@ -593,17 +616,18 @@ async function preuvesFormulaire(browser) {
   ok(!/jean\.essai/.test(BD.erreurs.map((e) => e.message).join(' ')), '[F] une adresse glissee dans le message est expurgee avant d entrer en base', BD.erreurs);
   const groupeErreur = BD.erreurs.find((e) => e.member_id === 'public:gembloux');
   ok(Boolean(groupeErreur), '[F] il entre en base, compte du formulaire de Gembloux', BD.erreurs);
-  ok(TELEGRAM.length === 1 && /formulaire de Gembloux a planté/.test(TELEGRAM[0]) && !/plantage de banc/.test(TELEGRAM[0]), '[F] Ansar a un message, qui ne recopie rien de ce que le navigateur a envoye', TELEGRAM);
+  ok(TELEGRAM.length === 1 && /^Gembloux : le formulaire en ligne a eu une erreur chez un client/.test(TELEGRAM[0]) && !/plantage de banc/.test(TELEGRAM[0]), '[F] Ansar a un message, qui ne recopie rien de ce que le navigateur a envoye', TELEGRAM);
   const { problemes } = await require('../lib/tour-controle').lireProblemes(database.getPool());
   ok(problemes.some((x) => x.cle.startsWith('erreur:client:')), '[F] la Tour le range parmi les urgents', problemes.map((x) => x.cle));
 
   await p.route('**/assets/banc-plantage-2.js', (route) => route.fulfill({ contentType: 'text/javascript', body: "throw new Error('encore un');" }));
   await p.addScriptTag({ url: `${BASE}/assets/banc-plantage-2.js` }).catch(() => {});
   await p.waitForTimeout(400);
-  ok(TELEGRAM.length === 2 && /formulaire de Gembloux a planté/.test(TELEGRAM[1]) && !/encore un/.test(TELEGRAM[1]), '[F] un autre plantage dans l heure : un second message, qui ne recopie rien non plus', TELEGRAM);
-  ok(TELEGRAM[0].match(/plantage (\w+)/) && TELEGRAM[1].match(/plantage (\w+)/) && TELEGRAM[0].match(/plantage (\w+)/)[1] !== TELEGRAM[1].match(/plantage (\w+)/)[1], '[F] les deux plantages se distinguent par leur empreinte', TELEGRAM);
+  ok(TELEGRAM.length === 2 && /^Gembloux : le formulaire en ligne a eu une erreur chez un client/.test(TELEGRAM[1]) && !/encore un/.test(TELEGRAM[1]), '[F] un autre plantage dans l heure : un second message, qui ne recopie rien non plus', TELEGRAM);
+  const empreintesPubliques = [...new Set(BD.erreurs.filter((e) => e.member_id === 'public:gembloux').map((e) => e.stack_hash))];
+  ok(empreintesPubliques.length === 2 && !/\b[0-9a-f]{6,}\b/.test(TELEGRAM.join(' ')), '[F] les deux plantages se distinguent en base par leur empreinte, que le message ne cite plus', { empreintesPubliques, TELEGRAM });
   const { alerter: alerterBanc } = require('../lib/garde-alertes');
-  const empreinte = TELEGRAM[0].match(/plantage (\w+)/)[1];
+  const empreinte = String(empreintesPubliques[0] || '').slice(0, 6);
   // La cle dit aussi si un ou plusieurs visiteurs l ont vu (passe securite du 2026-11-08) :
   // le meme plantage vu par le meme visiteur porte la meme cle.
   const repete = await alerterBanc(`formulaire:gembloux:${empreinte}:un`, 'le meme plantage, repete');
@@ -804,7 +828,7 @@ async function jouerConsole(browser) {
       reponseQuestion = true;
       await page.click('[data-tour-couper="gembloux"]');
       await page.waitForFunction(() => /Réservation en ligne coupée/.test(document.querySelector('[data-tour-centre="gembloux"]').textContent));
-      r.coupe = { actif: formulaireDe('gembloux'), libramont: formulaireDe('libramont'), bouton: await page.evaluate(() => document.querySelector('[data-tour-couper="gembloux"]').textContent), probleme: await page.evaluate(() => /La réservation en ligne est coupée à Gembloux/.test(document.querySelector('#tourEtat').textContent)), question: questions[questions.length - 1] };
+      r.coupe = { actif: formulaireDe('gembloux'), libramont: formulaireDe('libramont'), bouton: await page.evaluate(() => document.querySelector('[data-tour-couper="gembloux"]').textContent), probleme: await page.evaluate(() => /Gembloux : la réservation en ligne est coupée/.test(document.querySelector('#tourEtat').textContent)), question: questions[questions.length - 1] };
       if (PHOTOS) await page.screenshot({ path: path.join(PHOTOS, 'tour-coupe.png'), fullPage: false });
       await page.click('[data-tour-couper="gembloux"]');
       await page.waitForFunction(() => /Réservation en ligne ouverte/.test(document.querySelector('[data-tour-centre="gembloux"]').textContent));
@@ -821,11 +845,41 @@ async function jouerConsole(browser) {
     await ctx.close();
   }
 }
+// [V] Les erreurs de la console : sa version part avec, et le bruit du navigateur reste dehors.
+async function signauxDeLaConsole(browser) {
+  const { ctx, page } = await ouvrirConsole(browser);
+  try {
+    await page.waitForFunction(() => typeof reportClientError === 'function' && typeof getStaffSessionToken === 'function' && Boolean(getStaffSessionToken()));
+    const attendue = require('../lib/version-console').versionDeLaPage(fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8'));
+    const version = await page.evaluate(() => window.__plVersionConsole);
+    const signaux = await page.evaluate(async () => {
+      const vus = [];
+      const avant = window.fetch;
+      window.fetch = (input, init) => { const corps = String((init && init.body) || ''); if (corps.includes('logClientError')) vus.push(JSON.parse(corps)); return avant(input, init); };
+      window.dispatchEvent(new ErrorEvent('error', { message: 'bruit d une extension', filename: 'chrome-extension://abc/x.js', lineno: 1 }));
+      window.dispatchEvent(Object.assign(new Event('unhandledrejection'), { reason: new TypeError('Failed to fetch') }));
+      window.dispatchEvent(Object.assign(new Event('unhandledrejection'), { reason: Object.assign(new Error('annule'), { name: 'AbortError' }) }));
+      window.dispatchEvent(new ErrorEvent('error', { message: 'vraie erreur de la console', filename: `${location.origin}/assets/app-main.js`, lineno: 3 }));
+      await new Promise((r) => setTimeout(r, 400));
+      window.fetch = avant;
+      return vus;
+    });
+    return { version, attendue, signaux };
+  } finally {
+    await ctx.close();
+  }
+}
+async function preuvesSignauxDeLaConsole(browser) {
+  const r = await signauxDeLaConsole(browser);
+  ok(r.version && r.version === r.attendue, '[V] la console calcule la meme version que le serveur sur la page servie', { version: r.version, attendue: r.attendue });
+  ok(r.signaux.length === 1 && /vraie erreur/.test(r.signaux[0].message) && r.signaux[0].version === r.attendue, '[V] seule la vraie erreur part, avec sa version ; extension, reseau coupe et requete annulee restent dehors', r.signaux);
+}
+
 async function preuvesConsole(browser) {
   const r = await jouerConsole(browser);
   ok(r.erreurs.length === 0, '[U] aucune erreur dans la page', r.erreurs);
   ok(r.depart.etat === 'urgent' && /urgent/.test(r.depart.titre), '[U] l etat general dit qu il y a de l urgent', r.depart.titre);
-  ok(r.depart.problemes.some((t) => /Gembloux n’a aucune adresse de secours/.test(t)), '[U] le probleme se lit en clair a l ecran', r.depart.problemes);
+  ok(r.depart.problemes.some((t) => /Gembloux : aucune adresse de secours/.test(t)), '[U] le probleme se lit en clair a l ecran', r.depart.problemes);
   ok(r.depart.centres.length === 2 && /GEMBLOUX|Gembloux/.test(r.depart.centres.join(' ')) && /Libramont/.test(r.depart.centres.join(' ')), '[U] les deux centres ont leur bloc', r.depart.centres);
   ok(/Aucune adresse de secours/.test(r.depart.centres.find((c) => /Gembloux/i.test(c)) || ''), '[U] le bloc de Gembloux le dit aussi', r.depart.centres);
   ok(/Planning de secours envoyé/.test(r.depart.centres.find((c) => /Libramont/i.test(c)) || ''), '[U] celui de Libramont dit son dernier envoi', r.depart.centres);
@@ -893,7 +947,7 @@ async function contrePreuves(browser, jour) {
     ok(!vert, `[X] ${nom} : rougit${detail ? ` (${detail})` : ''}`, raison);
   };
   const FICHIER = 'lib/tour-controle.js';
-  await rouge('la garde redit tout a chaque passage', [{ fichier: FICHIER, de: 'const nouveaux = problemes.filter((p) => !precedent[p.cle]);', vers: 'const nouveaux = problemes;' }], async () => {
+  await rouge('la garde redit tout a chaque passage', [{ fichier: FICHIER, de: 'const neufs = problemes.filter((p) => !precedent[p.cle]);', vers: 'const neufs = problemes;' }], async () => {
     const t = tourReel();
     return t.deciderGarde({ a: 'A' }, [{ cle: 'a', titre: 'A', detail: '', gravite: 'critique' }]).messages.length === 0;
   });
@@ -945,15 +999,30 @@ async function contrePreuves(browser, jour) {
     await appeler(charger(FICHE_PUB), 'POST', '/api/public-reservations', corpsDemande(jour, { centerId: 'libramont', program: [{ activityId: 'golf_oclock' }], startTime: '11:00' }));
     return BD.journal.some((j) => j.action === 'reservation.refusee');
   });
-  await rouge('une reservation en ligne ne s annonce plus', [{ fichier: FICHE_PUB, de: '      annoncerReservation(reservation),', vers: "      Promise.resolve('ok')," }], async () => {
+  await rouge('une reservation en ligne ne s annonce plus', [{ fichier: FICHE_PUB, de: "      require('../lib/essai-fondateur').essaiDuFondateur(req).then((essai) => annoncerReservation(reservation, { essai })),", vers: "      Promise.resolve('ok')," }], async () => {
     remettre();
     require('../lib/garde-alertes').oublierLesAlertes();
     require('../lib/garde-annonces').reprendreLesAnnonces();
     TELEGRAM.length = 0;
     await appeler(charger(FICHE_PUB), 'POST', '/api/public-reservations', corpsDemande(jour));
-    return TELEGRAM.some((t) => /^Nouvelle réservation/.test(t));
+    return TELEGRAM.some((t) => /^Gembloux : nouvelle réservation/.test(t));
+  });
+  await rouge('une reservation de la salle d essai s annonce', [{ fichier: FICHE_PUB, de: "      require('../lib/essai-fondateur').essaiDuFondateur(req).then((essai) => annoncerReservation(reservation, { essai })),", vers: '      annoncerReservation(reservation),' }], async () => {
+    remettre();
+    require('../lib/garde-alertes').oublierLesAlertes();
+    const r = await reservationDEssai(charger(FICHE_PUB), jour);
+    return r.statut === 201 && !r.annoncee && r.annonce === 'essai';
   });
   charger(FICHE_PUB);
+  await rouge('une demande de la salle d essai s annonce', [{ fichier: 'api/public-booking-meta.js', de: "  const annonce = await require('../lib/garde-annonces').annoncerDemande({ ...lead, centerId }, { essai: await require('../lib/essai-fondateur').essaiDuFondateur(req) });", vers: "  const annonce = await require('../lib/garde-annonces').annoncerDemande({ ...lead, centerId });" }], async () => {
+    remettre();
+    require('../lib/garde-alertes').oublierLesAlertes();
+    require('../lib/garde-annonces').reprendreLesAnnonces();
+    const demande = { centerId: 'gembloux', contactName: 'Jean Essai', email: 'jean.essai@example.be', phone: '0471234567', message: 'Anniversaire de Jean', pax: 35, occasion: 'anniversaire', requestedDate: 'samedi 21 novembre' };
+    const r = await demandeDEssai(charger('api/public-booking-meta.js'), demande);
+    return r.statut === 201 && !r.annoncee && r.annonce === 'essai';
+  });
+  charger('api/public-booking-meta.js');
 
   // Cote navigateur : le code d avant, servi en memoire, un scenario par piece.
   servies = [{ fichier: 'assets/fungalaxy-booking.js', de: "if (!fichier || fichier.indexOf(window.location.origin) !== 0) return;", vers: '' }];
@@ -987,6 +1056,16 @@ async function contrePreuves(browser, jour) {
   await c2.close();
   servies = [];
   ok(vus2.length === 0, '[X] /reserver sans sa branche publique : plus rien ne part, rougit', vus2.length);
+
+  servies = [{ fichier: 'assets/app-main.js', de: "  if (bruitDuNavigateur(payload, message)) return;\n  if (document.getElementById('plUpdateBar')) return;\n", vers: '' }];
+  const sansFiltre = await signauxDeLaConsole(browser);
+  servies = [];
+  // (une erreur a la fois : la premiere partie occupe le rapporteur, les suivantes du meme instant attendent)
+  ok(sansFiltre.signaux.some((s) => /bruit d une extension/.test(s.message)), '[X] la console sans les filtres du formulaire laisse partir le bruit : rougit', sansFiltre.signaux);
+  servies = [{ fichier: 'assets/app-main.js', de: '        version: VERSION_DE_LA_CONSOLE,\n', vers: '' }];
+  const sansVersion = await signauxDeLaConsole(browser);
+  servies = [];
+  ok(sansVersion.signaux.length === 1 && !sansVersion.signaux[0].version, '[X] la console qui n envoie plus sa version : rougit', sansVersion.signaux);
 
   servies = [{ fichier: 'assets/tour-controle.js', de: "['centre', 'canal', 'statut', 'visite'].forEach((cle) => { if (f[cle]) p.set(cle, f[cle]); });", vers: '' }];
   const { ctx, page } = await ouvrirConsole(browser);
@@ -1039,6 +1118,7 @@ async function contrePreuves(browser, jour) {
     await preuvesFormulaire(browser);
     await preuvesReserver(browser);
     await preuvesConsole(browser);
+    await preuvesSignauxDeLaConsole(browser);
     await contrePreuves(browser, jour.date);
   } finally {
     await browser.close();

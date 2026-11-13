@@ -118,6 +118,47 @@ function duree(ms) {
   return minutes < 60 ? `${minutes} min` : `${Math.floor(minutes / 60)} h ${String(minutes % 60).padStart(2, '0')}`;
 }
 
+// AU GABARIT DES ALERTES DE L APPLICATION (2026-11-13, lib/alertes-texte.js, recopie ici : la sonde
+// tourne seule chez Cloudflare et n importe rien). Ce qui se passe, ce que ca change, « Ce que tu
+// fais » ; et « Réglé : ..., depuis HH:MM. » quand ca revient. Ni nom de fichier, ni code d erreur,
+// ni mot technique. Seules une vraie panne et la surveillance du quart d heure arretee font sonner :
+// un retour, la sauvegarde et le bilan arrivent sans bruit (`calme`).
+const NOMS_LISIBLES = {
+  'page de réservation': 'la page de réservation de Libramont',
+  'page de réservation de Gembloux': 'la page de réservation de Gembloux',
+  console: 'la console',
+  'menu de Libramont': 'le menu de Libramont',
+  'menu de Gembloux': 'le menu de Gembloux',
+  'embed.js': 'le formulaire posé sur les sites des centres',
+  base: 'les données de Pinlane',
+  catalogue: 'le catalogue de Libramont',
+  'catalogue de Gembloux': 'le catalogue de Gembloux',
+  'créneaux': 'les heures libres de Libramont',
+  'créneaux de Gembloux': 'les heures libres de Gembloux',
+};
+const nomLisible = (nom) => NOMS_LISIBLES[nom] || 'une page du site';
+function detailLisible(detail) {
+  const d = String(detail || '');
+  if (/402|suspendu/.test(d)) return 'l’hébergeur a suspendu le compte';
+  if (d === LIMITE) return 'trop de visites d’un coup';
+  if (/^HTTP 4/.test(d)) return 'refuse de s’ouvrir';
+  if (/^HTTP 5|coupure|délai|injoignable/i.test(d)) return 'ne répond pas';
+  if (/catalogue/.test(d)) return 'catalogue vide';
+  if (/créneau|samedis/.test(d)) return 'aucune heure libre';
+  if (/page|fichier|illisible|format/.test(d)) return 's’ouvre vide ou abîmée';
+  return 'ne marche pas comme prévu';
+}
+const casseLisible = (c) => `${nomLisible(c.nom)} (${detailLisible(c.detail)})`;
+// Quatre etapes ou plus cassees de la meme facon : tout le parcours, en une fois.
+function listeDesCasses(casses) {
+  const details = [...new Set(casses.map((c) => detailLisible(c.detail)))];
+  if (casses.length > 3 && details.length === 1) return `tout le parcours (${details[0]})`;
+  return `${casses.slice(0, 2).map(casseLisible).join(', ')}${casses.length > 2 ? ` et ${casses.length - 2} autres` : ''}`;
+}
+const TOUCHE_LES_CLIENTS = /réservation|catalogue|heures libres|formulaire|données/;
+const LIEN_FACTURE = 'Ouvrir la facture de l’hébergeur';
+const calme = (texte) => ({ texte, calme: true });
+
 export function prochainSamedi(maintenant) {
   const date = new Date(maintenant);
   date.setUTCDate(date.getUTCDate() + (((6 - date.getUTCDay() + 7) % 7) || 7));
@@ -285,17 +326,16 @@ export async function sonder({
 }
 
 function messagePanne(etat, maintenant) {
-  const liste = etat.casses.slice(0, 3).map((c) => `${c.nom} (${c.detail})`).join(', ');
-  const reste = etat.casses.length > 3 ? ` et ${etat.casses.length - 3} autres` : '';
-  const facture = etat.casses.some((c) => c.detail.includes('402')) ? `\nFacture : ${FACTURATION_VERCEL}` : '';
-  return `${etat.simulation ? '[simulation] ' : ''}PANNE Pinlane\n`
-    + `Depuis ${heure(etat.depuis)}, confirmée à ${heure(maintenant)}.\n`
-    + `Cassé : ${liste}${reste}.${facture}`;
+  const noms = etat.casses.map((c) => nomLisible(c.nom));
+  const facture = etat.casses.some((c) => String(c.detail).includes('402'));
+  const touches = [noms.some((n) => TOUCHE_LES_CLIENTS.test(n)) ? 'Les clients ne peuvent plus réserver en ligne.' : '', noms.includes('la console') ? 'L’équipe n’a plus la console.' : ''].filter(Boolean).join(' ') || 'Une partie du site ne répond plus.';
+  return `${etat.simulation ? '[simulation] ' : ''}Pinlane : le site ne marche plus depuis ${heure(etat.depuis)}, vérifié à ${heure(maintenant)}.\n`
+    + `${touches} Ce qui casse : ${listeDesCasses(etat.casses)}.\n`
+    + (facture ? `Ce que tu fais : règle la facture de l’hébergeur, le site repart dès qu’elle est payée.\n${LIEN_FACTURE}` : 'Ce que tu fais : ouvre le site toi-même ; si c’est bien en panne, demande une réparation.');
 }
 
 function messageRetour(etat, maintenant) {
-  return `${etat.simulation ? '[simulation] ' : ''}RETOUR Pinlane\n`
-    + `Tout répond à nouveau. Panne de ${duree(maintenant - etat.depuis)}.`;
+  return calme(`${etat.simulation ? '[simulation] ' : ''}Réglé : le site ne marchait plus pendant ${duree(maintenant - etat.depuis)}, depuis ${heure(maintenant)}.`);
 }
 
 // Fonction pure : tout l anti-bruit est ici. Elle ne recoit que ce que le passage
@@ -356,9 +396,9 @@ export function deciderSauvegarde(etat, date, maintenant, simulation = false) {
   const enRetard = date === null || maintenant - date > SEUIL_SAUVEGARDE_MS;
   if (enRetard === Boolean(etat.sauvegardeEnRetard)) return etat;
   const marque = simulation || etat.sauvegardeEnRetard === 'simulation' ? '[simulation] ' : '';
-  const texte = enRetard
-    ? `${marque}SAUVEGARDE Pinlane en retard\nDernière réussie : ${momentSauvegarde(date, maintenant)}.\nLe site marche, c'est la sauvegarde de la nuit qui n'est pas partie.`
-    : `${marque}SAUVEGARDE Pinlane repartie\nDernière réussie : ${momentSauvegarde(date, maintenant)}.`;
+  const texte = calme(enRetard
+    ? `${marque}Pinlane : la sauvegarde de la nuit n’est pas partie.\nDernière réussie : ${momentSauvegarde(date, maintenant)}. Le site marche ; sans sauvegarde, une panne grave ferait perdre des réservations.\nCe que tu fais : demande une réparation, le détail technique est gardé dans la Tour de contrôle.`
+    : `${marque}Réglé : la sauvegarde de la nuit n’était pas partie, depuis ${heure(maintenant)}.`);
   return {
     ...etat,
     sauvegardeEnRetard: enRetard ? (simulation ? 'simulation' : 'reelle') : null,
@@ -373,8 +413,8 @@ export function deciderGarde(etat, date, maintenant) {
   if (enRetard === Boolean(etat.gardeEnRetard)) return etat;
   const moment = date === null ? 'aucune date lisible' : `il y a ${duree(maintenant - date)}`;
   const texte = enRetard
-    ? `GARDE Pinlane arrêtée\nDernier passage : ${moment}.\nLe site répond, mais plus rien ne surveille les mails, le secours ni les réservations ratées.`
-    : `GARDE Pinlane repartie\nDernier passage : ${moment}.`;
+    ? `Pinlane : la surveillance du quart d’heure ne tourne plus.\nDernier passage : ${moment}. Le site répond, mais plus rien ne surveille les mails, le secours ni les réservations ratées.\nCe que tu fais : demande une réparation, le détail technique est gardé dans la Tour de contrôle.`
+    : calme(`Réglé : la surveillance du quart d’heure ne tournait plus, depuis ${heure(maintenant)}.`);
   return { ...etat, gardeEnRetard: enRetard, aEnvoyer: [...etat.aEnvoyer, texte] };
 }
 
@@ -416,12 +456,14 @@ export async function passage({ kv, envoyer, fetcher = fetch, maintenant = Date.
   const ecrit = JSON.stringify(suivant);
   if (ecrit !== brut) await kv.put(CLE_ETAT, ecrit);
   const restent = [];
-  for (const texte of suivant.aEnvoyer) {
+  for (const du of suivant.aEnvoyer) {
+    // Un message retenu avant le 2026-11-13 est une simple chaine : il part comme avant, avec la sonnerie.
+    const m = typeof du === 'string' ? { texte: du } : du;
     try {
-      await envoyer(texte);
+      await envoyer(m.texte, { calme: Boolean(m.calme) });
     } catch (erreur) {
       console.error('sonde: canal indisponible', erreur && erreur.message);
-      restent.push(texte);
+      restent.push(du);
     }
   }
   if (restent.length !== suivant.aEnvoyer.length) {
@@ -435,14 +477,14 @@ export async function bilan({ kv, envoyer, fetcher = fetch, maintenant = Date.no
   const { etat } = await lireEtat(kv);
   const vu = await sonder({ fetcher, maintenant, profond: true, attendre });
   const parcours = vu.verdict === 'ok'
-    ? `Parcours complet vert (${vu.etapes} étapes).`
-    : `Parcours non vert ce matin : ${vu.casses.map((c) => `${c.nom} (${c.detail})`).join(', ')}.`;
+    ? `Ce matin, tout le parcours répond (${vu.etapes} étapes).`
+    : `Ce matin, une partie ne répond pas comme prévu : ${listeDesCasses(vu.casses)}.`;
   const derniere = etat.dernierePanne
     ? `Dernière panne : ${jour(etat.dernierePanne.debut)}, ${duree(etat.dernierePanne.fin - etat.dernierePanne.debut)}.`
     : 'Aucune panne enregistrée.';
   const date = await lireSauvegarde(fetcher, SITE);
   const sauvegarde = date === undefined ? 'Sauvegarde : pas de réponse ce matin.' : `Dernière sauvegarde : ${momentSauvegarde(date, maintenant)}.`;
-  await envoyer(`Sonde Pinlane en vie.\n${parcours}\n${derniere}\n${sauvegarde}`);
+  await envoyer(`Pinlane : la surveillance extérieure du site tourne.\n${parcours}\n${derniere} ${sauvegarde}\nRien à faire : c’est son passage du lundi.`, { calme: true });
 }
 
 // Ou part un message : le sujet du groupe si le groupe est branche, sinon la conversation.
@@ -466,8 +508,15 @@ async function posterTelegram(env, corps) {
   return reponse.status;
 }
 
-async function envoyerTelegram(env, texte, sujet = 'pannes') {
-  const corps = { ...destinationTelegram(env, sujet), text: texte };
+// La ligne « Ouvrir la facture de l’hébergeur » s ouvre d un toucher (un lien, pas une adresse en clair).
+export function entitesDeLaSonde(texte) {
+  const i = String(texte).indexOf(LIEN_FACTURE);
+  return i < 0 ? [] : [{ type: 'text_link', offset: i, length: LIEN_FACTURE.length, url: FACTURATION_VERCEL }];
+}
+
+async function envoyerTelegram(env, texte, sujet = 'pannes', { calme: sansBruit = false } = {}) {
+  const entites = entitesDeLaSonde(texte);
+  const corps = { ...destinationTelegram(env, sujet), text: texte, ...(sansBruit ? { disable_notification: true } : {}), ...(entites.length ? { entities: entites } : {}) };
   const statut = await posterTelegram(env, corps);
   if (statut >= 200 && statut < 300) return;
   // Le groupe refuse (bot retire, sujet supprime) : la conversation, avec une ligne qui le dit.
@@ -482,7 +531,7 @@ export default {
   async scheduled(controleur, env) {
     const dependances = {
       kv: env.ETAT,
-      envoyer: (texte) => envoyerTelegram(env, texte, controleur.cron === CRON_BILAN ? 'bilans' : 'pannes'),
+      envoyer: (texte, options) => envoyerTelegram(env, texte, controleur.cron === CRON_BILAN ? 'bilans' : 'pannes', options),
       maintenant: controleur.scheduledTime,
     };
     if (controleur.cron === CRON_BILAN) await bilan(dependances);

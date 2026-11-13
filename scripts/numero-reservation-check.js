@@ -609,8 +609,8 @@ async function contrePreuvesNode() {
   };
   await telegram('telegram', 'lib/garde-alertes.js', '  if (entites.length) corps.entities = entites;\n', '', 'annonce');
   await telegram('morceau', 'lib/garde-alertes.js', '  const entites = entitesDesLiens(texte, { env, liens });', "  const entites = entitesDesLiens(String(texte).replace(/^\\(Le groupe Pinlane refuse[^\\n]*\\n/, ''), { env, liens });", 'repli');
-  await telegram('demande', 'lib/garde-annonces.js', '  lignes.push(A_TRAITER);', '  lignes.push(`Demande n° ${d.id}, à traiter dans la console`);', 'demande');
-  await telegram('identifiant', 'lib/garde-journal.js', "const quoi = l.entity_id && !/^\\d+$/.test(String(l.entity_id)) && ", 'const quoi = l.entity_id && ', 'chiffres');
+  await telegram('demande', 'lib/garde-annonces.js', '    A_TRAITER,\n', '    `Demande n° ${d.id}, à traiter dans la console`,\n', 'demande');
+  await telegram('identifiant', 'lib/garde-journal.js', "const quoi = l.entity_id && /^[a-zà-ÿ][a-zà-ÿ -]{1,38}$/.test(String(l.entity_id)) && ", 'const quoi = l.entity_id && ', 'chiffres');
 }
 async function contrePreuvesConsole(browser, installerMock) {
   const servie = async (nom, fichier, de, vers, regle, scenario) => {

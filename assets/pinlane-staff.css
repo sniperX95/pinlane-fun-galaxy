@@ -21773,8 +21773,6 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
 #staffEmailsPage .em-ia-point,
 #pv2MailOverlay .em-ia-point { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: em-ia-souffle 1.4s ease-in-out infinite alternate; }
 :is(#staffEmailsPage, #pv2MailOverlay) .em-ia-fait { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin: 0; font-size: 12.5px; color: var(--muted); }
-:is(#staffEmailsPage, #pv2MailOverlay) .em-ia-revenir { padding: 0; border: 0; background: none; color: var(--accent); font: inherit; font-size: 12.5px; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
-:is(#staffEmailsPage, #pv2MailOverlay) .em-ia-revenir:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 2px; border-radius: 2px; }
 :is(#staffEmailsPage, #pv2MailOverlay) .em-ia-erreur { margin: 0; font-size: 12.5px; color: var(--danger); }
 :is(#staffEmailsPage, #pv2MailOverlay) .em-ia-objets { display: grid; gap: 4px; }
 :is(#staffEmailsPage, #pv2MailOverlay) .em-ia-titre { margin: 0; font-size: 12.5px; color: var(--muted); }
@@ -22849,7 +22847,7 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
 :is(#staffEmailsPage, #pv2MailOverlay) .em-ia--bande .em-ia-fil { max-height: 280px; }
 :is(#staffEmailsPage, #pv2MailOverlay) .em-ia-tour { display: grid; gap: 8px; max-width: 94%; min-width: 0; }
 :is(#staffEmailsPage, #pv2MailOverlay) .em-ia-tour p { margin: 0; overflow-wrap: anywhere; font-size: 14px; line-height: 1.5; }
-:is(#staffEmailsPage, #pv2MailOverlay) .em-ia-tour.is-equipe { justify-self: end; padding: 9px 13px; border-radius: 14px 14px 4px 14px; background: var(--accent-soft); color: var(--text); }
+#staffEmailsPage .em-ia-tour.is-equipe, #pv2MailOverlay .em-ia-tour.is-equipe { justify-self: end; padding: 9px 13px; border-radius: 14px 14px 4px 14px; background: var(--accent-soft); color: var(--text); }
 :is(#staffEmailsPage, #pv2MailOverlay) .em-ia-tour.is-aide { justify-self: start; padding: 10px 13px; border-radius: 14px 14px 14px 4px; background: var(--em-well, color-mix(in srgb, var(--text) 4%, var(--surface))); color: var(--text); }
 :is(#staffEmailsPage, #pv2MailOverlay) .em-ia--bande .em-ia-tour.is-aide { background: var(--surface); }
 :is(#staffEmailsPage, #pv2MailOverlay) .em-ia-tour.is-accueil { max-width: 100%; }

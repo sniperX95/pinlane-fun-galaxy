@@ -6171,7 +6171,7 @@
   };
   window.emIaLancer = function (cle, intention) { emIaAppeler(cle, intention, ''); };
   window.emIaIdee = function (cle, idee) {
-    const texte = cle === 'reponse' && idee === 'Écrire la réponse' ? 'Réponds au mail du client.' : String(idee || '');
+    const texte = cle === 'reponse' && idee === 'Écrire la réponse' ? 'Écrivez la réponse au mail du client.' : String(idee || '');
     emIaAppeler(cle, 'ecrire', texte, idee);
   };
   window.emIaToutVoir = function (cle) {

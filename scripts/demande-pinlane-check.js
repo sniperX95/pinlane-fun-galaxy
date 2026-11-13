@@ -24,6 +24,15 @@
 //   [S7] customRequestBook avec `reservation` : la simulation puis la creation, liee a la demande (traitee,
 //        evenements statut et reservation), la confirmation au client ; un role sans le droit de prix est
 //        refuse ; une seconde reservation aussi (409).
+//   [S10] LA FORMULE COCHEE PAR LE CLIENT (comme la v4) : des activites a sa place, une formule inventee, une
+//        autre formule que la sienne, une heure que le moteur des formules ne donne pas et un prix que l equipe
+//        n a pas ecrit sont refuses ; la carte porte la formule (resume.formule, action.reservation.formule),
+//        ses parties en lignes et son prix pour le groupe, celui du moteur ; le mail la propose.
+//   [S11] « Plutot bowling et laser » repasse en activites ; le prix convenu par l equipe passe sur la formule,
+//        et le mail du code la dit.
+//   [S12] customRequestBook avec une formule : la reservation se cree de type formule, liee, confirmee.
+//   [S13] Le geste reserver_la_demande de l assistant Marketing reserve la proposition partie au nouveau
+//        format, et une autre proposition partie entre-temps arrete son clic.
 //
 // --contre-preuves : chaque garde du code est cassee en memoire, une a une, et le gate doit rougir.
 // Usage : node scripts/demande-pinlane-check.js [--contre-preuves]
@@ -57,12 +66,20 @@ const formulaire = (sur = {}) => ({ demande: {
   activities: [{ id: 'bowling', name: 'Bowling', participants: 24, duration: 1 }, { id: 'laser_game', name: 'Laser Game', participants: 24, games: 1 }],
   advice: false, budgetPerPerson: 25, contactRole: 'Trésorier', invoice: false, vatNumber: '', ...sur,
 } });
+const PROPOSITION_V5 = { type: 'reservation', date: JOUR, startTime: '16:00', pax: 12, formule: { id: 'f1' }, programme: [], supplements: [], prix: null, raisonPrix: '', note: '' };
+// Une proposition partie par la v4 (« proposer cette option »), une formule elle aussi.
+const PROPOSITION_V4 = { type: 'libre', date: JOUR, heure: '15:00', fin: '17:00', nom: 'FORMULE 3', joueurs: 10, prix: 280, formule: 'f3', activites: [], extras: [], plus: false, prixLibre: false };
 function semerLeBanc() {
   B.reinitialiser();
   B.semer([]);
   B.semerDemande({ id: 41, contactName: 'Clément Lambert', company: 'Asbl Les Castors', email: 'clement@castors.be', phone: '0470 12 34 56', requestedDate: JOUR, pax: 24, occasion: 'entreprise', message: PIEGE, payload: formulaire(), createdAt: '2026-11-12T08:00:00.000Z' });
   B.semerDemande({ id: 42, centre: 'gembloux', contactName: 'Groupe de Gembloux', email: 'gembloux@exemple.be', requestedDate: JOUR, pax: 12, message: 'Un anniversaire.', payload: formulaire({ participants: 12 }), createdAt: '2026-11-11T08:00:00.000Z' });
   B.semerDemande({ id: 43, centre: 'etranger', contactName: 'Client d’ailleurs', email: 'ailleurs@exemple.be', requestedDate: JOUR, pax: 10, message: 'Ailleurs.', payload: formulaire({ participants: 10 }), createdAt: '2026-11-10T08:00:00.000Z' });
+  // La formule cochee par le client : la FORMULE 2, pour 15 joueurs, sans activites.
+  B.semerDemande({ id: 44, contactName: 'Sophie Martin', company: 'Atelier Martin', email: 'sophie@atelier.be', phone: '0471 22 33 44', requestedDate: JOUR, pax: 15, occasion: 'entreprise', message: 'Une sortie d’équipe, la formule 2 nous plaît.', payload: formulaire({ organisation: 'Atelier Martin', participants: 15, companions: 0, budgetPerPerson: 0, formulas: [{ id: 'f2', name: 'FORMULE 2' }], activities: [] }), createdAt: '2026-11-12T09:00:00.000Z' });
+  // Une proposition partie au nouveau format (la FORMULE 1 a 16 h pour 12), que le client accepte.
+  B.semerDemande({ id: 46, contactName: 'Marc Petit', email: 'marc@petit.be', phone: '0473 44 55 66', requestedDate: JOUR, pax: 10, status: 'in_progress', message: 'Un anniversaire.', payload: { ...formulaire({ organisation: '', participants: 10, companions: 0, budgetPerPerson: 0, formulas: [{ id: 'f3', name: 'FORMULE 3' }], activities: [] }), suivi: { historique: [{ type: 'reponse', le: '2026-11-12T10:00:00.000Z', par: 'Seb', objet: 'Votre anniversaire', proposition: PROPOSITION_V4 }] } }, createdAt: '2026-11-10T09:00:00.000Z' });
+  B.semerDemande({ id: 45, contactName: 'Léa Dumont', email: 'lea@dumont.be', phone: '0472 33 44 55', requestedDate: JOUR, pax: 12, status: 'in_progress', message: 'Un anniversaire.', payload: { ...formulaire({ organisation: '', participants: 12, companions: 0, budgetPerPerson: 0, formulas: [{ id: 'f1', name: 'FORMULE 1' }], activities: [] }), suivi: { historique: [{ type: 'reponse', le: '2026-11-12T10:00:00.000Z', par: 'Seb', objet: 'Votre anniversaire', source: 'ia', proposition: PROPOSITION_V5 }] } }, createdAt: '2026-11-11T09:00:00.000Z' });
   etat.conversation = [{ jour: '2026-11-12', qui: 'le client', objet: 'Notre sortie', texte: MAIL_PIEGE, complet: MAIL_PIEGE }];
 }
 
@@ -337,6 +354,115 @@ async function scenarioReserver() {
   ok('[S7] une seconde reservation est refusee', deuxieme.statut === 409 && B.base.reservations.size === avant + 1, `${deuxieme.statut} ${JSON.stringify(deuxieme.json)}`);
 }
 
+// [S10] LA FORMULE COCHEE PAR LE CLIENT (la FORMULE 2, pour 15 joueurs).
+const BASE_FORMULE = { date: JOUR, heure: '14:00', joueurs: 15 };
+const corpsFormule = (consigne) => ({ centerId: 'libramont', demandeId: 44, modele: 'haiku', messages: consigne ? [{ role: 'user', content: consigne }] : [] });
+const mailFormule = (id) => (corps) => pas([outilP(id, 'preparer_mail_demande', {
+  objet: `Votre sortie du ${quand()}`,
+  texte: `Bonjour Sophie,\n\nMerci pour votre demande pour une sortie de 15 joueurs le ${quand()}.\n\nL’équipe vous propose la FORMULE 2 avec une arrivée à 14 h : deux parties de laser game, le minigolf blacklight, 30 minutes d’arcades et 2 cruches de boissons, avec 2 assiettes apéro. Le prix pour le groupe est de ${prixLu(corps)} €.\n\nL’horaire est retenu à votre nom dès votre accord.\n\n${SIGNATURE}`,
+})], 'tool_use');
+async function scenarioFormule() {
+  etat.session = DIRECTION();
+  etat.conversation = [];
+  etat.script = [
+    pas([
+      outilP('f1', 'preparer_reservation_demande', { ...BASE_FORMULE, activites: [{ activite: 'bowling', duree_heures: 1 }, { activite: 'laser_game', parties: 1 }] }),
+      outilP('f2', 'preparer_reservation_demande', { ...BASE_FORMULE, formule: 'f99' }),
+      outilP('f3', 'preparer_reservation_demande', { ...BASE_FORMULE, formule: 'f4' }),
+      outilP('f4', 'preparer_reservation_demande', { ...BASE_FORMULE, heure: '09:00', formule: 'f2' }),
+      outilP('f5', 'preparer_reservation_demande', { ...BASE_FORMULE, formule: 'f2', prix_total: 300, raison_prix: 'le budget du groupe' }),
+    ], 'tool_use'),
+    pas([outilP('f6', 'preparer_reservation_demande', { ...BASE_FORMULE, formule: 'f2', supplements: [{ article: 'Assiette apéro', quantite: 2 }] })], 'tool_use'),
+    mailFormule('f7'),
+    fin('J’ai préparé la FORMULE 2 que le client a cochée, à 14 h, et le mail qui la propose.'),
+  ];
+  const avant = etat.appels.length;
+  const r = await B.poser(corpsFormule(''));
+  const appels = etat.appels.slice(avant);
+  const systeme = appels[0] ? appels[0].corps.system.map((s) => s.text).join('\n') : '';
+  const message = appels[0] ? String(appels[0].corps.messages[0].content) : '';
+  ok('[S10] le modele lit les formules du centre avec leur identifiant, et celle que le client a cochee', /f2 \(FORMULE 2 : [^)]*Laser Game 2 parties[^)]*30 € par joueur au catalogue/.test(systeme) && /sous l’identifiant f2 \(FORMULE 2\)/.test(message), (systeme.match(/f2 \(FORMULE 2[^)]*\)/) || [''])[0]);
+  const [a1, a2, a3, a4, a5] = B.resultatsOutils(appels[1]);
+  ok('[S10] des activites a la place de la formule cochee sont refusees', a1 && a1.is_error && /Le client a choisi la FORMULE 2 \(formule « f2 »\)/.test(erreurDe(a1)), a1 && a1.content);
+  ok('[S10] une formule hors du catalogue est refusee', a2 && a2.is_error && /« f99 » n’est pas au catalogue/.test(erreurDe(a2)), a2 && a2.content);
+  ok('[S10] une autre formule que celle du client est refusee sans un mot de l equipe', a3 && a3.is_error && /pas la FORMULE 4/.test(erreurDe(a3)), a3 && a3.content);
+  ok('[S10] une heure ou la formule ne tient pas est refusee au moteur des formules, avec les heures qui tiennent', a4 && a4.is_error && /au moteur des formules/.test(erreurDe(a4)) && /elle tient à 10:00/.test(erreurDe(a4)), a4 && a4.content);
+  ok('[S10] un prix que l equipe n a pas ecrit est refuse sur la formule', a5 && a5.is_error && /300 € n’est écrit ni dans une consigne/.test(erreurDe(a5)), a5 && a5.content);
+  const carte = cartes(r, 'reservation_demande')[0];
+  // Le prix du groupe, celui du moteur des formules (30 € par joueur pour 15) avec les deux assiettes du catalogue.
+  const moteur = await require(path.join(B.ROOT, 'lib/disponibilite-interne.js')).disponibiliteInterne({ centerId: 'libramont', date: JOUR, type: 'formule', formuleId: 'f2', pax: 15 });
+  const assiette = (await require(path.join(B.ROOT, 'lib/assistant-reservation.js')).articlesDuCentre('libramont')).find((a) => a.nom === 'Assiette apéro');
+  const attendu = Number(moteur.json && moteur.json.price) + 2 * Number(assiette && assiette.prix);
+  const ligne = (id) => ((carte && carte.resume.lignes) || []).find((l) => l.activite === id) || {};
+  ok('[S10] la carte porte la formule, ses parties en lignes et son prix pour le groupe, celui du moteur', () => carte.resume.formule.id === 'f2' && carte.resume.formule.nom === 'FORMULE 2' && carte.action.reservation.formule.id === 'f2' && carte.action.reservation.programme.length === 0 && /2 parties/.test(ligne('laser_game').detail) && ligne('minigolf_blacklight').debut && /30 min/.test(ligne('arcade_time').detail) && ligne('service_drinks').nom === '2 cruches boissons' && Number(moteur.json.price) === 450 && carte.resume.prix === attendu && /la FORMULE 2/.test(carte.texte), JSON.stringify(carte ? { texte: carte.texte, resume: carte.resume, attendu } : r.evenements.map((e) => e.type)).slice(0, 300));
+  const mail = cartes(r, 'mail_demande')[0];
+  ok('[S10] le mail de la formule passe le controle et la propose', () => mail.source === 'ia' && /FORMULE 2/.test(mail.resume.corps) && mail.action.proposition.formule.id === 'f2' && mail.action.proposition.programme.length === 0, JSON.stringify(mail ? mail.resume : B.resultatsOutils(appels[3])).slice(0, 300));
+  ok('[S10] la preparation enregistree garde la formule', () => etat.demandes.get(44).payload.suivi.pinlane.reservation.action.reservation.formule.id === 'f2' && etat.demandes.get(44).payload.suivi.pinlane.reservation.resume.formule.nom === 'FORMULE 2');
+}
+
+// [S11] « PLUTOT BOWLING ET LASER », PUIS LE PRIX CONVENU SUR LA FORMULE.
+async function scenarioFormuleOuActivites() {
+  etat.session = DIRECTION();
+  etat.script = [
+    pas([outilP('g1', 'preparer_reservation_demande', { ...BASE_FORMULE, activites: [{ activite: 'bowling', duree_heures: 1 }, { activite: 'laser_game', parties: 1 }] })], 'tool_use'),
+    fin('J’ai remplacé la formule par le bowling puis le laser.'),
+  ];
+  const r1 = await B.poser(corpsFormule('Plutôt bowling et laser.'));
+  const activites = cartes(r1, 'reservation_demande')[0];
+  ok('[S11] « plutot bowling et laser » prepare des activites, sans formule', () => !activites.resume.formule && !activites.action.reservation.formule && activites.action.reservation.programme.map((l) => l.activityId).join(',') === 'bowling,laser_game', JSON.stringify(activites || r1.evenements.map((e) => e.type)).slice(0, 240));
+  etat.script = [
+    pas([outilP('g2', 'preparer_reservation_demande', { ...BASE_FORMULE, formule: 'f2', prix_total: 375, raison_prix: 'forfait 25 € par personne' })], 'tool_use'),
+    fin('J’ai repris la FORMULE 2 au forfait de 25 € par personne.'),
+  ];
+  const r2 = await B.poser(corpsFormule('Finalement la formule 2, à 25 € par personne.'));
+  const carte = cartes(r2, 'reservation_demande')[0];
+  ok('[S11] le prix convenu par l equipe passe sur la formule, avec le prix habituel en regard', () => carte.action.reservation.formule.id === 'f2' && carte.action.reservation.prix === 375 && carte.resume.prixNegocie === true && carte.resume.prix === 375 && carte.resume.prixHabituel === 450, JSON.stringify(carte ? carte.resume : r2.evenements.map((e) => e.type)).slice(0, 240));
+  const mail = cartes(r2, 'mail_demande')[0];
+  ok('[S11] le mail du code dit la formule et son prix', () => mail.source === 'code' && /FORMULE 2/.test(mail.resume.corps) && /375 €/.test(mail.resume.corps) && mail.action.proposition.formule.id === 'f2', mail ? mail.resume.corps.slice(0, 300) : '');
+  memo.carteFormule = carte;
+}
+
+// [S12] LE CLIC DE LA FORMULE.
+async function scenarioReserverLaFormule() {
+  etat.session = DIRECTION();
+  const carte = memo.carteFormule;
+  if (!carte) { ok('[S12] la simulation de la formule dit son plan et le prix convenu', false, 'pas de carte en S11'); return; }
+  const corps = (sur) => ({ action: 'customRequestBook', centerId: 'libramont', id: 44, reservation: carte.action.reservation, ...sur });
+  const avant = B.base.reservations.size;
+  const confirmations = etat.confirmations.length;
+  const simu = await B.ops('POST', '/api/ops', corps({ confirme: false }));
+  ok('[S12] la simulation de la formule dit son plan et le prix convenu', () => simu.statut === 200 && simu.json.simulation === true && simu.json.resume.formule.id === 'f2' && simu.json.resume.disponible === true && simu.json.resume.prix === 375 && simu.json.resume.lignes.some((l) => l.activite === 'laser_game') && B.base.reservations.size === avant, JSON.stringify(simu.json).slice(0, 240));
+  const vrai = await B.ops('POST', '/api/ops', corps({ confirme: true }));
+  const creee = vrai.json.reservation && B.base.reservations.get(Number(vrai.json.reservation.id));
+  ok('[S12] la reservation se cree en formule, au prix convenu, liee a la demande et confirmee au client', () => vrai.statut === 200 && creee.type === 'formule' && creee.formule_id === 'f2' && creee.label === 'FORMULE 2' && creee.pax === 15 && Number(creee.price) === 375 && creee.email === 'sophie@atelier.be' && etat.demandes.get(44).status === 'handled' && (etat.demandes.get(44).payload.suivi.historique || []).some((e) => e.type === 'reservation' && e.reservationId === creee.id) && etat.confirmations.length === confirmations + 1 && etat.confirmations[confirmations].email === 'sophie@atelier.be', `${vrai.statut} ${JSON.stringify(vrai.json).slice(0, 160)} ${JSON.stringify(creee && { type: creee.type, formule: creee.formule_id, label: creee.label, price: creee.price })}`);
+  // La v4 reservait la formule sans sa duree : la creation la refusait (« Durée invalide. », 503 au clic).
+  const v4 = await B.ops('POST', '/api/ops', { action: 'customRequestBook', centerId: 'libramont', id: 46, proposition: PROPOSITION_V4, confirme: true });
+  const creeeV4 = v4.json.reservation && B.base.reservations.get(Number(v4.json.reservation.id));
+  ok('[S12] une proposition de la v4 a formule se reserve aussi, avec sa duree', () => v4.statut === 200 && creeeV4.type === 'formule' && creeeV4.formule_id === 'f3' && Number(creeeV4.duration) > 0 && etat.demandes.get(46).status === 'handled', `${v4.statut} ${JSON.stringify(v4.json).slice(0, 160)}`);
+}
+
+// [S13] LE GESTE DE L ASSISTANT MARKETING SUR LA PROPOSITION PARTIE AU NOUVEAU FORMAT.
+async function scenarioGesteMarketing() {
+  etat.session = DIRECTION();
+  const G = require(path.join(B.ROOT, 'lib/assistant-gestes.js'));
+  const ouverte = { ...DIRECTION(), authorizedCenterId: 'libramont' };
+  const proposer = () => G.proposer('reserver_la_demande', { demande: 45 }, G.contexte({ centre: 'libramont', session: ouverte, messagesPersonne: ['Elle a dit oui, réserve'] })).then((p) => ({ p }), (e) => ({ e }));
+  const ligne = (c, libelle) => ((c.p && c.p.resume && c.p.resume.lignes) || []).find((l) => l.libelle === libelle) || {};
+  const carte = await proposer();
+  ok('[S13] le geste Marketing montre la proposition partie au nouveau format', () => /de 16:00 à \d\d:\d\d/.test(ligne(carte, 'Quand').valeur) && /^FORMULE 1, 12 personnes/.test(ligne(carte, 'Programme').valeur) && ligne(carte, 'Prix').valeur === '312 €' && /^[0-9a-f]{16}$/.test(carte.p.action.params.proposition_vue), JSON.stringify(carte.p ? carte.p.resume : carte.e && carte.e.message).slice(0, 300));
+  // Une autre proposition part entre-temps : le clic de la carte d avant s arrete.
+  etat.demandes.get(45).payload.suivi.historique.push({ type: 'reponse', le: '2026-11-12T11:00:00.000Z', par: 'Seb', objet: 'Votre anniversaire', source: 'ia', proposition: { ...PROPOSITION_V5, startTime: '17:00' } });
+  const avant = B.base.reservations.size;
+  const clic = (params) => B.ops('POST', '/api/ops', { action: 'assistantGeste', centerId: 'libramont', geste: 'reserver_la_demande', params });
+  const perime = await clic(carte.p ? carte.p.action.params : { demande: 45 });
+  ok('[S13] une autre proposition partie entre-temps arrete le clic', perime.statut === 409 && /a changé depuis la carte/.test(JSON.stringify(perime.json)) && B.base.reservations.size === avant, `${perime.statut} ${JSON.stringify(perime.json).slice(0, 160)}`);
+  const relue = await proposer();
+  const confirmations = etat.confirmations.length;
+  const fait = await clic(relue.p ? relue.p.action.params : { demande: 45 });
+  const creee = fait.json.reservation && B.base.reservations.get(Number(fait.json.reservation.id));
+  ok('[S13] au clic, la reservation de la demande se cree en formule, liee et confirmee', () => fait.statut === 200 && creee.type === 'formule' && creee.formule_id === 'f1' && String(creee.start_time).slice(0, 5) === '17:00' && creee.pax === 12 && etat.demandes.get(45).status === 'handled' && etat.confirmations.length === confirmations + 1, `${fait.statut} ${JSON.stringify(fait.json).slice(0, 200)} ${JSON.stringify(creee && { type: creee.type, formule: creee.formule_id, debut: creee.start_time })}`);
+}
+
 // Tout le parcours, dans l ordre ou une equipe le vit.
 async function toutJouer(editions = []) {
   verdicts = new Map();
@@ -357,6 +483,10 @@ async function toutJouer(editions = []) {
     await jouer('[S8]', scenarioGestes);
     await jouer('[S9]', scenarioMailDuCode);
     await jouer('[S7]', scenarioReserver);
+    await jouer('[S10]', scenarioFormule);
+    await jouer('[S11]', scenarioFormuleOuActivites);
+    await jouer('[S12]', scenarioReserverLaFormule);
+    await jouer('[S13]', scenarioGesteMarketing);
   } finally {
     B.demonter();
   }
@@ -372,8 +502,19 @@ const AA = 'lib/assistant-agent.js';
 const API = 'api/assistant.js';
 const DB = 'lib/demande-bureau.js';
 const DBC = 'lib/demande-bureau-centre.js';
+const LOT = 'lib/assistant-gestes-reservations.js';
 const CONTRE = [
-  { nom: 'prix-du-client-accepte', fichier: AD, de: '          if (!prixDeLEquipe(prixNegocie.price, { joueurs, habituel, textes: D.textesEquipe, faits: D.faits })) {', vers: '          if (false) {', rougit: ['[S1] le prix du message piege est refuse', '[S1] le budget du client ne devient pas le prix'] },
+  { nom: 'prix-du-client-accepte', fichier: AD, de: '          if (!prixDeLEquipe(prixNegocie.price, { joueurs, habituel, textes: D.textesEquipe, faits: D.faits })) {', vers: '          if (false) {', rougit: ['[S1] le prix du message piege est refuse', '[S1] le budget du client ne devient pas le prix', '[S10] un prix que l equipe n a pas ecrit est refuse sur la formule'] },
+  { nom: 'formule-decomposee', fichier: AD, de: '    if (choix.cochees.length && !choix.activites && !lEquipeDemandeDesActivites(D)) {', vers: '    if (false) {', rougit: ['[S10] des activites a la place de la formule cochee sont refusees'] },
+  { nom: 'formule-inventee', fichier: DBC, de: "  try { f = require('./booking-config').getEffectiveFormules(centreId).find((x) => x && String(x.id) === voulue) || null; } catch (error) { f = null; }", vers: "  try { f = require('./booking-config').getEffectiveFormules(centreId).find((x) => x) || null; } catch (error) { f = null; }", rougit: ['[S10] une formule hors du catalogue est refusee'] },
+  { nom: 'autre-formule-acceptee', fichier: AD, de: '  if (choix.cochees.length && !choix.cochees.some((f) => String(f.id) === formule.id) && !lEquipeNommeLaFormule(D, formule)) {', vers: '  if (false) {', rougit: ['[S10] une autre formule que celle du client est refusee sans un mot de l equipe'] },
+  { nom: 'heure-hors-moteur-des-formules', fichier: AD, de: '        if (moteur && !moteur.heures.includes(heure)) {', vers: '        if (false) {', rougit: ['[S10] une heure ou la formule ne tient pas est refusee au moteur des formules, avec les heures qui tiennent'] },
+  { nom: 'formule-oubliee-par-la-forme', fichier: DB, de: '  const formule = formuleId ? { id: formuleId } : null;', vers: '  const formule = null;', rougit: ['[S12] la simulation de la formule dit son plan et le prix convenu', '[S13] le geste Marketing montre la proposition partie au nouveau format'] },
+  { nom: 'formule-decomposee-au-clic', fichier: DBC, de: '    ...(formule ? corpsDeLaFormule({ ...commun, formule }) : R.corpsDe({ ...commun, programme })),', vers: '    ...R.corpsDe({ ...commun, programme }),', rougit: ['[S12] la reservation se cree en formule, au prix convenu, liee a la demande et confirmee au client'] },
+  { nom: 'formule-sans-duree', fichier: DBC, de: '    duration: formule.duree,', vers: '    duration: 0,', rougit: ['[S12] la reservation se cree en formule, au prix convenu, liee a la demande et confirmee au client', '[S12] une proposition de la v4 a formule se reserve aussi, avec sa duree'] },
+  { nom: 'formule-v4-sans-duree', fichier: DBC, de: '    ...(choix.formule ? champsDeLaFormuleDuChoix(centerId, choix.formule.id, p.joueurs) : {', vers: "    ...(choix.formule ? { type: 'formule', formuleId: choix.formule.id } : {", rougit: ['[S12] une proposition de la v4 a formule se reserve aussi, avec sa duree'] },
+  { nom: 'geste-v5-refuse', fichier: LOT, de: "        const v5 = envoyee.type === 'reservation';", vers: '        const v5 = false;', rougit: ['[S13] le geste Marketing montre la proposition partie au nouveau format'] },
+  { nom: 'proposition-v5-changee-acceptee', fichier: LOT, de: '        if (rempli(p.proposition_vue) && String(p.proposition_vue) !== empreinte) throw erreur(', vers: '        if (false) throw erreur(', rougit: ['[S13] une autre proposition partie entre-temps arrete le clic'] },
   { nom: 'message-du-client-pris-pour-l-equipe', fichier: AD, de: '    textesEquipe: textesDeLEquipe(item, consigne),', vers: "    textesEquipe: [...textesDeLEquipe(item, consigne), String(item.message || '')],", rougit: ['[S1] le prix du message piege est refuse'] },
   { nom: 'donnees-hors-du-bloc', fichier: AD, de: "    '<donnees_de_la_demande>',", vers: "    '',", rougit: ['[S1] le message et le mail du client entrent dans le bloc des donnees, et seulement la'] },
   { nom: 'mail-sans-doctrine', fichier: AD, de: '  const c = bureau.controlerReponse({ objet, corps }, faitsDuMail(D));', vers: '  const c = { chiffres: [], mots: [], ecriture: [] };', rougit: ['[S1] un mail qui dit « nous » est refuse'] },

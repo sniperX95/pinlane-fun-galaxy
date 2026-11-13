@@ -27,6 +27,7 @@ const { enqueueReservationAutomation } = require('../lib/ops-jobs');
 const { afterReservationCreated, prepareReservationOps } = require('../lib/reservation-ops');
 const { alerterLimiteDeTables } = require('../lib/limite-tables');
 const { requireStaffPermission, getStaffSessionFromRequest, sessionHasPermission, requestedCenterIsSameClient } = require('../lib/staff-auth');
+const { estFondateur } = require('../lib/fondateur-invisible');
 
 // Les deux barrieres de requireStaffPermission, sans rien envoyer : une session
 // qui demande un numero d un autre centre pourrait-elle y passer ? Changer de
@@ -628,7 +629,8 @@ const traiter = async (req, res) => {
           sendError(res, 404, 'Réservation introuvable.');
           return;
         }
-        const historique = await lireHistoriqueDossier({ centerId: centre, reservationId: dossier.id });
+        // Ce que le fondateur a fait ne se lit que par lui (lib/fondateur-invisible.js).
+        const historique = await lireHistoriqueDossier({ centerId: centre, reservationId: dossier.id, avecFondateur: estFondateur(sessionHistorique) });
         sendJson(res, 200, { ok: true, id: dossier.id, historique });
         return;
       }

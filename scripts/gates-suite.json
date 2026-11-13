@@ -215,6 +215,7 @@
     "test:console-centre",
     "test:equipe-centre",
     "test:equipe-acces",
+    "test:fondateur-invisible",
     "test:tour-controle",
     "test:garde-postes",
     "test:securite-passe",

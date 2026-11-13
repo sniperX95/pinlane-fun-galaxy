@@ -285,6 +285,11 @@ async function requete(texte, params = []) {
     if (m) m.last_seen = tic();
     return vide();
   }
+  // Les noms du membre fondateur (lib/fondateur-invisible.js, 2026-11-13) : le motif LIKE tel que le SQL le passe.
+  if (/^select distinct name from staff_members where id like \$1;?$/i.test(sql)) {
+    const motif = new RegExp(`^${String(params[0]).split('%').map((m) => m.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.*')}$`);
+    return lignes([...new Set(db.staff_members.filter((m) => motif.test(m.id)).map((m) => m.name))].map((name) => ({ name })));
+  }
   if (/^delete from staff_sessions where expires_at <= now\(\)/i.test(sql)) {
     db.staff_sessions = db.staff_sessions.filter((x) => Date.parse(x.expires_at) > Date.now());
     return vide();

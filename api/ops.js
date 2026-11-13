@@ -173,6 +173,7 @@ const { sessionHasPermission } = require('../lib/staff-auth');
 const { getPool, listCustomRequests, updateCustomRequestStatus, updateOpsJobStatus } = require('../lib/database');
 const { readJson, sendError, sendJson } = require('../lib/http');
 const { requireStaffPermission, isCenterForeignToSession } = require('../lib/staff-auth');
+const { estFondateur } = require('../lib/fondateur-invisible');
 const { buildFounderCockpit, buildFounderAgents, buildFounderIncidents, buildFounderClients } = require('../lib/founder-cockpit');
 const { buildFounderCenters, buildFounderTeam } = require('../lib/founder-admin');
 const { buildFounderCatalog, buildClientCatalog, upsertFormuleOverride, resetFormuleOverride, upsertClientFormuleOverride, resetClientFormuleOverride, dismissClientErrorGroup } = require('../lib/catalog-overrides');
@@ -598,6 +599,8 @@ async function handleGet(req, res, options = {}) {
   if (action === 'auditLog') {
     const rows = await readAuditLog({
       centerId,
+      // Une action du fondateur (getRequiredOpsPermission) : il lit aussi ses lignes.
+      avecFondateur: estFondateur(options.session),
       limit: Number(url.searchParams.get('limit') || 100),
       offset: Number(url.searchParams.get('offset') || 0),
       actorMemberId: url.searchParams.get('actorMemberId') || '',
@@ -635,6 +638,7 @@ async function handleGet(req, res, options = {}) {
     const auditCenter = /^[a-z0-9-]{1,40}$/.test(rawCenter) ? rawCenter : 'all';
     const rows = await readAuditLog({
       centerId: auditCenter,
+      avecFondateur: estFondateur(options.session),
       limit: Number(url.searchParams.get('limit') || 50),
       offset: Number(url.searchParams.get('offset') || 0),
       actorMemberId: url.searchParams.get('actorMemberId') || '',

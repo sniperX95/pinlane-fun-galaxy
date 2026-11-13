@@ -73,11 +73,15 @@ pg.Client.prototype.query = async function (sql, params = []) {
   if (/\bfrom audit_log\b/.test(s) && s.startsWith('select ')) {
     lecturesJournal.push({ sql: s, params: [...params] });
     const where = (/ where (.+?) order by /.exec(s) || [])[1] || '';
-    const conditions = where ? where.split(' and ').map((c) => /^(\w+) = \$(\d+)$/.exec(c)) : [];
+    // Les lignes du fondateur restent en base, la lecture du centre ne les prend pas (2026-11-13,
+    // lib/fondateur-invisible.js) : le motif s applique tel que le SQL le dit.
+    const PAS_LE_FONDATEUR = /^coalesce\(actor_member_id, ''\) not like '([^']*)'$/;
+    const aimeComme = (valeur, motif) => new RegExp(`^${motif.split('%').map((m) => m.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.*')}$`).test(String(valeur || ''));
+    const conditions = where ? where.split(' and ').map((c) => /^(\w+) = \$(\d+)$/.exec(c) || PAS_LE_FONDATEUR.exec(c)) : [];
     if (conditions.some((c) => !c)) throw new Error(`predicat du journal non simule : ${where}`);
     const limite = Number(params[Number((/ limit \$(\d+)/.exec(s) || [])[1]) - 1]);
     const lignes = TABLE
-      .filter((ligne) => predicatFaux || conditions.every(([, col, n]) => String(ligne[col]) === String(params[Number(n) - 1])))
+      .filter((ligne) => predicatFaux || conditions.every((c) => (c.length === 2 ? !aimeComme(ligne.actor_member_id, c[1]) : String(ligne[c[1]]) === String(params[Number(c[2]) - 1]))))
       .sort((a, b) => b.occurred_at - a.occurred_at || b.id - a.id)
       .slice(0, limite);
     return { rows: lignes.map((ligne) => JSON.parse(JSON.stringify(ligne), (k, v) => (k === 'occurred_at' ? new Date(v) : v))), rowCount: lignes.length };
@@ -216,9 +220,9 @@ async function groupePorte(mutations = []) {
   v(x.statut === 200 && JSON.stringify(lu) === JSON.stringify(['Heure 15:00 → 16:00', '4 → 6 joueurs']) && x.historique[0].par === 'Julie' && x.historique[1].par === 'Rachel',
     '[H] Manager (historique oui) : ce dossier, du plus recent au plus ancien, qui et quoi', { statut: x.statut, lu, message: x.message });
   const requete = lecturesJournal[0] || { sql: '', params: [] };
-  v(lecturesJournal.length === 1 && /where center_id = \$1 and outcome = \$2 and entity_type = \$3 and entity_id = \$4 order by/.test(requete.sql)
+  v(lecturesJournal.length === 1 && /where center_id = \$1 and outcome = \$2 and entity_type = \$3 and entity_id = \$4 and coalesce\(actor_member_id, ''\) not like '%:platform-owner%' order by/.test(requete.sql)
     && JSON.stringify(requete.params.slice(0, 4)) === '["libramont","success","reservation","601"]' && requete.params[4] <= 80,
-    '[H] le journal est lu pour CE centre, CE dossier, les seules reussites, 80 lignes au plus', requete);
+    '[H] le journal est lu pour CE centre, CE dossier, les seules reussites, sans les lignes du fondateur, 80 lignes au plus', requete);
   v(!JSON.stringify(x.json).includes('Secret Arlon') && !JSON.stringify(x.json).includes('Autre dossier') && !JSON.stringify(x.json).includes('Intrus'),
     '[H] ni l autre centre, ni l autre dossier, ni un refus', x.json);
   v(JSON.stringify(Object.keys(x.json).sort()) === '["historique","id","ok"]' && JSON.stringify(Object.keys(x.historique[0]).sort()) === '["le","par","quoi"]',

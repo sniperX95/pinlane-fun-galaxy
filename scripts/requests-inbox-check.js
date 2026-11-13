@@ -8,9 +8,10 @@
 // du message.
 //
 // Ce gate charge un fil qui contient un VRAI gabarit Pinlane et verifie que la
-// page rend le TEXTE. Il verifie aussi la forme de la page : une liste, ou une fiche, jamais
-// les deux, et un seul historique a l ecran.
+// page rend le TEXTE. Il verifie aussi la forme de la page (v5, le bureau des groupes) :
+// la boite des demandes a gauche, UNE demande ouverte a droite, un seul fil de mails.
 // Il produit enfin les captures dans artifacts/requests-inbox/.
+// La contre-epreuve sert un app-main.js qui pose le corps brut du mail : la sonde doit le voir.
 const PORT_ENV = Number(process.env.PINLANE_REQUESTS_INBOX_PORT || 4231);
 const http = require('http');
 const fs = require('fs');
@@ -25,20 +26,26 @@ const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; cha
 let failures = 0;
 function ok(cond, label) { console.log((cond ? 'ok  ' : 'FAIL') + '  ' + label); if (!cond) failures += 1; return cond; }
 
+// La coupure de la contre-epreuve : servie au navigateur, jamais ecrite dans le depot.
+let mutation = null;
+let mutationPosee = false;
 const srv = http.createServer((req, res) => {
   const u = new URL(req.url, 'http://x');
   let f = p.join(ROOT, decodeURIComponent(u.pathname));
   if (u.pathname === '/') f = p.join(ROOT, 'index.html');
   fs.readFile(f, (e, c) => {
     if (e) { res.writeHead(404); return res.end(); }
+    let corps = c;
+    if (mutation && u.pathname === '/assets/app-main.js') {
+      const t = c.toString('utf8').replace(/\r\n/g, '\n');
+      if (t.includes(mutation.de)) { corps = t.split(mutation.de).join(mutation.vers); mutationPosee = true; }
+    }
     res.writeHead(200, { 'Content-Type': MIME[p.extname(f).toLowerCase()] || 'application/octet-stream', 'Cache-Control': 'no-store' });
-    res.end(c);
+    res.end(corps);
   });
 });
 
-srv.listen(PORT, '127.0.0.1', async () => {
-  fs.mkdirSync(SHOTS, { recursive: true });
-  const b = await chromium.launch({ executablePath: EDGE, headless: true });
+async function ouvrir(b) {
   const pg = await b.newPage({ viewport: { width: 1500, height: 1150 } });
   const errs = [];
   pg.on('pageerror', (e) => { errs.push(e.message); console.log('PAGEERROR', e.message); });
@@ -52,7 +59,7 @@ srv.listen(PORT, '127.0.0.1', async () => {
     // suite quand on n est pas dans le document principal.
     try { void window.localStorage; } catch (error) { return; }
     if (window.top !== window.self) return;
-    const perms =['dashboard.view', 'planning.view', 'reservations.view', 'clients.view', 'clients.edit', 'emails.view', 'emails.send', 'direction.view', 'settings.manage'];
+    const perms = ['dashboard.view', 'planning.view', 'reservations.view', 'clients.view', 'clients.edit', 'emails.view', 'emails.send', 'direction.view', 'settings.manage'];
     const qaSession = { token: 'qa', centerId: 'libramont', expiresAt, member: { id: 'qa', name: 'Rachel', roleId: 'direction' }, role: { id: 'direction', name: 'Direction', locked: true }, permissions: perms };
     const iso = (h) => new Date(Date.now() - h * 3600 * 1000).toISOString();
 
@@ -125,25 +132,53 @@ srv.listen(PORT, '127.0.0.1', async () => {
   await pg.waitForTimeout(1200);
   await pg.evaluate(() => { if (typeof ensureStaffCustomRequests === 'function') ensureStaffCustomRequests(); });
   await pg.waitForTimeout(900);
+  // Le lien d une alerte ou du tableau de bord : la demande 701 s ouvre.
   await pg.evaluate(() => window.openStaffRequestsPage(701));
-  await pg.waitForTimeout(1800);
+  await pg.waitForSelector('.bdg-lecture[data-request-id="701"] .bdg-mail-t', { timeout: 10000 });
+  await pg.waitForTimeout(400);
+  return { pg, errs };
+}
+
+// Deplie le mail 92 (le gabarit HTML sans texte) d un vrai clic, et lit son corps.
+async function deplier92(pg) {
+  const deja = await pg.evaluate(() => { const t = document.querySelector('.bdg-mail-t[onclick*="92"]'); return Boolean(t && t.getAttribute('aria-expanded') === 'true'); });
+  if (!deja) await pg.click('.bdg-mail-t[onclick*="92"]');
+  await pg.waitForTimeout(420);
+  return pg.evaluate(() => {
+    const bouton = document.querySelector('.bdg-mail-t[onclick*="92"]');
+    const corps = bouton ? bouton.closest('.bdg-mail-r').querySelector('.bdg-mail-c') : null;
+    return { body: corps ? corps.textContent : '', height: corps ? corps.getBoundingClientRect().height : 0 };
+  });
+}
+
+srv.listen(PORT, '127.0.0.1', async () => {
+  fs.mkdirSync(SHOTS, { recursive: true });
+  const b = await chromium.launch({ executablePath: EDGE, headless: true });
+  const { pg, errs } = await ouvrir(b);
 
   console.log('');
-  console.log('[La forme : une fiche qui prend la page]');
+  console.log('[La forme : la boite a gauche, UNE demande ouverte a droite]');
   const shape = await pg.evaluate(() => ({
-    lignes: document.querySelectorAll('.sm-l').length,
-    fiches: document.querySelectorAll('.sm-fiche').length,
-    historiques: document.querySelectorAll('.sm-hi').length,
-    openId: (document.querySelector('.sm-fiche') || { dataset: {} }).dataset.requestId || '',
+    lignes: document.querySelectorAll('.bdg-l').length,
+    allumee: (document.querySelector('.bdg-l[aria-current="true"]') || { dataset: {} }).dataset.itemId || '',
+    fiches: document.querySelectorAll('.bdg-lecture:not(.is-vide)').length,
+    historiques: document.querySelectorAll('.bdg-mails-s').length,
+    openId: (document.querySelector('.bdg-lecture') || { dataset: {} }).dataset.requestId || '',
+    cote: (() => {
+      const l = document.querySelector('.bdg-liste-c');
+      const d = document.querySelector('.bdg-lecture');
+      return Boolean(l && d && l.getBoundingClientRect().right <= d.getBoundingClientRect().left + 1);
+    })(),
     head: (() => {
-      const h = document.querySelector('.sm-tete');
+      const h = document.querySelector('.bdg-tete');
       if (!h) return null;
       const r = h.getBoundingClientRect();
       return { h: Math.round(r.height), name: ((h.querySelector('h2') || {}).textContent || '').trim() };
     })(),
-    contact: (document.querySelector('.sm-fiche') || {}).innerText || '',
+    contact: (document.querySelector('.bdg-lecture') || {}).innerText || '',
   }));
-  ok(shape.fiches === 1 && shape.historiques === 1 && shape.lignes === 0, `une seule demande ouverte et UN seul historique a l ecran (${shape.fiches} fiche, ${shape.historiques} historique)`);
+  ok(shape.fiches === 1 && shape.historiques === 1, `une seule demande ouverte et UN seul fil de mails a l ecran (${shape.fiches} demande, ${shape.historiques} fil)`);
+  ok(shape.lignes === 2 && shape.allumee === '701' && shape.cote, `la boite des demandes a traiter est a gauche, la ligne ouverte allumee (${shape.lignes} lignes, ${shape.allumee || 'aucune'})`);
   ok(shape.openId === '701', `c est bien la demande demandee qui est ouverte (${shape.openId})`);
   // L en-tete porte le NOM du client. Il a disparu une fois pendant la refonte sans qu aucune
   // assertion ne bronche : la page restait « jolie » et ne disait plus a qui on repond.
@@ -152,22 +187,15 @@ srv.listen(PORT, '127.0.0.1', async () => {
 
   console.log('');
   console.log('[Le mail se LIT : zero balise a l ecran]');
-  const board = await pg.evaluate(() => (document.querySelector('.sm') || {}).innerText || '');
+  const board = await pg.evaluate(() => (document.querySelector('.bdg') || {}).innerText || '');
   ok(!/<meta|<html|<head|doctype|charset=utf-8|font-size:|role="presentation"/i.test(board),
     'aucune balise ni style ne traine dans le texte visible');
   ok(!/\u200b|&#8203;|&nbsp;/.test(board), 'le bourrage invisible du preheader ne fuit pas');
-  ok(/C'est confirme : on vous attend jeudi 20 aout/.test(board), 'l objet du mail se lit dans l historique');
+  ok(/C'est confirme : on vous attend jeudi 20 aout/.test(board), 'l objet du mail se lit dans les mails echanges');
 
   console.log('');
   console.log('[Le detail du mail deplie]');
-  await pg.evaluate(() => window.toggleStaffRequestMessage('92'));
-  await pg.waitForTimeout(420);
-  const opened = await pg.evaluate(() => {
-    // Le dernier mot du client est deja ouvert : on lit celui qu on vient de deplier.
-    const bouton = [...document.querySelectorAll('.sm-hi-m')].find((n) => /'92'|"92"|\b92\b/.test(n.getAttribute('onclick') || ''));
-    const corps = bouton ? bouton.parentElement.querySelector('.sm-hi-c') : null;
-    return { body: corps ? corps.textContent : '', height: corps ? corps.getBoundingClientRect().height : 0 };
-  });
+  const opened = await deplier92(pg);
   ok(opened.height > 20, `le mail se deplie vraiment (hauteur ${Math.round(opened.height)}px)`);
   ok(/Nous confirmons votre venue jeudi 20 aout a 14:00 pour 4 personnes\./.test(opened.body),
     'le corps deplie rend le texte du mail, pas son gabarit');
@@ -175,39 +203,40 @@ srv.listen(PORT, '127.0.0.1', async () => {
 
   console.log('');
   console.log('[Un mail en file n est pas un mail parti]');
-  const statuses = await pg.evaluate(() => [...document.querySelectorAll('.sm-hi-m')].map((s) => s.textContent.trim()));
+  const statuses = await pg.evaluate(() => [...document.querySelectorAll('.bdg-mail-t')].map((s) => s.textContent.trim()));
   ok(statuses.some((s) => /E-mail envoyé.*\(en file\)/.test(s)), `le statut se dit (${statuses.join(' | ')})`);
   ok(statuses.some((s) => /^E-mail envoyé$/.test(s)) && statuses.some((s) => /Le client a écrit/.test(s)), 'envoye et recu se distinguent');
 
   console.log('');
   console.log('[Changer de demande change le detail, et lui seul]');
-  await pg.evaluate(() => window.selectStaffRequest(702));
-  await pg.waitForTimeout(1200);
+  await pg.click('.bdg-l[data-item-id="702"]');
+  await pg.waitForSelector('.bdg-lecture[data-request-id="702"]', { timeout: 5000 });
+  await pg.waitForTimeout(500);
   const switched = await pg.evaluate(() => ({
-    openId: (document.querySelector('.sm-fiche') || { getAttribute() { return ''; } }).getAttribute('data-request-id'),
-    name: ((document.querySelector('.sm-tete h2') || {}).textContent || '').trim(),
-    details: document.querySelectorAll('.sm-fiche').length,
+    openId: (document.querySelector('.bdg-lecture') || { getAttribute() { return ''; } }).getAttribute('data-request-id'),
+    name: ((document.querySelector('.bdg-tete h2') || {}).textContent || '').trim(),
+    details: document.querySelectorAll('.bdg-lecture').length,
+    allumee: (document.querySelector('.bdg-l[aria-current="true"]') || { dataset: {} }).dataset.itemId || '',
   }));
-  ok(switched.openId === '702' && /Saint-Roch/.test(switched.name), `la demande ouverte a change (${switched.name})`);
+  ok(switched.openId === '702' && /Saint-Roch/.test(switched.name) && switched.allumee === '702', `la demande ouverte a change (${switched.name})`);
   ok(switched.details === 1, 'toujours un seul detail : rien ne s empile');
 
   console.log('');
   console.log('[La recherche filtre la liste]');
-  await pg.evaluate(() => window.closeStaffRequest());
-  await pg.waitForTimeout(400);
-  await pg.evaluate(() => window.staffRequestSearchInput('roch'));
+  await pg.fill('#reqSearchField', 'roch');
   await pg.waitForTimeout(500);
-  const filtered = await pg.evaluate(() => document.querySelectorAll('.sm-l').length);
-  ok(filtered === 1, `la recherche ramene la liste a la seule demande qui correspond (${filtered})`);
-  await pg.evaluate(() => window.staffRequestSearchInput(''));
+  const filtered = await pg.evaluate(() => ({ n: document.querySelectorAll('.bdg-l').length, focus: (document.activeElement || {}).id || '' }));
+  ok(filtered.n === 1, `la recherche ramene la liste a la seule demande qui correspond (${filtered.n})`);
+  ok(filtered.focus === 'reqSearchField', 'le champ de recherche garde le focus pendant la frappe');
+  await pg.fill('#reqSearchField', '');
   await pg.waitForTimeout(400);
 
   console.log('');
   console.log('[La saisie survit au repaint]');
-  await pg.evaluate(() => window.selectStaffRequest(701));
-  await pg.waitForTimeout(700);
-  await pg.evaluate(() => window.toggleStaffRequestReply(701));
-  await pg.waitForTimeout(500);
+  await pg.click('.bdg-l[data-item-id="701"]');
+  await pg.waitForSelector('.bdg-lecture[data-request-id="701"]', { timeout: 5000 });
+  await pg.click('.bdg-pin-pied button:has-text("Écrire au client")');
+  await pg.waitForSelector('#reqBody-701', { timeout: 5000 });
   const typing = await pg.evaluate(async () => {
     const field = document.getElementById('reqBody-701');
     if (!field) return { ok: false };
@@ -224,38 +253,38 @@ srv.listen(PORT, '127.0.0.1', async () => {
 
   console.log('');
   console.log('[Captures]');
-  await pg.evaluate(() => window.toggleStaffRequestReply(701));
+  await pg.click('.bdg-pin-pied button:has-text("Annuler")');
   await pg.waitForTimeout(400);
   // Un mail DEPLIE sur la capture : c est la preuve visuelle du correctif.
-  const stillOpen = await pg.evaluate(() => !!document.querySelector('.sm-hi-c'));
-  if (!stillOpen) await pg.evaluate(() => window.toggleStaffRequestMessage('92'));
-  await pg.waitForTimeout(600);
+  await deplier92(pg);
+  await pg.waitForTimeout(400);
   await pg.screenshot({ path: p.join(SHOTS, 'inbox-dark.png'), fullPage: false });
   await pg.evaluate(() => { if (typeof setStaffTheme === 'function') setStaffTheme('light'); });
   await pg.waitForTimeout(700);
   await pg.screenshot({ path: p.join(SHOTS, 'inbox-light.png'), fullPage: false });
   await pg.evaluate(() => { if (typeof setStaffTheme === 'function') setStaffTheme('dark'); });
   await pg.waitForTimeout(500);
-  await pg.evaluate(() => window.toggleStaffRequestReply(701));
+  await pg.click('.bdg-pin-pied button:has-text("Écrire au client")');
   await pg.waitForTimeout(600);
   await pg.screenshot({ path: p.join(SHOTS, 'inbox-composer.png'), fullPage: false });
   await pg.setViewportSize({ width: 420, height: 900 });
   await pg.waitForTimeout(700);
   await pg.screenshot({ path: p.join(SHOTS, 'inbox-mobile.png'), fullPage: false });
   console.log('ok    captures ecrites dans artifacts/requests-inbox/');
-  await pg.setViewportSize({ width: 1500, height: 1150 });
+  ok(errs.length === 0, 'zero erreur console (' + errs.length + (errs.length ? ' : ' + errs[0] : '') + ')');
+  await pg.close();
 
   console.log('');
   console.log('[Contre-epreuve : ce gate sait-il rougir ?]');
-  // On reinjecte le gabarit LA OU il fuirait : dans la ligne de l objet, toujours visible.
-  const blind = await pg.evaluate(() => {
-    const node = document.querySelector('.sm-hi-o');
-    if (!node) return null;
-    node.textContent = '<!doctype html><meta charset="utf-8">';
-    return /<meta|doctype/i.test(document.querySelector('.sm').innerText);
-  });
-  ok(blind === true, 'gabarit reinjecte expres : la sonde le voit -> le gate ROUGIRAIT');
-  ok(errs.length === 0, 'zero erreur console (' + errs.length + (errs.length ? ' : ' + errs[0] : '') + ')');
+  // Le defaut d origine, remis dans le code servi : la page pose le corps brut du mail.
+  mutation = { de: 'const texte = staffMailPlainText(message);', vers: "const texte = String(message.body || '');" };
+  const coupe = await ouvrir(b);
+  const brut = await deplier92(coupe.pg);
+  const boardBrut = await coupe.pg.evaluate(() => (document.querySelector('.bdg') || {}).innerText || '');
+  ok(mutationPosee, 'la coupure est posee dans app-main.js servi (le corps brut du mail)');
+  ok(/<|style=|charset/i.test(brut.body) && /<meta|doctype/i.test(boardBrut), 'gabarit brut a l ecran : les sondes le voient -> le gate ROUGIRAIT');
+  await coupe.pg.close();
+  mutation = null;
 
   await b.close();
   srv.close();

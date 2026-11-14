@@ -1544,6 +1544,51 @@
   // (lisible), la lecture annulee par la page (annule) et le reseau coupe se taisent.
   // Le delai (12 s sans reponse) reste signale : il dit quelque chose du serveur.
   function bruitDeLecture(err) { return Boolean(err && (err.lisible || err.annule || err.message === 'reseau')); }
+  // UN CATALOGUE COUPE SE REDEMANDE (2026-11-14). Le 13/11, une vingtaine de visiteurs des
+  // deux centres (la plupart dans l appli Facebook, deux PC qui rechargeaient sans fin)
+  // n ont pas lu le catalogue : leur navigateur n avait pas joint le serveur (« reseau »),
+  // qui repondait aux autres en 0,2 s. Ils restaient devant « Rechargez la page », sans
+  // pouvoir reserver. Une coupure du telephone dure rarement plus de quelques secondes : au
+  // chargement, la lecture coupee se refait seule apres 1 s, puis 3 s (plus tot si le
+  // navigateur revient en ligne). Si rien ne passe, la panne se dit avec « Réessayer », qui
+  // relit sans recharger la page du centre ; « Choisir mes activités » relit aussi, et le
+  // retour du reseau relit tout seul. Le delai (12 s sans reponse) ne se refait pas seul :
+  // le client a deja attendu, le bouton lui laisse le choix.
+  var REPRISES_CATALOGUE = [1000, 3000];
+  var PANNE_CATALOGUE = 'Le formulaire ne s’est pas chargé. Vérifiez votre connexion, puis réessayez.';
+  function lireAvecReprises(url, reprises) {
+    return lire(url).catch(function (err) {
+      if (!err || err.message !== 'reseau' || err.annule || !reprises.length) throw err;
+      return new Promise(function (repartir) {
+        var minuteur = 0;
+        var go = function () { clearTimeout(minuteur); window.removeEventListener('online', go); repartir(); };
+        minuteur = setTimeout(go, reprises[0]);
+        window.addEventListener('online', go);
+      }).then(function () { return lireAvecReprises(url, reprises.slice(1)); });
+    });
+  }
+  // La panne se dit avec son bouton. Pendant la relecture, il dit qu il travaille et garde
+  // le focus du clavier (aria-disabled, jamais disabled).
+  var catalogueEnRoute = false;
+  function direPanneCatalogue() {
+    var avaitFocus = alerte.contains(doc.activeElement);
+    alerte.innerHTML = '<b>' + esc(panneMeta) + '</b><button type="button" class="fg-alert__btn" data-relire-catalogue>Réessayer</button>';
+    alerte.hidden = false;
+    posterHauteur();
+    if (avaitFocus) { var b = alerte.querySelector('[data-relire-catalogue]'); if (b) b.focus({ preventScroll: true }); }
+  }
+  function relireCatalogue() {
+    if (meta || catalogueEnRoute) return;
+    panneMeta = '';
+    var b = alerte.querySelector('[data-relire-catalogue]');
+    if (b) { b.setAttribute('aria-disabled', 'true'); b.setAttribute('aria-busy', 'true'); b.textContent = 'Chargement…'; }
+    chargerCatalogue([]);
+  }
+  alerte.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-relire-catalogue]');
+    if (b && b.getAttribute('aria-disabled') !== 'true') relireCatalogue();
+  });
+  window.addEventListener('online', function () { if (!meta && panneMeta) relireCatalogue(); });
   // L APOSTROPHE DES NOMS, comme sur le site du centre (« Golf o’Clock ») : le catalogue l ecrit droite.
   function nomTypo(k, v) { return k === 'name' && typeof v === 'string' && v.indexOf("'") >= 0 ? v.replace(/([A-Za-zÀ-ÿ])'([A-Za-zÀ-ÿ])/g, '$1’$2') : v; }
   function lu(rep) { try { return JSON.parse(rep.texte, nomTypo); } catch (e) { return null; } }
@@ -2095,10 +2140,10 @@
     gesteAvantCatalogue = null;
     if (!g) return;
     occuper(g.btn, false);
-    if (meta) g.faire(); else if (panneMeta) direErreur(panneMeta);
+    if (meta) g.faire(); else if (panneMeta) direPanneCatalogue();
   }
   function allerAuxActivites() {
-    if (!meta) { if (panneMeta) direErreur(panneMeta); else apresCatalogue($('#goActivities'), allerAuxActivites); return; }
+    if (!meta) { apresCatalogue($('#goActivities'), allerAuxActivites); relireCatalogue(); return; }
     if (grandGroupe()) { ouvrirSurMesure($('#goActivities')); return; }
     if (!state.date) { direErreur('Choisissez d’abord un jour.'); dayBtn.focus(); return; }
     if (journeeFinie(state.date)) { direJour(state.date); rendreCalendrier(); direErreur('Le centre est fermé pour aujourd’hui : la journée est finie. Choisissez un autre jour.'); dayBtn.focus(); return; }
@@ -7860,7 +7905,7 @@
   function ouvrirSurMesure(bouton, quandFini) {
     var btn = bouton && bouton.classList ? bouton : null;
     var finir = typeof quandFini === 'function' ? quandFini : function () {};
-    if (!meta) { if (panneMeta) { direErreur(panneMeta); finir(false); } else apresCatalogue(btn, function () { ouvrirSurMesure(bouton, quandFini); }); return; }
+    if (!meta) { if (panneMeta) { direPanneCatalogue(); finir(false); } else apresCatalogue(btn, function () { ouvrirSurMesure(bouton, quandFini); }); return; }
     direErreur('');
     if (smModule) { smModule.ouvrir(); finir(true); return; }
     // Borne comme une lecture (2026-10-12) : un fichier qui ne vient pas
@@ -8021,11 +8066,18 @@
     rendreEtapes();
     rendrePax();
     if (DEPART_SUR_MESURE) prechargerSurMesure();
+    chargerCatalogue(REPRISES_CATALOGUE);
+    posterHauteur();
+  }
+  // LE CATALOGUE, lu au demarrage avec ses reprises, puis apres une panne par « Réessayer »,
+  // « Choisir mes activités » ou le retour du reseau (relireCatalogue).
+  function chargerCatalogue(reprises) {
+    catalogueEnRoute = true;
     var q = new URLSearchParams(); q.set('centerId', CENTER); q.set('calendar', '45');
-    lire('/api/public-booking-meta?' + q.toString())
+    lireAvecReprises('/api/public-booking-meta?' + q.toString(), reprises)
       .then(function (rep) {
         var j = lu(rep);
-        if (!j || j.ok === false) throw erreurLisible(j, 'Le formulaire ne s’est pas chargé. Rechargez la page dans un instant.');
+        if (!j || j.ok === false) throw erreurLisible(j, PANNE_CATALOGUE);
         meta = j; direErreur('');
         empreinteCatalogue = empreinteDuCatalogue(j);
         // La case des offres nomme le centre qui les enverrait : un retrait
@@ -8073,8 +8125,8 @@
         // ouvert, demonstration) le montre au lieu d ouvrir la demande.
         if (DEPART_SUR_MESURE) { if (alerte.hidden) departSurMesure(); else body.classList.remove('fg-depart-sm'); }
       })
-      .catch(function (err) { if (!bruitDeLecture(err)) signaler({ message: 'Le catalogue ne s’est pas chargé : ' + String((err && err.message) || err || ''), source: 'catalogue', stack: err && err.stack }); panneMeta = err && err.lisible ? err.message : 'Le formulaire ne s’est pas chargé. Rechargez la page dans un instant.'; direErreur(panneMeta); body.classList.remove('fg-depart-sm'); body.classList.add('is-ready'); rejouerGeste(); });
-    posterHauteur();
+      .catch(function (err) { if (!bruitDeLecture(err)) signaler({ message: 'Le catalogue ne s’est pas chargé : ' + String((err && err.message) || err || ''), source: 'catalogue', stack: err && err.stack }); panneMeta = err && err.lisible ? err.message : PANNE_CATALOGUE; direPanneCatalogue(); body.classList.remove('fg-depart-sm'); body.classList.add('is-ready'); rejouerGeste(); })
+      .then(function () { catalogueEnRoute = false; });
   }
   if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', demarrer); else demarrer();
 })();

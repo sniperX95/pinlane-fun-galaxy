@@ -918,7 +918,7 @@ const MUTATIONS = {
   numero: ["      + (numeroFin ? '<p class=\"fg-done__row fg-done__numero\">", "      + (false ? '<p class=\"fg-done__row fg-done__numero\">"],
   relance: ["if (e.target.closest('[data-retry]')) {", 'if (false) {'],
   lisiblemeta: ['panneMeta = err && err.lisible ? err.message : ', 'panneMeta = err.message || '],
-  panneredite: ["    if (!meta) { if (panneMeta) direErreur(panneMeta); else apresCatalogue($('#goActivities'), allerAuxActivites); return; }", "    if (false) { if (panneMeta) direErreur(panneMeta); else apresCatalogue($('#goActivities'), allerAuxActivites); return; }"],
+  panneredite: ["    if (!meta) { apresCatalogue($('#goActivities'), allerAuxActivites); relireCatalogue(); return; }", "    if (false) { apresCatalogue($('#goActivities'), allerAuxActivites); relireCatalogue(); return; }"],
   survoldoigt: ["    if (e.pointerType === 'touch') return;\n", ''],
   anneauhote: ["    if (el && el.matches && el.matches('.fg-card, .fg-pill, .fg-tab') && focusClavier(el)) montrer(el);\n", ''],
   perdu: ['    if (enTransition) { allerEnAttente = { cible: cible, retour: retour }; return; }\n', '    if (enTransition) return;\n'],
@@ -5201,19 +5201,22 @@ async function main() {
     console.log('');
     console.log('[R] PANNES : CATALOGUE COUPE OU EN ROUTE');
     // =====================================================================
-    const REPLI_F = 'Le formulaire ne s’est pas chargé. Rechargez la page dans un instant.';
-    const alerteR = (p) => p.evaluate(() => { const a = document.querySelector('#fgAlert'); const r = a.getBoundingClientRect(); return { vue: !a.hidden, texte: a.textContent, gauche: Math.round(r.left), droite: Math.round(window.innerWidth - r.right), ecran: document.querySelector('.fg-scene.is-active').dataset.scene }; });
+    const REPLI_F = 'Le formulaire ne s’est pas chargé. Vérifiez votre connexion, puis réessayez.';
+    const alerteR = (p) => p.evaluate(() => { const a = document.querySelector('#fgAlert'); const r = a.getBoundingClientRect(); return { vue: !a.hidden, texte: (a.querySelector('b') || a).textContent, bouton: Boolean(a.querySelector('[data-relire-catalogue]')), gauche: Math.round(r.left), droite: Math.round(window.innerWidth - r.right), ecran: document.querySelector('.fg-scene.is-active').dataset.scene }; });
     const ctxR2 = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
     await ctxR2.route((u) => u.pathname === '/api/public-booking-meta', (r) => r.abort());
     const pR2 = await ctxR2.newPage();
     await pR2.goto(`${BASE_URL}/fungalaxy/libramont`, { waitUntil: 'domcontentloaded' });
     ok(await attendre(pR2, () => document.body.classList.contains('is-ready') && !document.querySelector('#fgAlert').hidden, 10000), '[R] catalogue coupe : l alerte s affiche');
     let aR = await alerteR(pR2);
-    ok(plat(aR.texte) === plat(REPLI_F) && !ANGLAIS.test(aR.texte) && aR.gauche >= 20 && aR.droite >= 20, '[R] catalogue coupe : fait constate en francais, alerte hors des bords', JSON.stringify(aR));
+    ok(plat(aR.texte) === plat(REPLI_F) && aR.bouton && !ANGLAIS.test(aR.texte) && aR.gauche >= 20 && aR.droite >= 20, '[R] catalogue coupe : fait constate en francais, alerte hors des bords', JSON.stringify(aR));
     await pR2.click('#goActivities');
+    // Continuer apres une panne relit le catalogue (2026-11-14) : le reseau toujours coupe,
+    // la panne se redit une fois la lecture finie.
+    await attendre(pR2, () => { const a = document.querySelector('#fgAlert'); const b = a.querySelector('[data-relire-catalogue]'); return !a.hidden && Boolean(b) && !b.hasAttribute('aria-disabled') && !document.querySelector('#goActivities').classList.contains('is-busy'); }, 8000);
     aR = await alerteR(pR2);
     const roueR2 = await pR2.evaluate(() => document.querySelector('#goActivities').classList.contains('is-busy'));
-    ok(plat(aR.texte) === plat(REPLI_F) && aR.ecran === 'date' && !roueR2, '[R] Continuer sans catalogue redit la panne, jamais Choisissez d abord un jour, et ne reste pas a tourner', JSON.stringify(Object.assign({ roue: roueR2 }, aR)));
+    ok(plat(aR.texte) === plat(REPLI_F) && aR.bouton && aR.ecran === 'date' && !roueR2, '[R] Continuer sans catalogue redit la panne, jamais Choisissez d abord un jour, et ne reste pas a tourner', JSON.stringify(Object.assign({ roue: roueR2 }, aR)));
     await ctxR2.close();
     let lacherMeta = null; const tenu = new Promise((r) => { lacherMeta = r; });
     const ctxR3 = await browser.newContext({ viewport: { width: 1440, height: 900 } });

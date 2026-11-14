@@ -595,10 +595,10 @@ async function preuvesReserver(browser) {
 }
 
 // [F] Un catalogue que le navigateur ne peut pas aller chercher (reseau du telephone coupe, page
-// fermee en route) n est pas un plantage du formulaire : le client lit qu il doit recharger, et
+// fermee en route) n est pas un plantage du formulaire : le client lit la panne, avec « Réessayer », et
 // rien ne part (alerte du 2026-11-13 a Libramont : « Le catalogue ne s’est pas chargé : reseau »,
 // rangee parmi les urgents de la Tour pour un client sans reseau).
-const REPLI_CATALOGUE = 'Le formulaire ne s’est pas chargé. Rechargez la page dans un instant.';
+const REPLI_CATALOGUE = 'Le formulaire ne s’est pas chargé. Vérifiez votre connexion, puis réessayez. [Réessayer]';
 const estCatalogue = (u) => u.pathname === '/api/public-booking-meta' && /centerId=/.test(u.search);
 const catalogueCoupe = (route) => (route.request().method() === 'GET' ? route.abort('failed') : route.continue());
 async function preuvesSansReseau(browser) {
@@ -614,8 +614,8 @@ async function preuvesSansReseau(browser) {
   await p.goto(`${BASE}/fungalaxy/gembloux`, { waitUntil: 'networkidle', timeout: 45000 });
   const pret = await p.waitForFunction(() => document.body.classList.contains('is-ready'), null, { timeout: 15000 }).then(() => true, () => false);
   await p.waitForTimeout(500);
-  const alerte = await p.evaluate(() => { const a = document.querySelector('#fgAlert'); return a && !a.hidden ? a.textContent.replace(/\s+/g, ' ').trim() : ''; });
-  ok(pret && alerte === REPLI_CATALOGUE, '[F] sans reseau, le formulaire dit au client de recharger', { pret, alerte });
+  const alerte = await p.evaluate(() => { const a = document.querySelector('#fgAlert'); return a && !a.hidden ? (a.querySelector('b') || a).textContent.replace(/\s+/g, ' ').trim() + (a.querySelector('[data-relire-catalogue]') ? ' [Réessayer]' : '') : ''; });
+  ok(pret && alerte === REPLI_CATALOGUE, '[F] sans reseau, le formulaire dit la panne au client, avec « Réessayer »', { pret, alerte });
   ok(signaux.length === 0 && BD.erreurs.length === 0 && TELEGRAM.length === 0, '[F] un catalogue coupe par le reseau n est pas un plantage : rien ne part, rien en base, aucun message', { signaux, erreurs: BD.erreurs.length, TELEGRAM });
   await ctx.close();
 }

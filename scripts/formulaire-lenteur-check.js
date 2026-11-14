@@ -33,6 +33,12 @@
 //       catalogue travaille, sans alerte, et mene aux activites a son
 //       arrivee ; un jour choisi avant lui reste choisi ; un catalogue qui
 //       ne vient jamais se dit en panne au delai, le bouton cesse de tourner.
+//   [I] CATALOGUE COUPE PUIS REVENU (2026-11-14) : une lecture du catalogue
+//       coupee par le reseau se refait seule, sans alerte ; coupee a chaque
+//       fois, la panne se dit avec « Reessayer » apres trois lectures, pas
+//       une de plus ; « Choisir mes activites » apres une panne relit, travaille,
+//       puis redit la panne ; « Reessayer » relit sans recharger la page ; le
+//       retour du reseau relit tout seul.
 //
 // CONTRE-EPREUVE (--mutate) : chaque correctif est retire EN MEMOIRE (le
 // script est servi mute par le serveur du gate), un a la fois, et le gate
@@ -61,7 +67,7 @@ const LF = String.fromCharCode(10);
 const CPU = 6;
 const FICHIER = 'assets/fungalaxy-booking.js';
 const REPLI_H = 'Les horaires ne se sont pas chargés. Réessayez dans un instant.';
-const REPLI_F = 'Le formulaire ne s’est pas chargé. Rechargez la page dans un instant.';
+const REPLI_F = 'Le formulaire ne s’est pas chargé. Vérifiez votre connexion, puis réessayez.';
 const EN_COURS = 'Votre réservation est toujours en cours d’envoi. Ne rechargez pas la page.';
 
 // UNE MUTATION PAR CORRECTIF : `attendu`, l assertion qui doit rougir ;
@@ -160,7 +166,7 @@ const MUTATIONS = [
   },
   {
     nom: 'un toucher avant le catalogue est renvoye (« se charge encore »)',
-    de: "    if (!meta) { if (panneMeta) direErreur(panneMeta); else apresCatalogue($('#goActivities'), allerAuxActivites); return; }",
+    de: "    if (!meta) { apresCatalogue($('#goActivities'), allerAuxActivites); relireCatalogue(); return; }",
     vers: "    if (!meta) { direErreur(panneMeta || 'Le formulaire se charge encore. Réessayez dans un instant.'); return; }",
     attendu: '[H1]', scenarios: ['H'],
   },
@@ -170,11 +176,35 @@ const MUTATIONS = [
     vers: '        if (premier) choisirJour(premier);',
     attendu: '[H2]', scenarios: ['H'],
   },
+  {
+    nom: 'un catalogue coupe par le reseau ne se redemande pas',
+    de: '  var REPRISES_CATALOGUE = [1000, 3000];',
+    vers: '  var REPRISES_CATALOGUE = [];',
+    attendu: '[I1]', scenarios: ['I'],
+  },
+  {
+    nom: '« Réessayer » ne relit pas le catalogue',
+    de: "    if (b && b.getAttribute('aria-disabled') !== 'true') relireCatalogue();",
+    vers: "    if (b && b.getAttribute('aria-disabled') !== 'true') return;",
+    attendu: '[I3]', scenarios: ['I'],
+  },
+  {
+    nom: 'Choisir mes activites apres une panne la redit sans relire',
+    de: "    if (!meta) { apresCatalogue($('#goActivities'), allerAuxActivites); relireCatalogue(); return; }",
+    vers: "    if (!meta) { if (panneMeta) direPanneCatalogue(); else apresCatalogue($('#goActivities'), allerAuxActivites); return; }",
+    attendu: '[I4]', scenarios: ['I'],
+  },
+  {
+    nom: 'le retour du reseau ne relit pas le catalogue',
+    de: "  window.addEventListener('online', function () { if (!meta && panneMeta) relireCatalogue(); });",
+    vers: '',
+    attendu: '[I5]', scenarios: ['I'],
+  },
 ];
 const MUTATION_PREUVE = '[mutation] servie en memoire :';
 const MUTATION_ACTIVE = Number(process.env.PINLANE_LENTEUR_MUTATION || 0);
 const MUTATION = MUTATION_ACTIVE ? MUTATIONS[MUTATION_ACTIVE - 1] : null;
-const SCENARIOS = String(process.env.PINLANE_LENTEUR_SCENARIOS || 'A,B,C,C3,D,E,F,G,H').split(',').map((s) => s.trim()).filter(Boolean);
+const SCENARIOS = String(process.env.PINLANE_LENTEUR_SCENARIOS || 'A,B,C,C3,D,E,F,G,H,I').split(',').map((s) => s.trim()).filter(Boolean);
 function muter(contenu, mutation) {
   const texte = contenu.split(CRLF).join(LF);
   if (texte.split(mutation.de).length - 1 !== 1) {
@@ -671,11 +701,113 @@ async function scenarioH(browser) {
       const t0 = Date.now();
       await dormir(600);
       await toucherAuMilieu(page, '#goActivities');
-      const panne = await attendre(page, (t) => { const a = document.querySelector('#fgAlert'); return !a.hidden && a.textContent.replace(/\s+/g, ' ').trim() === t; }, 22000, plat(REPLI_F));
+      const panne = await attendre(page, (t) => { const a = document.querySelector('#fgAlert'); return !a.hidden && (a.querySelector('b') || a).textContent.replace(/\s+/g, ' ').trim() === t && Boolean(a.querySelector('[data-relire-catalogue]')); }, 22000, plat(REPLI_F));
       const ms = Date.now() - t0;
       const roue = await page.evaluate(() => document.querySelector('#goActivities').classList.contains('is-busy'));
       ok(panne && ms >= 10000 && ms <= 20000 && !roue, '[H3] un catalogue qui ne vient jamais se dit en panne au delai, et le bouton cesse de tourner', JSON.stringify({ panne, ms, roue }));
     } finally { lacher(); await ctx.close(); }
+  }
+}
+
+// [I] LE CATALOGUE COUPE PUIS REVENU (2026-11-14). Le 13/11, une vingtaine de visiteurs des
+// deux centres sont restes devant « Rechargez la page » : leur navigateur n avait pas joint
+// le serveur (« reseau »). La coupure est celle du navigateur (route.abort('failed')), la
+// lecture comptee est celle du demarrage (calendar=45, sans calendarFrom).
+const estMeta45 = (u) => estMeta(u) && u.searchParams.get('calendar') === '45' && !u.searchParams.get('calendarFrom');
+const lectureMeta45 = (r) => r.m === 'GET' && r.u.includes('/api/public-booking-meta?') && r.u.includes('calendar=45') && !r.u.includes('calendarFrom');
+const etatPanne = () => {
+  const a = document.querySelector('#fgAlert');
+  const b = a.querySelector('[data-relire-catalogue]');
+  const scene = document.querySelector('.fg-scene.is-active');
+  return { vue: !a.hidden, texte: (a.querySelector('b') || a).textContent.replace(/\s+/g, ' ').trim(), bouton: b ? b.textContent.trim() : '', boutonLibre: Boolean(b) && !b.hasAttribute('aria-disabled'), pret: document.body.classList.contains('is-ready'), ecran: scene ? scene.dataset.scene : '', roue: document.querySelector('#goActivities').classList.contains('is-busy') };
+};
+async function scenarioI(browser) {
+  console.log('\n[I] LE CATALOGUE COUPE PUIS REVENU');
+  // I1 : coupe une fois, le formulaire se lit seul, sans alerte.
+  {
+    reinitialiser();
+    let coupes = 0;
+    const { ctx, page, journal } = await nouvellePage(browser, {
+      avantChargement: (p) => p.route(estMeta45, (route) => { if (coupes < 1) { coupes += 1; return route.abort('failed'); } return route.continue(); }),
+    });
+    try {
+      await page.goto(`${BASE_URL}/fungalaxy/libramont`, { waitUntil: 'domcontentloaded' });
+      const pret = await attendre(page, () => document.body.classList.contains('is-ready'), 20000);
+      await dormir(400);
+      const e = await page.evaluate(etatPanne);
+      await toucherAuMilieu(page, '#goActivities');
+      const activites = await attendre(page, () => document.querySelector('.fg-scene[data-scene="activites"].is-active'), 10000);
+      const lectures = journal.req.filter(lectureMeta45).length;
+      ok(coupes === 1, 'MONTAGE [I] la premiere lecture du catalogue a ete coupee par le reseau');
+      ok(pret && !e.vue && activites && lectures === 2, '[I1] une lecture coupee par le reseau se refait seule : le formulaire se charge sans alerte, en deux lectures, et mene aux activites', JSON.stringify({ pret, e, activites, lectures }));
+    } finally { await ctx.close(); }
+  }
+  // I2, I4 puis I3 sur la meme page : coupe a chaque fois, puis le reseau revient.
+  {
+    reinitialiser();
+    let mode = 'coupe', tenue = false, lacher = () => {};
+    const { ctx, page, journal } = await nouvellePage(browser, {
+      avantChargement: (p) => p.route(estMeta45, async (route) => {
+        if (mode === 'passe') return route.continue();
+        if (mode === 'tenir') { tenue = true; await new Promise((r) => { lacher = r; }); }
+        return route.abort('failed').catch(() => {});
+      }),
+    });
+    try {
+      const t0 = Date.now();
+      await page.goto(`${BASE_URL}/fungalaxy/libramont`, { waitUntil: 'domcontentloaded' });
+      const vue = await attendre(page, () => !document.querySelector('#fgAlert').hidden, 20000);
+      const ms = Date.now() - t0;
+      const e = await page.evaluate(etatPanne);
+      const lectures = journal.req.filter(lectureMeta45).length;
+      await dormir(5000);
+      const plusTard = journal.req.filter(lectureMeta45).length;
+      ok(vue && e.pret && e.texte === plat(REPLI_F) && e.bouton === 'Réessayer' && e.boutonLibre && lectures === 3 && plusTard === 3 && ms >= 3500,
+        '[I2] coupe a chaque fois : apres trois lectures (1 s puis 3 s), la panne se dit avec « Réessayer », et rien ne relit sans un geste', JSON.stringify({ vue, ms, e, lectures, plusTard }));
+      // I4 : « Choisir mes activités », le reseau toujours coupe.
+      mode = 'tenir';
+      await toucherAuMilieu(page, '#goActivities');
+      for (let i = 0; i < 100 && !tenue; i += 1) await dormir(50);
+      const pendant = await page.evaluate(() => { const g = document.querySelector('#goActivities'); const b = document.querySelector('#fgAlert [data-relire-catalogue]'); return { roue: g.classList.contains('is-busy'), aria: g.getAttribute('aria-busy'), bouton: b ? b.textContent.trim() : '', occupe: b ? b.getAttribute('aria-busy') : '' }; });
+      const lecturesPendant = journal.req.filter(lectureMeta45).length;
+      mode = 'coupe';
+      lacher();
+      const redite = await attendre(page, () => { const a = document.querySelector('#fgAlert'); const b = a.querySelector('[data-relire-catalogue]'); return !a.hidden && Boolean(b) && !b.hasAttribute('aria-disabled') && !document.querySelector('#goActivities').classList.contains('is-busy'); }, 8000);
+      const apres = await page.evaluate(etatPanne);
+      ok(tenue && pendant.roue && pendant.aria === 'true' && pendant.bouton === 'Chargement…' && pendant.occupe === 'true' && lecturesPendant === 4 && redite && apres.texte === plat(REPLI_F) && apres.ecran === 'date' && !apres.roue,
+        '[I4] « Choisir mes activités » apres une panne relit le catalogue : le bouton travaille, puis la panne se redit et il cesse de tourner', JSON.stringify({ tenue, pendant, lecturesPendant, redite, apres }));
+      // I3 : le reseau revenu, « Réessayer » relit sans recharger la page du centre.
+      mode = 'passe';
+      await page.evaluate(() => { window.__memePage = 1; });
+      await page.click('#fgAlert [data-relire-catalogue]');
+      const charge = await attendre(page, () => document.querySelector('#fgAlert').hidden && document.body.classList.contains('is-ready'), 10000);
+      const lectures3 = journal.req.filter(lectureMeta45).length;
+      const memePage = await page.evaluate(() => window.__memePage === 1);
+      await toucherAuMilieu(page, '#goActivities');
+      const activites = await attendre(page, () => document.querySelector('.fg-scene[data-scene="activites"].is-active'), 10000);
+      ok(charge && lectures3 === 5 && memePage && activites, '[I3] le reseau revenu, « Réessayer » relit une fois, sans recharger la page, et le formulaire mene aux activites', JSON.stringify({ charge, lectures3, memePage, activites }));
+    } finally { lacher(); await ctx.close(); }
+  }
+  // I5 : la panne dite, le reseau revient (evenement online du navigateur) : le formulaire se relit seul.
+  {
+    reinitialiser();
+    let coupe = true;
+    const { ctx, page, journal } = await nouvellePage(browser, {
+      avantChargement: (p) => p.route(estMeta45, (route) => (coupe ? route.abort('failed') : route.continue())),
+    });
+    try {
+      await page.goto(`${BASE_URL}/fungalaxy/libramont`, { waitUntil: 'domcontentloaded' });
+      ok(await attendre(page, () => !document.querySelector('#fgAlert').hidden, 20000), 'MONTAGE [I] la panne est dite avant le retour du reseau');
+      await dormir(300);
+      const avant = journal.req.filter(lectureMeta45).length;
+      coupe = false;
+      await ctx.setOffline(true);
+      await dormir(300);
+      await ctx.setOffline(false);
+      const charge = await attendre(page, () => document.querySelector('#fgAlert').hidden && document.body.classList.contains('is-ready'), 10000);
+      const apres = journal.req.filter(lectureMeta45).length;
+      ok(avant === 3 && charge && apres === 4, '[I5] le reseau revenu apres la panne, le formulaire se relit tout seul', JSON.stringify({ avant, charge, apres }));
+    } finally { await ctx.close(); }
   }
 }
 
@@ -685,7 +817,7 @@ async function main() {
   const t0 = Date.now();
   try {
     browser = await chromium.launch({ executablePath: BROWSER_PATH, headless: true });
-    const table = { A: scenarioA, B: scenarioB, C: scenarioC, C3: scenarioC3, D: scenarioD, E: scenarioE, F: scenarioF, G: scenarioG, H: scenarioH };
+    const table = { A: scenarioA, B: scenarioB, C: scenarioC, C3: scenarioC3, D: scenarioD, E: scenarioE, F: scenarioF, G: scenarioG, H: scenarioH, I: scenarioI };
     for (const s of SCENARIOS) {
       if (!table[s]) { ok(false, `MONTAGE scenario inconnu : ${s}`); continue; }
       reinitialiser();

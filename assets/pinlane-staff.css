@@ -19609,6 +19609,11 @@ body:is(.staff-mode, .admin-mode) .fx-modal .fx-retard .delay-custom-row input {
 body:is(.staff-mode, .admin-mode) .fx-modal .fx-pli summary .fx-titre { margin: 0; }
 /* Les notes sur toute la largeur, entre les gestes et le programme. */
 body:is(.staff-mode, .admin-mode) .fx-modal .fx > .gc-notes { margin: 0; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; }
+/* Le champ de note : « Annuler » en bouton a bord, avant « Ajouter », comme
+   les paires de boutons de la console (jamais un lien a cote d un bouton). */
+body:is(.staff-mode, .admin-mode) .fx-modal .gc-note-ajout .gc-note-annuler { min-height: 40px; padding: 0 14px; border: 1px solid var(--control-border); border-radius: var(--radius-md); background: var(--surface); color: var(--text); font-size: 13.5px; font-weight: 600; }
+body:is(.staff-mode, .admin-mode) .fx-modal .gc-note-ajout .gc-note-annuler:hover { background: var(--subtle); }
+@media (pointer: coarse) { body:is(.staff-mode, .admin-mode) .fx-modal .gc-note-ajout .gc-note-annuler { min-height: 44px; } }
 
 /* LA FICHE D UN COUP D OEIL (2026-10-26, Movsar : « un truc bcp plus simple,
    complet, super bien positionne », « tout est reparti partout avec des

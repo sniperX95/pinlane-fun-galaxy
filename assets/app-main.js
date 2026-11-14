@@ -29452,7 +29452,7 @@ function renderGroupeNotes(r) {
       ${window.PinlaneStaffNotes?.scopeHtml(r) || ''}
       <label class="visually-hidden" for="gcNoteEquipe${id}">Note pour l’équipe</label>
       <textarea id="gcNoteEquipe${id}" class="gc-note-champ" rows="2" maxlength="500" data-pl-focus="fiche.note.champ.${id}" placeholder="Note pour l’équipe : le client ne la voit pas" oninput="notesEquipeBrouillons.set(${id}, this.value)" onkeydown="if((event.ctrlKey||event.metaKey)&&event.key==='Enter'){event.preventDefault();ajouterNoteEquipe(${id}, event);}if(event.key==='Escape'){event.stopPropagation();fermerNoteEquipe(${id});}">${escapeHtml(brouillon)}</textarea>
-      <div class="staff-note-actions"><button type="button" class="gc-note-ok" ${window.PinlaneStaffNotes?.busy(r) ? 'disabled aria-busy="true"' : ''} data-pl-focus="fiche.note.ajouter.${id}" onclick="ajouterNoteEquipe(${id}, event)">${window.PinlaneStaffNotes?.busy(r) ? 'Enregistrement…' : window.PinlaneStaffNotes?.reservationEdit(r) ? 'Enregistrer' : 'Ajouter'}</button><button type="button" class="gc-note-retirer" onclick="fermerNoteEquipe(${id})">Annuler</button></div>
+      <div class="staff-note-actions"><button type="button" class="gc-note-retirer gc-note-annuler" onclick="fermerNoteEquipe(${id})">Annuler</button><button type="button" class="gc-note-ok" ${window.PinlaneStaffNotes?.busy(r) ? 'disabled aria-busy="true"' : ''} data-pl-focus="fiche.note.ajouter.${id}" onclick="ajouterNoteEquipe(${id}, event)">${window.PinlaneStaffNotes?.busy(r) ? 'Enregistrement…' : window.PinlaneStaffNotes?.reservationEdit(r) ? 'Enregistrer' : 'Ajouter'}</button></div>
     </div>` : ''}
   </section>`;
 }

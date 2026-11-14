@@ -598,7 +598,9 @@ function routesDesVeilles({ recenteALibramont = true } = {}) {
   route(/select center_id, created_at from reservations where channel = 'public' and created_at > now\(\) - interval '29 days'/, () => resas);
   route(/from llm_spend where month = any/, () => [{ month: '2026-11', cout: 4.2 }, { month: '2026-11:mails', cout: 5.3 }]);
   route(/from ops_jobs where status = 'failed'/, () => [{ center_id: 'libramont', n: 2 }]);
-  route(/from email_threads where status = 'open'/, () => [{ center_id: 'gembloux', n: 3 }, { center_id: 'namur', n: 1 }, { center_id: 'demo', n: 4 }]);
+  // Libramont repond depuis sa boite (ses clients citent 253 mails que Pinlane n a pas vus, 1 reponse de
+  // Pinlane) ; Namur repond dans Pinlane plus souvent qu ailleurs ; Gembloux n a aucun des deux comptes.
+  route(/from email_threads where status = 'open'/, () => [{ center_id: 'gembloux', n: 3 }, { center_id: 'namur', n: 1, repondus_dans_pinlane: 5, repondus_hors_pinlane: 2 }, { center_id: 'libramont', n: 239, repondus_dans_pinlane: 1, repondus_hors_pinlane: 253 }, { center_id: 'demo', n: 4 }]);
 }
 async function veillesDuBanc(options = {}) {
   remettre();
@@ -625,6 +627,9 @@ async function preuvesVeilles() {
   const plein = tour.deciderGarde({ 'veille:budget-ia:commun': { titre: 'x', passe: 'x', n: 1 } }, [{ ...v('veille:budget-ia:commun'), n: 4, quoi: 'Pinlane : les agents marketing a atteint le plafond de dépense IA du mois' }], { instant: SAMEDI_1530 });
   ok(plein.nouveaux.length === 1, '[V] le plafond atteint apres les 80 % se redit une fois', plein.nouveaux.map((p) => p.cle));
   ok(v('veille:mails-sans-reponse:namur') && !v('veille:mails-sans-reponse:demo'), '[V] les centres gardes se lisent en base : un nouveau centre actif est garde, une fiche de demonstration non', veilles.map((p) => p.cle));
+  ok(!v('veille:mails-sans-reponse:libramont') && v('veille:mails-sans-reponse:namur') && v('veille:mails-sans-reponse:gembloux'), '[V] un centre qui repond depuis sa propre boite ne compte plus de mails « sans reponse » ; un centre qui repond dans Pinlane, si', veilles.filter((p) => /mails-sans-reponse/.test(p.cle)).map((p) => p.cle));
+  const sqlMails = charger('lib/garde-veilles.js').SQL_MAILS_SANS_REPONSE.replace(/\s+/g, ' ');
+  ok(/as repondus_dans_pinlane/.test(sqlMails) && /not exists \(select 1 from communications k where k\.center_id = c\.center_id and k\.message_id = c\.in_reply_to\)\) as repondus_hors_pinlane/.test(sqlMails), '[V] la requete compte les reponses parties de Pinlane et les mails du centre que Pinlane n a jamais vus', sqlMails.slice(0, 120));
   const fermee = await veillesDuBanc({ semaineFermee: true });
   ok(fermee.veilles.some((p) => p.cle === 'veille:sans-jour:gembloux') && !fermee.veilles.some((p) => p.cle === 'veille:sans-jour:libramont'), '[V] un centre ouvert en ligne sans aucun jour reservable sur 7 jours se dit', fermee.veilles.map((p) => p.cle));
   await veillesDuBanc();
@@ -1049,6 +1054,7 @@ async function contrePreuves() {
     return !passe.messages.some((m) => m.genre === 'regle' && /annulé/.test(m.texte));
   });
   await rouge('les centres gardes restent ecrits en dur', [{ fichier: 'lib/tour-controle.js', de: '      garde: gardeEnBase(l),', vers: '      garde: CENTRES_GARDES.includes(l.id),' }], async () => (await veillesDuBanc()).veilles.some((p) => p.cle === 'veille:mails-sans-reponse:namur'));
+  await rouge('un centre qui repond depuis sa boite compte ses mails comme sans reponse', [{ fichier: 'lib/garde-veilles.js', de: ' && !repondDepuisSaBoite(l)', vers: '' }], async () => !(await veillesDuBanc()).veilles.some((p) => p.cle === 'veille:mails-sans-reponse:libramont'));
   await rouge('les annulations d Ansar lui-meme comptent', [{ fichier: 'lib/garde-veilles.js', de: " and coalesce(actor_member_id, '') not like '%:platform-owner%'", vers: '' }], async () => !(await veillesDuBanc()).veilles.some((p) => /Ansar/.test(p.cle)));
   await rouge('une erreur de console d Ansar lui-meme part en alerte', [{ fichier: 'api/ops.js', de: "&& !require('../lib/essai-fondateur').estLeFondateur(options.session)", vers: '&& true' }], async () => (await ansarPuisSeb()).ansar.messages === 0);
   await rouge('les lignes d Ansar comptent dans le rang d un plantage de l equipe', [{ fichier: 'lib/client-errors.js', de: " and member_id not like '%:platform-owner%'\";", vers: '";' }], async () => /not like '%:platform-owner%'/.test((await ansarPuisSeb()).sqlRang));

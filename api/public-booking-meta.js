@@ -32,7 +32,7 @@ function visiteursDuPlantage(cle, adresse, maintenant = Date.now()) {
   plantagesVus.set(cle, vu);
   return vu.adresses.size;
 }
-const { getActivity, getCenter, getFormula, refreshCenterOverrides, refreshCatalog } = require('../lib/ops-knowledge');
+const { getActivity, getCenter, getFormula, refreshCenterOverrides, refreshCatalog, coupureEnLigne, CODE_COUPURE } = require('../lib/ops-knowledge');
 const { sendCustomRequestAck } = require('../lib/ops-communications');
 const { simulationSqlExclusion } = require('../lib/simulation-filter');
 const {
@@ -378,6 +378,13 @@ async function handleCustomRequest(req, res, body) {
 
   if (!centerId) {
     sendError(res, 422, 'Centre manquant : precisez le centre de la demande.');
+    return;
+  }
+  // Coupe depuis la Tour de controle (2026-11-14) : aucune demande sur mesure, donc aucun accuse de reception.
+  try { await refreshCenterOverrides(getPool()); } catch (error) { /* socle fichier */ }
+  const coupure = coupureEnLigne(centerId);
+  if (coupure) {
+    sendError(res, 422, coupure, { code: CODE_COUPURE });
     return;
   }
   if (!contactName || !email) {
@@ -1109,8 +1116,12 @@ async function routeur(req, res) {
     if ((regles.minDaysAhead > 0 || regles.horizonDays < BOOKING_HORIZON_DAYS) && !(await sessionDuPersonnel(req))) reglesEnLigne = regles;
   }
 
+  // Coupe depuis la Tour de controle (2026-11-14) : le formulaire se retire des qu il lit ce champ. Cle ADDITIVE,
+  // absente quand le centre est en ligne.
+  const coupure = coupureEnLigne(centerId);
   sendJson(res, 200, {
     ok: true,
+    ...(coupure ? { coupure } : {}),
     today: todayStr(),
     // Le tunnel borne son champ date avec CE nombre : la limite n'est ecrite
     // qu'ici, le navigateur ne la redevine pas.

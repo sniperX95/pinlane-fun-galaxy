@@ -8059,6 +8059,20 @@
 
   /* --- Le demarrage ----------------------------------------------------------------- */
 
+  // COUPE depuis la Tour de controle (2026-11-14) : le formulaire se retire, dit ou reserver, et demande au site
+  // de rendre son ancien formulaire (embed.js). Le serveur refuse de toute facon.
+  function fermerPourCoupure(texte) {
+    var bloc = doc.createElement('section');
+    bloc.className = 'fg-coupe';
+    bloc.setAttribute('role', 'status');
+    var p = doc.createElement('p');
+    p.textContent = texte;
+    bloc.appendChild(p);
+    body.insertBefore(bloc, body.firstChild);
+    body.classList.add('is-coupe', 'is-ready');
+    poster({ type: 'pinlane:coupe' });
+    posterHauteur();
+  }
   function demarrer() {
     poserPhotos();
     decouperTitres();
@@ -8079,6 +8093,7 @@
         var j = lu(rep);
         if (!j || j.ok === false) throw erreurLisible(j, PANNE_CATALOGUE);
         meta = j; direErreur('');
+        if (meta.coupure) { fermerPourCoupure(String(meta.coupure)); return; }
         empreinteCatalogue = empreinteDuCatalogue(j);
         // La case des offres nomme le centre qui les enverrait : un retrait
         // vaut pour CE centre (la liste est tenue centre par centre).

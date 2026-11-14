@@ -44,7 +44,7 @@ const {
   getOperationalBowlingConfig,
   plancherDuJour,
 } = require('../lib/ops-engine');
-const { getCenter, getFormula, refreshCenterOverrides, refreshCatalog, publicBookingBlockReason } = require('../lib/ops-knowledge');
+const { getCenter, getFormula, refreshCenterOverrides, refreshCatalog, publicBookingBlockReason, coupureEnLigne, CODE_COUPURE } = require('../lib/ops-knowledge');
 const {
   isCenterClosedAt,
   isCenterClosedDuring,
@@ -379,6 +379,12 @@ module.exports = async (req, res) => {
     const centerBlock = publicBookingBlockReason(centerId);
     if (centerBlock) {
       sendJson(res, 200, { ok: true, date, slots: [], message: centerBlock });
+      return;
+    }
+    // Coupe depuis la Tour de controle (2026-11-14) : aucune heure, et la phrase qui dit ou reserver.
+    const coupure = coupureEnLigne(centerId);
+    if (coupure) {
+      sendJson(res, 200, { ok: true, date, slots: [], message: coupure, code: CODE_COUPURE });
       return;
     }
     const centerBowlingConfig = centerDoc?.resources?.bowling || null;

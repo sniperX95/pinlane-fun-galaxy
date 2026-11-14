@@ -585,6 +585,8 @@
     if (event.source !== frame.contentWindow) return;
     var data = event.data;
     if (!data) return;
+    // Coupe (2026-11-14) : le cadre le lit avec son catalogue et le dit, meme quand la lecture plus haut a echoue.
+    if (data.type === 'pinlane:coupe') { rendreLAncienFormulaire(); return; }
     if (data.type === 'pinlane:screen') {
       var top = frame.getBoundingClientRect().top;
       if (top < 0 || top > window.innerHeight * 0.5) frame.scrollIntoView({ block: 'start', behavior: 'smooth' });

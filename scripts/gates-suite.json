@@ -20,6 +20,7 @@
     "test:embed-booking",
     "test:embed-demande",
     "test:embed-killswitch",
+    "test:coupure-en-ligne",
     "test:embed-miroir",
     "test:embed-question",
     "test:formulaire-symetrie",

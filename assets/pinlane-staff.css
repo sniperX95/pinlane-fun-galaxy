@@ -17476,12 +17476,7 @@ button.pv2-cal-cell:focus-visible {
 .gc-note-suivi { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .gc-note-suivi li { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-left: 3px solid var(--danger); border-radius: var(--radius-sm); background: var(--danger-soft); color: var(--text); font-size: 14px; font-weight: 600; }
 .gc-note-suivi li::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--danger); }
-/* « + Note pour l equipe » : un lien discret, pas un bouton de plus a l oeil. */
 .gc-notes.is-vide { padding-top: 4px; padding-bottom: 4px; }
-.gc-note-ouvrir { display: inline-flex; align-items: center; gap: 5px; align-self: flex-start; min-height: 28px; margin-left: -6px; padding: 0 6px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--muted); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
-.gc-note-ouvrir:hover { color: var(--text); background: var(--subtle); }
-.gc-note-ouvrir:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 1px; }
-@media (max-width: 560px) { .gc-note-ouvrir { min-height: 44px; } }
 
 /* LOT D (02/10) : LE MOIS DIT L URGENT. Un jour passe avec un groupe pas
    encaisse porte « N à clôturer » (rouge), une demande pas validee « N à
@@ -18533,11 +18528,6 @@ body:is(.staff-mode, .admin-mode) .fx-modal .fx-modif { margin: 4px 0 0; font-si
 @media (pointer: coarse) { .fx-histo-panne .gc-btn, .fx-historique > summary { min-height: 44px; } }
 /* ANNULER SE VOIT DANS INFOS : un mot sous les etats, jamais a leur hauteur. La
    confirmation de cancelRes reste. */
-.fx-annuler-rang { display: flex; justify-content: flex-end; margin-top: 6px; }
-.fx-annuler { appearance: none; min-height: 32px; padding: 0 8px; border: 0; border-radius: 6px; background: none; color: var(--danger); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
-.fx-annuler:hover { background: var(--subtle); }
-.fx-annuler:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 2px; }
-@media (pointer: coarse) { .fx-annuler { min-height: 44px; } }
 .pos-absent { margin-top: 10px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; }
 .pos-absent.is-on { padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--danger, #c0392b) 10%, transparent); color: var(--text); }
 @media (max-width: 560px) { .pos-encaisse-form { grid-template-columns: 1fr; } }
@@ -19583,15 +19573,41 @@ body:is(.staff-mode, .admin-mode) .fx-modal .fx-lignes dd { margin: 0; min-width
 body:is(.staff-mode, .admin-mode) .fx-modal .fx-lignes a { color: var(--accent-strong); font-weight: 600; text-decoration: none; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fx-lignes a:hover { text-decoration: underline; text-underline-offset: 3px; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fx-vide { color: var(--muted); }
-body:is(.staff-mode, .admin-mode) .fx-modal .fx-message { justify-self: start; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fx-origine { margin: 0; font-size: 12.5px; color: var(--muted); }
 
-/* Le pli du retard : ferme, son titre dit le retard. */
-body:is(.staff-mode, .admin-mode) .fx-modal .fx > .fx-pli { margin: 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+/* LES GESTES DU COMPTOIR (2026-11-14, Ansar : « un truc simple rapide et
+   complet ou tout est super facile d acces ») : sous les etats, une rangee de
+   boutons de la console (blancs a bord, comme « Appeler »), le retard ouvert
+   juste dessous, « Annuler la réservation » au bout, a l ecart. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-outils { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0 0; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-outil { appearance: none; display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; margin: 0; padding: 0 14px; border: 1px solid var(--control-border); border-radius: 8px; background: var(--surface); color: var(--text); font: inherit; font-size: 14px; font-weight: 600; line-height: 1.2; white-space: nowrap; cursor: pointer; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-outil svg { flex: none; color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-outil:hover { background: var(--subtle); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-outil:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 2px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-outil[aria-expanded='true'] { border-color: var(--text); background: var(--subtle); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-outil.is-retard { border-color: var(--danger); color: var(--danger); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-outil.is-retard svg { color: var(--danger); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-outil.fx-annuler { margin-left: auto; color: var(--danger); }
+@media (pointer: coarse) { body:is(.staff-mode, .admin-mode) .fx-modal .fx-outil { min-height: 44px; } }
+/* Au telephone, deux boutons par ligne ; un libelle trop long passe sur deux
+   lignes plutot que de prendre toute la largeur. */
+@media (max-width: 560px) {
+  body:is(.staff-mode, .admin-mode) .fx-modal .fx-outils { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  body:is(.staff-mode, .admin-mode) .fx-modal .fx-outil { gap: 6px; padding: 6px 8px; white-space: normal; text-align: center; }
+  body:is(.staff-mode, .admin-mode) .fx-modal .fx-outil.fx-annuler { margin-left: 0; }
+}
+/* Le retard, ouvert sous la rangee : les minutes d un toucher. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-act .fx-retard { display: grid; gap: 10px; margin: 10px 0 0; padding: 14px; border-radius: 8px; background: var(--subtle); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-retard-titre { margin: 0; font-size: 15px; font-weight: 600; line-height: 1.35; color: var(--text); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-retard .pos-note { margin: -4px 0 0; font-size: 13px; line-height: 1.45; color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-retard :is(.delay-control-actions, .delay-custom-row) { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-retard .delay-chip { min-height: 40px; padding: 0 14px; font-size: 14px; font-weight: 600; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-retard .delay-custom-row input { width: 96px; min-height: 40px; }
+@media (pointer: coarse) { body:is(.staff-mode, .admin-mode) .fx-modal .fx-retard :is(.delay-chip, .delay-custom-row input) { min-height: 44px; } }
+/* Le pli Historique : son titre sans marge dans sa ligne. */
 body:is(.staff-mode, .admin-mode) .fx-modal .fx-pli summary .fx-titre { margin: 0; }
-/* Ferme, le pli n a que son titre : la marge qui le separe du contenu
-   l aurait decentre (13 px dessus, 25 px dessous). */
-body:is(.staff-mode, .admin-mode) .fx-modal .fx > .fx-pli:not([open]) > summary { margin-bottom: 0; }
+/* Les notes sur toute la largeur, entre les gestes et le programme. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fx > .gc-notes { margin: 0; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; }
 
 /* LA FICHE D UN COUP D OEIL (2026-10-26, Movsar : « un truc bcp plus simple,
    complet, super bien positionne », « tout est reparti partout avec des
@@ -19658,6 +19674,13 @@ body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fx-fleche { display: i
 body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fx-fleche svg { width: 0.72em; height: auto; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fx-joueurs strong { font-size: 17px; font-weight: 500; letter-spacing: 0; color: var(--muted); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fx-nombre { font-size: 26px; font-weight: 650; letter-spacing: -0.02em; color: var(--text); }
+/* La formule en grand a cote des joueurs, ou « À la carte » (2026-11-14). */
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fx-formule strong { font-size: 22px; font-weight: 650; letter-spacing: -0.01em; color: var(--text); white-space: normal; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fx-formule.is-carte strong { font-weight: 500; color: var(--muted); }
+/* L heure et les joueurs se touchent pour les modifier. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fx-fait-modif { appearance: none; margin: 0 -6px; padding: 0 6px; border: 0; border-radius: 6px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fx-fait-modif:hover { background: var(--subtle); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fx-fait-modif:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 1px; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres + .dossier-facts { margin-top: 4px; font-size: 14px; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres + .dossier-facts .dossier-fact strong { font-size: 14px; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .gc-step { padding-top: 10px; padding-bottom: 10px; }

@@ -207,7 +207,8 @@ async function scenarioRoles(page) {
       return {
         onglets: [...m.querySelectorAll('.modal-tabs .tab')].map((t) => t.textContent.trim()).join(','),
         etats: [...m.querySelectorAll('.pos-act-row .res-status-btn')].map((b) => b.textContent.replace(/\s+/g, ' ').trim()).join(','),
-        pli: Boolean(m.querySelector('.fx-pli')),
+        // Le retard : un bouton de la rangee des gestes (2026-11-14).
+        pli: Boolean(m.querySelector('.fx-outil-retard')),
         message: Boolean(m.querySelector('.fx-message')),
         carte: [...document.querySelectorAll(`#resList [data-res-row-id="${rid}"] .gc-actions button`)].map((b) => b.textContent.trim()).join(','),
       };

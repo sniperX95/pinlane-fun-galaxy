@@ -29139,13 +29139,13 @@ function ficheEtat(r, moment, droits) {
       </div>` : ''}
       ${r.status === 'cancelled' || !boutons.length ? '' : `<div class="res-status-row pos-act-row gc-sheet-states">${boutons.join('')}</div>`}
       ${renderGroupeEncaisseAbsence(r)}
-      ${droits.annuler && r.status !== 'cancelled' ? `<div class="fx-annuler-rang"><button type="button" class="fx-annuler" onclick="cancelRes(${r.id}, event)">Annuler la réservation</button></div>` : ''}
+      ${ficheOutils(r, droits)}
     </section>`;
 }
 
 // LE CLIENT : ce qui se touche, sans libelle (un numero appelle, une adresse
 // ecrit), ce qui manque en une ligne, puis d ou vient le dossier.
-function ficheClient(r, droits) {
+function ficheClient(r) {
   const quand = r.createdAt ? new Date(r.createdAt) : null;
   const valide = quand && !Number.isNaN(quand.getTime());
   const creee = valide ? quand.toLocaleDateString('fr-BE', { day: 'numeric', month: 'long', ...(quand.getFullYear() !== new Date().getFullYear() ? { year: 'numeric' } : {}) }) : '';
@@ -29160,7 +29160,6 @@ function ficheClient(r, droits) {
       <h4 class="fx-titre">Client</h4>
       ${contacts ? `<ul class="fx-contact">${contacts}</ul>` : ''}
       ${manque ? `<p class="fx-vide">${manque}</p>` : ''}
-      ${droits.ecrire ? `<button type="button" class="comm-open-btn fx-message" onclick="openCommCenter(${r.id}, event)">Envoyer un message</button>` : ''}
       ${valide || origine !== 'Créée' ? `<p class="fx-origine">${escapeHtml(origine)}${creee ? ` le ${escapeHtml(creee)}` : ''}.</p>` : ''}
     </section>`;
 }
@@ -29170,31 +29169,117 @@ function ficheClient(r, droits) {
 // repart fermee (openPos).
 const plisRetardOuverts = new Set();
 
-// LE RETARD SE REPLANIFIE DANS UN PLI FERME : le titre dit le retard, le
-// contenu est celui d avant (les minutes, l analyse, « Pas venu »). Un role
-// qui ne replanifie pas garde « Pas venu » seul, sans pli.
-function fichePliRetard(r, droits) {
-  if (!droits.replanifier) return '';
-  const late = getLateArrivalMinutes(r);
-  const ouvert = plisRetardOuverts.has(Number(r.id));
-  return `<details class="info-block pos-fold delay-control-block fx-pli"${ouvert ? ' open data-vu="1"' : ''} ontoggle="if(this.open){plisRetardOuverts.add(${Number(r.id)});}else{plisRetardOuverts.delete(${Number(r.id)});}if(this.open && this.isConnected && !this.dataset.vu){this.dataset.vu='1';this.scrollIntoView({block:'nearest'});}">
-      <summary class="pos-group-head">
-        <span class="fx-titre">${late > 0 ? 'Replanifier ce retard' : 'Replanifier un retard'}</span>
-        <svg class="pos-fold-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
-      </summary>
-      <p class="pos-note">Choisissez le retard : le meilleur plan s’affiche avant validation.</p>
+// LES GESTES DU COMPTOIR A UN TOUCHER (2026-11-14, Ansar : « pour des
+// etudiants jeunes il faut un truc simple rapide et complet [...] le retard
+// [...] la note [...] modifier rapidement »). Sous les boutons d etat, une
+// rangee : « Retard » ouvre ses minutes juste dessous (il vivait dans un pli
+// ferme en bas de la colonne), « Note pour l’équipe » ouvre son champ en tete
+// des notes, « Message au client » ; « Annuler la réservation » au bout, a
+// l ecart. Chaque bouton n existe que si le role a le geste. Le bouton du
+// retard ne porte jamais les minutes : il ne change pas a chaque releve.
+const FICHE_ICONE_HORLOGE = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
+const FICHE_ICONE_NOTE = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8z"/><path d="M15 3v4a2 2 0 0 0 2 2h4"/></svg>';
+const FICHE_ICONE_MESSAGE = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+
+function ficheRetardPossible(r, droits) {
+  return Boolean(droits.replanifier) && r.status !== 'cancelled' && !r.absentAt;
+}
+
+function ficheOutils(r, droits) {
+  const id = Number(r.id);
+  const boutons = [];
+  const retard = ficheRetardPossible(r, droits);
+  const late = retard ? getLateArrivalMinutes(r) : 0;
+  const ouvert = retard && plisRetardOuverts.has(id);
+  if (retard) {
+    // Rouge quand la pastille de l en-tete dit « En retard », jamais autrement :
+    // une demande a verifier garde sa pastille et un bouton neutre.
+    const enRetard = getStaffDashboardStatusMeta(r).className === 'late';
+    boutons.push(`<button type="button" class="fx-outil fx-outil-retard${enRetard ? ' is-retard' : ''}" aria-expanded="${ouvert}" aria-controls="fxRetard${id}" data-pl-focus="fiche.retard.ouvrir.${id}" onclick="basculerRetardFiche(${id}, event)">${FICHE_ICONE_HORLOGE}${enRetard ? 'En retard' : 'Retard'}</button>`);
+  }
+  boutons.push(renderNoteEquipeBouton(r));
+  if (droits.ecrire) boutons.push(`<button type="button" class="fx-outil comm-open-btn fx-message" onclick="openCommCenter(${id}, event)">${FICHE_ICONE_MESSAGE}Message au client</button>`);
+  if (droits.annuler && r.status !== 'cancelled') boutons.push(`<button type="button" class="fx-outil fx-annuler" onclick="cancelRes(${id}, event)">Annuler la réservation</button>`);
+  const rangee = boutons.filter(Boolean);
+  if (!rangee.length) return '';
+  return `<div class="fx-outils" role="group" aria-label="Gestes du dossier">${rangee.join('')}</div>${ouvert ? ficheRetardPanneau(r, late) : ''}`;
+}
+
+// Qui peut ecrire une note, la reecrire ou la retirer : comme au serveur,
+// ajouter est un geste d accueil, reecrire ou retirer demande de pouvoir
+// modifier le dossier.
+function ficheDroitsNotes(r) {
+  const peutNoter = r.status !== 'cancelled' && (typeof canUseStaffPermission !== 'function'
+    || canUseStaffPermission('reservations.status') || canUseStaffPermission('reservations.edit'));
+  const peutNoterClient = typeof canUseStaffPermission === 'function' && canUseStaffPermission('clients.edit');
+  return {
+    peutAjouter: peutNoter || peutNoterClient,
+    peutReecrire: peutNoter && (typeof canUseStaffPermission !== 'function' || canUseStaffPermission('reservations.edit')),
+  };
+}
+
+// « Note pour l’équipe » dans la rangee des gestes. Son champ s ouvre en tete
+// des notes (renderGroupeNotes) ; ouvert, le bouton le dit.
+function renderNoteEquipeBouton(r) {
+  const id = Number(r.id);
+  if (!ficheDroitsNotes(r).peutAjouter) return '';
+  const ouvert = notesEquipeOuvertes.has(id) || Boolean(notesEquipeBrouillons.get(id));
+  return `<button type="button" class="fx-outil gc-note-ouvrir" aria-expanded="${ouvert}" data-pl-focus="fiche.note.ouvrir.${id}" onclick="ouvrirNoteEquipe(${id}, event)">${FICHE_ICONE_NOTE}Note pour l’équipe</button>`;
+}
+
+// LE RETARD, OUVERT JUSTE SOUS SON BOUTON : les minutes d un toucher, puis le
+// plan du serveur avant toute validation (openDelayImpact). Un groupe deja en
+// retard garde « Arrivé maintenant ».
+function ficheRetardPanneau(r, late) {
+  const id = Number(r.id);
+  const minutes = [5, 10, 15, 20, 30].map(m => `<button type="button" class="delay-chip" onclick="openDelayImpact(${id}, ${m}, event)">+${m} min</button>`).join('');
+  return `<div class="fx-retard delay-control-block" id="fxRetard${id}" role="region" aria-label="Retard du groupe">
+      <p class="fx-retard-titre">Retard du groupe</p>
+      <p class="pos-note">Choisissez les minutes. Le nouveau programme s’affiche avant d’être validé.</p>
       <div class="delay-control-actions">
-        ${late > 0 ? `<button type="button" class="delay-chip delay-chip-now" onclick="openDelayImpact(${r.id}, ${late}, event)">Arrivé maintenant (+${late} min)</button>` : ''}
-        <button type="button" class="delay-chip" onclick="openDelayImpact(${r.id}, 5, event)">+5 min</button>
-        <button type="button" class="delay-chip" onclick="openDelayImpact(${r.id}, 10, event)">+10 min</button>
-        <button type="button" class="delay-chip" onclick="openDelayImpact(${r.id}, 15, event)">+15 min</button>
+        ${late > 0 ? `<button type="button" class="delay-chip delay-chip-now" onclick="openDelayImpact(${id}, ${late}, event)">Arrivé maintenant (+${late} min)</button>` : ''}${minutes}
       </div>
       <div class="delay-custom-row">
         <label class="visually-hidden" for="delayCustomMinutes">Retard en minutes</label>
-        <input type="number" id="delayCustomMinutes" min="1" max="240" placeholder="Minutes" inputmode="numeric" onclick="event.stopPropagation()">
-        <button type="button" class="delay-chip delay-chip-run" onclick="openDelayImpactCustom(${r.id}, event)">Analyser ce retard</button>
+        <input type="number" id="delayCustomMinutes" min="1" max="240" placeholder="Autre" inputmode="numeric" data-pl-focus="fiche.retard.minutes.${id}" onclick="event.stopPropagation()">
+        <button type="button" class="delay-chip delay-chip-run" onclick="openDelayImpactCustom(${id}, event)">Voir le plan</button>
       </div>
-    </details>`;
+    </div>`;
+}
+
+function basculerRetardFiche(id, ev) {
+  if (ev) ev.stopPropagation();
+  const n = Number(id);
+  if (plisRetardOuverts.has(n)) plisRetardOuverts.delete(n); else plisRetardOuverts.add(n);
+  renderPos();
+  const panneau = plisRetardOuverts.has(n) ? document.getElementById(`fxRetard${n}`) : null;
+  if (panneau) panneau.scrollIntoView({ block: 'nearest' });
+}
+
+// Toucher l heure ou les joueurs en tete de fiche ouvre « Modifier » sur ce
+// champ, pret a etre retape (2026-11-14).
+const FICHE_CHAMPS_MODIFIABLES = { heure: 'editStartInput', joueurs: 'editPaxInput' };
+function modifierDepuisFiche(champ, ev) {
+  if (ev) ev.stopPropagation();
+  const cible = FICHE_CHAMPS_MODIFIABLES[champ];
+  if (!cible || !ficheDroits().modifier) return;
+  if (state.activeTab !== 'modifier') setTab('modifier');
+  const el = document.getElementById(cible);
+  if (!el) return;
+  el.scrollIntoView({ block: 'center' });
+  el.focus({ preventScroll: true });
+  if (typeof el.select === 'function') el.select();
+}
+
+// Le nom de la formule du dossier, celui que la carte du planning ecrit dans
+// son occasion (getGroupeEncadres) ; une formule composee au comptoir dit le
+// sien (formuleDuComptoir). Sans formule, rien.
+function ficheNomFormule(r) {
+  const formule = r.formuleId ? resolveDisplayFormule(r.formuleId) : null;
+  const nom = nomDeLaFormuleAchetee(r, formule ? formule.name : (r.type === 'formule' || r.formuleId ? getReservationLabel(r) : ''));
+  if (nom) return String(nom);
+  const surMesure = formuleDuComptoir(r);
+  return surMesure && surMesure.nom ? String(surMesure.nom) : '';
 }
 
 function renderPosDetails(r) {
@@ -29202,20 +29287,20 @@ function renderPosDetails(r) {
   // (recherche, clients) ne se lit pas a l heure de la page.
   const moment = getStaffReservationMoments([r], r.date || state.currentDate).get(String(r.id)) || null;
   const droits = ficheDroits();
-  const enRetard = Boolean(moment && moment.late);
   // LE CHOIX SE VOIT QUAND LE GROUPE EST EN RETARD (2026-11-08, Ansar : « le choix de dire pas
-  // arrivé ») : juste sous son etat, hors du pli ; sinon, en bas de la colonne.
+  // arrivé ») : juste sous son etat ; sinon, en bas de la colonne.
   const aTrancher = groupeEnRetardAuPlanning(r, moment);
   const pasVenu = renderGroupePasVenu(r);
-  const pli = fichePliRetard(r, droits);
-  // LA FICHE RANGEE (2026-10-26) : le programme seul a gauche, ce qu on lit
-  // a cote a droite, dans l ordre ou on en a besoin : les notes (un gateau,
-  // une allergie), le prix, le client. Les notes vivaient sous le programme et
-  // tombaient sous la ligne de flottaison des que la journee avait cinq
-  // activites.
+  // LA FICHE DU COMPTOIR (2026-11-14, Ansar : « tout est placé un peu partout
+  // [...] un truc simple rapide et complet où tout est super facile d'accès »).
+  // De haut en bas, dans l ordre ou on s en sert : l etat et ses gestes, les
+  // notes sur toute la largeur (une allergie, un gateau se lisent avant le
+  // programme), puis le programme a gauche et, a droite, le prix, le client et
+  // l historique.
   return `<div class="${posSheetClass()} gc-sheet fx">
     ${ficheEtat(r, moment, droits)}
-    ${aTrancher ? pasVenu : ''}${enRetard ? pli : ''}
+    ${aTrancher ? pasVenu : ''}
+    ${renderGroupeNotes(r)}
     <div class="fx-colonnes">
       <div class="fx-principal">
         <section class="info-block gc-sheet-block fx-programme">
@@ -29224,10 +29309,9 @@ function renderPosDetails(r) {
         </section>
       </div>
       <aside class="fx-cote">
-        ${renderGroupeNotes(r)}
         ${renderGroupeAddition(r)}
-        ${ficheClient(r, droits)}
-        ${(enRetard ? '' : pli) + (aTrancher ? '' : pasVenu)}
+        ${ficheClient(r)}
+        ${aTrancher ? '' : pasVenu}
         ${renderGroupeHistorique(r)}
       </aside>
     </div>
@@ -29332,16 +29416,12 @@ function renderGroupeNotes(r) {
   const notes = getReservationNotesEquipe(r);
   const noteClientPermanente = window.PinlaneStaffNotes?.render(r) || '';
   const brouillon = notesEquipeBrouillons.get(id) || '';
-  const peutNoter = r.status !== 'cancelled' && (typeof canUseStaffPermission !== 'function'
-    || canUseStaffPermission('reservations.status') || canUseStaffPermission('reservations.edit'));
-  const peutNoterClient = typeof canUseStaffPermission === 'function' && canUseStaffPermission('clients.edit');
-  const peutAjouter = peutNoter || peutNoterClient;
-  // Ajouter est un geste d accueil ; reecrire ou retirer demande de pouvoir
-  // modifier le dossier, comme au serveur.
-  const peutReecrire = peutNoter && (typeof canUseStaffPermission !== 'function' || canUseStaffPermission('reservations.edit'));
+  const { peutAjouter, peutReecrire } = ficheDroitsNotes(r);
   const ouvert = peutAjouter && (notesEquipeOuvertes.has(id) || Boolean(brouillon));
   const contenu = Boolean(motClient || parts.suivi.length || notes.length || getReservationDelayFlag(r) || noteClientPermanente);
-  if (!contenu && !peutAjouter) return '';
+  // Sans note ni champ ouvert, rien : « Note pour l’équipe » vit dans la
+  // rangee des gestes, sous les etats (renderNoteEquipeBouton).
+  if (!contenu && !ouvert) return '';
   return `<section class="info-block gc-notes${contenu ? '' : ' is-vide'}" aria-label="Notes">
     ${contenu ? '<div class="gc-sheet-head"><div class="info-label">Notes</div></div>' : ''}
     ${motClient ? `<p class="gc-note-client"><b class="gc-note-titre">${escapeHtml(getReservationNoteTitre(r))}</b> ${escapeHtml(motClient)}</p>` : ''}
@@ -29373,7 +29453,7 @@ function renderGroupeNotes(r) {
       <label class="visually-hidden" for="gcNoteEquipe${id}">Note pour l’équipe</label>
       <textarea id="gcNoteEquipe${id}" class="gc-note-champ" rows="2" maxlength="500" data-pl-focus="fiche.note.champ.${id}" placeholder="Note pour l’équipe : le client ne la voit pas" oninput="notesEquipeBrouillons.set(${id}, this.value)" onkeydown="if((event.ctrlKey||event.metaKey)&&event.key==='Enter'){event.preventDefault();ajouterNoteEquipe(${id}, event);}if(event.key==='Escape'){event.stopPropagation();fermerNoteEquipe(${id});}">${escapeHtml(brouillon)}</textarea>
       <div class="staff-note-actions"><button type="button" class="gc-note-ok" ${window.PinlaneStaffNotes?.busy(r) ? 'disabled aria-busy="true"' : ''} data-pl-focus="fiche.note.ajouter.${id}" onclick="ajouterNoteEquipe(${id}, event)">${window.PinlaneStaffNotes?.busy(r) ? 'Enregistrement…' : window.PinlaneStaffNotes?.reservationEdit(r) ? 'Enregistrer' : 'Ajouter'}</button><button type="button" class="gc-note-retirer" onclick="fermerNoteEquipe(${id})">Annuler</button></div>
-    </div>` : peutAjouter ? `<button type="button" class="gc-note-ouvrir" data-pl-focus="fiche.note.ouvrir.${id}" onclick="ouvrirNoteEquipe(${id}, event)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Note pour l’équipe</button>` : ''}
+    </div>` : ''}
   </section>`;
 }
 
@@ -41094,12 +41174,26 @@ function renderPosInner() {
   // La fleche se dessine : le glyphe « → » de Geist est minuscule en grand ; il
   // reste dans le texte (lecteurs d ecran, copie) sans se voir.
   const fleche = '<span class="fx-fleche"><span class="visually-hidden">→</span><svg viewBox="0 0 22 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 7h19M14 1l6 6-6 6"/></svg></span>';
-  const chiffres = fait('Horaires', horaires.replace(' → ', ` ${fleche} `), 'fx-heures')
-    + fait('Groupe', joueurs.replace(/^(\d+)\s/, '<span class="fx-nombre">$1</span> '), 'fx-joueurs');
+  // CE QUI SE LIT MENE A SON GESTE (2026-11-14, Ansar : « modifier
+  // rapidement ») : qui peut modifier le dossier touche l heure ou les joueurs
+  // et arrive dans « Modifier », sur ce champ (modifierDepuisFiche).
+  const faitModifiable = (libelle, valeur, classe, champ) => (valeur && peutModifier
+    ? `<button type="button" class="dossier-fact fx-fait-modif ${classe}" data-pl-focus="fiche.modifier.${champ}" title="Modifier" onclick="modifierDepuisFiche('${champ}', event)"><span class="visually-hidden">${libelle} </span><strong>${valeur}</strong><span class="visually-hidden">, modifier</span></button>`
+    : fait(libelle, valeur, classe));
+  // LA FORMULE EN GRAND, A COTE DE L HEURE ET DES JOUEURS (2026-11-14, Ansar :
+  // « savoir si c une formule ou pas »). Sans formule, « À la carte ».
+  const nomFormule = ficheNomFormule(r);
+  const chiffres = faitModifiable('Horaires', horaires.replace(' → ', ` ${fleche} `), 'fx-heures', 'heure')
+    + faitModifiable('Groupe', joueurs.replace(/^(\d+)\s/, '<span class="fx-nombre">$1</span> '), 'fx-joueurs', 'joueurs')
+    + fait('Formule', nomFormule ? escapeHtml(nomFormule) : 'À la carte', nomFormule ? 'fx-formule' : 'fx-formule is-carte');
   const facts = fait('Date', jour) + fait('Ressources', lieu) + fait('Réservation', `n° ${escapeHtml(String(r.id))}`, 'fx-numero');
-  // L occasion (et la formule) et « À surveiller » se lisent sous les faits :
-  // ce sont les seuls encadres de la carte que la fiche ne dit pas ailleurs.
-  const etiquettes = getGroupeEncadres(r).filter(e => e.ton === 'occasion' || (e.ton === 'suivi' && e.titre === 'À surveiller'));
+  // L occasion et « À surveiller » se lisent sous les faits : ce sont les seuls
+  // encadres de la carte que la fiche ne dit pas ailleurs. La formule, deja
+  // ecrite en grand, sort de l occasion (« Anniversaire · Formule 2 »).
+  const etiquettes = getGroupeEncadres(r)
+    .filter(e => e.ton === 'occasion' || (e.ton === 'suivi' && e.titre === 'À surveiller'))
+    .map(e => (e.ton === 'occasion' && nomFormule ? { ...e, titre: String(e.titre || '').split(' · ').filter(p => p !== nomFormule).join(' · ') } : e))
+    .filter(e => e.titre);
   // Qui a change quoi en dernier, sans ouvrir l historique (texteDerniereModif).
   const derniereModif = texteDerniereModif(r, { max: 3 });
   // LA FICHE NE S OUVRE QU UNE FOIS. Son animation d entree (.fade-in) vivait

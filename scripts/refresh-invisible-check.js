@@ -387,41 +387,42 @@ async function main() {
         // au rendu suivant, sans redemander de defilement. DEPUIS LA FICHE D UN
         // COUP D OEIL (2026-10-26), les minutes se lisent une fois, sur la
         // ligne d etat (« il y a 15 min ») : le titre dit « ce retard » sans
-        // les redire.
+        // les redire. DEPUIS LA FICHE DU COMPTOIR (2026-11-14), « Retard » est
+        // un bouton de la rangee des gestes : ferme, ses minutes n existent pas
+        // encore, et son libelle ne porte jamais de nombre.
+        const bouton = () => document.querySelector('#posOverlay .fx-outil-retard');
+        const panneau = () => document.querySelector('#posOverlay .delay-control-block');
         window.getLateArrivalMinutes = () => 15;
         renderPos();
         await new Promise(resolve => setTimeout(resolve, 100));
-        const pliRetard = document.querySelector('#posOverlay .delay-control-block');
-        const titrePli = pliRetard ? pliRetard.querySelector('summary').textContent : '';
-        const fermeEnRetard = !!pliRetard && !pliRetard.open && /Replanifier ce retard/.test(titrePli) && !/\d+\s*min/.test(titrePli) && demandesDefilement === 0;
-        pliRetard.querySelector('summary').click();
+        const libelle = bouton() ? bouton().textContent : '';
+        const fermeEnRetard = !!bouton() && !panneau() && bouton().getAttribute('aria-expanded') === 'false' && /Retard/i.test(libelle) && !/\d/.test(libelle) && demandesDefilement === 0;
+        bouton().click();
         await new Promise(resolve => setTimeout(resolve, 100));
         const defilementOuverture = demandesDefilement;
         renderPos();
         await new Promise(resolve => setTimeout(resolve, 150));
-        const apresRendu = document.querySelector('#posOverlay .delay-control-block');
-        const resteOuvert = !!apresRendu && apresRendu.open && demandesDefilement === defilementOuverture;
-        if (apresRendu && apresRendu.open) {
-          apresRendu.querySelector('summary').click();
+        const resteOuvert = !!panneau() && bouton().getAttribute('aria-expanded') === 'true' && demandesDefilement === defilementOuverture;
+        if (panneau()) {
+          bouton().click();
           await new Promise(resolve => setTimeout(resolve, 100));
         }
         window.getLateArrivalMinutes = () => 0;
         renderPos();
         await new Promise(resolve => setTimeout(resolve, 100));
-        const ferme = document.querySelector('#posOverlay .delay-control-block');
-        const fermeAuDepart = !!ferme && !ferme.open;
+        const fermeAuDepart = !!bouton() && !panneau();
         demandesDefilement = 0;
-        ferme.querySelector('summary').click();
+        bouton().click();
         await new Promise(resolve => setTimeout(resolve, 100));
-        return { fermeEnRetard, defilementOuverture, resteOuvert, fermeAuDepart, ouvert: ferme.open, demandesDefilement };
+        return { fermeEnRetard, defilementOuverture, resteOuvert, fermeAuDepart, ouvert: !!panneau(), demandesDefilement };
       } finally {
         window.getLateArrivalMinutes = origineRetard;
         Element.prototype.scrollIntoView = origineScroll;
       }
     });
-    ok(ouvertureManuelle.fermeEnRetard, 'en retard, le pli reste fermé et son titre dit le retard : aucun défilement demandé au montage');
+    ok(ouvertureManuelle.fermeEnRetard, 'en retard, « Retard » reste fermé et son libellé ne porte pas les minutes : aucun défilement demandé au montage');
     ok(ouvertureManuelle.defilementOuverture === 1 && ouvertureManuelle.resteOuvert,
-      `ouvert par la personne, le pli le reste au rendu suivant sans redemander de défilement (${ouvertureManuelle.defilementOuverture} à l ouverture)`);
+      `ouvert par la personne, le retard le reste au rendu suivant sans redemander de défilement (${ouvertureManuelle.defilementOuverture} à l ouverture)`);
     ok(ouvertureManuelle.fermeAuDepart && ouvertureManuelle.ouvert && ouvertureManuelle.demandesDefilement === 1,
       `ouverture manuelle du bloc fermé : défilement conservé une fois (${ouvertureManuelle.demandesDefilement})`);
 

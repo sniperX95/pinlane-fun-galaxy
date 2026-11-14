@@ -62,10 +62,13 @@ function verifier(sources) {
   try {
     const code = [
       constante(sources.app, 'NOTE_EQUIPE_TAG'),
+      // « Note pour l’équipe » vit dans la rangee des gestes de la fiche
+      // (2026-11-14) : son bouton et les droits qu il partage avec les notes.
+      constante(sources.app, 'FICHE_ICONE_NOTE'),
       'const notesEquipeBrouillons = new Map();',
       'const notesEquipeOuvertes = new Set();',
       ...['lireNoteEquipeLigne', 'getReservationNotesEquipe', 'getReservationNoteText', 'getReservationNoteParts',
-        'hasReservationNote', 'getReservationDelayFlag', 'getReservationNoteTitre', 'formatNoteEquipeQuand', 'renderGroupeNotes', 'getReservationValidationTexte', 'nomDeLaFormuleAchetee', 'getGroupeEncadres',
+        'hasReservationNote', 'getReservationDelayFlag', 'getReservationNoteTitre', 'formatNoteEquipeQuand', 'ficheDroitsNotes', 'renderNoteEquipeBouton', 'renderGroupeNotes', 'getReservationValidationTexte', 'nomDeLaFormuleAchetee', 'getGroupeEncadres',
         // La carte lit les notes ecrites par l equipe et la derniere modification
         // (2026-11-03) ; sans le planning, la regle de repli de notesEquipeEcrites.
         'notesEquipeEcrites', 'essentielDuDossier', 'texteDerniereModif', 'quandDerniereModif'].map((n) => extraire(sources.app, n)),
@@ -88,7 +91,7 @@ function verifier(sources) {
     };
     vm.createContext(bac);
     bacCote = bac;
-    vm.runInContext(`${code}\nthis.api = { NOTE_EQUIPE_TAG, lireNoteEquipeLigne, getReservationNotesEquipe, getReservationNoteText, getReservationNoteParts, hasReservationNote, renderGroupeNotes, getGroupeEncadres };`, bac);
+    vm.runInContext(`${code}\nthis.api = { NOTE_EQUIPE_TAG, lireNoteEquipeLigne, getReservationNotesEquipe, getReservationNoteText, getReservationNoteParts, hasReservationNote, renderGroupeNotes, renderNoteEquipeBouton, getGroupeEncadres };`, bac);
     cote = bac.api;
   } catch (e) {
     c(false, '[0] les fonctions des notes se chargent', e.message);
@@ -133,7 +136,10 @@ function verifier(sources) {
   // Le fondateur ne signe rien chez un centre (2026-11-13, lib/fondateur-invisible.js) : sa note dit « L’équipe ».
   const sansSignature = cote.renderGroupeNotes({ id: 14, channel: 'staff', status: 'confirmed', notes: '[equipe] {"t":"Prévenir le client","par":"","le":"2026-10-01T19:10:00.000Z"}' });
   c(/Prévenir le client <span class="gc-note-meta">L’équipe · /.test(sansSignature), '[C] une note signee par personne dit « L’équipe »', sansSignature.slice(0, 240));
-  c(/onclick="ouvrirNoteEquipe\(7, event\)"[^>]*>[\s\S]*?Note pour l’équipe<\/button>/.test(fiche) && !/<textarea/.test(fiche), '[C] champ replie : la fiche ne porte qu un bouton « Note pour l’équipe »');
+  // Le bouton est dans la rangee des gestes, sous les etats (2026-11-14) : les
+  // notes repliees ne portent ni champ ni bouton.
+  const boutonNote = cote.renderNoteEquipeBouton(dossier);
+  c(/onclick="ouvrirNoteEquipe\(7, event\)"[^>]*>[\s\S]*?Note pour l’équipe<\/button>/.test(boutonNote) && !/<textarea|ouvrirNoteEquipe/.test(fiche), '[C] champ replie : « Note pour l’équipe » est un bouton de la rangee des gestes, les notes ne portent ni champ ni bouton', boutonNote.slice(0, 160));
   vm.runInContext('notesEquipeOuvertes.add(7)', bacCote);
   const ouverte = cote.renderGroupeNotes(dossier);
   c(/<textarea id="gcNoteEquipe7"[^>]*placeholder="Note pour l’équipe : le client ne la voit pas"/.test(ouverte) && /onclick="ajouterNoteEquipe\(7, event\)"/.test(ouverte), '[C] ouvert, le champ et le bouton pour ajouter la note');
@@ -145,7 +151,7 @@ function verifier(sources) {
   const reecrire = /aria-label="(?:Modifier|Retirer) la note/;
   const lectureSansEdit = { avecLeDroit: reecrire.test(ouverte), sansLeDroit: reecrire.test(sansEdit), ajouter: /onclick="ajouterNoteEquipe\(7, event\)"/.test(sansEdit) };
   c(lectureSansEdit.avecLeDroit && !lectureSansEdit.sansLeDroit && lectureSansEdit.ajouter, '[C] sans reservations.edit : ajouter reste, ni Modifier ni Retirer', JSON.stringify(lectureSansEdit));
-  c(cote.renderGroupeNotes({ id: 9, channel: 'public', status: 'confirmed', notes: '' }).includes('is-vide') && !/Notes<\/div>/.test(cote.renderGroupeNotes({ id: 9, channel: 'public', status: 'confirmed', notes: '' })), '[C] une fiche sans note ne porte ni titre ni texte vide');
+  c(cote.renderGroupeNotes({ id: 9, channel: 'public', status: 'confirmed', notes: '' }) === '', '[C] une fiche sans note ni champ ouvert ne porte rien, ni titre ni texte vide');
   c(!/\[equipe\]|\[ops:/.test(fiche), '[C] aucun marqueur interne ne s affiche');
   const comptoir = cote.renderGroupeNotes({ id: 8, channel: 'staff', status: 'confirmed', notes: 'Paie en deux fois' });
   c(/class="gc-note-titre">Note<\/b>/.test(comptoir) && !/Mot du client/.test(comptoir), '[C] un dossier pris au comptoir ne dit pas « Mot du client »');

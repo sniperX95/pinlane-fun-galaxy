@@ -242,7 +242,11 @@ async function main() {
           // nous dirige vers les plannings ») sont le nom de l activite rendu
           // cliquable, pas une action en plus : comptes a part, un par
           // activite de bowling ou de laser au plus.
-          boutons: [...document.querySelectorAll('#posOverlay button:not(.gc-check):not(.gc-step-link)')].filter(visible).length,
+          // L heure et les joueurs de l en-tete se touchent pour etre modifies
+          // (.fx-fait-modif, 2026-11-14) : ce sont les faits rendus touchables,
+          // comptes a part comme les liens du planning.
+          boutons: [...document.querySelectorAll('#posOverlay button:not(.gc-check):not(.gc-step-link):not(.fx-fait-modif)')].filter(visible).length,
+          faitsTouchables: [...document.querySelectorAll('#posOverlay .fx-chiffres .fx-fait-modif')].filter(visible).length,
           liens: [...document.querySelectorAll('#posOverlay .gc-step .gc-step-link')].filter(visible).length,
           cases: [...document.querySelectorAll('#posOverlay .gc-step .gc-check')].filter(visible).length,
           pas: [...document.querySelectorAll('#posOverlay .gc-step')].filter(visible).length,
@@ -273,7 +277,11 @@ async function main() {
     // l ouvre pas. Les liens vers le planning se comptent a part (ci-dessous).
     // PLAFOND 10 DEPUIS LE 2026-11-02 : « Annuler la réservation » sort du pli de
     // Modifier (6 gestes), un mot sous les etats (scripts/comptoir-reserver-check.js).
-    ok(infos.boutons <= 10, `« Infos » : ${infos.boutons} boutons d action a l ecran (plafond 10, valait 11 avant refonte ; les cases des activites et les liens du planning a part)`);
+    // PLAFOND 11 DEPUIS LE 2026-11-14 (Ansar : « le retard [...] super facile
+    // d acces ») : « Retard » sort de son pli en bas de colonne et devient un
+    // bouton de la rangee des gestes (scripts/fiche-simple-check.js, [G1]).
+    ok(infos.boutons <= 11, `« Infos » : ${infos.boutons} boutons d action a l ecran (plafond 11 ; les cases des activites, les liens du planning et l heure et les joueurs touchables a part)`);
+    ok(infos.faitsTouchables <= 2, `« Infos » : ${infos.faitsTouchables} faits de l en-tete touchables, l heure et les joueurs au plus`);
     ok(infos.liens <= infos.pas, `« Infos » : ${infos.liens} liens vers le planning, au plus un par activite (${infos.pas})`);
     ok(infos.pas > 0 && infos.cases === infos.pas, `« Infos » : chaque activite du programme a sa case (${infos.cases} cases pour ${infos.pas} activites)`);
     ok(infos.redites.length === 0, `« Infos » : ${infos.redites.length} fait de l en-tete recopie dans le corps${infos.redites.length ? ' : ' + infos.redites.join(' | ') : ''}`);
@@ -312,24 +320,26 @@ async function main() {
     // LE DEPLIANT RANGE SANS SUPPRIMER. Sa hauteur propre grandit a l'ouverture,
     // meme lorsque le modal a atteint son plafond. Les quatre controles sont
     // ensuite verifies cliquables au point milieu : aucune action n'a disparu.
+    // DEPUIS LA FICHE DU COMPTOIR (2026-11-14), « Retard » est un bouton de la
+    // rangee des gestes : ses minutes s ouvrent juste dessous.
     const fold = await page.evaluate(async () => {
-      const d = document.querySelector('#posOverlay details.pos-fold');
-      if (!d) return null;
-      const h = () => Math.round(document.querySelector('#posOverlay .edit-modal').getBoundingClientRect().height);
-      const chips = [...d.querySelectorAll('.delay-chip')];
-      const contenu = d.getBoundingClientRect().height;
-      const avant = { ouvert: d.open, hauteur: h(), contenu };
-      d.querySelector('summary').click();
+      const bouton = () => document.querySelector('#posOverlay .fx-outil-retard');
+      const panneau = () => document.querySelector('#posOverlay .fx-retard');
+      if (!bouton()) return null;
+      const avant = { ouvert: Boolean(panneau()) || bouton().getAttribute('aria-expanded') === 'true', contenu: panneau() ? panneau().getBoundingClientRect().height : 0 };
+      bouton().click();
       await new Promise((r) => setTimeout(r, 200));
-      const apres = { ouvert: d.open, hauteur: h(), contenu: d.getBoundingClientRect().height };
+      const p = panneau();
+      const chips = p ? [...p.querySelectorAll('.delay-chip')] : [];
+      const apres = { ouvert: Boolean(p) && bouton().getAttribute('aria-expanded') === 'true', contenu: p ? p.getBoundingClientRect().height : 0 };
       const surEcran = chips.filter((c) => {
         const r = c.getBoundingClientRect();
         return document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) === c;
       }).length;
       return { avant, apres, total: chips.length, surEcran };
     });
-    ok(fold && !fold.avant.ouvert, 'le depliant « Client en retard » est ferme au repos');
-    ok(fold && fold.apres.contenu > fold.avant.contenu + 40, `ouvrir le depliant revele son contenu (${fold ? fold.avant.contenu : '?'} a ${fold ? fold.apres.contenu : '?'}px), meme si la fenetre est plafonnee`);
+    ok(fold && !fold.avant.ouvert, `le retard est ferme au repos (${JSON.stringify(fold && fold.avant)})`);
+    ok(fold && fold.apres.contenu > fold.avant.contenu + 40, `toucher « Retard » revele ses minutes juste dessous (${fold ? fold.avant.contenu : '?'} a ${fold ? fold.apres.contenu : '?'}px), meme si la fenetre est plafonnee`);
     ok(fold && fold.apres.ouvert && fold.surEcran === fold.total && fold.total >= 4, `ouvert : les ${fold ? fold.total : '?'} controles de retard sont cliquables (${fold ? fold.surEcran : '?'} atteints au point milieu) - rien n a ete supprime`);
     // La suite attend la fiche OUVERTE : on la remet a plat plutot que de la fermer.
     await page.evaluate(() => { closePos(); openPos(state.reservations[0].id); });

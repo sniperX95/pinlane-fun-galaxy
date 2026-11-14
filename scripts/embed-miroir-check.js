@@ -37,7 +37,9 @@
 //       commence par « Demande de groupe » et dit le reste, l heure vide.
 //   [R] De bout en bout, une vraie demande de groupe dans le vrai formulaire Pinlane part dans leur formulaire, et
 //       Pinlane apprend que la copie de CETTE demande est passee, sans rien de personnel.
-//   [L] Le bouton de retour rend l ancien formulaire sans residu : plus de cadre, plus de masque, rien d envoye.
+//   [L] Le cadre deja monte qui apprend la coupure rend l ancien formulaire sans residu : plus de cadre, plus de
+//       masque, rien d envoye. (Depuis le 14/11, une coupure lue AVANT le montage ne pose rien du tout :
+//       scripts/coupure-en-ligne-check.js [F4].)
 //   [M] De bout en bout, avec le vrai formulaire Pinlane : une reservation prise dans le cadre part dans leur
 //       formulaire avec ce que le client a tape, et Pinlane apprend que la copie est passee, sans rien de personnel.
 //   [N] Sur un autre site que celui de la fiche du centre, le cadre ne donne rien de personnel a la page.
@@ -456,11 +458,21 @@ async function proprietesSite(browser) {
   await h.ctx.close();
 
   section('[L] le bouton de retour : l ancien formulaire, sans residu');
-  remettre({ actif: false });
+  // L interrupteur repond encore « en ligne » (sa reponse vit 60 s en cache apres le clic) : le cadre se monte, puis
+  // apprend la coupure avec son catalogue et le dit au site (pinlane:coupe).
+  remettre({ actif: true });
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   await brancher(ctx);
   const page = await ctx.newPage();
   await page.goto(`${SITE}/activites/bowling/`, { waitUntil: 'domcontentloaded' });
+  let cadreL = null;
+  for (const fin = Date.now() + 8000; !cadreL && Date.now() < fin;) {
+    const f = page.frames().find((x) => /\/fungalaxy\//.test(x.url()));
+    if (f && await f.waitForFunction(() => typeof window.__envoyer === 'function', null, { timeout: 2000 }).then(() => true).catch(() => false)) cadreL = f;
+    else await page.waitForTimeout(100);
+  }
+  ok(Boolean(cadreL), '[L] le cadre s est monte (l interrupteur disait encore « en ligne »)');
+  if (cadreL) await cadreL.evaluate(() => window.__envoyer({ type: 'pinlane:coupe' })).catch(() => null);
   const rendu = await page.waitForFunction(() => !document.querySelector('iframe[title="Reservation en ligne"]') && getComputedStyle(document.querySelector('#booking .booking__container')).display !== 'none', null, { timeout: 8000 }).then(() => true).catch(() => false);
   const residu = await page.evaluate(() => ({
     cadres: document.querySelectorAll('iframe[title="Reservation en ligne"]').length,

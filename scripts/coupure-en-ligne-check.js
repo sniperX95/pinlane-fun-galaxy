@@ -20,14 +20,23 @@
 //       S6 les heures : aucune, avec la phrase.
 //       S7 le catalogue : `coupure` pour Libramont, absent pour Gembloux.
 //
-//   [F] LE NAVIGATEUR, avec les vrais embed.js, fungalaxy.html et fungalaxy-booking.js, et le vrai catalogue :
-//       F1 sur le site, la lecture de l interrupteur EN PANNE (le cas du 14/11) : le cadre lit la coupure avec son
-//          catalogue, le site rend son ancien formulaire, aucune reservation, retenue ni demande ne part.
-//       F2 a l adresse directe du formulaire : rien ne se montre que la phrase.
-//       F3 temoin, centre en ligne : le cadre reste et le formulaire se montre (sans lui, F1 et F2 ne prouvent rien).
+//   [F] LE NAVIGATEUR, avec les vrais embed.js, fungalaxy.html et fungalaxy-booking.js, et le vrai catalogue.
+//       Depuis le 14/11 au soir, embed.js demande d abord et ne monte rien sans « en ligne » (Ansar : « faut
+//       vraiment que le formulaire soit completement retire tu vois pas cache »). Un observateur pose avant tout
+//       script note chaque cadre et chaque masque ajoutes a la page, et le serveur note chaque chargement du
+//       formulaire Pinlane.
+//       F1 coupe, mais « en ligne » encore en cache (60 s apres le clic) : le cadre se monte, lit la coupure avec
+//          son catalogue et se retire ; le site rend son ancien formulaire ; rien ne part.
+//       F2 a l adresse directe du formulaire : rien ne se montre que la phrase, et rien ne part.
+//       F3 temoin, centre en ligne : le cadre se monte et le formulaire se montre (sans lui, le reste ne prouve rien).
+//       F4 coupe : rien n est monte ni masque, a aucun moment, et le formulaire Pinlane n est meme pas charge.
+//       F5 lecture de l interrupteur en panne (le cas du 14/11) : pareil.
+//       F6 pas de reponse en 3,5 s : pareil, meme quand « en ligne » arrive apres.
+//       F7 le visiteur a commence l ancien formulaire avant la reponse : il le garde.
 //
 //   [X] LES CONTRE-PREUVES : chaque piece retiree (porte commune, demande sur mesure, catalogue, formulaire,
-//       embed.js) doit faire rougir sa propriete.
+//       embed.js qui ecoute le cadre, qui attend la reponse, qui refuse la panne, qui borne l attente, qui garde
+//       l ancien formulaire commence) doit faire rougir sa propriete.
 //
 // Usage : node scripts/coupure-en-ligne-check.js
 'use strict';
@@ -193,7 +202,7 @@ function juger(r) {
 
 // --- [F] le navigateur ----------------------------------------------------------------------------------------------
 const MIME = { '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.html': 'text/html; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.woff2': 'font/woff2', '.json': 'application/json; charset=utf-8', '.ico': 'image/x-icon' };
-const NAV = { etat: 'panne', mutations: [], handlers: null, envois: [] };
+const NAV = { etat: 'actif', mutations: [], handlers: null, envois: [], pages: [] };
 function pageDuSite() {
   // La structure du theme de Fun Galaxy et la ligne posee dans WordPress (docs/embed-wordpress.md).
   return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Contact</title></head><body>
@@ -226,12 +235,15 @@ function serveur() {
       const p = url.pathname;
       if (p === '/site') { res.writeHead(200, { 'Content-Type': MIME['.html'], 'Cache-Control': 'no-store' }); res.end(pageDuSite()); return; }
       if (p === '/embed.js') { res.writeHead(200, { 'Content-Type': MIME['.js'], 'Cache-Control': 'no-store' }); res.end(fichierServi('embed.js')); return; }
-      if (/^\/fungalaxy\/[a-z0-9-]+$/.test(p)) { res.writeHead(200, { 'Content-Type': MIME['.html'], 'Cache-Control': 'no-store' }); res.end(fichierServi('fungalaxy.html')); return; }
+      if (/^\/fungalaxy\/[a-z0-9-]+$/.test(p)) { NAV.pages.push(p); res.writeHead(200, { 'Content-Type': MIME['.html'], 'Cache-Control': 'no-store' }); res.end(fichierServi('fungalaxy.html')); return; }
       if (p === '/api/public-booking-meta' && req.method === 'GET' && url.searchParams.get('embedState')) {
-        // La lecture de l interrupteur depuis le site : EN PANNE pour F1, comme chez la cliente du 14/11.
+        // La lecture de l interrupteur depuis le site, dans tous ses etats (le 14/11 : en panne chez la cliente).
+        const repondre = (actif) => { res.writeHead(200, { 'Content-Type': MIME['.json'], 'Cache-Control': 'no-store' }); res.end(JSON.stringify({ ok: true, center: url.searchParams.get('center'), actif })); };
         if (NAV.etat === 'panne') { res.writeHead(503); res.end('{}'); return; }
-        res.writeHead(200, { 'Content-Type': MIME['.json'], 'Cache-Control': 'no-store' });
-        res.end(JSON.stringify({ ok: true, center: url.searchParams.get('center'), actif: true }));
+        if (NAV.etat === 'coupe') { repondre(false); return; }
+        if (NAV.etat === 'lent') { setTimeout(() => repondre(true), 6000); return; }
+        if (NAV.etat === 'actif-lent') { setTimeout(() => repondre(true), 1500); return; }
+        repondre(true);
         return;
       }
       if (p === '/api/public-booking-meta' && req.method === 'GET') { await deleguer(NAV.handlers.meta, req, res, url); return; }
@@ -264,73 +276,116 @@ function serveur() {
   return new Promise((resolve, reject) => { srv.once('error', reject); srv.listen(PORT, '127.0.0.1', () => resolve(srv)); });
 }
 
+// Pose avant tout script de la page : chaque cadre et chaque masque Pinlane ajoutes, meme retires ensuite.
+const OBSERVATEUR = () => {
+  window.__montages = [];
+  new MutationObserver((liste) => {
+    for (const m of liste) {
+      for (const n of m.addedNodes) {
+        if (n.nodeName === 'IFRAME' || (n.nodeName === 'STYLE' && n.getAttribute && n.getAttribute('data-pinlane'))) window.__montages.push(n.nodeName);
+      }
+    }
+  }).observe(document, { childList: true, subtree: true });
+};
 async function etatDuSite(page) {
   return page.evaluate(() => {
     const ancien = document.querySelector('#gform_wrapper_4');
     const style = ancien ? getComputedStyle(ancien) : null;
-    return { cadre: Boolean(document.querySelector('iframe')), ancienVisible: Boolean(ancien) && style.display !== 'none' && ancien.offsetParent !== null };
+    return { cadre: Boolean(document.querySelector('iframe')), ancienVisible: Boolean(ancien) && style.display !== 'none' && ancien.offsetParent !== null, montages: (window.__montages || []).slice() };
   });
 }
-async function proprietesNavigateur(nav, mutations = []) {
+async function attendre(page, cond, ms) {
+  const fin = Date.now() + ms;
+  let e = await etatDuSite(page);
+  while (!cond(e) && Date.now() < fin) { await page.waitForTimeout(250); e = await etatDuSite(page); }
+  return e;
+}
+function preparer(coupe, etat) {
+  poserCentres({ libramontCoupe: coupe });
+  NAV.handlers = monter(NAV.mutations);
+  NAV.etat = etat;
+  NAV.envois = [];
+  NAV.pages = [];
+}
+async function surLeSite(page, { coupe, etat, attendreMs, geste = null }) {
+  preparer(coupe, etat);
+  await page.goto(BASE_URL + '/site?v=' + Date.now(), { waitUntil: 'domcontentloaded', timeout: 30000 });
+  if (geste) await geste(page);
+  await page.waitForTimeout(attendreMs);
+  return { ...(await etatDuSite(page)), envois: NAV.envois.slice(), pages: NAV.pages.slice() };
+}
+async function adresseDirecte(page) {
+  await page.goto(BASE_URL + '/fungalaxy/libramont?v=' + Date.now(), { waitUntil: 'domcontentloaded', timeout: 30000 });
+  await page.waitForFunction(() => document.body.classList.contains('is-ready'), null, { timeout: 15000 }).catch(() => null);
+  await page.waitForTimeout(400);
+  return page.evaluate(() => {
+    const bloc = document.querySelector('.fg-coupe');
+    const visibles = [...document.body.children].filter((el) => el !== bloc && el.tagName !== 'SCRIPT' && el.getClientRects().length > 0 && getComputedStyle(el).display !== 'none');
+    return {
+      coupe: document.body.classList.contains('is-coupe'),
+      phrase: bloc ? bloc.textContent.trim() : '',
+      blocVisible: Boolean(bloc) && bloc.getClientRects().length > 0,
+      autresVisibles: visibles.map((el) => el.tagName + (el.id ? '#' + el.id : '')).slice(0, 5),
+      formulaire: Boolean(document.querySelector('#dayBtn')) && document.querySelector('#dayBtn').getClientRects().length > 0,
+    };
+  });
+}
+const TOUS = ['F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7'];
+async function proprietesNavigateur(nav, mutations = [], scenarios = TOUS) {
   const r = {};
   NAV.mutations = mutations;
   const page = await nav.newPage();
+  await page.addInitScript(OBSERVATEUR);
   try {
-    // F1 : le site, lecture de l interrupteur en panne, centre coupe.
-    poserCentres({ libramontCoupe: true });
-    NAV.handlers = monter(mutations);
-    NAV.etat = 'panne';
-    NAV.envois = [];
-    await page.goto(`${BASE_URL}/site?v=${Date.now()}`, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    const fin = Date.now() + 12000;
-    let site = await etatDuSite(page);
-    while ((site.cadre || !site.ancienVisible) && Date.now() < fin) { await page.waitForTimeout(250); site = await etatDuSite(page); }
-    r.siteCoupe = site;
-    r.envoisSite = NAV.envois.slice();
-
-    // F2 : l adresse directe du formulaire, centre coupe.
-    NAV.envois = [];
-    await page.goto(`${BASE_URL}/fungalaxy/libramont?v=${Date.now()}`, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await page.waitForFunction(() => document.body.classList.contains('is-ready'), null, { timeout: 15000 }).catch(() => null);
-    await page.waitForTimeout(400);
-    r.direct = await page.evaluate(() => {
-      const bloc = document.querySelector('.fg-coupe');
-      const visibles = [...document.body.children].filter((el) => el !== bloc && el.tagName !== 'SCRIPT' && el.getClientRects().length > 0 && getComputedStyle(el).display !== 'none');
-      return { coupe: document.body.classList.contains('is-coupe'), phrase: bloc ? bloc.textContent.trim() : '', blocVisible: Boolean(bloc) && bloc.getClientRects().length > 0, autresVisibles: visibles.map((el) => el.tagName + (el.id ? `#${el.id}` : '')).slice(0, 5) };
-    });
-    r.envoisDirect = NAV.envois.slice();
-
-    // F3 : temoin, le meme centre en ligne.
-    poserCentres({ libramontCoupe: false });
-    NAV.handlers = monter(mutations);
-    NAV.etat = 'actif';
-    await page.goto(`${BASE_URL}/site?v=${Date.now()}`, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await page.waitForTimeout(2500);
-    r.siteEnLigne = await etatDuSite(page);
-    await page.goto(`${BASE_URL}/fungalaxy/libramont?v=${Date.now()}`, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await page.waitForFunction(() => document.body.classList.contains('is-ready'), null, { timeout: 15000 }).catch(() => null);
-    await page.waitForTimeout(400);
-    r.directEnLigne = await page.evaluate(() => ({ coupe: document.body.classList.contains('is-coupe'), bloc: Boolean(document.querySelector('.fg-coupe')), formulaire: Boolean(document.querySelector('#dayBtn')) && document.querySelector('#dayBtn').getClientRects().length > 0 }));
+    if (scenarios.includes('F1')) {
+      preparer(true, 'actif');
+      await page.goto(BASE_URL + '/site?v=' + Date.now(), { waitUntil: 'domcontentloaded', timeout: 30000 });
+      const e = await attendre(page, (x) => x.montages.includes('IFRAME') && !x.cadre && x.ancienVisible, 12000);
+      r.F1 = { ...e, envois: NAV.envois.slice() };
+    }
+    if (scenarios.includes('F2')) {
+      preparer(true, 'actif');
+      r.F2 = { ...(await adresseDirecte(page)), envois: NAV.envois.slice() };
+    }
+    if (scenarios.includes('F3')) {
+      const site = await surLeSite(page, { coupe: false, etat: 'actif', attendreMs: 2500 });
+      r.F3 = { site, direct: await adresseDirecte(page) };
+    }
+    if (scenarios.includes('F4')) r.F4 = await surLeSite(page, { coupe: true, etat: 'coupe', attendreMs: 2500 });
+    if (scenarios.includes('F5')) r.F5 = await surLeSite(page, { coupe: true, etat: 'panne', attendreMs: 2500 });
+    if (scenarios.includes('F6')) r.F6 = await surLeSite(page, { coupe: false, etat: 'lent', attendreMs: 7000 });
+    if (scenarios.includes('F7')) {
+      r.F7 = await surLeSite(page, { coupe: false, etat: 'actif-lent', attendreMs: 2600, geste: async (pg) => { await pg.waitForTimeout(250); await pg.focus('#gform_wrapper_4 input'); } });
+    }
   } finally {
     await page.close();
   }
   return r;
 }
+// Rien du tout : aucun cadre ni masque ajoute a aucun moment, l ancien formulaire a l ecran, le formulaire Pinlane jamais
+// charge, aucun envoi.
+const rien = (x) => Boolean(x) && x.montages.length === 0 && !x.cadre && x.ancienVisible && x.pages.length === 0 && x.envois.length === 0;
 function jugerNavigateur(r) {
-  ok(r.siteCoupe.cadre === false && r.siteCoupe.ancienVisible === true, '[F1] lecture de l interrupteur en panne, centre coupe : le cadre lit la coupure et le site rend son ancien formulaire', JSON.stringify(r.siteCoupe));
-  ok(r.envoisSite.length === 0, '[F1] aucune reservation, retenue, demande ni lecture d heures ne part du site', JSON.stringify(r.envoisSite));
-  ok(r.direct.coupe && r.direct.blocVisible && /ne se prennent pas ici/.test(r.direct.phrase) && r.direct.autresVisibles.length === 0, '[F2] a l adresse directe, rien ne se montre que la phrase', JSON.stringify(r.direct));
-  ok(r.envoisDirect.length === 0, '[F2] et rien ne part', JSON.stringify(r.envoisDirect));
-  ok(r.siteEnLigne.cadre === true && r.siteEnLigne.ancienVisible === false && r.directEnLigne.formulaire === true && !r.directEnLigne.coupe && !r.directEnLigne.bloc, '[F3] temoin : en ligne, le cadre reste et le formulaire se montre', JSON.stringify([r.siteEnLigne, r.directEnLigne]));
+  ok(r.F1.montages.includes('IFRAME') && !r.F1.cadre && r.F1.ancienVisible && r.F1.envois.length === 0, '[F1] coupe mais « en ligne » encore en cache : le cadre lit la coupure et se retire, le site rend son ancien formulaire, rien ne part', JSON.stringify(r.F1));
+  ok(r.F2.coupe && r.F2.blocVisible && /ne se prennent pas ici/.test(r.F2.phrase) && r.F2.autresVisibles.length === 0 && r.F2.envois.length === 0, '[F2] a l adresse directe, rien ne se montre que la phrase, et rien ne part', JSON.stringify(r.F2));
+  ok(r.F3.site.cadre && !r.F3.site.ancienVisible && r.F3.direct.formulaire && !r.F3.direct.coupe, '[F3] temoin : en ligne, le cadre se monte et le formulaire se montre', JSON.stringify(r.F3));
+  ok(rien(r.F4), '[F4] coupe : rien n est monte ni masque, a aucun moment, et le formulaire Pinlane n est meme pas charge', JSON.stringify(r.F4));
+  ok(rien(r.F5), '[F5] lecture de l interrupteur en panne (le cas du 14/11) : l ancien formulaire reste seul', JSON.stringify(r.F5));
+  ok(rien(r.F6), '[F6] pas de reponse en 3,5 s : rien ne se monte, meme quand « en ligne » arrive apres', JSON.stringify(r.F6));
+  ok(rien(r.F7), '[F7] le visiteur a commence l ancien formulaire avant la reponse : il le garde', JSON.stringify(r.F7));
 }
 
 // --- [X] les contre-preuves -----------------------------------------------------------------------------------------
 const CONTRE_PREUVES = [
   { nom: 'la porte commune ne lit plus la coupure', fichier: 'lib/demande-publique.js', de: '  const coupure = coupureEnLigne(requestedCenterId);\n', vers: "  const coupure = '';\n", rougit: (s) => s.reservation.statut === 422 && s.reservation.json && s.reservation.json.code === CODE && s.retenue.json && s.retenue.json.code === CODE },
   { nom: 'la demande sur mesure ne lit plus la coupure', fichier: 'api/public-booking-meta.js', de: '  const coupure = coupureEnLigne(centerId);\n  if (coupure) {\n    sendError(', vers: "  const coupure = '';\n  if (coupure) {\n    sendError(", rougit: (s) => s.surMesure.json && s.surMesure.json.code === CODE && s.ecritures.length === 0 && s.sortants.length === 0 },
-  { nom: 'le catalogue ne dit plus la coupure', fichier: 'api/public-booking-meta.js', de: '    ...(coupure ? { coupure } : {}),\n', vers: '', rougit: (s) => Boolean(s.catalogueLibramont.json && s.catalogueLibramont.json.coupure), navigateur: true, rougitNav: (n) => n.siteCoupe.cadre === false && n.direct.coupe },
-  { nom: 'le formulaire ne se retire plus', navigateur: true, fichier: 'assets/fungalaxy-booking.js', de: '        if (meta.coupure) { fermerPourCoupure(String(meta.coupure)); return; }\n', vers: '', rougitNav: (n) => n.direct.coupe && n.direct.autresVisibles.length === 0 },
-  { nom: 'embed.js n ecoute plus le cadre', navigateur: true, fichier: 'embed.js', de: "    if (data.type === 'pinlane:coupe') { rendreLAncienFormulaire(); return; }\n", vers: '', rougitNav: (n) => n.siteCoupe.cadre === false && n.siteCoupe.ancienVisible === true },
+  { nom: 'le catalogue ne dit plus la coupure', fichier: 'api/public-booking-meta.js', de: '    ...(coupure ? { coupure } : {}),\n', vers: '', rougit: (s) => Boolean(s.catalogueLibramont.json && s.catalogueLibramont.json.coupure), scenarios: ['F1', 'F2'], rougitNav: (n) => !n.F1.cadre && n.F1.ancienVisible && n.F2.coupe },
+  { nom: 'le formulaire ne se retire plus', navigateur: true, fichier: 'assets/fungalaxy-booking.js', de: '        if (meta.coupure) { fermerPourCoupure(String(meta.coupure)); return; }\n', vers: '', scenarios: ['F2'], rougitNav: (n) => n.F2.coupe && n.F2.autresVisibles.length === 0 },
+  { nom: 'embed.js n ecoute plus le cadre', navigateur: true, fichier: 'embed.js', de: "    if (data.type === 'pinlane:coupe') { rendreLAncienFormulaire(); return; }\n", vers: '', scenarios: ['F1'], rougitNav: (n) => !n.F1.cadre && n.F1.ancienVisible },
+  { nom: 'embed.js monte le cadre avant la reponse', navigateur: true, fichier: 'embed.js', de: '  setTimeout(function () { decider(false); }, DELAI_INTERRUPTEUR_MS);\n', vers: '  monterPinlane();\n  setTimeout(function () { decider(false); }, DELAI_INTERRUPTEUR_MS);\n', scenarios: ['F4'], rougitNav: (n) => rien(n.F4) },
+  { nom: 'une panne de lecture monte quand meme le cadre', navigateur: true, fichier: 'embed.js', de: '      .then(function (etat) { decider(Boolean(etat) && etat.ok !== false && etat.actif !== false); })\n', vers: '      .then(function (etat) { decider(!etat || (etat.ok !== false && etat.actif !== false)); })\n', scenarios: ['F5'], rougitNav: (n) => rien(n.F5) },
+  { nom: 'l attente n est plus bornee', navigateur: true, fichier: 'embed.js', de: '  setTimeout(function () { decider(false); }, DELAI_INTERRUPTEUR_MS);\n', vers: '', scenarios: ['F6'], rougitNav: (n) => rien(n.F6) },
+  { nom: 'le visiteur perd l ancien formulaire commence', navigateur: true, fichier: 'embed.js', de: '    if (enLigne && !ancienCommence) monterPinlane();\n', vers: '    if (enLigne) monterPinlane();\n', scenarios: ['F7'], rougitNav: (n) => rien(n.F7) },
 ];
 
 async function main() {
@@ -355,7 +410,7 @@ async function main() {
       let tient = false;
       try {
         if (cp.rougit) tient = cp.rougit(await proprietesServeur(mutations));
-        if (cp.rougitNav) tient = (cp.rougit ? tient : true) && cp.rougitNav(await proprietesNavigateur(nav, mutationsNav));
+        if (cp.rougitNav) tient = (cp.rougit ? tient : true) && cp.rougitNav(await proprietesNavigateur(nav, mutationsNav, cp.scenarios || TOUS));
       } catch (error) {
         tient = false;
       }

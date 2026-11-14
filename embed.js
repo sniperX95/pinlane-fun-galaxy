@@ -84,6 +84,46 @@
     return;
   }
 
+  // RIEN NE SE MONTE NI NE SE MASQUE AVANT QUE PINLANE DISE « EN LIGNE » (2026-11-14, Ansar : « a partir du moment
+  // ou ils cliquent sur revenir a leur ancien formulaire [...] faut vraiment que le formulaire soit completement retire
+  // tu vois pas cache [...] ça peut cree le bug et donc le problm quon a eu ce matin »). Le cadre etait monte tout de
+  // suite et l interrupteur lu a cote : le 14/11 a 10 h 56, cette lecture a echoue chez une cliente de Libramont, coupe
+  // depuis la veille, le cadre est reste, elle a reserve et recu sa confirmation. Desormais la page du site reste telle
+  // quelle tant que Pinlane n a pas repondu « en ligne » : coupe, sans reponse en 3,5 s ou en panne, rien n est monte,
+  // rien n est masque, le formulaire Pinlane n est meme pas charge, et l ancien formulaire reste seul. Un visiteur qui a
+  // deja commence l ancien formulaire le garde : on ne change pas de formulaire sous ses doigts.
+  var DELAI_INTERRUPTEUR_MS = 3500;
+  var selecteurAncien = script.getAttribute('data-fallback') || '';
+  if (/[{}@<]/.test(selecteurAncien)) selecteurAncien = '';
+  var decide = false;
+  var ancienCommence = false;
+  function noterAncienCommence(event) {
+    try {
+      if (selecteurAncien && event && event.target && event.target.closest && event.target.closest(selecteurAncien)) ancienCommence = true;
+    } catch (error) { /* selecteur illisible */ }
+  }
+  document.addEventListener('focusin', noterAncienCommence, true);
+  function decider(enLigne) {
+    if (decide) return;
+    decide = true;
+    document.removeEventListener('focusin', noterAncienCommence, true);
+    if (enLigne && !ancienCommence) monterPinlane();
+  }
+  setTimeout(function () { decider(false); }, DELAI_INTERRUPTEUR_MS);
+  try {
+    var etatUrl = origin + '/api/public-booking-meta?embedState=1'
+      + (center ? '&center=' + encodeURIComponent(center) : '');
+    if (typeof fetch !== 'function') decider(false);
+    else fetch(etatUrl, { credentials: 'omit' })
+      .then(function (reponse) { return reponse && reponse.ok ? reponse.json() : null; })
+      .then(function (etat) { decider(Boolean(etat) && etat.ok !== false && etat.actif !== false); })
+      .catch(function () { decider(false); });
+  } catch (error) { decider(false); }
+
+  // Le montage, une fois Pinlane « en ligne ». Le corps garde son retrait d origine : les contre-preuves des gates
+  // visent ses lignes au caractere pres.
+  function monterPinlane() {
+
   // Le formulaire existant est masqué, jamais retiré de la page : le retour en
   // arrière reste un simple réglage, sans intervention sur le site.
   //
@@ -274,10 +314,8 @@
     minuteurLargeur = setTimeout(pleineLargeur, 120);
   });
 
-  // Le cadre est monté immédiatement ; la lecture du réglage part en parallèle et
-  // n'agit que dans le cas où le formulaire d'origine doit être rétabli. Une
-  // erreur réseau ne rétablit jamais l'ancien formulaire : c'est un choix, pas la
-  // conséquence d'une coupure passagère.
+  // Le cadre se retire de lui-meme quand il lit la coupure avec son catalogue (pinlane:coupe, plus bas) : une coupure
+  // decidee pendant que la page etait ouverte, ou une reponse « en ligne » encore en cache (60 s).
   function rendreLAncienFormulaire() {
     try {
       if (frame && frame.parentNode) frame.parentNode.removeChild(frame);
@@ -286,18 +324,6 @@
     if (masque && masque.parentNode) masque.parentNode.removeChild(masque);
   }
 
-  try {
-    var etatUrl = origin + '/api/public-booking-meta?embedState=1'
-      + (center ? '&center=' + encodeURIComponent(center) : '');
-    if (typeof fetch === 'function') {
-      fetch(etatUrl, { credentials: 'omit' })
-        .then(function (reponse) { return reponse && reponse.ok ? reponse.json() : null; })
-        .then(function (etat) {
-          if (etat && etat.actif === false) rendreLAncienFormulaire();
-        })
-        .catch(function () { /* le module reste en place */ });
-    }
-  } catch (error) { /* fetch indisponible : le module reste en place */ }
 
   // LES OUTILS DE MESURE DU SITE SE DECLENCHENT TOUT SEULS.
   //
@@ -646,4 +672,5 @@
     planifierZoneVisible();
     frame.style.minHeight = '0';
   }, false);
+  }
 }());

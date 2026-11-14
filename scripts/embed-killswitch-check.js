@@ -21,10 +21,12 @@
 //   [B] COUPE : l ancien formulaire revient, le cadre Pinlane disparait. C est
 //       la sortie de secours, et elle doit marcher sans toucher au site.
 //
-//   [C] UNE PANNE NE REND PAS L ANCIEN FORMULAIRE. Revenir en arriere est une
-//       DECISION. Si une coupure reseau suffisait a basculer, le site du client
-//       changerait de formulaire au gre du reseau, sans que personne ne l ait
-//       voulu ni ne le comprenne.
+//   [C] SANS REPONSE « EN LIGNE », RIEN NE SE MONTE (regle inversee le 2026-11-14).
+//       Jusque-la une panne gardait le parcours Pinlane : le 14/11 a 10 h 56, la
+//       lecture a echoue chez une cliente de Libramont, coupe depuis la veille, et
+//       elle a reserve. Ansar : « faut vraiment que le formulaire soit completement
+//       retire ». Panne, coupure ou silence : l ancien formulaire reste seul, et le
+//       parcours Pinlane n est meme pas charge (scripts/coupure-en-ligne-check.js).
 //
 //   [D] L ANCIEN FORMULAIRE EST MASQUE, JAMAIS RETIRE. S il quittait le DOM, le
 //       retour en arriere deviendrait une intervention dans WordPress, c est a
@@ -276,14 +278,14 @@ async function main() {
       '[B] et le cadre Pinlane a disparu : pas deux formulaires en meme temps');
 
     // =====================================================================
-    console.log('\n[C] une panne ne rend PAS l ancien formulaire');
+    console.log('\n[C] sans reponse « en ligne », rien ne se monte');
     // =====================================================================
     etatServeur = 'panne';
     const panne = await charger(page, '/site');
-    ok(panne.cadre === true,
-      '[C] lecture de l interrupteur en echec : le parcours reste en place');
-    ok(panne.ancienVisible === false,
-      '[C] et l ancien formulaire reste masque : basculer est une decision, pas un accident reseau');
+    ok(panne.cadre === false,
+      '[C] lecture de l interrupteur en echec : aucun parcours Pinlane n est monte');
+    ok(panne.ancienVisible === true,
+      '[C] et l ancien formulaire reste a l ecran, seul : dans le doute, celui du centre');
 
     // =====================================================================
     console.log('\n[E] sans ancien formulaire declare, couper retire quand meme le cadre');

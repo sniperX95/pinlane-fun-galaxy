@@ -210,7 +210,7 @@ const MUTATIONS = [
   { nom: 'la fiche ne montre plus l auteur', cible: 'app', de: "[n.par || 'L’équipe', formatNoteEquipeQuand(n.le), n.modifieLe", vers: "['', formatNoteEquipeQuand(n.le), n.modifieLe" },
   { nom: 'le lien du planning coche aussi la ligne', cible: 'app', de: "function voirAuPlanning(reservationId, ressource, ev) {\n  if (ev) ev.stopPropagation();", vers: 'function voirAuPlanning(reservationId, ressource, ev) {' },
   { nom: 'le serveur change de marqueur', cible: 'db', de: "const NOTE_EQUIPE_TAG = '[equipe] ';", vers: "const NOTE_EQUIPE_TAG = '[staff] ';" },
-  { nom: 'retirer une note montre sans le droit', cible: 'app', de: "const peutReecrire = peutNoter && (typeof canUseStaffPermission !== 'function' || canUseStaffPermission('reservations.edit'));", vers: 'const peutReecrire = peutNoter;' },
+  { nom: 'retirer une note montre sans le droit', cible: 'app', de: "    peutReecrire: peutNoter && (typeof canUseStaffPermission !== 'function' || canUseStaffPermission('reservations.edit')),", vers: '    peutReecrire: peutNoter,' },
   { nom: 'la carte compte les traces du serveur', cible: 'app', de: 'const notesEquipe = aUneNote ? notesEquipeEcrites(r) : [];', vers: 'const notesEquipe = aUneNote ? getReservationNotesEquipe(r) : [];' },
   { nom: '« Avec note » compte une raison de prix', cible: 'app', de: 'notesEquipeEcrites(reservation).length > 0', vers: 'getReservationNotesEquipe(reservation).length > 0' },
   { nom: 'la regle de repli garde les traces', cible: 'app', de: '.filter(n => !n.compte && n.type !== \'prix\')', vers: '.filter(n => true)' },

@@ -728,8 +728,13 @@ const FICHIERS = ['assets/fungalaxy-booking.js', 'assets/fungalaxy-booking.css',
 // chargeur, +0,47 Ko servis et +0,12 Ko transferes (8d94ad5 contre l arbre, memes fichiers passes par le build). La
 // base tenait a 0,15 Ko du plafond : un cliquet. Poids mort cherche avant (mort.cjs) : une seule fonction jamais
 // appelee, teinteBloc, retiree. Plafonds 390 et 113 Ko : une police ou une bibliotheque les font toujours sauter.
-const BUDGET_SERVI = 390 * 1024;
-const BUDGET_TRANSFERE = 113 * 1024;
+// 2026-11-14, le catalogue coupe par le reseau se relit seul, puis « Reessayer » (Ansar : « jai des alertes [...]
+// c juste comprendre lalerte et la regle ») : 390,16 et 112,79 Ko mesures en fins de ligne Windows, comme la machine
+// GitHub (+0,99 et +0,25 Ko contre bb55bea). Poids mort cherche avant : les 535 fonctions nommees sont toutes citees.
+// La mesure de vitesse du formulaire (test:fungalaxy-perf) est verte sur la suite GitHub de la meme version.
+// Plafonds 392 et 114 Ko : une police ou une bibliotheque les font toujours sauter.
+const BUDGET_SERVI = 392 * 1024;
+const BUDGET_TRANSFERE = 114 * 1024;
 
 let failures = 0;
 function ok(cond, label, detail) {

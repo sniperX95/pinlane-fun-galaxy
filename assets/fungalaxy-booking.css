@@ -1390,7 +1390,11 @@ html.fg-pilote .fg { overflow: visible; }
 @keyframes fg-lit { 0% { background: rgba(255, 255, 255, 0.16); box-shadow: 0 0 0 10px rgba(255, 255, 255, 0.1); } 100% { background: rgba(255, 255, 255, 0.06); box-shadow: 0 0 0 6px rgba(255, 255, 255, 0.06); } }
 /* La ligne du programme qu une heure touchee designe s eclaire une fois, puis
    revient a son fond. */
-@keyframes fg-lit-tete { from { background-color: rgba(255, 255, 255, 0.1); } }
+/* L ECLAT SE POSE PAR-DESSUS LE FOND, JAMAIS A SA PLACE (2026-11-14, Ansar : « quand je prends une heure l autre
+   activite se met en noir »). Une ligne ouverte a la couleur de son activite et un texte fonce : un eclat qui
+   animait le fond le remplacait par du noir le temps de l animation, texte fonce sur noir. Une ombre interieure
+   eclaire sans rien remplacer. */
+@keyframes fg-lit-tete { from { box-shadow: inset 0 0 0 100vmax rgba(255, 255, 255, 0.1); } to { box-shadow: inset 0 0 0 100vmax rgba(255, 255, 255, 0); } }
 /* La cle : le meme contour que la puce, en petit. */
 .fg-key {
   font-style: normal;
@@ -2232,9 +2236,9 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
   .fg-etape.is-arrive .fg-etape__tete { animation: fg-etape-arrive 0.9s var(--fg-ease-out) backwards; }
 }
 @keyframes fg-etape-arrive {
-  0% { background-color: rgba(103, 186, 172, 0); }
-  30% { background-color: rgba(103, 186, 172, 0.14); }
-  100% { background-color: rgba(103, 186, 172, 0); }
+  0% { box-shadow: inset 0 0 0 100vmax rgba(103, 186, 172, 0); }
+  30% { box-shadow: inset 0 0 0 100vmax rgba(103, 186, 172, 0.14); }
+  100% { box-shadow: inset 0 0 0 100vmax rgba(103, 186, 172, 0); }
 }
 .fg-etape__surplace { display: inline-flex; align-items: center; gap: 9px; padding: 0 16px; font: inherit; cursor: pointer; transition: border-color 0.2s, background-color 0.2s; }
 @media (hover: hover) { .fg-etape__surplace:hover { border-color: var(--fg-teal); background: rgba(103, 186, 172, 0.06); } }
@@ -3128,6 +3132,8 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
 :is(#gridAct, #smGridAct) > .fg-grid__item[data-teinte] .fg-pill.is-on { background: var(--act-vif); }
 :is(#gridAct, #smGridAct) > .fg-grid__item[data-teinte] .fg-pill.is-on :is(b, small) { color: var(--act-on); }
 .fg-etape[data-teinte].is-open > .fg-etape__tete, .fg-etape[data-teinte].is-open > .fg-avant-tete { background: var(--act); }
+/* Elle prend sa couleur d un coup : en fondu, le texte fonce passait sur le fond encore sombre (meme regle que les heures). */
+.fg-etape[data-teinte] > :is(.fg-etape__tete, .fg-avant-tete) { transition: none; }
 .fg-etape[data-teinte].is-open :is(.fg-etape__quoi b, .fg-etape__quoi small, .fg-etape__chev) { color: var(--act-on); }
 .fg-etape[data-teinte].is-open .fg-etape__quoi b::after { color: var(--act-on); }
 .fg-etape[data-teinte] .fg-chip:is(.is-on, .is-pending, .is-proposed:not([data-suggere])):not(.is-autre) { border-color: var(--act-vif); background: var(--act-vif); color: var(--act-on); }

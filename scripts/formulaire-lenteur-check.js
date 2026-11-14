@@ -39,6 +39,9 @@
 //       une de plus ; « Choisir mes activites » apres une panne relit, travaille,
 //       puis redit la panne ; « Reessayer » relit sans recharger la page ; le
 //       retour du reseau relit tout seul.
+//   [J] LA LIGNE QUI S OUVRE GARDE SA COULEUR (2026-11-14) : du toucher a la
+//       fin des eclats, l en-tete d une ligne ouverte et teintee a le fond de
+//       son activite a chaque image (ni voile anime a sa place, ni fondu).
 //
 // CONTRE-EPREUVE (--mutate) : chaque correctif est retire EN MEMOIRE (le
 // script est servi mute par le serveur du gate), un a la fois, et le gate
@@ -200,15 +203,29 @@ const MUTATIONS = [
     vers: '',
     attendu: '[I5]', scenarios: ['I'],
   },
+  {
+    nom: 'l eclat d arrivee anime le fond de la ligne ouverte',
+    fichier: 'assets/fungalaxy-booking.css',
+    de: '  30% { box-shadow: inset 0 0 0 100vmax rgba(103, 186, 172, 0.14); }',
+    vers: '  30% { background-color: rgba(103, 186, 172, 0.14); }',
+    attendu: '[J1]', scenarios: ['J'],
+  },
+  {
+    nom: 'la ligne teintee prend sa couleur en fondu',
+    fichier: 'assets/fungalaxy-booking.css',
+    de: '.fg-etape[data-teinte] > :is(.fg-etape__tete, .fg-avant-tete) { transition: none; }',
+    vers: '',
+    attendu: '[J1]', scenarios: ['J'],
+  },
 ];
 const MUTATION_PREUVE = '[mutation] servie en memoire :';
 const MUTATION_ACTIVE = Number(process.env.PINLANE_LENTEUR_MUTATION || 0);
 const MUTATION = MUTATION_ACTIVE ? MUTATIONS[MUTATION_ACTIVE - 1] : null;
-const SCENARIOS = String(process.env.PINLANE_LENTEUR_SCENARIOS || 'A,B,C,C3,D,E,F,G,H,I').split(',').map((s) => s.trim()).filter(Boolean);
+const SCENARIOS = String(process.env.PINLANE_LENTEUR_SCENARIOS || 'A,B,C,C3,D,E,F,G,H,I,J').split(',').map((s) => s.trim()).filter(Boolean);
 function muter(contenu, mutation) {
   const texte = contenu.split(CRLF).join(LF);
   if (texte.split(mutation.de).length - 1 !== 1) {
-    console.error(`mutation impossible : ancre absente ou multiple dans ${FICHIER} : ${mutation.de.slice(0, 80)}`);
+    console.error(`mutation impossible : ancre absente ou multiple dans ${mutation.fichier || FICHIER} : ${mutation.de.slice(0, 80)}`);
     process.exit(2);
   }
   return texte.split(mutation.de).join(mutation.vers);
@@ -242,12 +259,14 @@ function serveur() {
   const base = mock.createServer({ port: PORT });
   const server = http.createServer((req, res) => {
     const url = new URL(req.url, BASE_URL);
-    if (MUTATION && url.pathname === `/${FICHIER}`) {
-      const source = fs.readFileSync(path.join(ROOT, FICHIER), 'utf8');
+    // Une mutation vise le script, ou la feuille quand elle le dit (`fichier`).
+    const cible = MUTATION ? (MUTATION.fichier || FICHIER) : '';
+    if (MUTATION && url.pathname === `/${cible}`) {
+      const source = fs.readFileSync(path.join(ROOT, cible), 'utf8');
       const mute = muter(source, MUTATION);
       servies += 1;
       if (servies === 1) console.log(`${MUTATION_PREUVE} ${MUTATION.nom}`);
-      res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-store' });
+      res.writeHead(200, { 'Content-Type': `${/\.css$/.test(cible) ? 'text/css' : 'text/javascript'}; charset=utf-8`, 'Cache-Control': 'no-store' });
       res.end(mute);
       return;
     }
@@ -811,13 +830,47 @@ async function scenarioI(browser) {
   }
 }
 
+// [J] LA LIGNE QUI S OUVRE GARDE SA COULEUR (2026-11-14, Ansar : « quand je prends une heure l autre activite se met
+// en noir »). Chaque image, du toucher a la fin des eclats, l en-tete d une ligne ouverte et teintee a le fond de son
+// activite (--act), jamais un voile anime a sa place ni un fondu sous un texte deja fonce.
+async function scenarioJ(browser) {
+  console.log('\n[J] LA LIGNE QUI S OUVRE GARDE SA COULEUR');
+  reinitialiser();
+  const { ctx, page } = await nouvellePage(browser);
+  try {
+    ok(await jusquAuxHeures(page, { pax: 4, activites: ['bowling', 'laser_game'] }), 'MONTAGE [J] l ecran des heures est pret');
+    await page.evaluate(() => {
+      const rgb = (hex) => { const h = String(hex || '').trim().replace('#', ''); if (h.length !== 6) return ''; return 'rgb(' + [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)).join(', ') + ')'; };
+      window.__fondsJ = [];
+      window.__arretJ = false;
+      const tic = () => {
+        document.querySelectorAll('#hourZone .fg-etape[data-teinte].is-open').forEach((li) => {
+          const tete = li.querySelector(':scope > .fg-etape__tete, :scope > .fg-avant-tete');
+          if (!tete) return;
+          window.__fondsJ.push({ cle: li.dataset.cle || '', arrive: li.classList.contains('is-arrive'), lit: li.classList.contains('is-lit'), fond: getComputedStyle(tete).backgroundColor, attendu: rgb(getComputedStyle(li).getPropertyValue('--act')) });
+        });
+        if (!window.__arretJ) requestAnimationFrame(tic);
+      };
+      requestAnimationFrame(tic);
+    });
+    await toucherHeure(page, '11:00');
+    const ouverte = await attendre(page, () => { const l = document.querySelector('#hourZone .fg-etape[data-cle] .fg-track[data-activity="laser_game"]'); const li = l && l.closest('.fg-etape'); return Boolean(li && li.classList.contains('is-open')) && !document.querySelector('#hourZone').classList.contains('is-busy'); }, 20000);
+    await dormir(1800);
+    const fonds = await page.evaluate(() => { window.__arretJ = true; return window.__fondsJ; });
+    const arrivees = fonds.filter((f) => f.arrive);
+    const ecarts = fonds.filter((f) => f.attendu && f.fond !== f.attendu);
+    ok(ouverte && arrivees.length > 0, 'MONTAGE [J] la ligne du laser s ouvre apres le bowling, avec son eclat d arrivee', JSON.stringify({ ouverte, arrivees: arrivees.length, images: fonds.length }));
+    ok(ecarts.length === 0, '[J1] du toucher a la fin des eclats, l en-tete ouvert garde la couleur de son activite a chaque image', JSON.stringify({ images: fonds.length, ecarts: ecarts.length, premier: ecarts[0] || null }));
+  } finally { await ctx.close(); }
+}
+
 async function main() {
   const server = await serveur();
   let browser = null;
   const t0 = Date.now();
   try {
     browser = await chromium.launch({ executablePath: BROWSER_PATH, headless: true });
-    const table = { A: scenarioA, B: scenarioB, C: scenarioC, C3: scenarioC3, D: scenarioD, E: scenarioE, F: scenarioF, G: scenarioG, H: scenarioH, I: scenarioI };
+    const table = { A: scenarioA, B: scenarioB, C: scenarioC, C3: scenarioC3, D: scenarioD, E: scenarioE, F: scenarioF, G: scenarioG, H: scenarioH, I: scenarioI, J: scenarioJ };
     for (const s of SCENARIOS) {
       if (!table[s]) { ok(false, `MONTAGE scenario inconnu : ${s}`); continue; }
       reinitialiser();

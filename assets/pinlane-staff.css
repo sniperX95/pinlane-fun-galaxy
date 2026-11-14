@@ -19593,7 +19593,8 @@ body:is(.staff-mode, .admin-mode) .fx-modal .fx-outil.fx-annuler { margin-left: 
    lignes plutot que de prendre toute la largeur. */
 @media (max-width: 560px) {
   body:is(.staff-mode, .admin-mode) .fx-modal .fx-outils { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  body:is(.staff-mode, .admin-mode) .fx-modal .fx-outil { gap: 6px; padding: 6px 8px; white-space: normal; text-align: center; }
+  body:is(.staff-mode, .admin-mode) .fx-modal .fx-outil { gap: 6px; padding: 6px; font-size: 13px; white-space: normal; text-align: center; }
+  body:is(.staff-mode, .admin-mode) .fx-modal .fx-outil svg { width: 14px; height: 14px; }
   body:is(.staff-mode, .admin-mode) .fx-modal .fx-outil.fx-annuler { margin-left: 0; }
 }
 /* Le retard, ouvert sous la rangee : les minutes d un toucher. */

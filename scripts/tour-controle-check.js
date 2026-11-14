@@ -620,6 +620,23 @@ async function preuvesSansReseau(browser) {
   await ctx.close();
 }
 
+// [F] Les lectures coupees deja en base (le 13/11, avant ccaebde : le cadre Pinlane retire par embed.js quand
+// l interrupteur du site est coupe) ne se rangent plus parmi les urgents de la Tour ; un vrai plantage, si.
+const LECTURES_COUPEES = () => [
+    { center_id: 'libramont', page: 'formulaire:date', message: 'Le catalogue ne s’est pas chargé : reseau', source: 'catalogue', stack_hash: 'f3628ed02a4df4e3bb665918bb30f2fc5016741b', member_id: 'public:libramont', occurred_at: new Date() },
+    { center_id: 'gembloux', page: 'formulaire:heures', message: 'Les horaires ne se sont pas chargés : reseau', source: 'plan', stack_hash: '751fb54a178e6164fb7af33af952f72be4ed788e', member_id: 'public:gembloux', occurred_at: new Date() },
+  ];
+async function preuvesLecturesCoupees() {
+  remettre();
+  BD.erreurs.push(...LECTURES_COUPEES());
+  BD.erreurs.push({ center_id: 'gembloux', page: 'formulaire:date', message: 'TypeError: x is undefined', source: 'window', stack_hash: 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678', member_id: 'public:gembloux', occurred_at: new Date() });
+  const { problemes } = await require('../lib/tour-controle').lireProblemes(database.getPool());
+  const cles = problemes.map((x) => x.cle);
+  ok(!cles.some((c) => /f3628ed0|751fb54a/.test(c)) && cles.includes('erreur:client:a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'),
+    '[F] une lecture coupee (« reseau ») deja en base ne se range plus parmi les urgents ; un vrai plantage du formulaire, si', cles);
+  remettre();
+}
+
 async function preuvesFormulaire(browser) {
   remettre();
   require('../lib/garde-alertes').oublierLesAlertes();
@@ -978,6 +995,13 @@ async function contrePreuves(browser, jour) {
     return t.deciderGarde({ a: 'A' }, [{ cle: 'a', titre: 'A', detail: '', gravite: 'critique' }]).messages.length === 0;
   });
   tourReel();
+  await rouge('une lecture coupee du formulaire redevient un urgent', [{ fichier: FICHIER, de: '  return lignes.filter((e) => !lectureCoupee(e));', vers: '  return lignes;' }], async () => {
+    remettre();
+    BD.erreurs.push(...LECTURES_COUPEES());
+    const { problemes } = await tourReel().lireProblemes(database.getPool());
+    return !problemes.some((p) => p.cle.startsWith('erreur:client:'));
+  });
+  tourReel();
   await rouge('un centre sans adresse de secours ne se dit plus', [{ fichier: FICHIER, de: 'if (!c.secours.adresses) out.push(', vers: 'if (false) out.push(' }], async () => {
     remettre();
     const { problemes } = await tourReel().lireProblemes(database.getPool());
@@ -1159,6 +1183,7 @@ async function contrePreuves(browser, jour) {
     await preuvesFormulaire(browser);
     await preuvesReserver(browser);
     await preuvesSansReseau(browser);
+    await preuvesLecturesCoupees();
     await preuvesConsole(browser);
     await preuvesSignauxDeLaConsole(browser);
     await contrePreuves(browser, jour.date);

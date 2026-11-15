@@ -402,6 +402,56 @@ function aujourdhuiABruxelles() {
 // Creer un dossier deja prepare, le tracer, et rendre ce que la fenetre lit.
 // Le journal s ecrit APRES le COMMIT, hors du verrou de la journee (T5) ; son
 // echec remonte dans `warnings` (T4 point c), jamais en silence.
+// CE QUE « MODIFIER » ECRIRAIT, SANS L ECRIRE (2026-11-15, Ansar : « super
+// intelligente pour pas faire de la merde et tout autorisé sans cassé »). La
+// console ne savait qu au clic si la modification passait : une piste prise,
+// un laser plein, un prix au-dela du role, un planning qui ne suit pas se
+// lisaient apres coup, et le prix annonce n etait pas toujours celui ecrit. Le
+// dossier de « Modifier » passe ici par les memes droits, le meme calcul
+// (calculerLaModification) et la meme ecriture sous verrou (updateReservation),
+// que la base annule aussitot (`aBlanc`). La reponse dit la ligne qui aurait
+// ete ecrite, ou le refus, toujours en 200 avec `modification: true`.
+// Demande en POST (dryRun + modification), jamais en PATCH : un PATCH lu par un
+// serveur d avant ce jour aurait ecrit pour de bon, alors que son POST dryRun
+// simule une creation et n ecrit rien ; la console se tait sans `modification`.
+async function modifierABlanc(req, res, corps) {
+  const body = { ...corps };
+  delete body.dryRun;
+  if (!body.id) throw createHttpError('Reservation manquante.', 400);
+  const current = await getReservationById(body.id);
+  if (!current) throw createHttpError('Reservation introuvable.', 404);
+  const centre = current.centerId || 'libramont';
+  const session = await requireStaffPermission(req, res, 'reservations.edit', { centerId: centre });
+  if (!session) return null;
+  try {
+    if (res.__sansMontants) require('../lib/montants-role').retirerLesMontantsDuCorps(body, current);
+    await rendreLeCorpsSansFondateur(body, current, session, res);
+    // Le dossier entier de « Modifier », rien d autre : un deplacement
+    // d activite, un geste d accueil, un changement d etat ou de moyen de
+    // paiement ont leurs droits et leurs chemins.
+    const porte = (cle) => Object.prototype.hasOwnProperty.call(body, cle);
+    const etatChange = porte('status') && String(body.status || '') !== String(current.status || '');
+    const moyenChange = ['paymentMethod', 'payment_method'].some((cle) => porte(cle) && String(body[cle] ?? '') !== String(current.paymentMethod || ''));
+    if (body.activityMove || body.compteArrivee || porte('encaissement') || porte('absent') || etatChange || moyenChange) {
+      throw createHttpError('Le calcul à blanc ne vaut que pour une modification du dossier.', 400);
+    }
+    const requestedCenterId = body.centerId || body.center_id || centre;
+    if (requestedCenterId !== centre) throw createHttpError('Une réservation reste dans son centre : annulez-la et recréez-la dans l autre.', 422);
+    const aujourdhui = aujourdhuiABruxelles();
+    const jourPasse = (jour) => dateValide(jour) && jour < aujourdhui;
+    if ((jourPasse(current.date) || jourPasse(body.date)) && !sessionHasPermission(session, 'planning.past')) throw createHttpError('Changer un jour passé ne fait pas partie de votre rôle.', 403);
+    const versionAttendue = lireVersionAttendue(body.baseUpdatedAt);
+    if (versionAttendue !== null && !memeVersion(current.updatedAt, versionAttendue)) throw reservationModifieeEntreTemps(current);
+    const { patch, ops, shouldReplan } = await calculerLaModification({ body, current, session, requestedCenterId });
+    const reservation = await updateReservation({ ...patch, ...ops, channel: patch.channel || current.channel || 'staff', aBlanc: true });
+    const planNonRefait = shouldReplan && ops.planAvailable === false ? (ops.planRefusal || ops.planWarning || 'le moteur n’a pas donné de motif.') : '';
+    return { ok: true, dryRun: true, modification: true, reservation, ...(planNonRefait ? { planNonRefait } : {}) };
+  } catch (error) {
+    if ((error && error.statusCode >= 500) || estErreurInfra(error)) throw error;
+    return { ok: true, dryRun: true, modification: true, refus: { message: String(error.message), statut: error.statusCode || 400, ...(error.code ? { code: error.code } : {}) } };
+  }
+}
+
 // LA SIMULATION (dryRun). UNE lecture de la journee, partagee par le dossier,
 // les autres dossiers du meme envoi et chaque heure de l horloge : deux
 // heures ne se comparent pas sur deux etats differents de la base.
@@ -729,6 +779,14 @@ const traiter = async (req, res) => {
           requestId: newRequestId(),
         });
         sendJson(res, 200, { ok: true, epingles: apres.epingles, ...(auditEpingles.warning ? { warnings: [auditEpingles.warning] } : {}) });
+        return;
+      }
+      // « Modifier » demande ce que son enregistrement ecrirait (modifierABlanc) :
+      // son droit est celui de modifier, pas celui de creer.
+      if (body.dryRun === true && body.modification && typeof body.modification === 'object' && !Array.isArray(body.modification)) {
+        await warmCenterKnowledge();
+        const blanc = await modifierABlanc(req, res, body.modification);
+        if (blanc) sendJson(res, 200, blanc);
         return;
       }
       const session = await requireStaffPermission(req, res, 'reservations.create', { centerId: body.centerId || body.center_id });

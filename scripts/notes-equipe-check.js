@@ -136,10 +136,11 @@ function verifier(sources) {
   // Le fondateur ne signe rien chez un centre (2026-11-13, lib/fondateur-invisible.js) : sa note dit « L’équipe ».
   const sansSignature = cote.renderGroupeNotes({ id: 14, channel: 'staff', status: 'confirmed', notes: '[equipe] {"t":"Prévenir le client","par":"","le":"2026-10-01T19:10:00.000Z"}' });
   c(/Prévenir le client <span class="gc-note-meta">L’équipe · /.test(sansSignature), '[C] une note signee par personne dit « L’équipe »', sansSignature.slice(0, 240));
-  // Le bouton est dans la rangee des gestes, sous les etats (2026-11-14) : les
-  // notes repliees ne portent ni champ ni bouton.
+  // Le bouton est dans les gestes de l en-tete (2026-11-15) : les notes
+  // repliees ne portent ni champ ni bouton. Son libelle est coupe par un
+  // span.fz-long cache selon la largeur, on lit donc son texte.
   const boutonNote = cote.renderNoteEquipeBouton(dossier);
-  c(/onclick="ouvrirNoteEquipe\(7, event\)"[^>]*>[\s\S]*?Note pour l’équipe<\/button>/.test(boutonNote) && !/<textarea|ouvrirNoteEquipe/.test(fiche), '[C] champ replie : « Note pour l’équipe » est un bouton de la rangee des gestes, les notes ne portent ni champ ni bouton', boutonNote.slice(0, 160));
+  c(/onclick="ouvrirNoteEquipe\(7, event\)"[^>]*>[\s\S]*<\/button>$/.test(boutonNote) && boutonNote.replace(/<[^>]*>/g, '') === 'Note pour l’équipe' && !/<textarea|ouvrirNoteEquipe/.test(fiche), '[C] champ replie : « Note pour l’équipe » est un bouton de la rangee des gestes, les notes ne portent ni champ ni bouton', boutonNote.slice(0, 160));
   vm.runInContext('notesEquipeOuvertes.add(7)', bacCote);
   const ouverte = cote.renderGroupeNotes(dossier);
   c(/<textarea id="gcNoteEquipe7"[^>]*placeholder="Note pour l’équipe : le client ne la voit pas"/.test(ouverte) && /onclick="ajouterNoteEquipe\(7, event\)"/.test(ouverte), '[C] ouvert, le champ et le bouton pour ajouter la note');

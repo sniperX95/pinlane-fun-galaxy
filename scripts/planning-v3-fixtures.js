@@ -149,6 +149,14 @@ function mockNavigateur(cfg) {
       return J({ ok: true, communications: [], samples: [], suggestions: [], events: [], ecosystem: null, agents: [], activations: [], orchestration: {} });
     }
     if (u.pathname === '/api/admin-range') { var d2 = u.searchParams.get('startDate') || JOUR; return J({ ok: true, reservations: jours[d2] || [], emails: [], agentEvents: [], centerId: 'libramont' }); }
+    // LE CALCUL A BLANC DE « MODIFIER » (POST dryRun + modification) : un gate
+    // peut y brancher le vrai handler (window.__fixtureBlanc, pose par
+    // page.exposeFunction) ; sans lui la requete tombe hors fixture, et la
+    // console se tait. Il ne s ajoute jamais a __FIXTURE__.patchs.
+    if (u.pathname === '/api/staff-reservations' && m === 'POST' && typeof window.__fixtureBlanc === 'function') {
+      var blanc = await window.__fixtureBlanc(JSON.parse(init.body || '{}'));
+      return J(blanc ? blanc.json : { ok: false, error: 'serveur muet' }, blanc ? blanc.statut : 500);
+    }
     if (u.pathname === '/api/staff-reservations' && m === 'PATCH') {
       var corps = JSON.parse(init.body || '{}');
       window.__FIXTURE__.patchs.push(corps);

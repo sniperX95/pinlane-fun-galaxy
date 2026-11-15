@@ -29,7 +29,8 @@
 //   [E] le geste : Espèces sur une carte ecrit status paid ET le moyen ; la
 //       carte passe en Terminees avec « Payé · Espèces »
 //   [F] la fiche : les vraies heures du groupe, le programme, l addition
-//       ligne par ligne, le prix par joueur au centime, Payé · Carte et
+//       ligne par ligne, « À encaisser » une fois, le prix par joueur au
+//       centime, l arrivee pointee sur sa ligne, Payé · Carte et
 //       Payé · Espèces, plus de « Plan automatique » ni de texte interne du
 //       moteur, pas d « Arrivé maintenant » pour un groupe deja la
 //   [G] telephone (390 px) : rien ne deborde, les boutons font 44 px
@@ -374,23 +375,28 @@ async function scenarioBlocs(browser, jour) {
         facts: Object.fromEntries([...m.querySelectorAll('.dossier-fact')].map((fact) => [txt(fact.querySelector('span')), txt(fact.querySelector('strong'))])),
         corps: txt(m.querySelector('.edit-modal-body')),
         lignes: [...m.querySelectorAll('.gc-bill-lines > div')].map((d) => `${txt(d.querySelector('dt'))} ${txt(d.querySelector('dd'))}`),
-        total: txt(m.querySelector('.gc-bill-total')),
-        addition: txt(m.querySelector('.gc-bill')),
-        argent: txt(m.querySelector('.fx-act .pos-act-money')),
+        unite: txt(m.querySelector('.fz-caisse .gc-bill-unit')),
+        aEncaisser: (txt(m).match(/À encaisser/g) || []).length,
+        argent: txt(m.querySelector('.fz-caisse .pos-act-money')),
+        arrivee: m.querySelector('button.fz-arrivee-ligne') ? m.querySelector('button.fz-arrivee-ligne').getAttribute('aria-pressed') : '',
+        compte: txt(m.querySelector('.fz-arrivee button.fz-compte')),
         etats: [...m.querySelectorAll('.gc-sheet-states button')].map((b) => txt(b)),
         etapes: m.querySelectorAll('.gc-steps .gc-step').length,
       };
     });
     ok(fiche.facts && fiche.facts.Horaires === '14:00 → 16:25' && /^(10 joueurs|10 personnes présentes)$/.test(fiche.facts.Groupe), '[F] l en-tête dit les vraies heures du groupe (14:00 → 16:25)', JSON.stringify(fiche.facts));
     ok(fiche.etapes === 3, '[F] le programme : trois lignes', String(fiche.etapes));
-    ok(/^Bowling 10 joueurs · 1h · 2 pistes × 39\s*€ 78\s*€$/.test(fiche.lignes[0] || '') && /^Laser Game 10 joueurs · 2 parties · 18\s*€ × 10 180\s*€$/.test(fiche.lignes[1] || ''), '[F] l addition ligne par ligne, avec leurs10 joueurs et le calcul (2 pistes × 39 €, 18 € × 10)', fiche.lignes.join(' | '));
+    // (2026-11-15 : la ligne ne redit plus « 10 joueurs · 1h », lu dans le
+    // programme a cote ; elle garde le calcul seul)
+    ok(/^Bowling 2 pistes × 39\s*€ 78\s*€$/.test(fiche.lignes[0] || '') && /^Laser Game 18\s*€ × 10 180\s*€$/.test(fiche.lignes[1] || ''), '[F] l addition ligne par ligne, avec le calcul (2 pistes × 39 €, 18 € × 10)', fiche.lignes.join(' | '));
     ok(fiche.facts && fiche.facts.Ressources === 'Pistes 1, 2 + arène laser', '[F] l en-tête dit où : « Pistes 1, 2 + arène laser »', JSON.stringify(fiche.facts));
-    // DEPUIS LA FICHE D UN COUP D OEIL (2026-10-26), « À encaisser » se lit une
-    // fois, sur la ligne d etat en haut de la fiche ; l addition garde le total
-    // et le prix par joueur.
-    ok(/258\s*€/.test(fiche.total) && /25,80\s*€ par joueur/.test(fiche.total) && /À encaisser\s*258\s*€/.test(fiche.argent) && !/À encaisser|Payé/.test(fiche.addition), '[F] le total et le prix par joueur au centime dans l addition, « À encaisser 258 € » une fois, sur la ligne d etat', JSON.stringify({ total: fiche.total, argent: fiche.argent }));
-    // (un groupe pointe dit son nombre : « Ils sont 10 », le compte a l arrivee)
-    ok(fiche.etats.join('|') === 'Confirmé|Ils sont 10|Payé · Carte|Payé · Espèces', '[F] les états : Confirmé, Ils sont 10 (le groupe arrivé dit son nombre), Payé · Carte, Payé · Espèces', fiche.etats.join('|'));
+    // DEPUIS LA FICHE REFAITE (2026-11-15), « À encaisser 258 € » se lit une
+    // fois, en tete de la caisse, le prix par joueur au centime juste dessous ;
+    // plus aucune ligne « Total » ne le redit.
+    ok(/^À encaisser\s*258\s*€$/.test(fiche.argent) && /25,80\s*€ par joueur/.test(fiche.unite) && fiche.aEncaisser === 1, '[F] « À encaisser 258 € » une fois, en tete de la caisse, le prix par joueur au centime dessous', JSON.stringify({ argent: fiche.argent, unite: fiche.unite, aEncaisser: fiche.aEncaisser }));
+    // (2026-11-15 : plus de bouton « Confirmé » ; l arrivee pointee se retouche
+    // sur sa ligne, et le groupe arrive dit son nombre : « Ils sont 10 »)
+    ok(fiche.arrivee === 'true' && fiche.compte === 'Ils sont 10' && fiche.etats.join('|') === 'Payé · Carte|Payé · Espèces', '[F] les états : l arrivée pointée (retouchable), Ils sont 10 (le groupe arrivé dit son nombre), Payé · Carte, Payé · Espèces', JSON.stringify({ arrivee: fiche.arrivee, compte: fiche.compte, etats: fiche.etats }));
     ok(!/Plan automatique|Risque|Consigne:|Point marche/.test(fiche.corps), '[F] plus de « Plan automatique » ni de texte interne du moteur', (fiche.corps.match(/Plan automatique|Risque[^|]*|Consigne:[^|]*/) || [''])[0]);
     ok(!/Arrivé maintenant/.test(fiche.corps), '[F] un groupe déjà arrivé n a pas « Arrivé maintenant »', '');
     await page.evaluate(() => { closePos(); openPos(81008); });
@@ -399,7 +405,7 @@ async function scenarioBlocs(browser, jour) {
       const txt = (el) => (el ? el.textContent.replace(/\s+/g, ' ').trim() : '');
       if (!document.querySelector('#posOverlay .gc-bill')) return { ajuste: '', total: '' };
       const ajuste = document.querySelector('#posOverlay .gc-bill-lines .is-adjust');
-      return { ajuste: ajuste ? `${txt(ajuste.querySelector('dt'))} ${txt(ajuste.querySelector('dd'))}` : '', total: txt(document.querySelector('#posOverlay .gc-bill-total')) };
+      return { ajuste: ajuste ? `${txt(ajuste.querySelector('dt'))} ${txt(ajuste.querySelector('dd'))}` : '', total: txt(document.querySelector('#posOverlay .gc-bill-unit')) };
     });
     ok(/^Prix ajusté tarif 495\s*€ −215\s*€$/.test(lambda.ajuste) && /9,33\s*€ par joueur/.test(lambda.total), '[F] Lambda : l écart au tarif et 9,33 € par joueur', JSON.stringify(lambda));
     await ctx.close();

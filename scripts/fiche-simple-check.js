@@ -4,36 +4,55 @@
 // infos mais super bien positionner [...] on regarde on sait direct prcq celui
 // actuel tout est reparti partout avec des repetitions ». La regle : chaque
 // information a UNE place.
-//   [T1] l en-tete dit d abord, en grand, l heure, les joueurs (Movsar,
-//        27/10 : « heure activité joueur plus visible ») et la formule, puis
-//        le jour, le lieu et le numero en texte courant ; aucun libelle ecrit,
-//        les libelles restent pour la synthese vocale ;
+//   [T1] l en-tete tient en deux lignes (Ansar, 15/11 : « trop long [...] faut
+//        tout one shot ») : le nom, sa pastille, puis le jour, le lieu et le
+//        numero en texte courant ; dessous, en grand, l heure, les joueurs
+//        (Movsar, 27/10 : « heure activité joueur plus visible ») et la
+//        formule ; aucun libelle ecrit, ils restent pour la synthese vocale ;
+//   [U1] (Ansar, 15/11 : « en plein rush on veut la rapidité ») sur un
+//        ordinateur, la fiche d un groupe se lit sans faire defiler : le corps
+//        ne deborde pas, une activite tient sur une ligne de 48 px au plus ;
 //   [T2] l occasion s ecrit en texte, pas en pastille ;
 //   [T3] la formule du catalogue en grand, ou « À la carte » (Ansar, 14/11 :
 //        « savoir si c une formule ou pas ») ; l occasion ne la redit pas ;
-//   [E1] la ligne d etat ne redit pas la pastille de l en-tete, et aucun
-//        bandeau ne la redit au-dessus ;
+//   [E1] la phrase du moment (sur la ligne de l arrivee, ou dans le bandeau
+//        d une demande a verifier) ne redit pas la pastille de l en-tete, le
+//        titre de la ligne d arrivee non plus ;
 //   [E2] elle dit ce que la pastille ne dit pas : l heure de fin, l heure
 //        d arrivee, le retard en minutes, la raison d une demande a verifier ;
 //   [E3] le retard et la demande a verifier se lisent en couleur, « Appeler »
 //        a cote quand le dossier a un numero ;
-//   [A1] l argent se dit UNE fois, sur la ligne d etat (« À encaisser 118 € »,
-//        « Encaissé 390 € ») ; l addition ne le redit pas ;
-//   [A2] une addition d une ligne n ecrit pas son total une deuxieme fois ;
-//        plusieurs lignes ont leur total et le prix par joueur ;
-//   [C1] (2026-11-14) l etat et ses gestes, puis les notes sur toute la
-//        largeur, puis le programme seul a gauche et, a droite, le prix, le
-//        client et le pli Historique ; les notes se lisent sans faire defiler ;
+//   [A1] l argent se dit UNE fois, en tete de la caisse (« À encaisser
+//        118 € », « Encaissé 390 € ») ; ses lignes ne le redisent pas ;
+//   [A2] aucune ligne « Total » : le montant en grand est le total. Une
+//        addition d une seule ligne ne redit pas son montant ; plusieurs
+//        lignes gardent chacune le leur, le prix par joueur sous le montant ;
+//   [C1] (2026-11-15, Ansar : « plein d info dispersée partout [...] refait
+//        tout de zero ») deux colonnes de blocs : a gauche les notes puis le
+//        programme, a droite la caisse, le client et le pli Historique ; ce
+//        qui bloque (demande a verifier, absence) en bandeau au-dessus ; les
+//        notes se lisent sans faire defiler ;
+//   [P1] (Ansar, 15/11 : « pouvoir cocher toutes les choses ») le programme se
+//        coche de haut en bas : la ligne de l arrivee d abord, son rond coche
+//        quand le groupe est pointe, puis chaque activite avec une vraie case
+//        vide (jamais une icone dedans) et sa photo ou son icone ;
+//   [P2] « Payé · Carte » et « Payé · Espèces » vivent dans la caisse, sous
+//        le montant ;
 //   [G1] (Ansar, 14/11 : « pour des etudiants jeunes il faut un truc simple
 //        rapide et complet [...] le retard [...] la note [...] modifier
-//        rapidement ») sous les etats, « Retard », « Note pour l’équipe »,
-//        « Message au client » et « Annuler la réservation » se touchent sans
-//        faire defiler ; le retard est rouge quand la pastille dit « En
-//        retard », jamais de minutes dans son libelle ; il ouvre ses minutes
-//        juste dessous, la note ouvre son champ le curseur dedans, toucher les
-//        joueurs ouvre « Modifier » sur leur nombre ;
+//        rapidement ») dans l en-tete, donc toujours a l ecran, « Retard »,
+//        « Note pour l’équipe » et « Message au client », EN TEXTE SEUL (Ansar,
+//        15/11, sur la rangee de boutons encadres a pictogramme : « on dirait
+//        ia ») : ni bord ni pictogramme ; « Annuler la réservation », qui
+//        n est pas un geste de rush, au bas de la colonne de droite, a
+//        l ecran sans faire defiler ; le bouton dit « Retard », rouge quand la pastille
+//        dit « En retard » (il ne la redit pas, jamais de minutes) ; il ouvre
+//        ses minutes
+//        en tete du corps, la note ouvre son champ le curseur dedans, toucher
+//        les joueurs ouvre « Modifier » sur leur nombre ;
 //   [C2] le client sans libelle : un numero, une adresse, ou une seule ligne
-//        pour ce qui manque ;
+//        pour ce qui manque, avec « Ajouter » quand le numero manque (il ouvre
+//        Modifier sur le telephone) ;
 //   [V1] l etat d une activite se lit en mot colore, pas en pastille ;
 //        « À leur rythme » ne redit pas « Libre » ;
 //   [L1] la fiche tient dans l ecran, du grand ecran au telephone, sans
@@ -113,8 +132,14 @@ function lireFiche({ nom, contact }) {
     const chiffre = f.querySelector('.fx-nombre') || val;
     return { libelle: txt(lib), valeur: txt(val), libVu: Boolean(lib) && R(lib).width > 1 && R(lib).height > 1 && cs(lib).clip !== 'rect(0px, 0px, 0px, 0px)', haut: Math.round(R(val).top), bas: Math.round(R(val).bottom), ligne: f.closest('.fx-chiffres') ? 'chiffres' : 'faits', px: parseFloat(cs(chiffre).fontSize) };
   });
-  const moment = m.querySelector('.fx-act .fx-moment');
+  // La phrase du moment : celle du bandeau d une demande a verifier, sinon
+  // celle de la ligne d arrivee.
+  const moment = m.querySelector('.fz-bandeau .fx-moment') || m.querySelector('.fz-arrivee .fx-moment');
   const span = moment && moment.querySelector(':scope > span');
+  const arrivee = m.querySelector('.fz-arrivee');
+  const tete = m.querySelector('.dossier-head');
+  const teteR = R(tete);
+  const vuEnTete = (el) => { const b = R(el); return b.width > 0 && b.height > 0 && b.top >= teteR.top - 1 && b.bottom <= Math.min(innerHeight, teteR.bottom) + 1 && b.left >= 0 && b.right <= innerWidth; };
   const sonde = document.createElement('span');
   m.appendChild(sonde);
   const couleur = (v) => { sonde.style.color = `var(${v})`; return cs(sonde).color; };
@@ -128,7 +153,6 @@ function lireFiche({ nom, contact }) {
   const notes = m.querySelector('.gc-notes');
   const feuille = corps.querySelector('.fx');
   const corpsR = R(corps);
-  const vuSansDefiler = (el) => { const b = R(el); return b.width > 0 && b.top >= Math.max(0, corpsR.top) - 1 && b.bottom <= Math.min(innerHeight, corpsR.bottom) + 1; };
   const formuleCatalogue = r.formuleId ? ((resolveDisplayFormule(r.formuleId) || {}).name || '') : '';
   const textes = [];
   const marche = document.createTreeWalker(m, NodeFilter.SHOW_TEXT);
@@ -147,33 +171,51 @@ function lireFiche({ nom, contact }) {
     pastilleAttendue: meta.label,
     faits,
     etiquettes: Array.from(m.querySelectorAll('.fx-etiquette')).map((e) => ({ t: txt(e), fond: cs(e).backgroundColor, pad: cs(e).paddingLeft })),
-    moment: ligne(moment),
+    moment: [ligne(moment), ligne(m.querySelector('.fz-arrivee-texte b'))].join(' '),
     momentPhrase: ligne(span),
     momentCouleur: span ? cs(span).color : '',
     momentTon: moment ? (moment.className.match(/is-(retard|verifier)/) || [''])[0] : '',
     danger,
     warning,
-    appel: Boolean(moment && moment.querySelector('a.fx-appel[href^="tel:"]')),
+    appel: Boolean(m.querySelector('.fz-bandeau a.fx-appel[href^="tel:"], .fz-arrivee a.fx-appel[href^="tel:"]')),
     retard: mo && mo.late ? Math.max(1, Math.round((mo.now - mo.item.start) * 60)) : 0,
     attendu: mo && mo.item ? formatClockDisplay(mo.item.start) : '',
     fin: mo && mo.item ? formatClockDisplay(mo.item.end) : '',
     telephone: Boolean(r.phone),
-    bandeaux: m.querySelectorAll('.fx-bandeau').length,
-    argent: ligne(m.querySelector('.fx-act .pos-act-money')),
+    argent: ligne(m.querySelector('.fz-caisse .pos-act-money')),
     corps: txt(corps),
-    addition: ligne(m.querySelector('.gc-bill')),
+    caisse: ligne(m.querySelector('.fz-caisse')),
+    addition: ligne(m.querySelector('.gc-bill-lines')),
+    unite: ligne(m.querySelector('.fz-caisse .gc-bill-unit')),
+    payer: Array.from(m.querySelectorAll('.fz-caisse .pos-act-money ~ .fz-payer .res-status-btn')).map((b) => txt(b)),
+    arrivee: arrivee ? {
+      coche: Boolean(arrivee.querySelector('.fz-rond.is-on')),
+      avantLesActivites: Boolean(arrivee.nextElementSibling && arrivee.nextElementSibling.matches('.gc-steps')) || !m.querySelector('.fx-programme .gc-steps'),
+      touchable: Boolean(arrivee.querySelector('button.fz-arrivee-ligne')),
+    } : null,
+    pointe: r.status === 'arrived' || r.status === 'paid',
+    cases: Array.from(m.querySelectorAll('.fx-programme .gc-step')).map((li) => {
+      const c = li.querySelector('.gc-check');
+      const v = li.querySelector('.fz-photo');
+      return { premiere: Boolean(c) && li.firstElementChild === c, rond: c ? Math.round(R(c).width) : 0, vide: Boolean(c) && (c.classList.contains('is-on') || !c.querySelector('svg, .gc-check-icon')), visuel: Boolean(v) && R(v).width >= 40 && (v.classList.contains('is-icone') ? Boolean(v.querySelector('svg')) : /url\(/.test(cs(v).backgroundImage)) };
+    }),
     lignesAddition: Array.from(m.querySelectorAll('.gc-bill-lines > div')).map((d) => txt(d)),
     total: ligne(m.querySelector('.gc-bill-total')),
-    principal: principal ? Array.from(principal.children).map((c) => c.className) : [],
-    cote: cote ? Array.from(cote.children).map((c) => (c.matches('.gc-notes') ? 'notes' : c.matches('.gc-bill') ? 'prix' : c.matches('.fx-client') ? 'client' : c.matches('.fx-historique') ? 'historique' : c.matches('.fx-pli') ? 'pli' : c.className)) : [],
-    ordre: feuille ? Array.from(feuille.children).map((c) => (c.matches('.fx-act') ? 'etat' : c.matches('.gc-notes') ? 'notes' : c.matches('.fx-colonnes') ? 'colonnes' : c.matches('.pos-absent') ? 'pas-venu' : c.className)) : [],
+    principal: principal ? Array.from(principal.children).map((c) => (c.matches('.gc-notes') ? 'notes' : c.matches('.fx-programme') ? 'programme' : c.className)) : [],
+    cote: cote ? Array.from(cote.children).map((c) => (c.matches('.gc-notes') ? 'notes' : c.matches('.fz-caisse') ? 'caisse' : c.matches('.fx-client') ? 'client' : c.matches('.fx-historique') ? 'historique' : c.matches('.fz-fin') ? 'annuler' : c.matches('.fx-pli') ? 'pli' : c.className)) : [],
+    ordre: feuille ? Array.from(feuille.children).map((c) => (c.matches('.fz-bandeau') ? 'bandeau' : c.matches('.gc-notes') ? 'notes' : c.matches('.fx-colonnes') ? 'colonnes' : c.matches('.pos-absent') ? 'absent' : c.matches('.fx-retard') ? 'retard' : c.className)) : [],
     attenduNotes: Boolean(String(r.notes || '').trim()),
     formuleCatalogue,
-    outils: Array.from(m.querySelectorAll('.fx-act .fx-outils .fx-outil')).map((b) => ({ t: txt(b), vu: vuSansDefiler(b), rouge: b.classList.contains('is-retard') })),
+    outils: Array.from(m.querySelectorAll('.dossier-head .fx-outils .fx-outil')).map((b) => ({ t: txt(b), vu: vuEnTete(b), rouge: b.classList.contains('is-retard'), nu: parseFloat(getComputedStyle(b).borderTopWidth) === 0 && Array.from(b.querySelectorAll('svg')).every((g) => g.getBoundingClientRect().width === 0) })),
+    annuler: Array.from(m.querySelectorAll('.fx-cote .fz-fin .fx-annuler')).map((b) => ({ t: txt(b), vu: R(b).height > 0 && R(b).bottom <= innerHeight && R(b).top >= R(corps).top - 1 && R(b).bottom <= R(corps).bottom + 1 })),
+    annulerEnTete: m.querySelectorAll('.dossier-head .fx-annuler').length,
     notesHaut: notes ? Math.round(R(notes).top) : null,
     corpsBas: Math.round(R(corps).bottom),
     client: ligne(m.querySelector('.fx-client')),
-    vides: Array.from(m.querySelectorAll('.fx-client .fx-vide')).map((e) => txt(e)),
+    vides: Array.from(m.querySelectorAll('.fx-client .fx-vide')).map((e) => txt(e.querySelector(':scope > span') || e)),
+    ajouter: Array.from(m.querySelectorAll('.fx-client .fx-vide .fz-ajouter-contact')).map((e) => txt(e)),
+    hauteurs: Array.from(m.querySelectorAll('.fx-programme .gc-step')).map((li) => Math.round(R(li).height)),
+    defile: { sh: corps.scrollHeight, ch: corps.clientHeight },
     liens: Array.from(m.querySelectorAll('.fx-client .fx-contact a')).map((a) => a.getAttribute('href').split(':')[0]),
     icones: m.querySelectorAll('.fx-client .fx-contact li > svg').length,
     etats: Array.from(m.querySelectorAll('.gc-step .gc-step-state')).filter((e) => e.getClientRects().length).map((e) => ({ t: txt(e), fond: cs(e).backgroundColor, pad: cs(e).paddingLeft })),
@@ -202,7 +244,7 @@ async function jouerGestes({ nom }) {
   g.retard = {
     ouvert: Boolean(p),
     expanded: q('.fx-outil-retard').getAttribute('aria-expanded'),
-    apresLaRangee: Boolean(p && p.previousElementSibling && p.previousElementSibling.matches('.fx-outils')),
+    enTeteDuCorps: Boolean(p && p.parentElement.matches('.fx') && !p.previousElementSibling),
     minutes: p ? Array.from(p.querySelectorAll('.delay-chip:not(.delay-chip-now):not(.delay-chip-run)')).map((b) => b.textContent.trim()) : [],
     autre: Boolean(p && p.querySelector('#delayCustomMinutes')),
   };
@@ -211,7 +253,7 @@ async function jouerGestes({ nom }) {
   g.retard.referme = !q(`#fxRetard${r.id}`);
   q('.gc-note-ouvrir').click();
   await attendre();
-  g.note = { focus: actif(), dansLesNotes: Boolean(q(`.fx > .gc-notes #gcNoteEquipe${r.id}`)) };
+  g.note = { focus: actif(), dansLesNotes: Boolean(q(`.fx-principal > .gc-notes:first-child #gcNoteEquipe${r.id}`)) };
   fermerNoteEquipe(r.id);
   await attendre();
   g.note.rendu = Boolean(document.activeElement && document.activeElement.matches('.gc-note-ouvrir'));
@@ -225,8 +267,8 @@ async function jouerGestes({ nom }) {
 }
 
 function jugerGestes(g, label) {
-  ok(g.retard.ouvert && g.retard.expanded === 'true' && g.retard.apresLaRangee && g.retard.minutes.join() === '+5 min,+10 min,+15 min,+20 min,+30 min' && g.retard.autre && g.retard.referme,
-    `[G1] ${label} : « Retard » ouvre ses minutes juste sous la rangee, puis se referme`, g.retard);
+  ok(g.retard.ouvert && g.retard.expanded === 'true' && g.retard.enTeteDuCorps && g.retard.minutes.join() === '+5 min,+10 min,+15 min,+20 min,+30 min' && g.retard.autre && g.retard.referme,
+    `[G1] ${label} : « Retard » ouvre ses minutes en tete du corps, puis se referme`, g.retard);
   ok(g.note.focus === `gcNoteEquipe${g.id}` && g.note.dansLesNotes && g.note.rendu,
     `[G1] ${label} : « Note pour l’équipe » ouvre son champ en tete des notes, le curseur dedans, et le rend au bouton`, g.note);
   ok(g.joueurs.onglet === 'modifier' && g.joueurs.focus === 'editPaxInput',
@@ -250,7 +292,7 @@ function juger(f, label, appareil) {
   // et l heure n ont pas la meme taille, leurs hauts different).
   // Au telephone, la formule peut passer a la ligne sous l heure et les joueurs.
   const memeLigne = (a, b) => Boolean(a && b) && b.haut < a.bas && b.bas > a.haut;
-  ok(chiffres.length === 3 && memeLigne(chiffres[0], chiffres[1]) && (!ordi || memeLigne(chiffres[0], chiffres[2])) && courants.every((x) => x.haut >= Math.max(...chiffres.map((c) => c.bas)) - 2), `[T1] ${label} : l heure et les joueurs sur une ligne${ordi ? ', la formule a cote' : ''}, les faits courants dessous`, f.faits.map((x) => `${x.valeur}@${x.haut}`));
+  ok(chiffres.length === 3 && memeLigne(chiffres[0], chiffres[1]) && (!ordi || memeLigne(chiffres[0], chiffres[2])) && courants.every((x) => x.bas <= Math.min(...chiffres.map((c) => c.haut)) + 2), `[T1] ${label} : les faits courants sur la ligne du nom, puis l heure et les joueurs sur une ligne${ordi ? ', la formule a cote' : ''}`, f.faits.map((x) => `${x.valeur}@${x.haut}`));
   if (ordi) ok(new Set(courants.map((x) => x.haut)).size === 1, `[T1] ${label} : les faits courants tiennent sur une ligne`, courants.map((x) => `${x.valeur}@${x.haut}`));
   // [T2]
   ok(f.etiquettes.every((e) => (/rgba\([^)]*,\s*0\)$|transparent/.test(e.fond)) && e.pad === '0px'), `[T2] ${label} : l occasion s ecrit en texte, pas en pastille`, f.etiquettes);
@@ -260,8 +302,8 @@ function juger(f, label, appareil) {
     `[T3] ${label} : ${f.formuleCatalogue ? `la formule « ${f.formuleCatalogue} » en grand, l occasion ne la redit pas` : '« À la carte » en grand'}`, { vue: formuleVue, catalogue: f.formuleCatalogue, etiquettes: f.etiquettes.map((e) => e.t) });
   // [E1]
   ok(f.pastille === f.pastilleAttendue, `[E1] ${label} : la pastille de l en-tete dit « ${f.pastilleAttendue} »`, f.pastille);
-  ok(f.moment && !f.moment.toLowerCase().includes(f.pastille.toLowerCase()) && f.bandeaux === 0,
-    `[E1] ${label} : la ligne d etat ne redit pas « ${f.pastille} », aucun bandeau au-dessus`, { moment: f.moment, bandeaux: f.bandeaux });
+  ok(f.momentPhrase && !f.moment.toLowerCase().includes(f.pastille.toLowerCase()),
+    `[E1] ${label} : ni la phrase du moment ni la ligne d arrivee ne redisent « ${f.pastille} »`, { moment: f.moment });
   // [E2]
   const attendu = {
     'Sur place': new RegExp(`^Fin prévue à ${f.fin}$`),
@@ -280,35 +322,44 @@ function juger(f, label, appareil) {
   // [A1]
   const mots = (f.corps.match(/À encaisser|Encaissé|Payé(?! ·)/g) || []).length;
   ok(RX_ARGENT(f).test(f.argent) && mots === 1 && !/À encaisser|Encaissé|Payé/.test(f.addition),
-    `[A1] ${label} : l argent une fois, sur la ligne d etat (« ${f.argent} »), l addition ne le redit pas`, { argent: f.argent, fois: mots, addition: f.addition });
+    `[A1] ${label} : l argent une fois, en tete de la caisse (« ${f.argent} »), ses lignes ne le redisent pas`, { argent: f.argent, fois: mots, addition: f.addition });
   // [A2]
-  if (f.lignesAddition.length === 1) {
-    const montant = f.prix.replace(/\s/g, '');
-    const fois = (f.addition.replace(/\s/g, '').split(montant).length - 1);
-    ok(!f.total && fois === 1, `[A2] ${label} : une ligne, pas de total redit (${montant} ${fois} fois)`, f.addition);
+  const montant = f.prix.replace(/\s/g, '');
+  const fois = (f.caisse.replace(/\s/g, '').split(montant).length - 1);
+  if (f.lignesAddition.length <= 1) {
+    ok(!f.total && fois === 1, `[A2] ${label} : une ligne au plus, le montant une seule fois dans la caisse (${montant} ${fois} fois), pas de total`, f.caisse);
   } else {
-    ok(new RegExp(`^Total\\s*${f.prix.replace(/\s/g, '\\s*')}`).test(f.total) && /par (joueur|personne présente)/.test(f.total), `[A2] ${label} : plusieurs lignes, leur total et le prix par joueur`, f.total);
+    ok(!f.total && !/Total/.test(f.addition) && /par (joueur|personne présente)/.test(f.unite), `[A2] ${label} : plusieurs lignes sans ligne « Total », le prix par joueur sous le montant`, { addition: f.addition, unite: f.unite });
   }
   // [C1] (le pli Historique ferme la colonne, 2026-11-03 : la session de la
-  // fixture, Direction, a le niveau « historique » ; « Pas venu » se lit
-  // juste sous l etat quand le groupe est en retard sur son heure)
-  const sansPasVenu = f.ordre.filter((x) => x !== 'pas-venu');
-  const placePasVenu = f.ordre.indexOf('pas-venu');
-  ok(JSON.stringify(sansPasVenu) === JSON.stringify(['etat'].concat(f.attenduNotes ? ['notes'] : [], ['colonnes'])) && (placePasVenu === -1 || placePasVenu === 1)
-    && f.principal.length === 1 && /fx-programme/.test(f.principal[0]) && JSON.stringify(f.cote) === JSON.stringify(['prix', 'client', 'historique']),
-    `[C1] ${label} : l etat et ses gestes, ${f.attenduNotes ? 'les notes sur toute la largeur, ' : ''}puis le programme seul a gauche et le prix, le client, l historique a droite`, { ordre: f.ordre, principal: f.principal, cote: f.cote });
+  // fixture, Direction, a le niveau « historique » ; la demande a verifier a
+  // son bandeau au-dessus des colonnes)
+  ok(JSON.stringify(f.ordre) === JSON.stringify((f.pastille === 'À vérifier' ? ['bandeau'] : []).concat(['colonnes']))
+    && JSON.stringify(f.principal) === JSON.stringify((f.attenduNotes ? ['notes'] : []).concat(['programme'])) && JSON.stringify(f.cote) === JSON.stringify(['caisse', 'client', 'historique', 'annuler']),
+    `[C1] ${label} : ${f.pastille === 'À vérifier' ? 'le bandeau, puis ' : ''}a gauche ${f.attenduNotes ? 'les notes et ' : ''}le programme, a droite la caisse, le client, l historique, puis Annuler`, { ordre: f.ordre, principal: f.principal, cote: f.cote });
   if (ordi && f.attenduNotes) ok(f.notesHaut !== null && f.notesHaut < f.corpsBas - 40, `[C1] ${label} : les notes se lisent sans faire defiler`, { notes: f.notesHaut, bas: f.corpsBas });
+  // [P1]
+  ok(f.arrivee && f.arrivee.avantLesActivites && f.arrivee.coche === f.pointe && f.arrivee.touchable === !f.paye,
+    `[P1] ${label} : la ligne de l arrivee en tete du programme, ${f.pointe ? 'cochee' : 'a cocher'}${f.paye ? ', figee une fois paye' : ''}`, f.arrivee);
+  ok(f.cases.length > 0 && f.cases.every((c) => c.premiere && c.rond >= 22 && c.vide && c.visuel),
+    `[P1] ${label} : chaque activite a sa case en tete de rangee (vide tant qu elle n est pas faite) et sa photo ou son icone`, f.cases.filter((c) => !(c.premiere && c.rond >= 22 && c.vide && c.visuel)).slice(0, 3));
+  // [U1] (les six dossiers de la fixture ont cinq activites au plus)
+  if (ordi) ok(f.defile.sh <= f.defile.ch + 1 && f.hauteurs.every((h) => h <= 48),
+    `[U1] ${label} : tout se lit sans faire defiler, une ligne de 48 px au plus par activite`, { ...f.defile, hauteurs: f.hauteurs });
+  // [P2]
+  ok(JSON.stringify(f.payer) === JSON.stringify(['Payé · Carte', 'Payé · Espèces']), `[P2] ${label} : « Payé · Carte » et « Payé · Espèces » dans la caisse, sous le montant`, f.payer);
   // [G1]
-  const retardAttendu = f.pastille === 'En retard' ? 'En retard' : 'Retard';
-  ok(JSON.stringify(f.outils.map((o) => o.t)) === JSON.stringify([retardAttendu, 'Note pour l’équipe', 'Message au client', 'Annuler la réservation'])
-    && f.outils.every((o) => o.vu) && f.outils.every((o, i) => o.rouge === (i === 0 && f.pastille === 'En retard')),
-    `[G1] ${label} : « ${retardAttendu} », la note, le message et Annuler se touchent sans faire defiler, le retard rouge seulement en retard`, f.outils);
+  ok(JSON.stringify(f.outils.map((o) => o.t)) === JSON.stringify(['Retard', 'Note pour l’équipe', 'Message au client'])
+    && f.outils.every((o) => o.vu && o.nu) && f.outils.every((o, i) => o.rouge === (i === 0 && f.pastille === 'En retard')),
+    `[G1] ${label} : « Retard », la note et le message dans l en-tete, en texte seul (ni bord ni pictogramme), toujours a l ecran, le retard rouge seulement en retard`, f.outils);
+  ok(f.annulerEnTete === 0 && f.annuler.length === 1 && f.annuler[0].t === 'Annuler la réservation' && (!ordi || f.annuler[0].vu),
+    `[G1] ${label} : « Annuler la réservation » au bas de la colonne de droite${ordi ? ', a l ecran sans faire defiler' : ''}, plus dans l en-tete`, { annuler: f.annuler, enTete: f.annulerEnTete });
   // [C2]
   const joignable = f.liens.length > 0;
   ok(!/non renseign/i.test(f.client) && (joignable
     ? f.liens.join() === 'tel,mailto' && f.icones === 2 && f.vides.length === 0
-    : f.vides.join() === 'Ni téléphone ni e-mail'),
-  `[C2] ${label} : le client sans libelle, ${joignable ? 'un numero et une adresse' : 'une seule ligne pour ce qui manque'}`, { client: f.client, liens: f.liens, vides: f.vides });
+    : f.vides.join() === 'Ni téléphone ni e-mail' && f.ajouter.join() === 'Ajouter'),
+  `[C2] ${label} : le client sans libelle, ${joignable ? 'un numero et une adresse' : 'une seule ligne pour ce qui manque, « Ajouter » a cote'}`, { client: f.client, liens: f.liens, vides: f.vides, ajouter: f.ajouter });
   // [V1]
   ok(f.etats.every((e) => /rgba\([^)]*,\s*0\)$|transparent/.test(e.fond) && e.pad === '0px') && f.libresVus === 0,
     `[V1] ${label} : l etat des activites en mot colore, « À leur rythme » tu`, { etats: f.etats.slice(0, 3), libres: f.libresVus });
@@ -359,22 +410,30 @@ const MUTATIONS = [
   { nom: 'libelles-ecrits', lettre: 'T1', scenarios: ORDI, editions: [{ fichier: JS, de: '<span class="visually-hidden">${libelle} </span><strong>${valeur}</strong></span>', vers: '<span>${libelle} </span><strong>${valeur}</strong></span>' }] },
   { nom: 'formule-perdue', lettre: 'T3', scenarios: ORDI, editions: [{ fichier: JS, de: "    + fait('Formule', nomFormule ? escapeHtml(nomFormule) : 'À la carte', nomFormule ? 'fx-formule' : 'fx-formule is-carte');", vers: "    + '';" }] },
   { nom: 'formule-redite', lettre: 'T3', scenarios: ORDI, editions: [{ fichier: JS, de: ".map(e => (e.ton === 'occasion' && nomFormule ?", vers: '.map(e => (false ?' }] },
-  { nom: 'chiffres-petits', lettre: 'T1', scenarios: ORDI, editions: [{ fichier: CSS, de: '.fx-modal .fx-chiffres .dossier-fact strong { font-size: 26px;', vers: '.fx-modal .fx-chiffres .dossier-fact strong { font-size: 15px;' }] },
+  { nom: 'chiffres-petits', lettre: 'T1', scenarios: ORDI, editions: [{ fichier: CSS, de: '.fx-modal .fx-chiffres .dossier-fact strong { font-family: var(--fz-anton); font-size: 30px;', vers: '.fx-modal .fx-chiffres .dossier-fact strong { font-family: var(--fz-anton); font-size: 15px;' }] },
   { nom: 'faits-empiles', lettre: 'T1', scenarios: ORDI, editions: [{ fichier: CSS, de: '.fx-modal .dossier-fact { display: inline; }', vers: '.fx-modal .dossier-fact { display: grid; }' }] },
-  { nom: 'occasion-en-pastille', lettre: 'T2', scenarios: ORDI, editions: [{ fichier: CSS, de: '.fx-modal .fx-etiquette { display: inline; padding: 0; border-radius: 0; background: none;', vers: '.fx-modal .fx-etiquette { display: inline; border-radius: 0;' }] },
+  { nom: 'occasion-en-pastille', lettre: 'T2', scenarios: ORDI, editions: [{ fichier: CSS, de: '.fx-modal .fx-etiquette { display: inline; padding: 0; border-radius: 0; background: none;', vers: '.fx-modal .fx-etiquette { display: inline; padding: 3px 8px; border-radius: 6px; background: var(--subtle);' }] },
   { nom: 'pastille-redite', lettre: 'E1', scenarios: ORDI, editions: [{ fichier: JS, de: "      : `Fin prévue à ${formatClockDisplay(span.end)}`;", vers: "      : `Sur place, fin prévue à ${formatClockDisplay(span.end)}`;" }] },
-  { nom: 'bandeau-revenu', lettre: 'E1', scenarios: ORDI, editions: [{ fichier: JS, de: '  return `<section class="pos-act fx-act" aria-label="État du dossier">', vers: '  return `${ton ? \'<div class="fx-bandeau"><p>Attention</p></div>\' : \'\'}<section class="pos-act fx-act" aria-label="État du dossier">' }] },
+  { nom: 'arrivee-redit-la-pastille', lettre: 'E1', scenarios: ORDI, editions: [{ fichier: JS, de: "<b>${arrive ? 'Groupe arrivé' : 'Arrivée du groupe'}</b>", vers: "<b>${arrive ? 'Sur place' : 'À venir, en retard'}</b>" }] },
   { nom: 'retard-sans-minutes', lettre: 'E2', scenarios: ORDI, editions: [{ fichier: JS, de: '  if (moment && moment.late) return `Attendu à ${formatClockDisplay(moment.item.start)}, il y a ${formatStaffTerrainDelay(moment.now - moment.item.start)}`;', vers: "  if (moment && moment.late) return 'Pas encore arrivé';" }] },
-  { nom: 'retard-sans-couleur', lettre: 'E3', scenarios: ORDI, editions: [{ fichier: CSS, de: '.fx-modal .fx-moment.is-retard > span { color: var(--danger); }', vers: '.fx-modal .fx-moment.is-retard > span { }' }] },
-  { nom: 'appel-perdu', lettre: 'E3', scenarios: ORDI, editions: [{ fichier: JS, de: "${ton ? ficheAppeler(r) : ''}</p>", vers: '</p>' }] },
-  { nom: 'paye-dans-l-addition', lettre: 'A1', scenarios: ORDI, editions: [{ fichier: JS, de: "    ${seule ? (unite ? `<p class=\"gc-bill-unit\">", vers: "    <span>${r.status === 'paid' ? 'Payé' : 'À encaisser'}</span>${seule ? (unite ? `<p class=\"gc-bill-unit\">" }] },
+  { nom: 'retard-sans-couleur', lettre: 'E3', scenarios: ORDI, editions: [{ fichier: CSS, de: '.fx-modal .fz-arrivee-texte .fx-moment.is-retard { font-weight: 650; color: var(--danger); }', vers: '.fx-modal .fz-arrivee-texte .fx-moment.is-retard { font-weight: 650; }' }] },
+  { nom: 'appel-perdu', lettre: 'E3', scenarios: ORDI, editions: [{ fichier: JS, de: "${enRetard ? ficheAppeler(r) : ''}${compte}${pasVenu}</div>`;", vers: '${compte}${pasVenu}</div>`;' }] },
+  { nom: 'paye-dans-l-addition', lettre: 'A1', scenarios: ORDI, editions: [{ fichier: JS, de: '<dl class="gc-bill-lines">${addition.lignes.map(', vers: '<dl class="gc-bill-lines"><div><dt>${paid ? \'Payé\' : \'À encaisser\'}</dt><dd></dd></div>${addition.lignes.map(' }] },
   { nom: 'encaisse-deux-fois', lettre: 'A1', scenarios: ORDI, editions: [{ fichier: JS, de: '      <details class="pos-encaisse-corriger">', vers: '      <span class="pos-encaisse-ligne">Encaissé ${escapeHtml(formatMoneyCentimes(montant))}</span><details class="pos-encaisse-corriger">' }] },
   { nom: 'total-d-une-ligne', lettre: 'A2', scenarios: ORDI, editions: [{ fichier: JS, de: '  const seule = lignes.length === 1 &&', vers: '  const seule = false &&' }] },
   { nom: 'notes-dans-la-colonne', lettre: 'C1', scenarios: ORDI, editions: [
-    { fichier: JS, de: "    ${aTrancher ? pasVenu : ''}\n    ${renderGroupeNotes(r)}\n    <div class=\"fx-colonnes\">", vers: "    ${aTrancher ? pasVenu : ''}\n    <div class=\"fx-colonnes\">" },
-    { fichier: JS, de: '      <aside class="fx-cote">\n        ${renderGroupeAddition(r)}', vers: '      <aside class="fx-cote">\n        ${renderGroupeNotes(r)}\n        ${renderGroupeAddition(r)}' }] },
-  { nom: 'gestes-absents', lettre: 'G1', scenarios: ORDI, editions: [{ fichier: JS, de: '      ${ficheOutils(r, droits)}\n', vers: '' }] },
-  { nom: 'retard-avec-minutes', lettre: 'G1', scenarios: ORDI, editions: [{ fichier: JS, de: "${enRetard ? 'En retard' : 'Retard'}</button>", vers: "${enRetard ? 'En retard de 15 min' : 'Retard'}</button>" }] },
+    { fichier: JS, de: '      <div class="fx-principal">\n        ${renderGroupeNotes(r)}\n', vers: '      <div class="fx-principal">\n' },
+    { fichier: JS, de: '      <aside class="fx-cote">\n        ${ficheCaisse(r, moment, droits)}', vers: '      <aside class="fx-cote">\n        ${renderGroupeNotes(r)}\n        ${ficheCaisse(r, moment, droits)}' }] },
+  { nom: 'arrivee-absente', lettre: 'P1', scenarios: ORDI, editions: [{ fichier: JS, de: '      ${ficheArrivee(r, moment, droits)}\n', vers: '' }] },
+  { nom: 'case-en-icone', lettre: 'P1', scenarios: ORDI, editions: [{ fichier: JS, de: "${etape.fait ? ACTIVITY_CHECK_SVG : (enFiche ? '' :", vers: "${etape.fait ? ACTIVITY_CHECK_SVG : (false ? '' :" }] },
+  { nom: 'photo-perdue', lettre: 'P1', scenarios: ORDI, editions: [{ fichier: JS, de: '      ${ficheVisuelActivite(r, etape)}\n', vers: '' }] },
+  { nom: 'payer-hors-de-la-caisse', lettre: 'P2', scenarios: ORDI, editions: [{ fichier: JS, de: '      ${boutons ? `<div class="res-status-row gc-sheet-states fz-payer">${boutons}</div>` : \'\'}\n', vers: '' }] },
+  { nom: 'gestes-absents', lettre: 'G1', scenarios: ORDI, editions: [{ fichier: JS, de: "        ${isEdit ? '' : ficheOutils(r, ficheDroits())}\n", vers: '' }] },
+  { nom: 'retard-avec-minutes', lettre: 'G1', scenarios: ORDI, editions: [{ fichier: JS, de: '${FICHE_ICONE_HORLOGE}Retard</button>', vers: "${FICHE_ICONE_HORLOGE}${enRetard ? 'En retard de 15 min' : 'Retard'}</button>" }] },
+  { nom: 'activite-sur-deux-lignes', lettre: 'U1', scenarios: ORDI, editions: [{ fichier: CSS, de: '.fx-modal .fx-programme .gc-step-what { flex-direction: row; flex-wrap: wrap; align-items: baseline; gap: 0 8px; }', vers: '.fx-modal .fx-programme .gc-step-what { flex-direction: column; padding: 8px 0; }' }] },
+  { nom: 'ajouter-perdu', lettre: 'C2', scenarios: ORDI, editions: [{ fichier: JS, de: "onclick=\"modifierDepuisFiche('telephone', event)\">Ajouter</button>", vers: "onclick=\"modifierDepuisFiche('telephone', event)\"></button>" }] },
+  { nom: 'gestes-encadres', lettre: 'G1', scenarios: ORDI, editions: [{ fichier: CSS, de: '.fx-modal .fx-outils .fx-outil { min-height: 34px; padding: 0 10px; border: 0; background: none; }', vers: '.fx-modal .fx-outils .fx-outil { min-height: 34px; padding: 0 10px; background: none; }' }] },
+  { nom: 'annuler-en-tete', lettre: 'G1', scenarios: ORDI, editions: [{ fichier: JS, de: "  const rangee = boutons.filter(Boolean);\n  if (!rangee.length) return '';\n  return `<div class=\"fx-outils\"", vers: "  const rangee = boutons.concat(ficheAnnuler(r, droits)).filter(Boolean);\n  if (!rangee.length) return '';\n  return `<div class=\"fx-outils\"" }] },
   { nom: 'retard-rouge-partout', lettre: 'G1', scenarios: ORDI, editions: [{ fichier: JS, de: "const enRetard = getStaffDashboardStatusMeta(r).className === 'late';", vers: 'const enRetard = true;' }] },
   { nom: 'retard-qui-ne-s-ouvre-pas', lettre: 'G1', scenarios: ORDI, editions: [{ fichier: JS, de: '  if (plisRetardOuverts.has(n)) plisRetardOuverts.delete(n); else plisRetardOuverts.add(n);', vers: '' }] },
   { nom: 'note-sans-curseur', lettre: 'G1', scenarios: ORDI, editions: [{ fichier: JS, de: '  const champ = document.getElementById(`gcNoteEquipe${id}`);\n  if (champ) champ.focus();', vers: '  const champ = document.getElementById(`gcNoteEquipe${id}`);' }] },
@@ -382,8 +441,8 @@ const MUTATIONS = [
   { nom: 'client-non-renseigne', lettre: 'C2', scenarios: ORDI, editions: [{ fichier: JS, de: "!r.phone && !r.email ? 'Ni téléphone ni e-mail'", vers: "!r.phone && !r.email ? 'Non renseigné'" }] },
   { nom: 'etat-en-pastille', lettre: 'V1', scenarios: ORDI, editions: [{ fichier: CSS, de: '.fx-modal .gc-step .gc-step-state { padding: 0; border-radius: 0; background: none;', vers: '.fx-modal .gc-step .gc-step-state { border-radius: 0;' }] },
   { nom: 'libre-redit', lettre: 'V1', scenarios: ORDI, editions: [{ fichier: CSS, de: '.fx-modal .gc-step.is-libre .gc-step-state { display: none; }', vers: '.fx-modal .gc-step.is-libre .gc-step-state { }' }] },
-  { nom: 'deborde-au-telephone', lettre: 'L1', scenarios: [{ appareil: 'telephone' }], editions: [{ fichier: CSS, de: '.fx-modal .dossier-fact strong { font-size: 15px; font-weight: 500; line-height: 1.5; white-space: nowrap;', vers: '.fx-modal .dossier-fact strong { font-size: 15px; font-weight: 500; line-height: 1.5; white-space: nowrap; display: inline-block; min-width: 520px;' }] },
-  { nom: 'fin-11px', lettre: 'L1', scenarios: ORDI, editions: [{ fichier: CSS, de: '.fx-modal .fx-programme .gc-step-time small { margin-top: 1px; font-size: 13px; }', vers: '.fx-modal .fx-programme .gc-step-time small { margin-top: 1px; font-size: 11px; }' }] },
+  { nom: 'deborde-au-telephone', lettre: 'L1', scenarios: [{ appareil: 'telephone' }], editions: [{ fichier: CSS, de: '.fx-modal .dossier-facts .dossier-fact strong { font-size: 13.5px; font-weight: 500; line-height: 1.5; white-space: nowrap;', vers: '.fx-modal .dossier-facts .dossier-fact strong { font-size: 13.5px; font-weight: 500; line-height: 1.5; white-space: nowrap; display: inline-block; min-width: 520px;' }] },
+  { nom: 'fin-11px', lettre: 'L1', scenarios: ORDI, editions: [{ fichier: CSS, de: '.fx-modal .fx-programme .gc-step-time small { margin-top: 2px; font-family: var(--font-ui); font-size: 12px;', vers: '.fx-modal .fx-programme .gc-step-time small { margin-top: 2px; font-family: var(--font-ui); font-size: 11px;' }] },
 ];
 
 async function main() {

@@ -275,10 +275,10 @@ async function main() {
     await page.waitForTimeout(400);
     const f1 = await page.evaluate(() => {
       const txt = (n) => (n ? n.textContent.replace(/\s+/g, ' ').trim() : '');
-      const b = document.querySelector('.pos-act-row .res-status-btn');
-      // Depuis la fiche d un coup d oeil (2026-10-26), la pastille de l en-tete
-      // dit « À vérifier » et la ligne d etat dit pourquoi, « Appeler » a cote :
-      // plus de bandeau qui redisait la pastille. La regle ne change pas : la
+      const b = document.querySelector('#posOverlay .fz-bandeau.is-verifier .res-status-btn');
+      // Depuis la fiche refaite (2026-11-15), la pastille de l en-tete dit
+      // « À vérifier » et le bandeau en tete du corps dit pourquoi, « Appeler »
+      // et « Valider » a cote. La regle ne change pas : la
       // fiche dit qu il faut verifier et que le client n a pas encore de
       // confirmation.
       const ligne = document.querySelector('#posOverlay .fx-moment.is-verifier');
@@ -286,15 +286,23 @@ async function main() {
     });
     ok(/vérifier/i.test(f1.note) && /pas encore confirmée/i.test(f1.note) && f1.premier === 'Valider',
       'la fiche dit que la demande attend une validation, qu elle n est pas confirmee, et son premier bouton valide', JSON.stringify(f1));
-    await page.locator('.pos-act-row .res-status-btn', { hasText: 'Valider' }).first().click();
+    await page.locator('#posOverlay .fz-bandeau .res-status-btn.review', { hasText: 'Valider' }).first().click();
     await page.waitForTimeout(700);
+    // Depuis la fiche refaite (2026-11-15), plus de bouton « Confirmé » : la
+    // demande validee perd son bandeau et son « Valider », la pastille ne dit
+    // plus « À vérifier » et la ligne d arrivee attend le groupe.
     const f2 = await page.evaluate(() => {
       const txt = (n) => (n ? n.textContent.replace(/\s+/g, ' ').trim() : '');
-      const b = document.querySelector('.pos-act-row .res-status-btn');
       const ligne = document.querySelector('#posOverlay .fx-moment.is-verifier');
-      return { note: ligne ? `${txt(document.querySelector('#posOverlay .dossier-status'))} ${txt(ligne)}` : '', premier: txt(b), allume: Boolean(b && b.classList.contains('active')) };
+      const arrivee = document.querySelector('#posOverlay .fx-programme button.fz-arrivee-ligne');
+      return {
+        note: ligne ? `${txt(document.querySelector('#posOverlay .dossier-status'))} ${txt(ligne)}` : '',
+        valider: Boolean(document.querySelector('#posOverlay .res-status-btn.review')),
+        pastille: txt(document.querySelector('#posOverlay .dossier-status')),
+        arrivee: arrivee ? arrivee.getAttribute('aria-pressed') : '',
+      };
     });
-    ok(!f2.note && f2.premier === 'Confirmé' && f2.allume, 'apres le clic, la fiche dit « Confirmé » et la note disparait', JSON.stringify(f2));
+    ok(!f2.note && !f2.valider && f2.pastille && f2.pastille !== 'À vérifier' && f2.arrivee === 'false', 'apres le clic, le bandeau et « Valider » disparaissent, la pastille ne dit plus « À vérifier », l arrivee attend le groupe', JSON.stringify(f2));
     await page.evaluate(() => { if (typeof closePos === 'function') closePos(); });
 
     console.log('\n[4] LE TABLEAU DE BORD ET LES FORMULES');

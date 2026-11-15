@@ -895,12 +895,13 @@ async function clicN(n, locator) { n.n += 1; await locator.click(); }
 async function scenarioR9(browser) {
   console.log('\n[R9] annuler se voit, le contact se replie');
   const CAMILLE = 1603;
+  // (les gestes de la fiche, Annuler compris, sont dans l en-tete, .fx-outils, depuis 2026-11-15)
   if (joue('annuler')) {
     const m = await ouvrir(browser);
     const { page, journal } = m;
     const n = { n: 0 };
     await clic(n, page.locator(`[data-gf-id="${CAMILLE}"] .gf-nom__t`));
-    await page.waitForSelector('#posOverlay .fx-act');
+    await page.waitForSelector('#posOverlay .fx-outils');
     const b = await page.locator('#posOverlay .fx-annuler').boundingBox({ timeout: 1500 }).catch(() => null);
     ok(b && b.y + b.height <= 768 && b.y >= 0, '[R9] Annuler se voit dans Infos, sans defiler', b);
     if (!b) { await m.finir('R9 annuler'); return; }
@@ -922,15 +923,15 @@ async function scenarioR9(browser) {
       state.staffAuthSession = { ...s, role: { ...s.role, locked: false }, permissions: (s.permissions || []).filter((p) => p !== 'reservations.cancel') };
     });
     await page.locator(`[data-gf-id="${CAMILLE}"] .gf-nom__t`).click();
-    await page.waitForSelector('#posOverlay .fx-act');
-    ok(await page.locator('#posOverlay .fx-annuler').count() === 0, '[R9] sans le droit d annuler, pas de bouton', await texte(page, '#posOverlay .fx-act'));
+    await page.waitForSelector('#posOverlay .fx-outils');
+    ok(await page.locator('#posOverlay .fx-annuler').count() === 0, '[R9] sans le droit d annuler, pas de bouton', await texte(page, '#posOverlay .fx-outils'));
     await m.finir('R9 droit');
   }
   if (joue('pli')) {
     const m = await ouvrir(browser);
     const { page } = m;
     await page.locator(`[data-gf-id="${CAMILLE}"] .gf-nom__t`).click();
-    await page.waitForSelector('#posOverlay .fx-act');
+    await page.waitForSelector('#posOverlay .fx-outils');
     await page.locator('#posOverlay button', { hasText: /^Modifier$/ }).first().click();
     await page.waitForSelector('#editNameInput');
     ok(await page.locator('#editNameInput').isVisible() && !(await page.locator('#editPhoneInput').isVisible()) && !(await page.locator('#editEmailInput').isVisible()) && !(await page.locator('#posOverlay .fm-occasion').isVisible()), '[R9] le telephone, l e-mail et l occasion attendent dans un pli');
@@ -947,7 +948,7 @@ async function scenarioR9(browser) {
     ok(await page.locator('#editEmailInput').isVisible(), '[R9] un e-mail invalide rouvre le pli, le navigateur peut le montrer');
     await page.evaluate(() => closePos());
     await page.locator(`[data-gf-id="${CAMILLE}"] .gf-nom__t`).click();
-    await page.waitForSelector('#posOverlay .fx-act');
+    await page.waitForSelector('#posOverlay .fx-outils');
     await page.locator('#posOverlay button', { hasText: /^Modifier$/ }).first().click();
     await page.waitForSelector('#editNameInput');
     ok(!(await page.locator('#editPhoneInput').isVisible()), '[R9] une fiche qui s ouvre repart repliee');

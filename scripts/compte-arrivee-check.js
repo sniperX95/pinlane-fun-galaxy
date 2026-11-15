@@ -28,7 +28,7 @@
 //       la bulle le dit et rien ne part ; Famille Noel (piste 6, la 7 libre)
 //       4 -> 7, une piste de plus et son prix ;
 //   [F] le droit : le Staff bar lit le nombre sans bouton, dans la feuille
-//       comme dans la fiche ; le serveur refuse son compte, et le
+//       comme dans la fiche (en tete) ; le serveur refuse son compte, et le
 //       compte d un groupe pas encore arrive ;
 //   [G] le meme calcul que Modifier : le prix suit le compte sans partir (le
 //       serveur le pose, prixQuiSuit), et celui qu il ecrit est celui que
@@ -346,13 +346,14 @@ async function scenarioComptoir(browser) {
       '[A] laser : « Arrivé » pointe, devient « Ils sont 8 » et ouvre le compte', { manon, laser, bulle: bl });
     await page.keyboard.press('Escape');
 
-    // [A] dans la fiche.
+    // [A] dans la fiche (refaite le 2026-11-15) : la ligne d arrivee est
+    // pointee, « Ils sont 8 » est un bouton a cote d elle qui ouvre le compte.
     await page.evaluate((id) => { closePos(); openPos(id); }, HUGO);
-    await page.waitForSelector('#posOverlay .res-status-btn.arrived', { timeout: 5000 }).catch(() => null);
-    const fiche = await page.evaluate(() => { const b = document.querySelector('#posOverlay .res-status-btn.arrived'); return b ? { texte: b.textContent.replace(/\s+/g, ' ').trim(), compte: b.hasAttribute('data-compte-id'), presse: b.getAttribute('aria-pressed') } : null; });
-    const bf = fiche && fiche.compte ? await ouvrirBulle(page, '#posOverlay .res-status-btn.arrived') : { ouverte: false };
+    await page.waitForSelector('#posOverlay .fz-compte', { timeout: 5000 }).catch(() => null);
+    const fiche = await page.evaluate(() => { const b = document.querySelector('#posOverlay .fz-arrivee .fz-compte'); const l = document.querySelector('#posOverlay .fz-arrivee .fz-arrivee-ligne'); return b ? { texte: b.textContent.replace(/\s+/g, ' ').trim(), compte: b.hasAttribute('data-compte-id'), presse: l && l.getAttribute('aria-pressed') } : null; });
+    const bf = fiche && fiche.compte ? await ouvrirBulle(page, '#posOverlay .fz-compte') : { ouverte: false };
     ok(fiche && fiche.texte === 'Ils sont 8' && fiche.compte && fiche.presse === 'true' && bf.ouverte && bf.n === 8 && bf.ref === '10 à la réservation',
-      '[A] fiche : « Ils sont 8 » enfonce, le second toucher ouvre le compte (10 a la reservation)', { fiche, bulle: bf });
+      '[A] fiche : l arrivee pointee, « Ils sont 8 » a cote ouvre le compte (10 a la reservation)', { fiche, bulle: bf });
     await page.keyboard.press('Escape');
     await page.evaluate(() => closePos());
 
@@ -367,7 +368,9 @@ async function scenarioComptoir(browser) {
     });
     const fl = await page.evaluate(lireLigne, HUGO);
     await page.evaluate((id) => { closePos(); openPos(id); }, HUGO);
-    const ff = await page.evaluate(() => { const b = document.querySelector('#posOverlay .res-status-btn.arrived'); return b ? { texte: b.textContent.replace(/\s+/g, ' ').trim(), compte: b.hasAttribute('data-compte-id') } : null; });
+    // La fiche refaite (2026-11-15) n a le bouton « Ils sont 8 » que pour qui
+    // compte : le Staff bar lit le nombre en grand dans l en-tete.
+    const ff = await page.evaluate(() => { const j = document.querySelector('#posOverlay .fx-chiffres .fx-joueurs strong'); return j ? { texte: j.textContent.replace(/\s+/g, ' ').trim(), compte: Boolean(document.querySelector('#posOverlay [data-compte-id]')) } : null; });
     await page.evaluate(() => closePos());
     await page.evaluate(() => document.getElementById('staffTabLaser').click());
     await page.waitForSelector('.lp-prochain', { timeout: 8000 }).catch(() => null);
@@ -377,8 +380,8 @@ async function scenarioComptoir(browser) {
     }, MANON);
     await page.evaluate(() => document.getElementById('staffTabAll').click());
     await page.waitForSelector(ligne, { timeout: 8000 }).catch(() => null);
-    ok(sessionAvant && !fl.bouton && fl.etat === 'Ils sont 8' && ff && ff.texte === 'Ils sont 8' && !ff.compte && fz && fz.tag === 'SPAN' && fz.texte === 'Ils sont 8',
-      '[F] Staff bar : « Ils sont 8 » se lit, sans bouton de compte, dans la feuille, dans la fiche et au laser', { ligne: fl, fiche: ff, laser: fz });
+    ok(sessionAvant && !fl.bouton && fl.etat === 'Ils sont 8' && ff && /^8 /.test(ff.texte) && !ff.compte && fz && fz.tag === 'SPAN' && fz.texte === 'Ils sont 8',
+      '[F] Staff bar : le nombre se lit sans bouton de compte, « Ils sont 8 » dans la feuille et au laser, « 8 » en tete de la fiche', { ligne: fl, fiche: ff, laser: fz });
     // Le serveur refuse son compte...
     const dernier = (d.envois[d.envois.length - 1]) || {};
     serveur.changerSession(B.sessionDuRole('staff-bar', { nom: 'Lucas' }));
@@ -430,7 +433,7 @@ const TELEPHONE = ['telephone'];
 const MUTATIONS = [
   { nom: 'badge-sans-geste', lettre: 'A', scenarios: COMPTOIR, editions: [{ fichier: GJS, de: "    if (typeof peutCompterArrivee === 'function' && peutCompterArrivee(r)) {", vers: '    if (false) {' }] },
   { nom: 'laser-sans-compte', lettre: 'A', scenarios: COMPTOIR, editions: [{ fichier: JS, de: '        ? (peutCompterArrivee(r)\n', vers: '        ? (false\n' }] },
-  { nom: 'fiche-sans-compte', lettre: 'A', scenarios: COMPTOIR, editions: [{ fichier: JS, de: '    const compter = peutCompterArrivee(r);\n    const pax = Math.trunc(Number(r.pax) || 0);', vers: '    const compter = false;\n    const pax = Math.trunc(Number(r.pax) || 0);' }] },
+  { nom: 'fiche-sans-compte', lettre: 'A', scenarios: COMPTOIR, editions: [{ fichier: JS, de: "  const compte = r.status === 'arrived' && peutCompterArrivee(r)\n", vers: '  const compte = false\n' }] },
   { nom: 'bulle-muette', lettre: 'B', scenarios: COMPTOIR, editions: [{ fichier: JS, de: "    <p class=\"compte-pop__ref\">${reserve === compteArrivee().n ? 'Comme à la réservation' : `${reserve} à la réservation`}</p>", vers: '' }] },
   { nom: 'note-perdue', lettre: 'C', scenarios: COMPTOIR, editions: [{ fichier: API, serveur: true, de: '    if (a !== de) patch.notes = notesAvecCompte(', vers: '    if (false) patch.notes = notesAvecCompte(' }] },
   { nom: 'drapeau-oublie', lettre: 'C', scenarios: COMPTOIR, editions: [{ fichier: JS, de: 'allowPastStart: true, compteArrivee: true });', vers: 'allowPastStart: true });' }] },

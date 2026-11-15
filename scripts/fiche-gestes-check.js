@@ -7,8 +7,11 @@
 //       emails.send) ; le Staff bar pointe et encaisse, sans « Modifier » ni pli
 //       du retard ; la Technique replanifie un retard mais ne touche aucun
 //       etat ; le Marketing ecrit au client, rien d autre. Une demande a
-//       verifier ne propose « Valider » qu a qui peut modifier.
-//   [B] ANNULER UN GESTE. « Arrivé » ecrit arrived, puis le toast porte
+//       verifier ne propose « Valider » qu a qui peut modifier. Depuis la
+//       fiche refaite (2026-11-15), les etats sont trois gestes : la ligne
+//       d arrivee (« Arrivé ») et les deux « Payé » de la caisse ; « Confirmé »
+//       n est plus un bouton, « Valider » vit dans le bandeau de la demande.
+//   [B] ANNULER UN GESTE. La ligne d arrivee ecrit arrived, puis le toast porte
 //       « Annuler » ; le toucher ecrit le statut d avant, sans autre message.
 //       « Payé » se defait en « Arrivé », sans moyen de paiement.
 //   [C] LE GARDE-FOU DE « MODIFIER ». Sans saisie, la croix ferme. Avec une
@@ -202,17 +205,17 @@ async function scenarioRoles(page) {
     await prendreRole(page, role);
     await page.evaluate(() => { if (typeof closePos === 'function') closePos(); renderStaff(); });
     await ouvrirFiche(page, id);
-    f[role] = await page.evaluate((rid) => {
+    f[role] = await page.evaluate(({ rid, etats }) => {
       const m = document.querySelector('#posOverlay .edit-modal');
       return {
         onglets: [...m.querySelectorAll('.modal-tabs .tab')].map((t) => t.textContent.trim()).join(','),
-        etats: [...m.querySelectorAll('.pos-act-row .res-status-btn')].map((b) => b.textContent.replace(/\s+/g, ' ').trim()).join(','),
+        etats: [...m.querySelectorAll(etats)].map((b) => b.textContent.replace(/\s+/g, ' ').trim()).join(','),
         // Le retard : un bouton de la rangee des gestes (2026-11-14).
         pli: Boolean(m.querySelector('.fx-outil-retard')),
         message: Boolean(m.querySelector('.fx-message')),
         carte: [...document.querySelectorAll(`#resList [data-res-row-id="${rid}"] .gc-actions button`)].map((b) => b.textContent.trim()).join(','),
       };
-    }, id);
+    }, { rid: id, etats: ETATS });
   }
   // Une demande a verifier : « Valider » pour qui peut modifier, pas pour le
   // Staff bar (le serveur demande reservations.edit).
@@ -226,21 +229,25 @@ async function scenarioRoles(page) {
     await prendreRole(page, role);
     await page.evaluate(() => closePos());
     await ouvrirFiche(page, idVerif);
-    f[`verifier-${role}`] = await page.evaluate(() => [...document.querySelectorAll('#posOverlay .pos-act-row .res-status-btn')].map((b) => b.textContent.trim()).join(','));
+    f[`verifier-${role}`] = await page.evaluate((etats) => [...document.querySelector('#posOverlay .edit-modal').querySelectorAll(etats)].map((b) => b.textContent.trim()).join(','), ETATS);
   }
   await page.evaluate((rid) => { const r = state.reservations.find((x) => x.id === rid); if (r) delete r.validationStatus; closePos(); }, idVerif);
   await prendreRole(page, 'direction');
   return f;
 }
 
-const QUATRE = 'Confirmé,Arrivé,Payé · Carte,Payé · Espèces';
+// Les gestes d etat de la fiche, dans l ordre de l ecran : « Valider » du
+// bandeau, le geste de la ligne d arrivee (un bouton, pas la ligne en
+// lecture), les « Payé » de la caisse.
+const ETATS = '.fz-bandeau .res-status-btn, button.fz-arrivee-ligne .fz-arrivee-geste, .fz-caisse .fz-payer .res-status-btn';
+const TROIS = 'Arrivé,Payé · Carte,Payé · Espèces';
 function verifierRoles(f, v) {
-  v(f.direction.onglets === 'Infos,Modifier' && f.direction.etats === QUATRE && f.direction.pli && f.direction.message,
+  v(f.direction.onglets === 'Infos,Modifier' && f.direction.etats === TROIS && f.direction.pli && f.direction.message,
     `[A] Direction : tout (${JSON.stringify(f.direction)})`);
-  v(f.manager.onglets === 'Infos,Modifier' && f.manager.etats === QUATRE && f.manager.pli && !f.manager.message,
+  v(f.manager.onglets === 'Infos,Modifier' && f.manager.etats === TROIS && f.manager.pli && !f.manager.message,
     `[A] Manager : tout sauf « Envoyer un message » (${JSON.stringify(f.manager)})`);
-  v(f['staff-bar'].onglets === '' && f['staff-bar'].etats === QUATRE && !f['staff-bar'].pli && !f['staff-bar'].message,
-    `[A] Staff bar : les quatre etats, ni « Modifier », ni pli, ni message (${JSON.stringify(f['staff-bar'])})`);
+  v(f['staff-bar'].onglets === '' && f['staff-bar'].etats === TROIS && !f['staff-bar'].pli && !f['staff-bar'].message,
+    `[A] Staff bar : les trois gestes d etat, ni « Modifier », ni pli, ni message (${JSON.stringify(f['staff-bar'])})`);
   v(f.technique.onglets === '' && f.technique.etats === '' && f.technique.pli && !f.technique.message && f.technique.carte === '',
     `[A] Technique : aucun etat ni geste de carte, le pli du retard reste (${JSON.stringify(f.technique)})`);
   v(f.marketing.onglets === '' && f.marketing.etats === '' && !f.marketing.pli && f.marketing.message,
@@ -257,7 +264,7 @@ async function scenarioAnnuler(page) {
   const idAttente = await idDe(page, 'pending');
   await ouvrirFiche(page, idAttente);
   const n0 = await page.evaluate(() => { window.__QA_TOASTS__.length = 0; return window.__QA_PATCHES__.length; });
-  await page.click('#posOverlay .pos-act-row .res-status-btn.arrived');
+  await page.click('#posOverlay button.fz-arrivee-ligne');
   await page.waitForFunction((n) => window.__QA_PATCHES__.length > n, n0, { timeout: 5000 });
   f.offre = await page.waitForSelector('#toast:not(.hidden) .toast-annuler', { timeout: 4000 }).then(() => true, () => false);
   f.apres = await page.evaluate((n) => ({ patch: window.__QA_PATCHES__[n], toast: document.getElementById('toast').textContent.replace(/\s+/g, ' ').trim(), simples: window.__QA_TOASTS__.slice() }), n0);
@@ -276,7 +283,7 @@ async function scenarioAnnuler(page) {
   const idArrive = await idDe(page, 'arrived');
   await ouvrirFiche(page, idArrive);
   const n1 = await page.evaluate(() => window.__QA_PATCHES__.length);
-  await page.click('#posOverlay .pos-act-row .res-status-btn.paid >> nth=0');
+  await page.click('#posOverlay .fz-payer .res-status-btn.paid >> nth=0');
   await page.waitForFunction((n) => window.__QA_PATCHES__.length > n, n1, { timeout: 5000 });
   f.offrePaye = await page.waitForSelector('#toast:not(.hidden) .toast-annuler', { timeout: 4000 }).then(() => true, () => false);
   f.toastPaye = await page.evaluate(() => document.getElementById('toast').textContent.replace(/\s+/g, ' ').trim());

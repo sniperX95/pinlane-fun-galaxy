@@ -486,7 +486,8 @@ async function main() {
     // aucun des deux n'occupe la moindre ressource.
     // LA FICHE EST LA CARTE EN GRAND depuis le 2026-10-01 (lot D0) : le
     // programme passe par renderGroupeEtapes (un pas par activite, a son
-    // heure ou « Libre ») et l addition par renderGroupeAddition. La garantie
+    // heure ou « Libre ») et l addition par la caisse de la fiche (ficheCaisse
+    // depuis le 2026-11-15, sans droit : ses lignes, sans bouton). La garantie
     // ne change pas : chaque activite du programme est nommee, celles qui ne
     // prennent aucune ressource se distinguent de celles posees au planning,
     // et ce qui se regle au comptoir le dit.
@@ -506,7 +507,7 @@ async function main() {
         },
       };
       const host = document.createElement('div');
-      host.innerHTML = renderGroupeEtapes(reservation, null, { coches: true }) + renderGroupeAddition(reservation);
+      host.innerHTML = renderGroupeEtapes(reservation, null, { coches: true }) + ficheCaisse(reservation, null, {});
       const mono = document.createElement('div');
       mono.innerHTML = renderGroupeEtapes({ id: 2, date: state.currentDate, startTime: '14:00', duration: 1, lanes: [3], pax: 4, type: 'bowling', label: 'Bowling Classique', program: null }, null, { coches: true });
       const pas = (li) => ({

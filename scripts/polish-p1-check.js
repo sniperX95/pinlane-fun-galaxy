@@ -41,6 +41,9 @@
 //       sur un dossier deja confirme, un bouton DEJA enfonce changeait la
 //       donnee sans que rien ne bouge a l ecran, et la page Clients / Groupes,
 //       qui filtre les deux separement, voyait le dossier changer de colonne.
+//       Depuis la fiche refaite (2026-11-15), « Confirmé » n existe plus ; la
+//       meme garde se juge sur le bouton enfonce qui reste, « Payé · Carte »
+//       d un dossier paye par carte.
 //
 //   [D] UN SEUL FORMAT DE MONTANT PAR ECRAN. formatMoney (app-main.js) pose une
 //       espace fine insecable U+202F avant l euro ; la bibliotheque de
@@ -222,6 +225,7 @@ async function installMockStaff(page, jeu, options = {}) {
       label: '',
       notes: row.note || '',
       occasion: row.occasion || '',
+      ...(row.paymentMethod ? { paymentMethod: row.paymentMethod } : {}),
     }));
     const laneStatuses = () => Array.from({ length: 8 }).reduce((a, _, i) => {
       a[i + 1] = (lanesEnMaintenance || []).includes(i + 1) ? 'maintenance' : 'active';
@@ -535,7 +539,7 @@ const JEU_STATUTS = [
   { id: 81003, lane: 3, start: '13:00', duration: 1, status: 'confirmed' },
   { id: 81004, lane: 4, start: '14:00', duration: 1, status: 'arrived' },
   // Fini a 09:30 et paye : « Terminées » a 10:00, l heure figee du scenario.
-  { id: 81005, lane: 5, start: '08:30', duration: 1, status: 'paid' },
+  { id: 81005, lane: 5, start: '08:30', duration: 1, status: 'paid', paymentMethod: 'Carte Bancaire' },
 ];
 // La liste lit le MOMENT de chaque groupe depuis le 2026-09-30 (lot C) : le
 // scenario vit a une heure figee, sinon son verdict dependrait de l heure du
@@ -543,7 +547,7 @@ const JEU_STATUTS = [
 // Un samedi PASSE : la session du banc expire 24 h apres l heure reelle, une
 // date future la verrait deja echue.
 const HEURE_C = '2026-09-26T10:00:00';
-const CONFIRME_TEMOIN = 81002;
+const PAYE_TEMOIN = 81005;
 
 async function mesurerC(browser) {
   const { page, fermer } = await pageNeuve(browser, { width: 1440, height: 900 });
@@ -576,9 +580,9 @@ async function mesurerC(browser) {
       if (chip) chip.click();
     });
     await page.waitForTimeout(350);
-    // Depuis le 2026-10-01 (cartes de groupe), « Confirmé » vit dans la FICHE :
-    // la carte n offre que le geste du moment. La propriete se juge la.
-    await page.evaluate((id) => { openPos(id); }, CONFIRME_TEMOIN);
+    // Depuis la fiche refaite (2026-11-15), le bouton d etat enfonce qui reste
+    // est le moyen d un dossier paye : « Payé · Carte ». La propriete se juge la.
+    await page.evaluate((id) => { openPos(id); }, PAYE_TEMOIN);
     await page.waitForTimeout(400);
     const boutons = await page.evaluate(() => {
       const ligne = document.querySelector('#posOverlay .gc-sheet-states');
@@ -586,26 +590,27 @@ async function mesurerC(browser) {
       const btns = [...ligne.querySelectorAll('.res-status-btn')];
       return {
         libelles: btns.map((b) => b.textContent.trim()),
-        confirmeActif: btns[0] ? btns[0].classList.contains('active') : null,
+        carteActif: btns[0] ? btns[0].getAttribute('aria-pressed') === 'true' : null,
       };
     });
 
     const avantClic = await page.evaluate((id) => {
       window.__PATCHES__ = [];
       return (state.reservations.find((r) => Number(r.id) === id) || {}).status;
-    }, CONFIRME_TEMOIN);
+    }, PAYE_TEMOIN);
     await page.evaluate(() => {
       const ligne = document.querySelector('#posOverlay .gc-sheet-states');
       const btn = ligne && ligne.querySelector('.res-status-btn');
       if (btn) btn.click();
     });
     await page.waitForTimeout(700);
-    const apresConfirme = await page.evaluate((id) => ({
+    const apresCarte = await page.evaluate((id) => ({
       statut: (state.reservations.find((r) => Number(r.id) === id) || {}).status,
+      moyen: (state.reservations.find((r) => Number(r.id) === id) || {}).paymentMethod,
       ecritures: (window.__PATCHES__ || []).length,
-    }), CONFIRME_TEMOIN);
+    }), PAYE_TEMOIN);
 
-    // 3. TEMOIN : le meme chemin de clic, mais vers un etat DIFFERENT, doit
+    // 3. TEMOIN : le meme chemin de clic, mais vers un moyen DIFFERENT, doit
     //    ecrire. Sans lui, « zero ecriture » se lirait aussi bien comme « le
     //    clic n arrive nulle part » - et le gate serait vert sur un ecran mort.
     await page.evaluate(() => {
@@ -615,12 +620,13 @@ async function mesurerC(browser) {
       if (btns[1]) btns[1].click();
     });
     await page.waitForTimeout(700);
-    const apresArrive = await page.evaluate((id) => ({
+    const apresEspeces = await page.evaluate((id) => ({
       statut: (state.reservations.find((r) => Number(r.id) === id) || {}).status,
+      moyen: (state.reservations.find((r) => Number(r.id) === id) || {}).paymentMethod,
       ecritures: (window.__PATCHES__ || []).length,
-    }), CONFIRME_TEMOIN);
+    }), PAYE_TEMOIN);
 
-    return { avenir, boutons, avantClic, apresConfirme, apresArrive };
+    return { avenir, boutons, avantClic, apresCarte, apresEspeces };
   } finally {
     await fermer();
   }
@@ -643,19 +649,19 @@ function jugerC(m) {
     detail: intrus.length ? intrus.map((id) => `${id} (${statutDe.get(id)})`).join(', ') : `${rendus.length} lignes, toutes a venir`,
   });
   verdicts.push({
-    ok: Boolean(m.boutons) && m.boutons.confirmeActif === true && m.avantClic === 'confirmed',
-    label: '[C] MONTAGE : sur un dossier CONFIRME, le bouton « Confirmé » est deja enfonce',
-    detail: m.boutons ? `statut ${m.avantClic}, bouton actif ${m.boutons.confirmeActif}, boutons ${m.boutons.libelles.join(' / ')}` : 'ligne introuvable',
+    ok: Boolean(m.boutons) && m.boutons.carteActif === true && m.boutons.libelles[0] === 'Payé · Carte' && m.avantClic === 'paid',
+    label: '[C] MONTAGE : sur un dossier PAYE par carte, le bouton « Payé · Carte » est deja enfonce',
+    detail: m.boutons ? `statut ${m.avantClic}, bouton enfonce ${m.boutons.carteActif}, boutons ${m.boutons.libelles.join(' / ')}` : 'ligne introuvable',
   });
   verdicts.push({
-    ok: Boolean(m.apresConfirme) && m.apresConfirme.statut === 'confirmed' && m.apresConfirme.ecritures === 0,
+    ok: Boolean(m.apresCarte) && m.apresCarte.statut === 'paid' && m.apresCarte.moyen === 'Carte Bancaire' && m.apresCarte.ecritures === 0,
     label: '[C] cliquer ce bouton deja enfonce n ecrit RIEN et ne retrograde pas le dossier',
-    detail: m.apresConfirme ? `statut ${m.apresConfirme.statut}, ${m.apresConfirme.ecritures} ecriture(s) reseau` : 'aucune mesure',
+    detail: m.apresCarte ? `statut ${m.apresCarte.statut}, moyen ${m.apresCarte.moyen}, ${m.apresCarte.ecritures} ecriture(s) reseau` : 'aucune mesure',
   });
   verdicts.push({
-    ok: Boolean(m.apresArrive) && m.apresArrive.statut === 'arrived' && m.apresArrive.ecritures >= 1,
-    label: '[C] TEMOIN : le meme clic vers un AUTRE etat ecrit bien (l ecran n est pas mort)',
-    detail: m.apresArrive ? `statut ${m.apresArrive.statut}, ${m.apresArrive.ecritures} ecriture(s) reseau` : 'aucune mesure',
+    ok: Boolean(m.apresEspeces) && m.apresEspeces.statut === 'paid' && m.apresEspeces.moyen === 'Espèces' && m.apresEspeces.ecritures >= 1,
+    label: '[C] TEMOIN : le meme clic vers un AUTRE moyen ecrit bien (l ecran n est pas mort)',
+    detail: m.apresEspeces ? `statut ${m.apresEspeces.statut}, moyen ${m.apresEspeces.moyen}, ${m.apresEspeces.ecritures} ecriture(s) reseau` : 'aucune mesure',
   });
   return verdicts;
 }

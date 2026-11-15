@@ -19518,7 +19518,13 @@ body.lp-glisse, body.lp-glisse * { cursor: grabbing !important; user-select: non
    client, l historique. Chaque regle part de
    « body:is(.staff-mode, .admin-mode) .fx-modal » : la couche commune des
    boutons de la console (son :is() pese le poids de son argument le plus
-   lourd) l emportait en sombre sur une regle plus courte. */
+   lourd) l emportait en sombre sur une regle plus courte.
+   TOUT SUR UN ECRAN (meme jour, Ansar devant la premiere version : « trop
+   d info, c est trop long [...] faut tout one shot, en plein rush on veut la
+   rapidité »). L en-tete tient en deux lignes (le nom, sa pastille et les
+   faits ; les chiffres et les gestes), une activite tient sur une ligne de
+   44 px, les blocs sont serres : une formule de neuf activites se lit sans
+   faire defiler sur un ecran de 800 px de haut. */
 body:is(.staff-mode, .admin-mode) .edit-modal.fx-modal {
   --fz-fond: var(--page); --fz-carte: var(--surface); --fz-r: 12px;
   --fz-ombre: 0 1px 2px rgb(0 0 0 / 0.05), 0 8px 22px -14px rgb(0 0 0 / 0.28);
@@ -19530,22 +19536,31 @@ body:is(.staff-mode, .admin-mode) .edit-modal.fx-modal {
 /* == L EN-TETE : le nom et sa pastille, les onglets et la croix a droite ;
    l heure, les joueurs et la formule en grand ; le jour, le lieu et le numero
    en texte courant ; puis les gestes du comptoir. == */
-body:is(.staff-mode, .admin-mode) .fx-modal .edit-modal-head { grid-template-columns: minmax(0, 1fr) auto; gap: 14px 16px; padding: 20px 24px 16px; border-bottom: 1px solid var(--line); background: var(--surface); }
-body:is(.staff-mode, .admin-mode) .fx-modal .fz-tete-droite { display: flex; align-items: center; gap: 10px; }
-body:is(.staff-mode, .admin-mode) .fx-modal .edit-modal-head .close-btn { width: 40px; height: 40px; }
-body:is(.staff-mode, .admin-mode) .fx-modal .dossier-title { font-size: 22px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .edit-modal-head { grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px 16px; padding: 14px 20px 12px; border-bottom: 1px solid var(--line); background: var(--surface); }
+/* Le nom et les chiffres se rangent dans la grille de l en-tete, a cote des
+   onglets et des gestes. */
+body:is(.staff-mode, .admin-mode) .fx-modal .dossier-heading { display: contents; }
+body:is(.staff-mode, .admin-mode) .fx-modal .dossier-title-row { grid-area: 1 / 1; align-items: baseline; gap: 4px 10px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .dossier-title-row .dossier-status { align-self: center; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-tete-droite { grid-area: 1 / 2; display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .edit-modal-head .close-btn { width: 36px; height: 36px; border: 0; background: none; }
+body:is(.staff-mode, .admin-mode) .fx-modal .edit-modal-head .close-btn:hover { background: var(--subtle); }
+body:is(.staff-mode, .admin-mode) .fx-modal .dossier-title { font-size: 20px; line-height: 1.25; }
 /* Les onglets : deux positions d un meme interrupteur, a cote de la croix. */
 body:is(.staff-mode, .admin-mode) .fx-modal .dossier-tabs { display: inline-flex; grid-column: auto; gap: 2px; padding: 3px; border-radius: 10px; background: var(--subtle); }
-body:is(.staff-mode, .admin-mode) .fx-modal .dossier-tabs .tab { flex: none; min-height: 34px; padding: 0 16px; border-radius: 8px; font-size: 13.5px; font-weight: 600; color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .dossier-tabs .tab { flex: none; min-height: 30px; padding: 0 14px; border-radius: 8px; font-size: 13.5px; font-weight: 600; color: var(--muted); }
 body:is(.staff-mode, .admin-mode) .fx-modal .dossier-tabs .tab.active { background: var(--surface); color: var(--text); font-weight: 650; box-shadow: 0 1px 2px rgb(0 0 0 / 0.14); }
 body:is(.staff-mode, .admin-mode) .fx-modal .dossier-tabs .tab.active::after { content: none; }
 [data-theme='dark'] body:is(.staff-mode, .admin-mode) .fx-modal .dossier-tabs .tab.active { background: var(--line-strong); }
 @media (pointer: coarse) { body:is(.staff-mode, .admin-mode) .fx-modal .dossier-tabs .tab { min-height: 40px; } }
+/* (au clavier, un anneau fin a la couleur de la console, pas un cadre noir) */
+body:is(.staff-mode, .admin-mode) .fx-modal .dossier-tabs .tab:focus-visible { outline: 2px solid var(--console-selected); outline-offset: 1px; }
 
 /* La pastille d etat, en aplat plein : elle se lit de loin. */
 body:is(.staff-mode, .admin-mode) .fx-modal .dossier-status { min-height: 24px; padding: 0 9px; border-radius: 6px; font-size: 12.5px; font-weight: 650; line-height: 1; white-space: nowrap; }
 body:is(.staff-mode, .admin-mode) .fx-modal .dossier-status.is-late { background: #c9372c; color: #fff; }
 body:is(.staff-mode, .admin-mode) .fx-modal .dossier-status:is(.is-arrived, .is-closing, .is-review) { background: #e3b341; color: #2a2008; }
+body:is(.staff-mode, .admin-mode) .fx-modal .dossier-status.is-review { background: #c2570c; color: #fff; }
 body:is(.staff-mode, .admin-mode) .fx-modal .dossier-status.is-paid { background: #1c7a45; color: #fff; }
 body:is(.staff-mode, .admin-mode) .fx-modal .dossier-status.is-pending { background: var(--console-selected); color: var(--console-selected-text); }
 
@@ -19553,56 +19568,67 @@ body:is(.staff-mode, .admin-mode) .fx-modal .dossier-status.is-pending { backgro
    activité joueur plus visible » ; Ansar, 2026-11-14 : « savoir si c une
    formule ou pas »). Le texte ne change pas, la typo d affiche dit ce qui
    compte. L heure et les joueurs se touchent pour les modifier. */
-body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 30px; margin: 10px 0 0; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres { grid-area: 2 / 1; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 24px; margin: 0; }
 body:is(.staff-mode, .admin-mode) .fx-modal .dossier-fact { display: inline; }
-body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .dossier-fact strong { font-family: var(--fz-anton); font-size: 34px; font-weight: 400; line-height: 1.08; letter-spacing: 0.012em; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--text); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .dossier-fact strong { font-family: var(--fz-anton); font-size: 30px; font-weight: 400; line-height: 1.1; letter-spacing: 0.012em; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--text); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fx-fleche { display: inline-flex; margin: 0 2px; color: var(--faint); vertical-align: 6px; }
-body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fx-fleche svg { width: 22px; height: 14px; }
-body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fz-mot { font-family: var(--font-ui); font-size: 16px; font-weight: 500; letter-spacing: 0; color: var(--muted); }
-body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fx-joueurs strong { font-family: inherit; font-size: 16px; font-weight: 500; letter-spacing: 0; color: var(--muted); }
-body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fx-nombre { font-family: var(--fz-anton); font-size: 34px; font-weight: 400; letter-spacing: 0.012em; color: var(--text); }
-body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fx-formule strong { font-size: 28px; text-transform: uppercase; white-space: normal; }
-body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fx-formule.is-carte strong { font-family: inherit; font-size: 16px; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fx-fleche svg { width: 20px; height: 13px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fz-mot { font-family: var(--font-ui); font-size: 15px; font-weight: 500; letter-spacing: 0; color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fx-joueurs strong { font-family: inherit; font-size: 15px; font-weight: 500; letter-spacing: 0; color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fx-nombre { font-family: var(--fz-anton); font-size: 30px; font-weight: 400; letter-spacing: 0.012em; color: var(--text); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fx-formule strong { font-size: 26px; text-transform: uppercase; white-space: normal; }
+/* Sans formule, « À la carte » garde la taille et passe en gris. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fx-formule.is-carte strong { color: var(--muted); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fx-fait-modif { appearance: none; margin: 0 -6px; padding: 0 6px; border: 0; border-radius: 6px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fx-fait-modif:hover { background: var(--subtle); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fx-fait-modif:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 1px; }
 /* Le jour, le lieu, le numero, puis l occasion et « À surveiller » : du
    texte courant sur une ligne, pas des pastilles. */
-body:is(.staff-mode, .admin-mode) .fx-modal .fz-faits { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 16px; margin: 6px 0 0; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-faits { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 14px; margin: 0; min-width: 0; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fz-faits > p { margin: 0; }
-body:is(.staff-mode, .admin-mode) .fx-modal .dossier-facts { display: block; font-size: 14px; line-height: 1.5; color: var(--text); }
-body:is(.staff-mode, .admin-mode) .fx-modal .dossier-facts .dossier-fact strong { font-size: 14px; font-weight: 500; line-height: 1.5; white-space: nowrap; font-variant-numeric: tabular-nums; }
+body:is(.staff-mode, .admin-mode) .fx-modal .dossier-facts { display: block; font-size: 13.5px; line-height: 1.5; color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .dossier-facts .dossier-fact strong { font-size: 13.5px; font-weight: 500; line-height: 1.5; white-space: nowrap; font-variant-numeric: tabular-nums; }
 body:is(.staff-mode, .admin-mode) .fx-modal .dossier-facts .dossier-fact + .dossier-fact::before { content: "\0000a0\0000b7\000020"; color: var(--faint); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fx-numero strong { font-weight: 400; color: var(--muted); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fx-etiquettes { display: flex; flex-wrap: wrap; gap: 0 16px; }
-body:is(.staff-mode, .admin-mode) .fx-modal .fx-etiquette { display: inline; padding: 0; border-radius: 0; background: none; color: var(--muted); font-size: 14px; font-weight: 500; line-height: 1.5; }
-body:is(.staff-mode, .admin-mode) .fx-modal .fx-etiquette small { font-size: 14px; font-weight: 400; color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-etiquette { display: inline; padding: 0; border-radius: 0; background: none; color: var(--muted); font-size: 13.5px; font-weight: 500; line-height: 1.5; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-etiquette small { font-size: 13.5px; font-weight: 400; color: var(--muted); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fx-etiquette.is-suivi { color: var(--warning); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fx-etiquette.is-suivi b { font-weight: 650; }
 
 /* LES GESTES DU COMPTOIR, DANS L EN-TETE (Ansar, 2026-11-14 : « un truc
    simple rapide et complet ou tout est super facile d acces ») : ils ne
-   defilent jamais. Boutons de la console, blancs a bord ; « Annuler la
-   réservation » au bout, a l ecart. */
-body:is(.staff-mode, .admin-mode) .fx-modal .fx-outils { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; }
-body:is(.staff-mode, .admin-mode) .fx-modal :is(.fx-outil, .fz-bouton, .fx-appel) { appearance: none; display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 38px; margin: 0; padding: 0 14px; border: 1px solid var(--control-border); border-radius: 8px; background: var(--surface); color: var(--text); font: inherit; font-size: 13.5px; font-weight: 600; line-height: 1.2; text-decoration: none; white-space: nowrap; cursor: pointer; }
+   defilent jamais. EN TEXTE SEUL (Ansar, 2026-11-15, sur la rangee de boutons
+   encadres a pictogramme : « on dirait ia ») : ni bord, ni pictogramme, comme
+   les gestes de l en-tete des Demandes ; le fond vient au survol. « Annuler
+   la réservation » n est pas un geste de rush : au bas de la colonne de
+   droite (.fz-fin). */
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-outils { grid-area: 2 / 2; align-self: end; display: flex; align-items: center; justify-content: flex-end; gap: 2px; margin: 0 -10px -4px 0; }
+body:is(.staff-mode, .admin-mode) .fx-modal :is(.fx-outil, .fz-bouton, .fx-appel) { appearance: none; display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 36px; margin: 0; padding: 0 12px; border: 1px solid var(--control-border); border-radius: 8px; background: var(--surface); color: var(--text); font: inherit; font-size: 13.5px; font-weight: 600; line-height: 1.2; text-decoration: none; white-space: nowrap; cursor: pointer; }
 body:is(.staff-mode, .admin-mode) .fx-modal :is(.fx-outil, .fz-bouton, .fx-appel) svg { flex: none; color: var(--muted); }
 body:is(.staff-mode, .admin-mode) .fx-modal :is(.fx-outil, .fz-bouton, .fx-appel):hover { background: var(--subtle); }
 body:is(.staff-mode, .admin-mode) .fx-modal :is(.fx-outil, .fz-bouton, .fx-appel):active { transform: scale(0.975); }
 body:is(.staff-mode, .admin-mode) .fx-modal :is(.fx-outil, .fz-bouton, .fx-appel):focus-visible { outline: 2px solid var(--console-focus); outline-offset: 2px; }
-body:is(.staff-mode, .admin-mode) .fx-modal .fx-outil[aria-expanded='true'] { border-color: var(--text); background: var(--subtle); }
-body:is(.staff-mode, .admin-mode) .fx-modal .fx-outil.is-retard { border-color: var(--danger); color: var(--danger); }
-body:is(.staff-mode, .admin-mode) .fx-modal .fx-outil.is-retard svg { color: var(--danger); }
-body:is(.staff-mode, .admin-mode) .fx-modal .fx-outil.fx-annuler { margin-left: auto; border-color: var(--line-strong); color: var(--danger); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-outils .fx-outil { min-height: 34px; padding: 0 10px; border: 0; background: none; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-outils .fx-outil svg { display: none; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-outils .fx-outil:hover, body:is(.staff-mode, .admin-mode) .fx-modal .fx-outils .fx-outil[aria-expanded='true'] { background: var(--subtle); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-outils .fx-outil.is-retard { color: var(--danger); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-outil .fz-long { display: none; }
+@media (min-width: 1181px) { body:is(.staff-mode, .admin-mode) .fx-modal .fx-outil .fz-long { display: inline; } }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-fin { display: flex; justify-content: flex-end; margin: -4px 0 0; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-fin .fx-annuler { min-height: 32px; padding: 0 10px; border: 0; background: none; font-weight: 500; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-fin .fx-annuler:hover { background: var(--danger-soft); color: var(--danger); }
 @media (pointer: coarse) { body:is(.staff-mode, .admin-mode) .fx-modal :is(.fx-outil, .fz-bouton, .fx-appel) { min-height: 44px; } }
 
 /* == LE CORPS : des blocs blancs sur le fond de la page. == */
-body:is(.staff-mode, .admin-mode) .fx-modal .edit-modal-body { padding: 16px 24px 24px; background: var(--fz-fond); }
-body:is(.staff-mode, .admin-mode) .fx-modal .fx { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
-body:is(.staff-mode, .admin-mode) .fx-modal .fx-colonnes { display: grid; gap: 14px; }
-body:is(.staff-mode, .admin-mode) .fx-modal :is(.fx-principal, .fx-cote) { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-content: start; min-width: 0; }
+body:is(.staff-mode, .admin-mode) .fx-modal .edit-modal-body { padding: 14px 20px 18px; background: var(--fz-fond); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-colonnes { display: grid; gap: 12px; }
+body:is(.staff-mode, .admin-mode) .fx-modal :is(.fx-principal, .fx-cote) { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-content: start; min-width: 0; }
 @media (min-width: 900px) {
   body:is(.staff-mode, .admin-mode) .fx-modal .fx-colonnes { grid-template-columns: minmax(0, 1.62fr) minmax(300px, 1fr); align-items: start; }
+  /* La caisse reste a l ecran quand un long programme defile. */
+  body:is(.staff-mode, .admin-mode) .fx-modal .fx-cote { position: sticky; top: 14px; }
 }
 /* Au telephone et sur une tablette debout, une colonne dans l ordre du
    comptoir : les notes, la caisse, le programme, le client, l historique. */
@@ -19614,15 +19640,16 @@ body:is(.staff-mode, .admin-mode) .fx-modal :is(.fx-principal, .fx-cote) { displ
   body:is(.staff-mode, .admin-mode) .fx-modal .fx-colonnes .fx-programme { order: 3; }
   body:is(.staff-mode, .admin-mode) .fx-modal .fx-colonnes .fx-client { order: 4; }
   body:is(.staff-mode, .admin-mode) .fx-modal .fx-colonnes .fx-historique { order: 5; }
+  body:is(.staff-mode, .admin-mode) .fx-modal .fx-colonnes .fz-fin { order: 6; }
 }
-body:is(.staff-mode, .admin-mode) .fx-modal .fx :is(.fz-carte, .fx-historique, .gc-notes, .fx-retard) { margin: 0; padding: 16px 18px; border: 0; border-radius: var(--fz-r); background: var(--fz-carte); box-shadow: var(--fz-ombre); }
-body:is(.staff-mode, .admin-mode) .fx-modal :is(.fx-titre, .pos-sheet .info-label) { margin: 0; font-size: 15px; font-weight: 650; letter-spacing: 0; text-transform: none; color: var(--text); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx :is(.fz-carte, .fx-historique, .gc-notes, .fx-retard) { margin: 0; padding: 12px 14px; border: 0; border-radius: var(--fz-r); background: var(--fz-carte); box-shadow: var(--fz-ombre); }
+body:is(.staff-mode, .admin-mode) .fx-modal :is(.fx-titre, .pos-sheet .info-label) { margin: 0; font-size: 14.5px; font-weight: 650; letter-spacing: 0; text-transform: none; color: var(--text); }
 
 /* Ce qui bloque le reste, en bandeau plein : la demande a verifier, l absence. */
-body:is(.staff-mode, .admin-mode) .fx-modal :is(.fz-bandeau, .fx > .pos-absent) { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; margin: 0; padding: 12px 16px; border: 0; border-radius: var(--fz-r); background: var(--warning-soft); font-size: 14.5px; line-height: 1.45; color: var(--text); }
-body:is(.staff-mode, .admin-mode) .fx-modal .fz-bandeau .fx-moment { flex: 1 1 320px; margin: 0; font-size: 14.5px; font-weight: 600; line-height: 1.45; color: var(--text); }
+body:is(.staff-mode, .admin-mode) .fx-modal :is(.fz-bandeau, .fx > .pos-absent) { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin: 0; padding: 8px 14px; border: 0; border-radius: var(--fz-r); background: var(--warning-soft); font-size: 14px; line-height: 1.45; color: var(--text); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-bandeau .fx-moment { flex: 1 1 320px; margin: 0; font-size: 14px; font-weight: 600; line-height: 1.45; color: var(--warning); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fz-bandeau-gestes { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-body:is(.staff-mode, .admin-mode) .fx-modal .fz-bandeau .res-status-btn { min-width: 120px; min-height: 40px; padding: 0 18px; border: 1px solid var(--console-selected); border-style: solid; border-radius: 8px; background: var(--console-selected); color: var(--console-selected-text); font-size: 14px; font-weight: 600; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-bandeau .res-status-btn { min-width: 110px; min-height: 36px; padding: 0 18px; border: 1px solid var(--console-selected); border-style: solid; border-radius: 8px; background: var(--console-selected); color: var(--console-selected-text); font-size: 14px; font-weight: 600; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fz-bandeau .res-status-btn:hover:not(:disabled) { filter: brightness(0.93); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fx > .pos-absent { background: var(--subtle); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fx > .pos-absent span { flex: 1 1 320px; font-weight: 600; }
@@ -19638,11 +19665,12 @@ body:is(.staff-mode, .admin-mode) .fx-modal .fx-retard .delay-custom-row input {
 
 /* == LES NOTES : en tete de la colonne, sur l ambre, pour qu une allergie ou
    un gateau se lise avant le programme. Le champ seul reste blanc. == */
-body:is(.staff-mode, .admin-mode) .fx-modal .fx .gc-notes { gap: 8px; background: var(--warning-soft); box-shadow: none; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx .gc-notes { gap: 6px; padding: 10px 14px; background: var(--warning-soft); box-shadow: none; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx .gc-notes > .gc-sheet-head { display: none; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fx .gc-notes.is-vide { background: var(--fz-carte); box-shadow: var(--fz-ombre); }
 body:is(.staff-mode, .admin-mode) .fx-modal .gc-notes .info-label { font-size: 13px; color: var(--warning); }
-body:is(.staff-mode, .admin-mode) .fx-modal .gc-notes :is(.gc-note-client, .gc-note-equipe) { padding: 0; border-radius: 0; background: none; font-size: 14.5px; }
-body:is(.staff-mode, .admin-mode) .fx-modal .gc-notes .gc-note-equipe p { font-size: 14.5px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .gc-notes :is(.gc-note-client, .gc-note-equipe) { padding: 0; border-radius: 0; background: none; font-size: 14px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .gc-notes .gc-note-equipe p { font-size: 14px; }
 body:is(.staff-mode, .admin-mode) .fx-modal .gc-note-ajout .gc-note-annuler { min-height: 40px; padding: 0 14px; border: 1px solid var(--control-border); border-radius: var(--radius-md); background: var(--surface); color: var(--text); font-size: 13.5px; font-weight: 600; }
 body:is(.staff-mode, .admin-mode) .fx-modal .gc-note-ajout .gc-note-annuler:hover { background: var(--subtle); }
 body:is(.staff-mode, .admin-mode) .fx-modal .gc-note-ajout .gc-note-ok { background: var(--console-selected); color: var(--console-selected-text); }
@@ -19652,145 +19680,176 @@ body:is(.staff-mode, .admin-mode) .fx-modal .gc-note-ajout .gc-note-ok { backgro
    « Tout cocher » ; l arrivee du groupe ; puis une rangee par activite : sa
    case, son heure, sa photo, ce qu elle achete, son etat en mot colore. Pas
    de trait entre les rangees : l espace et la photo les separent. == */
-body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .gc-sheet-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; min-height: 36px; margin: 0; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .gc-sheet-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-height: 32px; margin: 0; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fz-jauge { display: inline-flex; align-items: center; gap: 3px; min-width: 0; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fz-jauge i { flex: none; width: 16px; height: 6px; border-radius: 3px; background: var(--line-strong); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fz-jauge i.on { background: var(--success); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fz-jauge span { margin-left: 6px; font-size: 13px; font-weight: 600; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme :is(.gc-finish, .gc-done-all) { margin-left: auto; }
-body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .gc-finish { white-space: nowrap; min-height: 36px; padding: 0 14px; border: 1px solid var(--control-border); border-radius: 8px; background: var(--surface); color: var(--text); font-size: 13.5px; font-weight: 600; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .gc-finish { white-space: nowrap; min-height: 32px; padding: 0 12px; border: 1px solid var(--control-border); border-radius: 8px; background: var(--surface); color: var(--text); font-size: 13.5px; font-weight: 600; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .gc-finish:hover { background: var(--subtle); opacity: 1; }
 
 /* L arrivee : la premiere chose a cocher, sur un aplat qui dit ou on en est
    (neutre a venir, rouge en retard, rien une fois pointee). */
-body:is(.staff-mode, .admin-mode) .fx-modal .fz-arrivee { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px -8px 0; padding: 0 10px 0 0; border-radius: 10px; background: var(--subtle); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-arrivee { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px -6px 0; padding: 0 8px 0 0; border-radius: 8px; background: var(--subtle); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fz-arrivee.is-retard { background: var(--danger-soft); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fz-arrivee.is-fait { background: none; }
-body:is(.staff-mode, .admin-mode) .fx-modal .fz-arrivee-ligne { appearance: none; flex: 1 1 260px; display: flex; align-items: center; gap: 12px; min-width: 0; min-height: 60px; margin: 0; padding: 8px 10px; border: 0; border-radius: 10px; background: none; color: var(--text); font: inherit; text-align: left; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-arrivee-ligne { appearance: none; flex: 1 1 260px; display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 46px; margin: 0; padding: 5px 8px; border: 0; border-radius: 8px; background: none; color: var(--text); font: inherit; text-align: left; }
 body:is(.staff-mode, .admin-mode) .fx-modal button.fz-arrivee-ligne { cursor: pointer; }
 body:is(.staff-mode, .admin-mode) .fx-modal button.fz-arrivee-ligne:focus-visible { outline: 2px solid var(--console-focus); outline-offset: -2px; }
-body:is(.staff-mode, .admin-mode) .fx-modal :is(.fz-rond, .fx-programme .gc-check) { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 2px solid var(--control-border); border-radius: 50%; background: transparent; color: #fff; transition: background-color 140ms ease, border-color 140ms ease, transform 140ms ease; }
+body:is(.staff-mode, .admin-mode) .fx-modal :is(.fz-rond, .fx-programme .gc-check) { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 2px solid var(--control-border); border-radius: 50%; background: transparent; color: #fff; transition: background-color 140ms ease, border-color 140ms ease, transform 140ms ease; }
 body:is(.staff-mode, .admin-mode) .fx-modal :is(.fz-rond, .fx-programme .gc-check).is-on { border-color: var(--success); background: var(--success); }
 [data-theme='dark'] body:is(.staff-mode, .admin-mode) .fx-modal :is(.fz-rond, .fx-programme .gc-check).is-on { color: #06140c; }
-body:is(.staff-mode, .admin-mode) .fx-modal :is(.fz-rond, .fx-programme .gc-check) svg { width: 16px; height: 16px; }
+body:is(.staff-mode, .admin-mode) .fx-modal :is(.fz-rond, .fx-programme .gc-check) svg { width: 14px; height: 14px; }
 @media (hover: hover) {
   body:is(.staff-mode, .admin-mode) .fx-modal button.fz-arrivee-ligne:hover .fz-rond:not(.is-on),
   body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .gc-step.is-cochable:hover .gc-check:not(.is-on) { border-color: var(--success); }
 }
 body:is(.staff-mode, .admin-mode) .fx-modal button.fz-arrivee-ligne:active .fz-rond,
 body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .gc-step.is-cochable:active .gc-check { transform: scale(0.9); }
-body:is(.staff-mode, .admin-mode) .fx-modal .fz-arrivee-texte { flex: 1 1 auto; display: grid; gap: 1px; min-width: 0; }
-body:is(.staff-mode, .admin-mode) .fx-modal .fz-arrivee-texte b { font-size: 16px; font-weight: 650; line-height: 1.3; }
-body:is(.staff-mode, .admin-mode) .fx-modal .fz-arrivee-texte .fx-moment { margin: 0; font-size: 14px; font-weight: 500; line-height: 1.4; color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-arrivee-texte { flex: 1 1 auto; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 10px; min-width: 0; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-arrivee-texte b { font-size: 15px; font-weight: 650; line-height: 1.3; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-arrivee-texte .fx-moment { margin: 0; font-size: 13.5px; font-weight: 500; line-height: 1.4; color: var(--muted); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fz-arrivee-texte .fx-moment.is-retard { font-weight: 650; color: var(--danger); }
-body:is(.staff-mode, .admin-mode) .fx-modal .fz-arrivee-geste { flex: none; display: inline-flex; align-items: center; justify-content: center; min-width: 96px; min-height: 40px; padding: 0 18px; border: 1px solid var(--control-border); border-radius: 8px; background: var(--surface); color: var(--text); font-size: 14px; font-weight: 600; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-arrivee-geste { flex: none; display: inline-flex; align-items: center; justify-content: center; min-width: 88px; min-height: 36px; padding: 0 16px; border: 1px solid var(--control-border); border-radius: 8px; background: var(--surface); color: var(--text); font-size: 14px; font-weight: 600; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fz-arrivee-ligne.is-suivant .fz-arrivee-geste { border-color: var(--console-selected); background: var(--console-selected); color: var(--console-selected-text); }
 body:is(.staff-mode, .admin-mode) .fx-modal button.fz-arrivee-ligne:hover .fz-arrivee-geste { filter: brightness(0.94); }
 
-body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .gc-steps { margin: 4px -8px 0; }
-body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .gc-step { grid-template-columns: 28px 56px 64px minmax(0, 1fr) auto auto; align-items: center; gap: 12px; min-height: 60px; margin: 0; padding: 8px 10px; border-top: 0; border-radius: 10px; font-size: 14.5px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .gc-steps { margin: 2px -6px 0; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .gc-step { grid-template-columns: 24px 48px 44px minmax(0, 1fr) auto auto; align-items: center; gap: 10px; min-height: 44px; margin: 0; padding: 5px 8px; border-top: 0; border-radius: 8px; font-size: 14px; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .gc-step.is-cochable { cursor: pointer; }
 @media (hover: hover) { body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .gc-step.is-cochable:hover { background: var(--subtle); } }
 /* L activite du moment, sur le bleu doux du geste suivant ; en retard, c est
    la ligne de l arrivee qui porte la couleur. */
 body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .gc-step.is-focus { background: var(--accent-soft); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fz-arrivee.is-retard ~ .gc-steps .gc-step.is-focus { background: none; }
-body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .gc-step-time { font-family: var(--fz-anton); font-size: 22px; font-weight: 400; line-height: 1; letter-spacing: 0.012em; color: var(--text); }
-body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .gc-step-time small { margin-top: 4px; font-family: var(--font-ui); font-size: 12.5px; font-weight: 500; letter-spacing: 0; color: var(--muted); }
-body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .gc-step-time.is-free { font-family: var(--font-ui); font-size: 13px; font-weight: 600; letter-spacing: 0; color: var(--muted); }
-body:is(.staff-mode, .admin-mode) .fx-modal .fz-photo { display: flex; align-items: center; justify-content: center; width: 64px; height: 44px; border-radius: 8px; background: var(--subtle) center / cover no-repeat; color: var(--muted); }
-body:is(.staff-mode, .admin-mode) .fx-modal .fz-photo svg { width: 20px; height: 20px; }
-body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .gc-step-what b { font-size: 16px; font-weight: 650; line-height: 1.3; }
-body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .gc-step-what small { margin-top: 1px; font-size: 14px; line-height: 1.4; color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .gc-step-time { font-family: var(--fz-anton); font-size: 18px; font-weight: 400; line-height: 1; letter-spacing: 0.012em; color: var(--text); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .gc-step-time small { margin-top: 2px; font-family: var(--font-ui); font-size: 12px; font-weight: 500; letter-spacing: 0; color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .gc-step-time.is-free { font-family: var(--font-ui); font-size: 12.5px; font-weight: 600; letter-spacing: 0; color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-photo { display: flex; align-items: center; justify-content: center; width: 44px; height: 30px; border-radius: 6px; background: var(--subtle) center / cover no-repeat; color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-photo svg { width: 18px; height: 18px; }
+/* Sans photo (les boissons, une table), l icone seule : pas de tuile. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-photo.is-icone { background: none; }
+/* Le nom et ce que l activite achete sur une ligne ; a l etroit, dessous. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .gc-step-what { flex-direction: row; flex-wrap: wrap; align-items: baseline; gap: 0 8px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .gc-step-what b { font-size: 15px; font-weight: 650; line-height: 1.3; }
+/* Les noms des activites font une colonne : ce qu elles achetent s aligne. */
+@media (min-width: 761px) { body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .gc-step-what > :first-child { min-width: 168px; } }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .gc-step-what small { margin: 0; font-size: 13.5px; line-height: 1.4; color: var(--muted); }
 body:is(.staff-mode, .admin-mode) .fx-modal .gc-step-joueurs { font-weight: 600; color: var(--text); }
 /* Une activite faite s efface : ce qui reste a faire ressort. */
 body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .gc-step:is(.is-fait, .is-fini) :is(.gc-step-time, .gc-step-what b, .gc-step-joueurs) { color: var(--muted); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .gc-step:is(.is-fait, .is-fini) .fz-photo { opacity: 0.55; }
 /* L etat d une activite se lit en mot colore, pas en pastille. « À leur
    rythme » redisait « Libre », ecrit dans la colonne de l heure. */
-body:is(.staff-mode, .admin-mode) .fx-modal .gc-step .gc-step-state { padding: 0; border-radius: 0; background: none; font-size: 13.5px; font-weight: 600; color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .gc-step .gc-step-state { padding: 0; border-radius: 0; background: none; font-size: 13px; font-weight: 600; color: var(--muted); }
 body:is(.staff-mode, .admin-mode) .fx-modal .gc-step:is(.is-lancer, .is-bientot) .gc-step-state { color: var(--accent-strong); }
 body:is(.staff-mode, .admin-mode) .fx-modal .gc-step:is(.is-encours, .is-fait) .gc-step-state { color: var(--success); }
 body:is(.staff-mode, .admin-mode) .fx-modal .gc-step:is(.is-attente, .is-aplacer, .is-noncoche) .gc-step-state { color: var(--warning); }
 body:is(.staff-mode, .admin-mode) .fx-modal .gc-step.is-libre .gc-step-state { display: none; }
-body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme > .pos-note { margin: 12px 0 0; font-size: 14px; color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme > .pos-note { margin: 8px 0 0; font-size: 14px; color: var(--muted); }
 
 /* == LA CAISSE : le montant en grand, dit une fois ; « Payé » juste dessous ;
    puis ce qui fait le montant, ligne par ligne, sans total redit. == */
-body:is(.staff-mode, .admin-mode) .fx-modal .fz-caisse { display: grid; gap: 12px; }
-body:is(.staff-mode, .admin-mode) .fx-modal .fz-caisse .pos-act-money { display: grid; gap: 4px; margin: 0; font-family: inherit; font-size: 13.5px; font-weight: 500; line-height: 1.4; color: var(--muted); font-variant-numeric: tabular-nums; }
-body:is(.staff-mode, .admin-mode) .fx-modal .fz-caisse-mot { font-size: 14px; font-weight: 650; color: var(--warning); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-caisse { display: grid; gap: 10px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-caisse .pos-act-money { display: grid; gap: 2px; margin: 0; font-family: inherit; font-size: 13.5px; font-weight: 500; line-height: 1.4; color: var(--muted); font-variant-numeric: tabular-nums; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-caisse-mot { font-size: 13.5px; font-weight: 650; color: var(--warning); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fz-caisse.is-paye .fz-caisse-mot { color: var(--success); }
-body:is(.staff-mode, .admin-mode) .fx-modal .fz-montant { font-family: var(--fz-anton); font-size: 46px; font-weight: 400; line-height: 1; letter-spacing: 0.012em; color: var(--text); }
-body:is(.staff-mode, .admin-mode) .fx-modal .fz-montant.is-texte { font-family: inherit; font-size: 20px; font-weight: 650; line-height: 1.3; letter-spacing: -0.01em; }
-body:is(.staff-mode, .admin-mode) .fx-modal .fz-caisse .gc-bill-unit { margin: -8px 0 0; font-size: 13.5px; color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-montant { font-family: var(--fz-anton); font-size: 38px; font-weight: 400; line-height: 1; letter-spacing: 0.012em; color: var(--text); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-caisse.is-paye .fz-montant:not(.is-texte) { color: var(--success); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-montant.is-texte { font-family: inherit; font-size: 18px; font-weight: 650; line-height: 1.3; letter-spacing: -0.01em; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-caisse .gc-bill-unit { margin: -6px 0 0; font-size: 13px; color: var(--muted); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fz-payer { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 0; }
-body:is(.staff-mode, .admin-mode) .fx-modal .fz-payer .res-status-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; min-height: 44px; padding: 0 10px; border: 1px solid var(--control-border); border-radius: 8px; background: var(--surface); color: var(--text); font-size: 14px; font-weight: 600; white-space: nowrap; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-payer .res-status-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; min-height: 40px; padding: 0 10px; border: 1px solid var(--control-border); border-radius: 8px; background: var(--surface); color: var(--text); font-size: 14px; font-weight: 600; white-space: nowrap; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fz-payer .res-status-btn:hover:not(:disabled) { background: var(--subtle); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fz-payer .res-status-btn.is-suivant:not([aria-pressed='true']) { border-color: var(--console-selected); background: var(--console-selected); color: var(--console-selected-text); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fz-payer .res-status-btn.is-suivant:not([aria-pressed='true']):hover:not(:disabled) { background: var(--console-selected); filter: brightness(0.93); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fz-payer .res-status-btn[aria-pressed='true'] { border-color: var(--success); background: var(--success-soft); color: var(--success); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fz-payer .res-status-btn svg { width: 15px; height: 15px; flex: none; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fz-desencaisser { justify-self: start; }
+/* Paye : annuler l encaissement et corriger le montant, deux petits boutons
+   sur une ligne ; le formulaire du montant s ouvre dessous. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-caisse-apres { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-caisse-apres .pos-encaisse { flex: 0 1 auto; margin: 0; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-caisse-apres .pos-encaisse:has(details[open]) { flex: 1 1 100%; order: 2; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-caisse-apres .pos-encaisse-corriger > summary { display: inline-flex; align-items: center; min-height: 36px; padding: 0 12px; border: 1px solid var(--control-border); border-radius: 8px; background: var(--surface); color: var(--text); font-size: 13.5px; font-weight: 600; list-style: none; cursor: pointer; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-caisse-apres .pos-encaisse-corriger > summary::-webkit-details-marker { display: none; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-caisse-apres .pos-encaisse-corriger > summary:hover { background: var(--subtle); }
+@media (pointer: coarse) { body:is(.staff-mode, .admin-mode) .fx-modal .fz-caisse-apres .pos-encaisse-corriger > summary { min-height: 44px; } }
 body:is(.staff-mode, .admin-mode) .fx-modal .fz-caisse .pos-encaisse { margin: 0; }
-body:is(.staff-mode, .admin-mode) .fx-modal .fz-caisse .gc-bill-lines { display: grid; gap: 8px; margin: 2px 0 0; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-caisse .gc-bill-lines { display: grid; gap: 6px; margin: 0; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fz-caisse .gc-bill-lines > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 12px; padding: 0; border: 0; }
-body:is(.staff-mode, .admin-mode) .fx-modal .fz-caisse .gc-bill-lines dt { font-size: 14px; font-weight: 600; color: var(--text); }
-body:is(.staff-mode, .admin-mode) .fx-modal .fz-caisse .gc-bill-lines dt small { display: block; font-size: 13px; font-weight: 400; color: var(--muted); }
-body:is(.staff-mode, .admin-mode) .fx-modal .fz-caisse .gc-bill-lines dd { margin: 0; font-size: 14px; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-caisse .gc-bill-lines dt { font-size: 13.5px; font-weight: 600; color: var(--text); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-caisse .gc-bill-lines dt small { display: inline; margin-left: 6px; font-size: 13px; font-weight: 400; color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-caisse .gc-bill-lines dd { margin: 0; font-size: 13.5px; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fz-caisse .pos-note { margin: 0; font-size: 13px; color: var(--muted); }
 
 /* == LE CLIENT : le numero et l adresse se touchent ; ce qui manque, une
    ligne ; d ou vient le dossier. == */
-body:is(.staff-mode, .admin-mode) .fx-modal .fx-client { display: grid; gap: 8px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-client { display: grid; gap: 4px; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fx-contact { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
-body:is(.staff-mode, .admin-mode) .fx-modal .fx-contact li { display: flex; align-items: center; gap: 10px; min-width: 0; font-size: 14.5px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-contact li { display: flex; align-items: center; gap: 10px; min-width: 0; font-size: 14px; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fx-contact svg { flex: none; color: var(--muted); }
-body:is(.staff-mode, .admin-mode) .fx-modal .fx-contact a { display: inline-flex; align-items: center; min-height: 36px; min-width: 0; overflow-wrap: anywhere; color: var(--accent-strong); font-weight: 600; text-decoration: none; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-contact a { display: inline-flex; align-items: center; min-height: 32px; min-width: 0; overflow-wrap: anywhere; color: var(--accent-strong); font-weight: 600; text-decoration: none; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fx-contact a:hover { text-decoration: underline; text-underline-offset: 3px; }
-body:is(.staff-mode, .admin-mode) .fx-modal .fx-client .fx-vide { margin: 0; font-size: 14.5px; color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-client .fx-vide { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; margin: 0; font-size: 14px; color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-client .fz-ajouter-contact { min-height: 32px; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fx-origine { margin: 0; font-size: 13px; color: var(--muted); }
 
 /* L historique : un pli, son titre et son chevron sur une ligne. */
-body:is(.staff-mode, .admin-mode) .fx-modal .fx-historique > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 28px; margin: 0; padding: 0; cursor: pointer; list-style: none; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-historique > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 32px; margin: 0; padding: 0; cursor: pointer; list-style: none; }
 
 /* == AU TELEPHONE : la fiche garde tout, en plus serre. Les gestes de
    l en-tete tiennent sur une rangee (leurs mots courts), le montant et les
    heures un cran plus petits. == */
 @media (max-width: 760px) {
-  body:is(.staff-mode, .admin-mode) .fx-modal .edit-modal-head { grid-template-columns: minmax(0, 1fr); gap: 10px 8px; padding: 12px 14px 12px; }
+  body:is(.staff-mode, .admin-mode) .fx-modal .edit-modal-head { grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 10px 12px 10px; }
+  body:is(.staff-mode, .admin-mode) .fx-modal :is(.dossier-title-row, .fz-tete-droite, .fx-chiffres, .fx-outils) { grid-area: auto; grid-column: 1; }
   body:is(.staff-mode, .admin-mode) .fx-modal .fz-tete-droite { order: -1; justify-content: space-between; }
   body:is(.staff-mode, .admin-mode) .fx-modal .edit-modal-body { padding: 12px 12px 20px; }
-  body:is(.staff-mode, .admin-mode) .fx-modal .dossier-title { font-size: 19px; }
+  body:is(.staff-mode, .admin-mode) .fx-modal .dossier-title { font-size: 18px; }
   body:is(.staff-mode, .admin-mode) .fx-modal .dossier-tabs .tab { padding: 0 12px; }
-  body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres { gap: 2px 20px; margin-top: 8px; }
-  body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .dossier-fact:not(.fx-joueurs) strong, body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fx-nombre { font-size: 28px; }
-  body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fx-formule:not(.is-carte) strong { font-size: 22px; }
-  body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fx-formule.is-carte strong { font-size: 16px; }
+  body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres { gap: 0 18px; margin: 0; }
+  body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .dossier-fact:not(.fx-joueurs) strong, body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fx-nombre { font-size: 26px; }
+  body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fx-formule strong { font-size: 22px; }
   body:is(.staff-mode, .admin-mode) .fx-modal .dossier-facts { display: block; }
-  body:is(.staff-mode, .admin-mode) .fx-modal .fx-outils { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); grid-auto-flow: column; gap: 6px; }
-  body:is(.staff-mode, .admin-mode) .fx-modal .fx-outil { gap: 6px; padding: 0 4px; font-size: 13px; }
-  body:is(.staff-mode, .admin-mode) .fx-modal .fx-outil svg { display: none; }
+  body:is(.staff-mode, .admin-mode) .fx-modal .fx-outils { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 0; }
+  body:is(.staff-mode, .admin-mode) .fx-modal .fx-outils .fx-outil { min-height: 40px; padding: 0 4px; background: var(--fz-fond); font-size: 13px; }
+  body:is(.staff-mode, .admin-mode) .fx-modal .fz-fin { justify-content: center; margin: 0; }
   body:is(.staff-mode, .admin-mode) .fx-modal .fz-jauge i { display: none; }
   body:is(.staff-mode, .admin-mode) .fx-modal .fz-jauge span { margin-left: 0; }
-  body:is(.staff-mode, .admin-mode) .fx-modal .fz-arrivee { padding: 0 0 10px; }
+  body:is(.staff-mode, .admin-mode) .fx-modal .fz-arrivee { padding: 0 0 8px; }
   body:is(.staff-mode, .admin-mode) .fx-modal .fz-arrivee-ligne { flex-basis: 100%; }
-  body:is(.staff-mode, .admin-mode) .fx-modal .fz-arrivee.is-fait { padding: 0 10px 0 0; }
+  body:is(.staff-mode, .admin-mode) .fx-modal .fz-arrivee.is-fait { padding: 0 8px 0 0; }
   body:is(.staff-mode, .admin-mode) .fx-modal .fz-arrivee.is-fait .fz-arrivee-ligne { flex-basis: 0; }
   /* Dans Modifier, le formulaire redit l heure et les joueurs : l en-tete garde le nom. */
   body:is(.staff-mode, .admin-mode) .fx-modal.is-edition :is(.fx-chiffres, .fz-faits) { display: none; }
-  body:is(.staff-mode, .admin-mode) .fx-modal .fz-arrivee > :is(.fz-bouton, .fx-appel) { margin-left: 10px; }
-  body:is(.staff-mode, .admin-mode) .fx-modal .fx-outil.fx-annuler { margin-left: 0; }
-  body:is(.staff-mode, .admin-mode) .fx-modal .fx-outil .fz-long { display: none; }
-  body:is(.staff-mode, .admin-mode) .fx-modal .fx :is(.fz-carte, .fx-historique, .gc-notes, .fx-retard) { padding: 14px; }
-  body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .gc-step { grid-template-columns: 28px 50px 52px minmax(0, 1fr); gap: 10px; }
-  body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .gc-step-time { font-size: 20px; }
-  body:is(.staff-mode, .admin-mode) .fx-modal .fz-photo { width: 52px; height: 40px; }
+  body:is(.staff-mode, .admin-mode) .fx-modal .fz-arrivee > :is(.fz-bouton, .fx-appel) { margin: 0 0 0 8px; min-height: 40px; }
+  body:is(.staff-mode, .admin-mode) .fx-modal .fx :is(.fz-carte, .fx-historique, .gc-notes, .fx-retard) { padding: 12px; }
+  body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .gc-step { grid-template-columns: 24px 46px 40px minmax(0, 1fr); gap: 8px; }
+  body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .gc-step-time { font-size: 17px; }
+  body:is(.staff-mode, .admin-mode) .fx-modal .fz-photo { width: 40px; height: 30px; }
   body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .gc-step :is(.gc-step-state, .gc-step-price) { grid-column: 4; }
-  body:is(.staff-mode, .admin-mode) .fx-modal .fz-montant { font-size: 40px; }
+  body:is(.staff-mode, .admin-mode) .fx-modal .fz-montant { font-size: 36px; }
 }
 @media (prefers-reduced-motion: reduce) {
   body:is(.staff-mode, .admin-mode) .fx-modal :is(.fz-rond, .fx-programme .gc-check, .fx-outil, .fz-bouton, .fx-appel) { transition: none; }
+}
+/* UN ECRAN PEU HAUT (une tablette couchee, un portable de 800 px) : la fiche se
+   serre d un cran pour tenir sur un seul ecran (Ansar, 2026-11-15 : « tout one
+   shot »). */
+@media (min-width: 900px) and (max-height: 800px) {
+  body:is(.staff-mode, .admin-mode) .fx-modal .edit-modal-head { padding: 10px 20px 8px; }
+  body:is(.staff-mode, .admin-mode) .fx-modal .edit-modal-body { padding: 10px 20px 12px; }
+  body:is(.staff-mode, .admin-mode) .fx-modal .fx, body:is(.staff-mode, .admin-mode) .fx-modal .fx-colonnes, body:is(.staff-mode, .admin-mode) .fx-modal :is(.fx-principal, .fx-cote) { gap: 8px; }
+  body:is(.staff-mode, .admin-mode) .fx-modal .fx :is(.fz-carte, .fx-historique, .gc-notes, .fx-retard) { padding: 10px 14px; }
+  body:is(.staff-mode, .admin-mode) .fx-modal .fm .fm-pied.dossier-actions { bottom: -12px; margin: 12px -20px -12px; }
+}
+/* AU DOIGT, 44 px : pose apres les regles du telephone, qui ont le meme poids
+   (les gestes de l en-tete et ceux de la ligne d arrivee y tombaient a 40 px,
+   le titre du pli Historique a 28 px). */
+@media (pointer: coarse) {
+  body:is(.staff-mode, .admin-mode) .fx-modal .fx-outils .fx-outil, body:is(.staff-mode, .admin-mode) .fx-modal .fz-fin .fx-annuler, body:is(.staff-mode, .admin-mode) .fx-modal .fz-arrivee > :is(.fz-bouton, .fx-appel), body:is(.staff-mode, .admin-mode) .fx-modal .fx-historique > summary { min-height: 44px; }
 }
 
 /* L ONGLET MODIFIER, EN BLOCS COMME LA FICHE (2026-10-27, Movsar : « surtout
@@ -19802,13 +19861,15 @@ body:is(.staff-mode, .admin-mode) .fx-modal .fx-historique > summary { display: 
    ou supprimer ; en bas, colle a la fenetre, ce qui partira et
    « Enregistrer ». Pas de trait entre les rangees. */
 body:is(.staff-mode, .admin-mode) .fx-modal .fm .dossier-edit-lock { min-width: 0; margin: 0; padding: 0; border: 0; }
-body:is(.staff-mode, .admin-mode) .fx-modal .fm-colonnes { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
-body:is(.staff-mode, .admin-mode) .fx-modal :is(.fm-principal, .fm-cote) { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-content: start; min-width: 0; }
-body:is(.staff-mode, .admin-mode) .fx-modal :is(.fm-principal, .fm-cote) > :is(section, details) { margin: 0; padding: 16px 18px; border: 0; border-radius: var(--fz-r); background: var(--fz-carte); box-shadow: var(--fz-ombre); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-colonnes { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+body:is(.staff-mode, .admin-mode) .fx-modal :is(.fm-principal, .fm-cote) { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-content: start; min-width: 0; }
+body:is(.staff-mode, .admin-mode) .fx-modal :is(.fm-principal, .fm-cote) > :is(section, details) { margin: 0; padding: 12px 14px; border: 0; border-radius: var(--fz-r); background: var(--fz-carte); box-shadow: var(--fz-ombre); }
 @media (min-width: 900px) {
   body:is(.staff-mode, .admin-mode) .fx-modal .fm-colonnes { grid-template-columns: minmax(0, 1.62fr) minmax(300px, 1fr); align-items: start; }
+  /* Le prix reste a l ecran quand le programme defile. */
+  body:is(.staff-mode, .admin-mode) .fx-modal .fm-cote { position: sticky; top: 14px; }
 }
-body:is(.staff-mode, .admin-mode) .fx-modal .fm-titre { margin: 0 0 12px; font-size: 15px; font-weight: 650; line-height: 1.4; color: var(--text); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-titre { margin: 0 0 8px; font-size: 14.5px; font-weight: 650; line-height: 1.4; color: var(--text); }
 
 /* Les champs : libelle 12 px au-dessus, valeur 44 px. */
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-champ { display: grid; align-content: start; gap: 6px; min-width: 0; }
@@ -19821,10 +19882,10 @@ body:is(.staff-mode, .admin-mode) .fx-modal .fm .field-hint { margin: 0; font-si
 
 /* Jour, arrivee, joueurs : les valeurs du haut, en grand, sur une ligne. */
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-quand { display: grid; grid-auto-flow: column; grid-template-columns: minmax(160px, 1.15fr); grid-auto-columns: minmax(0, 1fr); gap: 12px 14px; align-items: start; }
-body:is(.staff-mode, .admin-mode) .fx-modal .fm-quand .input { min-height: 48px; font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-quand .input { min-height: 44px; font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-quand .fm-indice { grid-column: 1 / -1; grid-row: 2; }
-body:is(.staff-mode, .admin-mode) .fx-modal .fm-stepper { display: grid; width: 100%; height: 50px; grid-template-columns: 46px minmax(48px, 1fr) 46px; }
-body:is(.staff-mode, .admin-mode) .fx-modal .fm-stepper .es-step { width: 46px; height: 48px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-stepper { display: grid; width: 100%; height: 46px; grid-template-columns: 44px minmax(48px, 1fr) 44px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-stepper .es-step { width: 44px; height: 44px; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-stepper .input { min-height: 48px; padding: 0 4px; border: 0; border-inline: 1px solid var(--line); border-radius: 0; background: transparent; text-align: center; font-size: 17px; font-weight: 650; box-shadow: none; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-stepper .input:focus { outline: none; }
 
@@ -19834,26 +19895,26 @@ body:is(.staff-mode, .admin-mode) .fx-modal .dossier-formula-origin strong { fon
 /* La formule du dossier se change ici (2026-10-27) : un menu, toutes les
    formules du centre comme a la creation ; une formule hors regles ce jour-la
    le dit sous le menu, du ton de l avis « heures recalculees ». */
-body:is(.staff-mode, .admin-mode) .fx-modal .fm-formule { max-width: 440px; margin: -2px 0 16px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-formule { max-width: 440px; margin: -2px 0 10px; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm .fm-formule .field-hint.is-hors { font-size: 13px; font-weight: 600; color: var(--warning); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-replan { display: none; margin: -4px 0 12px; font-size: 13px; font-weight: 600; line-height: 1.45; color: var(--warning); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-programme.is-replan .fm-replan { display: block; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-programme.is-replan .fm-heure:not(.is-vide) { color: var(--faint); text-decoration: line-through; text-decoration-thickness: 1px; }
-body:is(.staff-mode, .admin-mode) .fx-modal .fm-acts { display: grid; gap: 10px; }
-body:is(.staff-mode, .admin-mode) .fx-modal .fm-act.dossier-activity { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 14px; margin: 0; padding: 14px; border: 0; border-radius: 10px; background: var(--fz-fond); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-acts { display: grid; gap: 8px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-act.dossier-activity { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 12px; margin: 0; padding: 10px 12px; border: 0; border-radius: 8px; background: var(--fz-fond); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-act-heure { display: grid; align-content: start; gap: 3px; }
-body:is(.staff-mode, .admin-mode) .fx-modal .fm-act-heure .fz-photo { margin-top: 6px; }
-body:is(.staff-mode, .admin-mode) .fx-modal .fm-heure { font-family: var(--fz-anton); font-size: 22px; font-weight: 400; line-height: 1; letter-spacing: 0.012em; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--text); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-act-heure .fz-photo { margin-top: 5px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-heure { font-family: var(--fz-anton); font-size: 18px; font-weight: 400; line-height: 1; letter-spacing: 0.012em; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--text); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-heure.is-suite { font-family: var(--font-ui); font-size: 12.5px; font-weight: 500; letter-spacing: 0; color: var(--muted); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-heure.is-vide { font-family: var(--font-ui); font-size: 13px; font-weight: 600; letter-spacing: 0; color: var(--muted); }
-body:is(.staff-mode, .admin-mode) .fx-modal .fm-act-corps { display: grid; gap: 12px; min-width: 0; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-act-corps { display: grid; gap: 8px; min-width: 0; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-act-tete { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; min-height: 22px; }
-body:is(.staff-mode, .admin-mode) .fx-modal .fm-act-tete h5 { margin: 0; font-size: 16px; font-weight: 650; line-height: 1.35; color: var(--text); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-act-tete h5 { margin: 0; font-size: 15px; font-weight: 650; line-height: 1.35; color: var(--text); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-act-detail { font-size: 13px; line-height: 1.4; color: var(--muted); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-retirer { align-self: center; margin-left: auto; min-height: 32px; padding: 0 10px; border: 0; border-radius: 6px; background: none; color: var(--muted); font-size: 13px; font-weight: 500; cursor: pointer; transition: background-color 150ms ease, color 150ms ease; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-retirer:hover { background: var(--danger-soft); color: var(--danger); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-retirer:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 2px; }
-body:is(.staff-mode, .admin-mode) .fx-modal .fm-act-reglages { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px 20px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-act-reglages { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px 16px; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-act-reglages > .staff-arcade-options { flex: 1 1 100%; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm .dossier-activity-count { display: grid; justify-content: start; gap: 6px; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm .dossier-activity-count .qb-opt-legend { font-size: 12px; font-weight: 500; line-height: 1.3; color: var(--muted); }
@@ -19880,7 +19941,7 @@ body:is(.staff-mode, .admin-mode) .fx-modal .fm :is(.dossier-laser-schedule, .do
 body:is(.staff-mode, .admin-mode) .fx-modal .fm :is(.dossier-laser-schedule, .dossier-price-detail, .fm-autres)[open] > summary::after { margin-top: 3px; transform: rotate(-135deg); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm .dossier-laser-schedule > summary .muted { order: 2; }
 
-body:is(.staff-mode, .admin-mode) .fx-modal .fm-ajouts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-ajouts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-ajouts-titre { margin-right: 4px; font-size: 12px; font-weight: 500; color: var(--muted); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-ajout { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 14px 0 11px; border: 1px solid var(--line-strong); border-radius: 999px; background: none; color: var(--text); font-size: 13px; font-weight: 500; cursor: pointer; transition: background-color 150ms ease, border-color 150ms ease; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-ajout svg { flex: none; color: var(--muted); }
@@ -19925,7 +19986,7 @@ body:is(.staff-mode, .admin-mode) .fx-modal .fm-x-tete + .fm-x-ajouts { margin-t
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-prix-champs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-euro { position: relative; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-euro .input { padding-right: 30px; font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; }
-body:is(.staff-mode, .admin-mode) .fx-modal .fm-prix-champs .fm-euro .input { min-height: 52px; font-family: var(--fz-anton); font-size: 26px; font-weight: 400; letter-spacing: 0.012em; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-prix-champs .fm-euro .input { min-height: 46px; font-family: var(--fz-anton); font-size: 24px; font-weight: 400; letter-spacing: 0.012em; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-euro > span { position: absolute; top: 50%; right: 12px; transform: translateY(-50%); font-size: 14px; color: var(--muted); pointer-events: none; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-prix-etat { margin: 10px 0 0; font-size: 13px; line-height: 1.45; color: var(--muted); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm :is(.fm-prix-etat, .fm-recalculer)[hidden] { display: none; }
@@ -19940,7 +20001,7 @@ body:is(.staff-mode, .admin-mode) .fx-modal .fm .edit-prix-detail b { font-weigh
 
 /* Le client : ses champs l un sous l autre, puis l occasion et les
    accompagnants (un compteur court, pas une ligne entiere). */
-body:is(.staff-mode, .admin-mode) .fx-modal .fm-client { display: grid; gap: 12px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-client { display: grid; gap: 8px; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-client .fm-titre { margin: 0; }
 /* Le contact se replie : ce pli suit « Annuler ou supprimer », en plus discret. */
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-pli > summary { display: flex; align-items: center; gap: 10px; min-height: 40px; cursor: pointer; list-style: none; font-size: 13.5px; font-weight: 600; color: var(--text); }
@@ -19962,7 +20023,31 @@ body:is(.staff-mode, .admin-mode) .fx-modal .fm-autres .es-lien:hover { backgrou
 
 /* La barre du bas : ce qui partira, puis Fermer et Enregistrer. Elle reste
    visible pendant qu on fait defiler la fiche. */
-body:is(.staff-mode, .admin-mode) .fx-modal .fm .fm-pied.dossier-actions { position: sticky; bottom: -24px; z-index: 3; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 20px; margin: 14px -24px -24px; padding: 12px 24px; border-top: 1px solid var(--line); background: var(--surface); box-shadow: 0 -8px 20px -16px rgb(0 0 0 / 0.3); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .fm-pied.dossier-actions { position: sticky; bottom: -18px; z-index: 3; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 20px; margin: 12px -20px -18px; padding: 10px 20px; border-top: 1px solid var(--line); background: var(--surface); box-shadow: 0 -8px 20px -16px rgb(0 0 0 / 0.3); }
+/* UNE PISTE DEJA PRISE A L HEURE DU BOWLING se voit avant de la cocher (bord en
+   tirets, fond de page) ; cochee quand meme, elle garde un liseré rouge. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .lane-chip.is-prise:not(.is-on) { border-style: dashed; background: var(--fz-fond); color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .lane-chip.is-prise.is-on { outline: 2px solid var(--danger); outline-offset: 1px; }
+/* « Seulement ces pistes, à la main » : une case a cocher, pas un champ. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .lane-main { align-self: flex-start; gap: 8px; width: auto; min-height: 32px; margin-top: 8px; padding: 0; border: 0; background: none; font-size: 13.5px; color: var(--text); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .lane-main::before { content: ''; flex: none; width: 18px; height: 18px; border: 1.5px solid var(--control-border); border-radius: 5px; background: var(--surface); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .lane-main.is-on { background: none; color: var(--text); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .lane-main.is-on::before { border-color: var(--console-selected); background: var(--console-selected) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='white' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m3.5 8.5 3 3 6-7'/%3E%3C/svg%3E") center / 12px no-repeat; }
+@media (pointer: coarse) { body:is(.staff-mode, .admin-mode) .fx-modal .fm .lane-main { min-height: 44px; } }
+/* LE VERDICT AVANT LE CLIC (2026-11-15) : au-dessus de ce qui partira, sur
+   toute la largeur de la barre. Un aplat quand quelque chose coince, une
+   ligne discrete quand tout passe. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-verdict { flex: 0 0 100%; order: -1; margin: 0; font-size: 13.5px; font-weight: 600; line-height: 1.4; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-verdict[hidden] { display: none; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-verdict.is-calcul { font-weight: 500; color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-verdict.is-ok { color: var(--success); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-verdict:is(.is-attention, .is-refus) { padding: 8px 12px; border-radius: 8px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-verdict.is-attention { background: var(--warning-soft); color: var(--text); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-verdict.is-refus { background: var(--danger-soft); color: var(--danger); }
+/* Le verdict a jour donne les heures du planning : elles ne sont plus barrees. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-programme.a-verdict .fm-replan { display: none; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-programme.a-verdict.is-replan .fm-heure:not(.is-vide) { color: inherit; text-decoration: none; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-heures { display: contents; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-modifs { flex: 1 1 280px; min-width: 0; margin: 0; font-size: 13px; line-height: 1.5; color: var(--text); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-modifs.is-vide { color: var(--muted); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-modifs b { margin-right: 6px; font-weight: 650; }

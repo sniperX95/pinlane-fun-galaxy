@@ -251,9 +251,10 @@ async function main() {
           cases: [...document.querySelectorAll('#posOverlay .gc-step .gc-check')].filter(visible).length,
           pas: [...document.querySelectorAll('#posOverlay .gc-step')].filter(visible).length,
           faits: faits.length,
-          // An activity's own participant count is required even when equal
-          // to the visitors in the header. All other header facts, and any
-          // duplicate visitor count outside activity details, remain banned.
+          // Since the rebuilt sheet (2026-11-15) an activity detail repeats
+          // the participant count only when it differs from the group's
+          // (checked below). All other header facts, and any duplicate
+          // visitor count outside the details listed here, remain banned.
           redites: faits.filter((f) => {
             if (!/^\d+\s+(joueurs?|enfants?)$/.test(f)) return corps.includes(f);
             const copie=body.cloneNode(true);
@@ -261,6 +262,7 @@ async function main() {
             return copie.textContent.includes(f);
           }),
           effectifsActivites:[...body.querySelectorAll('.gc-step-what > small')].map(el=>(el.textContent.match(/^(\d+) joueurs?/)||[])[1]).filter(Boolean),
+          paxGroupe:Math.trunc(Number(state.selectedRes && state.selectedRes.pax)||0),
         };
       });
     };
@@ -285,37 +287,42 @@ async function main() {
     ok(infos.liens <= infos.pas, `« Infos » : ${infos.liens} liens vers le planning, au plus un par activite (${infos.pas})`);
     ok(infos.pas > 0 && infos.cases === infos.pas, `« Infos » : chaque activite du programme a sa case (${infos.cases} cases pour ${infos.pas} activites)`);
     ok(infos.redites.length === 0, `« Infos » : ${infos.redites.length} fait de l en-tete recopie dans le corps${infos.redites.length ? ' : ' + infos.redites.join(' | ') : ''}`);
-    ok(infos.effectifsActivites.length>0&&infos.effectifsActivites.every(n=>Number(n)===11),'« Infos » : les activites indiquent leurs11 joueurs, independamment de l effectif global');
+    // LA FICHE REFAITE (2026-11-15, Ansar : « trop d info [...] faut tout one
+    // shot ») : le nombre de joueurs d une activite ne s ecrit que s il differe
+    // de celui du groupe, deja en grand dans l en-tete.
+    ok(infos.pas>0&&infos.paxGroupe>0&&infos.effectifsActivites.every(n=>Number(n)!==infos.paxGroupe),`« Infos » : les activites ne redisent pas les ${infos.paxGroupe} joueurs du groupe (${infos.effectifsActivites.join(', ')||'aucun nombre'} pour ${infos.pas} activite(s))`);
     const modif = await mesureOnglet('modifier');
     ok(modif.faits >= 2, `« Modifier » : l en-tete se lit en ${modif.faits} faits (sans decoupe, « aucune redite » ne prouverait rien)`);
     ok(modif.hauteur <= modif.plafond && modif.corpsDefilable, `« Modifier » : ${modif.hauteur}px dans le plafond du viewport ${modif.plafond}px, corps defilable`);
     ok(modif.redites.length === 0, `« Modifier » : ${modif.redites.length} fait de l en-tete recopie dans le corps${modif.redites.length ? ' : ' + modif.redites.join(' | ') : ''}`);
 
-    // La composition neutre conserve les actions et les groupes plats.
-    // Les separators gardent la hierarchie sans imposer un fond decoratif.
+    // LA FICHE REFAITE (2026-11-15) n a plus de rangee d etats : la ligne
+    // d arrivee porte « Arrivé » dans le programme, les « Payé » vivent dans la
+    // caisse. Ses groupes sont des blocs poses sur le fond du corps, sans trait :
+    // chacun a son fond, et un espace le separe du precedent de sa colonne.
     const relief = await page.evaluate(() => {
       openPos(state.reservations[0].id); setTab('details');
       const transparent = (v) => !v || v === 'transparent' || /rgba\([^)]*,\s*0\)/.test(v);
-      const act = document.querySelector('#posOverlay .pos-act');
-      // LA FICHE SOBRE (2026-10-12) range les groupes en deux colonnes (le
-      // programme et les notes, puis l addition et le client) : chacun est
-      // plat, et chacun se separe du precedent de sa colonne par un filet.
+      const visible = (el) => !!el && el.checkVisibility() && el.getBoundingClientRect().width > 0;
+      // Deux colonnes : les notes et le programme, puis la caisse, le client
+      // et l historique.
       const colonnes = [...document.querySelectorAll('#posOverlay .pos-sheet :is(.fx-principal, .fx-cote)')];
       const groupes = colonnes.flatMap((c) => [...c.children]);
       const suivants = colonnes.flatMap((c) => [...c.children].slice(1));
+      const fondCorps = getComputedStyle(document.querySelector('#posOverlay .edit-modal-body')).backgroundColor;
       return {
-        actPresent: !!act && act.checkVisibility() && act.getBoundingClientRect().width > 0,
+        actPresent: visible(document.querySelector('#posOverlay .fx-programme .fz-arrivee-ligne')) && visible(document.querySelector('#posOverlay .fz-caisse .fz-payer')),
         colonnes: colonnes.length,
         groupes: groupes.length,
-        groupesAvecFond: groupes.filter((g) => !transparent(getComputedStyle(g).backgroundColor)).length,
+        groupesEnBloc: groupes.filter((g) => { const fond = getComputedStyle(g).backgroundColor; return !transparent(fond) && fond !== fondCorps; }).length,
         suivants: suivants.length,
-        groupesAvecFilet: suivants.filter((g) => parseFloat(getComputedStyle(g).borderTopWidth) > 0).length,
+        groupesEspaces: suivants.filter((g) => g.getBoundingClientRect().top - g.previousElementSibling.getBoundingClientRect().bottom >= 8 && parseFloat(getComputedStyle(g).borderTopWidth) === 0).length,
       };
     });
     await page.waitForTimeout(160);
-    ok(relief.actPresent, 'le bloc d action reste present et visible dans la composition neutre');
-    ok(relief.groupes > 0 && relief.groupesAvecFond === 0, `les ${relief.groupes} groupes du corps sont plats (${relief.groupesAvecFond} avec fond)`);
-    ok(relief.colonnes === 2 && relief.suivants > 0 && relief.suivants === relief.groupesAvecFilet, `les ${relief.suivants} groupes qui en suivent un autre s en separent par un filet (${relief.colonnes} colonnes)`);
+    ok(relief.actPresent, 'les gestes d etat restent presents et visibles : la ligne d arrivee du programme, les « Payé » de la caisse');
+    ok(relief.groupes > 0 && relief.groupesEnBloc === relief.groupes, `les ${relief.groupes} groupes du corps sont des blocs poses sur le fond (${relief.groupesEnBloc} avec leur fond)`);
+    ok(relief.colonnes === 2 && relief.suivants > 0 && relief.suivants === relief.groupesEspaces, `les ${relief.suivants} groupes qui en suivent un autre s en separent par un espace, sans filet (${relief.groupesEspaces} espaces, ${relief.colonnes} colonnes)`);
 
     // LE DEPLIANT RANGE SANS SUPPRIMER. Sa hauteur propre grandit a l'ouverture,
     // meme lorsque le modal a atteint son plafond. Les quatre controles sont

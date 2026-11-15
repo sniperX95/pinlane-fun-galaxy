@@ -1573,6 +1573,7 @@ function refreshEditPreview() {
   // recopiee.
   const adviceEl = document.getElementById('editLanesHint');
   if (adviceEl) adviceEl.textContent = editLaneAdvice(dossierPourFormule(state.selectedRes), e);
+  peindrePistesPrises();
   peindreFormuleEdition();
   if (paxEl) paxEl.textContent = e.pax || 0;
   if (durationEl) durationEl.textContent = formatDurationLabel(e.duration || 0);
@@ -27696,11 +27697,16 @@ function renderGroupeEtapes(r, moment, options = {}) {
         ? `<span class="gc-check is-lecture${etape.fait ? ' is-on' : ''}" aria-hidden="true">${etape.fait ? ACTIVITY_CHECK_SVG : ''}</span>`
         : `<span class="gc-step-icon" aria-hidden="true">${renderActivityIcon(etape.activityId)}</span>`);
     if (enFiche) {
+      // UNE LIGNE PAR ACTIVITE, SANS REDITE (2026-11-15, Ansar : « trop d info, trop
+      // long [...] faut tout one shot ») : le nombre de joueurs ne s ecrit que s il
+      // differe de celui du groupe, deja en grand dans l en-tete.
+      const paxGroupe = Math.trunc(Number(r.pax) || 0);
+      const detailsFiche = details.replace(new RegExp(`^${paxGroupe} (?:joueurs?|enfants?)(?: · |$)`), '');
       return `<li class="gc-step is-${phase.cle}${index === focus ? ' is-focus' : ''}${cochable ? ' is-cochable' : ''}" style="--fz-act:${rvCouleur(etape.activityId || etape.nom)}"${cochable ? ` onclick="${appel}"` : ''}>
       ${repere}
       ${quand}
       ${ficheVisuelActivite(r, etape)}
-      <span class="gc-step-what">${lienPlanning(etape)}${details ? `<small>${joueursEnTete(escapeHtml(details))}</small>` : ''}</span>
+      <span class="gc-step-what">${lienPlanning(etape)}${detailsFiche ? `<small>${joueursEnTete(escapeHtml(detailsFiche))}</small>` : ''}</span>
       ${phase.mot ? `<span class="gc-step-state">${escapeHtml(phase.mot)}</span>` : ''}
       ${montant}
     </li>`;
@@ -29240,8 +29246,7 @@ function ficheCaisse(r, moment, droits) {
       ${argent ? `<p class="pos-act-money ${paid ? 'is-paid' : ''}">${argent}</p>` : '<h4 class="fx-titre">Prix</h4>'}
       ${addition.unite && !annule ? `<p class="gc-bill-unit">${addition.unite}</p>` : ''}
       ${boutons ? `<div class="res-status-row gc-sheet-states fz-payer">${boutons}</div>` : ''}
-      ${paid && droits.statut ? `<button type="button" class="fz-bouton fz-desencaisser" data-pl-focus="fiche.desencaisser.${Number(r.id)}" onclick="setReservationStatusDirect(${r.id}, 'arrived', event)">Annuler l’encaissement</button>` : ''}
-      ${paid ? renderGroupeEncaisseAbsence(r) : ''}
+      ${paid ? `<div class="fz-caisse-apres">${droits.statut ? `<button type="button" class="fz-bouton fz-desencaisser" data-pl-focus="fiche.desencaisser.${Number(r.id)}" onclick="setReservationStatusDirect(${r.id}, 'arrived', event)">Annuler l’encaissement</button>` : ''}${renderGroupeEncaisseAbsence(r)}</div>` : ''}
       ${addition.lignes.length || addition.etat.ajuste ? `<dl class="gc-bill-lines">${addition.lignes.map(l => `<div><dt>${escapeHtml(l.nom)}${l.detail ? ` <small>${escapeHtml(l.detail)}</small>` : ''}</dt><dd>${escapeHtml(l.montant || '')}</dd></div>`).join('')}
         ${addition.etat.ajuste ? `<div class="is-adjust"><dt>Prix ajusté <small>tarif ${escapeHtml(formatMoneyCentimes(addition.etat.reference))}</small></dt><dd>${addition.etat.ecart < 0 ? '−' : '+'}${escapeHtml(formatMoneyCentimes(Math.abs(addition.etat.ecart)))}</dd></div>` : ''}
       </dl>` : ''}
@@ -29265,7 +29270,7 @@ function ficheClient(r) {
   return `<section class="fx-bloc fx-client fz-carte" aria-label="Client">
       <h4 class="fx-titre">Client</h4>
       ${contacts ? `<ul class="fx-contact">${contacts}</ul>` : ''}
-      ${manque ? `<p class="fx-vide">${manque}</p>` : ''}
+      ${manque ? `<p class="fx-vide"><span>${manque}</span>${!r.phone && r.status !== 'cancelled' && ficheDroits(r).modifier ? `<button type="button" class="fz-bouton fz-ajouter-contact" data-pl-focus="fiche.contact.ajouter" onclick="modifierDepuisFiche('telephone', event)">Ajouter</button>` : ''}</p>` : ''}
       ${valide || origine !== 'Créée' ? `<p class="fx-origine">${escapeHtml(origine)}${creee ? ` le ${escapeHtml(creee)}` : ''}.</p>` : ''}
     </section>`;
 }
@@ -29300,14 +29305,21 @@ function ficheOutils(r, droits) {
     // Rouge quand la pastille de l en-tete dit « En retard », jamais autrement :
     // une demande a verifier garde sa pastille et un bouton neutre.
     const enRetard = getStaffDashboardStatusMeta(r).className === 'late';
-    boutons.push(`<button type="button" class="fx-outil fx-outil-retard${enRetard ? ' is-retard' : ''}" aria-expanded="${ouvert}" aria-controls="fxRetard${id}" data-pl-focus="fiche.retard.ouvrir.${id}" onclick="basculerRetardFiche(${id}, event)">${FICHE_ICONE_HORLOGE}${enRetard ? 'En retard' : 'Retard'}</button>`);
+    boutons.push(`<button type="button" class="fx-outil fx-outil-retard${enRetard ? ' is-retard' : ''}" aria-expanded="${ouvert}" aria-controls="fxRetard${id}" data-pl-focus="fiche.retard.ouvrir.${id}" onclick="basculerRetardFiche(${id}, event)">${FICHE_ICONE_HORLOGE}Retard</button>`);
   }
   boutons.push(renderNoteEquipeBouton(r));
-  if (droits.ecrire) boutons.push(`<button type="button" class="fx-outil comm-open-btn fx-message" onclick="openCommCenter(${id}, event)">${FICHE_ICONE_MESSAGE}<span>Message<span class="fz-long"> au client</span></span></button>`);
-  if (droits.annuler && r.status !== 'cancelled') boutons.push(`<button type="button" class="fx-outil fx-annuler" onclick="cancelRes(${id}, event)"><span>Annuler<span class="fz-long"> la réservation</span></span></button>`);
+  if (droits.ecrire) boutons.push(`<button type="button" class="fx-outil comm-open-btn fx-message" title="Message au client" onclick="openCommCenter(${id}, event)">${FICHE_ICONE_MESSAGE}<span>Message<span class="fz-long"> au client</span></span></button>`);
   const rangee = boutons.filter(Boolean);
   if (!rangee.length) return '';
   return `<div class="fx-outils" role="group" aria-label="Gestes du dossier">${rangee.join('')}</div>`;
+}
+
+// « ANNULER LA RESERVATION » N EST PAS UN GESTE DE RUSH (Ansar, 15/11, sur la
+// rangee de boutons encadres de l en-tete : « on dirait ia »). Il quitte
+// l en-tete : au bas de la colonne de droite, en texte, rouge au survol.
+function ficheAnnuler(r, droits) {
+  if (!droits.annuler || r.status === 'cancelled') return '';
+  return `<p class="fz-fin"><button type="button" class="fx-outil fx-annuler" onclick="cancelRes(${Number(r.id)}, event)">Annuler la réservation</button></p>`;
 }
 
 // Le retard ouvert depuis l en-tete : son panneau en tete du corps.
@@ -29335,7 +29347,7 @@ function renderNoteEquipeBouton(r) {
   const id = Number(r.id);
   if (!ficheDroitsNotes(r).peutAjouter) return '';
   const ouvert = notesEquipeOuvertes.has(id) || Boolean(notesEquipeBrouillons.get(id));
-  return `<button type="button" class="fx-outil gc-note-ouvrir" aria-expanded="${ouvert}" data-pl-focus="fiche.note.ouvrir.${id}" onclick="ouvrirNoteEquipe(${id}, event)">${FICHE_ICONE_NOTE}<span>Note<span class="fz-long"> pour l’équipe</span></span></button>`;
+  return `<button type="button" class="fx-outil gc-note-ouvrir" title="Note pour l’équipe" aria-expanded="${ouvert}" data-pl-focus="fiche.note.ouvrir.${id}" onclick="ouvrirNoteEquipe(${id}, event)">${FICHE_ICONE_NOTE}<span>Note<span class="fz-long"> pour l’équipe</span></span></button>`;
 }
 
 // LE RETARD, OUVERT JUSTE SOUS SON BOUTON : les minutes d un toucher, puis le
@@ -29369,11 +29381,13 @@ function basculerRetardFiche(id, ev) {
 
 // Toucher l heure ou les joueurs en tete de fiche ouvre « Modifier » sur ce
 // champ, pret a etre retape (2026-11-14).
-const FICHE_CHAMPS_MODIFIABLES = { heure: 'editStartInput', joueurs: 'editPaxInput' };
+const FICHE_CHAMPS_MODIFIABLES = { heure: 'editStartInput', joueurs: 'editPaxInput', telephone: 'editPhoneInput' };
 function modifierDepuisFiche(champ, ev) {
   if (ev) ev.stopPropagation();
   const cible = FICHE_CHAMPS_MODIFIABLES[champ];
   if (!cible || !ficheDroits().modifier) return;
+  // Le telephone vit dans le pli du contact : il s ouvre avec l onglet.
+  if (champ === 'telephone') editContactOuvert = true;
   if (state.activeTab !== 'modifier') setTab('modifier');
   const el = document.getElementById(cible);
   if (!el) return;
@@ -29416,6 +29430,7 @@ function renderPosDetails(r) {
         ${ficheCaisse(r, moment, droits)}
         ${ficheClient(r)}
         ${renderGroupeHistorique(r)}
+        ${ficheAnnuler(r, droits)}
       </aside>
     </div>
   </div>`;
@@ -29711,7 +29726,8 @@ function additionDuGroupe(r) {
     const joueursLaser = item => (item.activityId === 'laser_game' && connu(item) ? `${formatMoneyCentimes(Number(item.price) / participantsLigneProgramme(item, joueurs))} × ${participantsLigneProgramme(item, joueurs)}` : '');
     items.forEach(item => lignes.push({
       nom: nomActivite(item),
-      detail: [detailLigneProgramme(item, r), pistes(item), joueursLaser(item)].filter(Boolean).join(' · '),
+      // (ce que l activite achete se lit dans le programme, a cote : ici, le calcul seul)
+      detail: [pistes(item), joueursLaser(item)].filter(Boolean).join(' · '),
       montant: item.priceKnown && Number.isFinite(Number(item.price)) ? formatMoneyCentimes(item.price) : 'au comptoir',
     }));
   } else {
@@ -30606,6 +30622,11 @@ function editLaneAdvice(r, e) {
     return `${pistes(requis)} ${requis > 1 ? 'suffisent' : 'suffit'} pour cet effectif. Vous en avez attribué ${choisies} : votre choix est gardé tel quel. Décochez celles que vous voulez libérer.`;
   }
   if (choisies < requis) {
+    // (« elles seront complétées automatiquement » se lisait meme quand plus
+    // aucune piste n etait libre, et le clic refusait : 2026-11-15)
+    const jour = state.selectedRes && (!e.date || e.date === state.selectedRes.date) ? state.selectedRes : null;
+    const libres = jour ? getSuggestedEditLanes(requis, jour.date, debutBowlingEdition(r, e), Number(e.duration || jour.duration || 0), jour.id, e.lanesStr) : null;
+    if (jour && (!libres || libres.length < requis)) return `Cet effectif demande ${pistes(requis)}, et il n’y en a pas autant de libres à cette heure. Changez l’heure, la durée ou le nombre de joueurs.`;
     const manque = requis - choisies;
     return `Cet effectif demande ${pistes(requis)}. Il en manque ${manque} : ${manque > 1 ? 'elles seront complétées' : 'elle sera complétée'} automatiquement à l’enregistrement.`;
   }
@@ -31090,6 +31111,10 @@ function prixSuiviEdition(estime) {
   const e = state.editState;
   const r = state.selectedRes;
   if (!e || !r) return 0;
+  // LE PRIX QUE LE SERVEUR ECRIRA (2026-11-15) : quand il suit, le verdict a
+  // jour le connait, et c est lui que le champ annonce.
+  const ecrit = prixDuVerdictEdition();
+  if (ecrit != null) return ecrit;
   const formule = prixFormuleEdition();
   if (formule != null) return formule;
   if (estime && estime.utilisable && editionChangeLePrix()) return Math.max(0, Math.round((estime.total + ajustementGarde(r)) * 100) / 100);
@@ -31309,7 +31334,10 @@ function renderEditFormuleBloc(r, formule, lignes, controls = {}) {
   // Une formule changee n a pas encore d heures : le serveur la place a
   // l enregistrement, celles de l ancienne ne disent rien d elle.
   const formuleChangee = formuleChangeeEdition();
-  const heures = formuleChangee ? new Map() : heuresDuProgrammeEnregistre(r);
+  // LES HEURES QUE LE PLANNING DONNERA (2026-11-15) : le verdict a jour les
+  // connait (le dossier que le serveur ecrirait) ; sans lui, celles d avant.
+  const ecritVerdict = dossierEcritDuVerdict();
+  const heures = ecritVerdict ? heuresDuProgrammeEnregistre(ecritVerdict) : formuleChangee ? new Map() : heuresDuProgrammeEnregistre(r);
   const plus = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
   const ajouts = [];
   const rangees = [...choix, ...supplement].map((choice) => {
@@ -31341,13 +31369,9 @@ function renderEditFormuleBloc(r, formule, lignes, controls = {}) {
     // L heure a gauche, comme dans Infos : la premiere en grand, les parties
     // suivantes dessous. Une activite libre le dit ; une activite ajoutee ici
     // n a pas encore d heure (le serveur la place a l enregistrement).
-    const etapes = heures.get(choice.id) || [];
-    const placees = etapes.filter(etape => etape.start !== null && etape.start !== undefined);
-    const heureHtml = placees.length
-      ? placees.slice(0, 3).map((etape, index) => `<span class="fm-heure${index ? ' is-suite' : ''}">${index === 2 && placees.length > 3 ? `+${placees.length - 2}` : escapeHtml(formatClockDisplay(etape.start))}</span>`).join('')
-      : `<span class="fm-heure is-vide">${etapes.some(etape => etape.libre) ? 'Libre' : '--:--'}</span>`;
+    const heureHtml = heuresActiviteHtml(heures.get(choice.id) || []);
     return `<section class="fm-act dossier-activity is-on" data-edit-activity="${escapeHtml(choice.id)}" aria-label="${escapeHtml(choice.label)}">
-      <div class="fm-act-heure"><span class="visually-hidden">Heure prévue : </span>${heureHtml}${ficheVisuelActivite(r, { activityId: choice.id, nom: choice.label })}</div>
+      <div class="fm-act-heure"><span class="visually-hidden">Heure prévue : </span><span class="fm-heures">${heureHtml}</span>${ficheVisuelActivite(r, { activityId: choice.id, nom: choice.label })}</div>
       <div class="fm-act-corps">
         <div class="fm-act-tete"><h5>${escapeHtml(choice.label)}</h5>${detail ? `<span class="fm-act-detail">${escapeHtml(detail)}</span>` : ''}<button type="button" class="dossier-remove-activity fm-retirer" aria-label="Retirer ${escapeHtml(choice.label)} de cette visite" onclick="toggleEditActivity('${escapeJsString(choice.id)}')">Retirer</button></div>
         <div class="fm-act-reglages">${renderActivityParticipantsControl(choice.id, 'edit', 'ecart')}${options}</div>
@@ -31426,7 +31450,7 @@ function renderEditPrix(r) {
     <div class="fm-prix-champs">
       <div class="fm-champ">
         <label class="lbl" for="editPriceInput">Total</label>
-        <div class="fm-euro"><input id="editPriceInput" class="input" type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(String(valeurChamp))}" oninput="setEditPrice(this.value)"><span aria-hidden="true">€</span></div>
+        <div class="fm-euro"><input id="editPriceInput" class="input" type="number" min="0" max="100000" step="0.01" inputmode="decimal" value="${escapeHtml(String(valeurChamp))}" oninput="setEditPrice(this.value)"><span aria-hidden="true">€</span></div>
       </div>
       <div class="fm-champ">
         <label class="lbl" for="editPricePerPerson">Par joueur</label>
@@ -31798,6 +31822,223 @@ function majModifsEdition() {
   }
   const programme = document.querySelector('#posOverlay .fm-programme');
   if (programme) programme.classList.toggle('is-replan', editionReplanifie());
+  demanderVerdictEdition();
+}
+
+// ---------------------------------------------------------------------------
+// LE VERDICT AVANT LE CLIC (2026-11-15, Ansar : « super intelligente pour pas
+// faire de la merde et tout autorisé sans cassé »). Un robot a tape dans
+// Modifier avec le vrai serveur derriere : une piste prise, un laser plein, un
+// prix au-dela du role, un minimum de formule ne se lisaient qu apres le clic,
+// et le prix annonce n etait pas toujours celui ecrit (49 EUR a l ecran, 39 en
+// base). Des qu une modification est en cours, la console demande au serveur ce
+// que « Enregistrer » ecrirait (api/staff-reservations, modifierABlanc : le meme
+// calcul, la meme ecriture, annulee) et le dit dans la barre du bas : ce qui ne
+// passera pas, ce qui passera autrement (d autres pistes, un planning qui ne
+// suit pas), sinon « Vérifié au planning ». Le programme montre les heures que
+// le planning donnera, et un prix qui suit prend celui du serveur. Rien n est
+// bloque : « Enregistrer » reste le geste, le serveur garde le dernier mot.
+// Sans reponse (hors ligne, serveur d avant), la console se tait.
+// ---------------------------------------------------------------------------
+function verdictEdition() {
+  if (!verdictEdition.etat) verdictEdition.etat = { pour: null, cle: '', jeton: 0, minuterie: 0, enCours: false, resultat: null };
+  return verdictEdition.etat;
+}
+
+// Le jour ecrit en entier, avec son annee quand ce n est pas celle en cours
+// (une annee mal touchee deplacait le groupe d un an sans que rien le dise).
+function jourLongEdition(iso) {
+  const jour = parseLocalDate(iso);
+  const autreAnnee = jour.getFullYear() !== parseLocalDate(todayStr()).getFullYear();
+  return jour.toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long', ...(autreAnnee ? { year: 'numeric' } : {}) });
+}
+
+// Ce que « Enregistrer » enverrait, tel quel (envoyerModificationReservation).
+function corpsModificationEdition(envoi) {
+  const base = envoi.versionDeBase;
+  const corps = {
+    ...buildReservationApiPayload(envoi.appliquer(base), { requiresLanes: envoi.requiresLanes, allowPastStart: true }),
+    ...(envoi.prixSuivi ? {} : { prixRaison: RAISON_PRIX_PAR_DEFAUT }),
+    ...(base.updatedAt ? { baseUpdatedAt: base.updatedAt } : {})
+  };
+  if (envoi.prixSuivi) delete corps.price;
+  return corps;
+}
+
+function demanderVerdictEdition() {
+  const v = verdictEdition();
+  const e = state.editState;
+  const r = state.selectedRes;
+  const oublier = () => { clearTimeout(v.minuterie); v.jeton += 1; v.cle = ''; v.enCours = false; v.resultat = null; };
+  if (!e || !r || state.activeTab !== 'modifier') { oublier(); v.pour = null; return; }
+  let envoi = null;
+  let corps = null;
+  let cle = '';
+  try {
+    if (resumeModifsEdition().length) {
+      envoi = preparerModificationEdition({ aBlanc: true });
+      corps = envoi.erreur ? null : corpsModificationEdition(envoi);
+      // (les pistes cochees comptent : le corps porte deja celles que la console propose)
+      cle = envoi.erreur ? `refus:${envoi.erreur}` : JSON.stringify([corps, envoi.lanesVoulues]);
+    }
+  } catch (erreur) { envoi = null; corps = null; cle = ''; }
+  if (v.pour === e && v.cle === cle) return;
+  oublier();
+  v.pour = e;
+  v.cle = cle;
+  if (!cle) { peindreVerdictEdition(); return; }
+  if (envoi.erreur) { v.resultat = { refus: envoi.erreur, lignes: [], ecrit: null, prixSuivi: false }; peindreVerdictEdition(); return; }
+  v.enCours = true;
+  const jeton = v.jeton;
+  peindreVerdictEdition();
+  v.minuterie = setTimeout(async () => {
+    let reponse = null;
+    try {
+      reponse = await apiRequest(API_ENDPOINTS.staffReservations, { method: 'POST', body: JSON.stringify({ dryRun: true, centerId: corps.centerId, modification: corps }) });
+    } catch (erreur) { reponse = null; }
+    if (jeton !== v.jeton || state.editState !== e) return;
+    v.enCours = false;
+    v.resultat = reponse && reponse.modification === true ? lireVerdictEdition(reponse, envoi) : null;
+    // Un prix qui suit prend celui que le serveur ecrira (prixSuiviEdition).
+    if (v.resultat && v.resultat.ecrit && v.resultat.prixSuivi) majEditPrixEstime();
+    peindreVerdictEdition();
+  }, 350);
+}
+
+function lireVerdictEdition(reponse, envoi) {
+  if (reponse.refus) {
+    // Un collegue a change le dossier : « Enregistrer » sait rejouer dessus.
+    if (reponse.refus.code === 'reservation_modifiee') return null;
+    return { refus: motifPourLeComptoir(reponse.refus.message) || 'le serveur n’a pas donné de motif.', lignes: [], ecrit: null, prixSuivi: false };
+  }
+  const ecrit = reponse.reservation;
+  const r = state.selectedRes;
+  if (!ecrit || !r) return null;
+  const lignes = [];
+  if (reponse.planNonRefait) lignes.push(`Le planning ne suivra pas : ${String(reponse.planNonRefait).replace(/\.$/, '')}.`);
+  else if (ecrit.validationStatus === 'staff_review' && r.validationStatus !== 'staff_review') lignes.push('Le planning ne sait pas placer ce créneau : la réservation passera en « à surveiller ».');
+  const voulues = envoi.lanesVoulues.join(', ');
+  const obtenues = (ecrit.lanes || []).join(', ');
+  if (!envoi.jourChange && envoi.requiresLanes && voulues && voulues !== obtenues) {
+    lignes.push(obtenues ? `Ce sera piste${(ecrit.lanes || []).length > 1 ? 's' : ''} ${obtenues}, pas ${voulues} : le créneau ne les laisse pas libres.` : 'Aucune piste ne sera attribuée.');
+  } else if (!envoi.jourChange && envoi.requiresLanes && obtenues && (ecrit.lanes || []).length < (r.lanes || []).length
+    && getEditBowlingCapacityNeed(dossierPourFormule(r), state.editState).bowlingCapacity.emergency) {
+    // LE GROUPE SERRE SUR MOINS DE PISTES (capacite de secours) : dit avant le clic.
+    const n = (ecrit.lanes || []).length;
+    const joueurs = getReservationActivityPlayers(ecrit, 'bowling');
+    lignes.push(`${joueurs} joueurs sur ${n > 1 ? `les pistes ${obtenues}` : `la seule piste ${obtenues}`} : il n’y en a pas d’autre de libre à cette heure.`);
+  }
+  const aPlacer = partiesLaserAPlacer(ecrit) - partiesLaserAPlacer(r);
+  if (aPlacer > 0) lignes.push(`${aPlacer} partie${aPlacer > 1 ? 's' : ''} de laser à placer au planning.`);
+  if (r.formuleId && !ecrit.formuleId) lignes.push('La formule devient une visite à la carte.');
+  // UN DOSSIER DEJA ENCAISSE DONT LE PRIX CHANGE : la caisse doit le savoir.
+  const prix = Number(ecrit.price);
+  const paye = Number(r.price) || 0;
+  if (r.status === 'paid' && !montantsMasques() && Number.isFinite(prix) && Math.round(prix * 100) !== Math.round(paye * 100)) {
+    const ecart = Math.round((prix - paye) * 100) / 100;
+    lignes.push(ecart > 0
+      ? `Déjà encaissé ${formatMoneyCentimes(paye)} : il restera ${formatMoneyCentimes(ecart)} à encaisser.`
+      : `Déjà encaissé ${formatMoneyCentimes(paye)} : ${formatMoneyCentimes(-ecart)} à rendre au client.`);
+  }
+  return { refus: '', lignes, ecrit, prixSuivi: envoi.prixSuivi === true };
+}
+
+// QUI TIENT DEJA UNE PISTE A L HEURE DU BOWLING (2026-11-15) : la piste prise se
+// voit avant de la cocher, avec le nom du groupe. Elle reste cochable (le
+// comptoir decide) : le verdict dit ce que le planning en fera.
+function occupantPisteEdition(piste) {
+  const e = state.editState;
+  const r = state.selectedRes;
+  if (!e || !r || (e.date && e.date !== r.date)) return null;
+  const conflit = lanesConflict(r.date, debutBowlingEdition(dossierPourFormule(r), e), Number(e.duration || r.duration || 0), [piste], r.id)[0];
+  return conflit ? String(conflit.name || 'un autre groupe') : null;
+}
+
+// L heure ou la duree changent sans re-rendu : les pistes prises se relisent en place.
+function peindrePistesPrises() {
+  document.querySelectorAll('#posOverlay .fm .lane-picker .lane-chip').forEach((bouton) => {
+    if (bouton.disabled) return;
+    const piste = Number(bouton.textContent);
+    const occupant = occupantPisteEdition(piste);
+    bouton.classList.toggle('is-prise', Boolean(occupant));
+    if (occupant) {
+      bouton.title = `Prise par ${occupant} à cette heure`;
+      bouton.setAttribute('aria-label', `Piste ${piste}, prise par ${occupant} à cette heure`);
+    } else {
+      bouton.removeAttribute('title');
+      bouton.removeAttribute('aria-label');
+    }
+  });
+}
+
+// Une phrase que le serveur a ecrite pour le formulaire public (« relancer la
+// recherche »), redite pour le comptoir.
+function motifPourLeComptoir(message) {
+  const texte = String(message || '');
+  if (/Ce créneau vient de changer/.test(texte)) return 'Les pistes demandées ne sont pas libres à cette heure. Changez de pistes ou d’heure.';
+  return texte;
+}
+
+// Le dossier que le serveur ecrirait, quand le verdict vaut pour l etat a l ecran.
+function dossierEcritDuVerdict() {
+  const v = verdictEdition();
+  return state.editState && v.pour === state.editState && !v.enCours && v.resultat && v.resultat.ecrit ? v.resultat.ecrit : null;
+}
+
+function prixDuVerdictEdition() {
+  const ecrit = dossierEcritDuVerdict();
+  if (!ecrit || !verdictEdition().resultat.prixSuivi) return null;
+  const prix = Number(ecrit.price);
+  return Number.isFinite(prix) ? Math.round(prix * 100) / 100 : null;
+}
+
+function etatVerdictEdition() {
+  const v = verdictEdition();
+  const pour = Boolean(state.editState) && v.pour === state.editState;
+  const resultat = pour ? v.resultat : null;
+  if (pour && v.enCours) return { ton: 'calcul', texte: 'Vérification au planning…' };
+  if (resultat && resultat.refus) return { ton: 'refus', texte: `Ne passera pas : ${resultat.refus}` };
+  if (resultat && resultat.lignes.length) return { ton: 'attention', texte: resultat.lignes.join(' ') };
+  if (resultat) return { ton: 'ok', texte: 'Vérifié au planning.' };
+  return { ton: '', texte: '' };
+}
+
+function verdictEditionHtml() {
+  const { ton, texte } = etatVerdictEdition();
+  return `<p class="fm-verdict${ton ? ` is-${ton}` : ''}" id="editVerdict" role="status"${texte ? '' : ' hidden'}>${escapeHtml(texte)}</p>`;
+}
+
+// La barre du bas et la colonne des heures, en place (un re-rendu volerait le
+// champ qu on tape). Pendant le calcul, les heures d avant restent.
+function peindreVerdictEdition() {
+  const zone = document.getElementById('editVerdict');
+  const { ton, texte } = etatVerdictEdition();
+  if (zone) {
+    zone.className = `fm-verdict${ton ? ` is-${ton}` : ''}`;
+    zone.textContent = texte;
+    zone.hidden = !texte;
+  }
+  if (ton === 'calcul') return;
+  const programme = document.querySelector('#posOverlay .fm-programme');
+  const r = state.selectedRes;
+  if (!programme || !r) return;
+  const ecrit = dossierEcritDuVerdict();
+  programme.classList.toggle('a-verdict', Boolean(ecrit));
+  const heures = ecrit ? heuresDuProgrammeEnregistre(ecrit) : formuleChangeeEdition() ? new Map() : heuresDuProgrammeEnregistre(dossierPourFormule(r));
+  programme.querySelectorAll('.fm-act[data-edit-activity]').forEach((rangee) => {
+    const colonne = rangee.querySelector('.fm-heures');
+    if (colonne) colonne.innerHTML = heuresActiviteHtml(heures.get(rangee.dataset.editActivity) || []);
+  });
+}
+
+// L heure a gauche d une activite, comme dans Infos : la premiere en grand, les
+// parties suivantes dessous. Une activite libre le dit ; une activite ajoutee
+// ici n a pas encore d heure.
+function heuresActiviteHtml(etapes) {
+  const placees = etapes.filter(etape => etape.start !== null && etape.start !== undefined);
+  return placees.length
+    ? placees.slice(0, 3).map((etape, index) => `<span class="fm-heure${index ? ' is-suite' : ''}">${index === 2 && placees.length > 3 ? `+${placees.length - 2}` : escapeHtml(formatClockDisplay(etape.start))}</span>`).join('')
+    : `<span class="fm-heure is-vide">${etapes.some(etape => etape.libre) ? 'Libre' : '--:--'}</span>`;
 }
 
 let dossierLaserSaving = false;
@@ -31881,6 +32122,8 @@ let editContactOuvert = false;
 
 function renderPosEdit(r) {
   const e = state.editState;
+  // Le verdict suit ce qui vient de changer, avant que les heures se dessinent.
+  demanderVerdictEdition();
   // Ce que CETTE reservation a reellement : une session laser n'occupe aucune
   // piste, une formule sans bowling non plus. La fiche s'adapte au lieu de
   // parler bowling a tout le monde.
@@ -31911,7 +32154,7 @@ function renderPosEdit(r) {
   // serveur a l enregistrement : la fiche le dit au lieu de montrer les pistes
   // d aujourd hui.
   const autreJour = Boolean(e.date) && e.date !== r.date;
-  const jourLong = e.date ? parseLocalDate(e.date).toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' }) : '';
+  const jourLong = e.date ? jourLongEdition(e.date) : '';
   const pistesBloc = autreJour ? (editNeedsLanes ? `
           <div class="fm-pistes">
             <span class="lbl">Pistes</span>
@@ -31929,8 +32172,9 @@ function renderPosEdit(r) {
               ${Array.from({ length: getAvailabilityLaneCount() }, (_, index) => index + 1).map(lane => {
                 const choisie = getEditLaneNumbers().includes(lane);
                 const maintenance = state.laneStatuses[lane] === 'maintenance';
-                return `<button type="button" class="lane-chip${choisie ? ' is-on' : ''}${maintenance ? ' is-off' : ''}"
-                  ${maintenance ? 'disabled aria-disabled="true" title="Piste en maintenance"' : ''}
+                const occupant = maintenance ? null : occupantPisteEdition(lane);
+                return `<button type="button" class="lane-chip${choisie ? ' is-on' : ''}${maintenance ? ' is-off' : ''}${occupant ? ' is-prise' : ''}"
+                  ${maintenance ? 'disabled aria-disabled="true" title="Piste en maintenance"' : ''}${occupant ? `title="${escapeHtml(`Prise par ${occupant} à cette heure`)}" aria-label="${escapeHtml(`Piste ${lane}, prise par ${occupant} à cette heure`)}"` : ''}
                   aria-pressed="${choisie ? 'true' : 'false'}"
                   onclick="toggleEditLane(${lane})">${lane}</button>`;
               }).join('')}
@@ -31971,13 +32215,13 @@ ${!adapte || (!isLaserRes && !editNeedsLanes && String(rf.type || '') !== 'formu
               <label class="lbl" for="editPaxInput">Joueurs</label>
               <div class="es-stepper staff-stepper fm-stepper">
                 <button type="button" class="es-step staff-stepper-btn" aria-label="Un joueur de moins" onclick="editPaxPas(-1)">${signe(false)}</button>
-                <input id="editPaxInput" class="input" type="number" min="1" inputmode="numeric" value="${e.pax}" oninput="setEditField('pax', this.value, true)" required>
+                <input id="editPaxInput" class="input" type="number" min="1" max="240" inputmode="numeric" value="${e.pax}" oninput="setEditField('pax', this.value, true)" required>
                 <button type="button" class="es-step staff-stepper-btn" aria-label="Un joueur de plus" onclick="editPaxPas(1)">${signe(true)}</button>
               </div>
             </div>
             ${autreJour ? `<p class="field-hint fm-indice" id="editJourHint">Nouveau jour : ${escapeHtml(jourLong)}. Les pistes et le laser y sont replacés à l’enregistrement.</p>` : ''}
           </section>
-          <section class="fm-programme${editionReplanifie() ? ' is-replan' : ''}" aria-labelledby="fmProgrammeTitre">
+          <section class="fm-programme${editionReplanifie() ? ' is-replan' : ''}${dossierEcritDuVerdict() ? ' a-verdict' : ''}" aria-labelledby="fmProgrammeTitre">
             <h4 class="fm-titre" id="fmProgrammeTitre">Programme</h4>
             ${contenuBloc}${!peutAdapterLeProgramme(r) ? pistesBloc : ''}
             ${!peutAdapterLeProgramme(r) && !autreJour ? renderDossierLaserEditor(r) : ''}
@@ -32028,6 +32272,7 @@ ${!adapte || (!isLaserRes && !editNeedsLanes && String(rf.type || '') !== 'formu
       </div>
       <p class="edit-error" id="editError" role="alert" ${state.editError ? '' : 'hidden'}>${escapeHtml(state.editError || '')}</p>
       <div class="edit-actions es-actions dossier-actions fm-pied">
+        ${verdictEditionHtml()}
         <p class="fm-modifs${resumeModifsEdition().length ? '' : ' is-vide'}" id="editModifs">${resumeModifsEditionHtml()}</p>
         <div class="edit-actions-main">
           <button type="button" class="btn-secondary" onclick="fermerFiche()">Fermer</button>
@@ -32100,7 +32345,7 @@ function failEdit(message) {
 // (envoyerModificationReservation). saveEdit et le compte a l arrivee
 // (preparerCompte) partent d ici : un seul calcul, un seul chemin serveur.
 // Un controle qui echoue rend { erreur }.
-function preparerModificationEdition() {
+function preparerModificationEdition(options = {}) {
   const es = state.editState;
   // DEUX POSTES, UNE RESERVATION : ce que la personne a CHANGE se mesure contre
   // le dossier a l ouverture du formulaire, pas contre l ecran rafraichi
@@ -32122,7 +32367,7 @@ function preparerModificationEdition() {
   // sont controles par le serveur (la console n a que les dossiers du jour
   // affiche). On ne deplace pas un dossier dans le passe.
   const jourChange = Boolean(es.date) && es.date !== state.selectedRes.date;
-  const jourLong = jourChange ? parseLocalDate(es.date).toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' }) : '';
+  const jourLong = jourChange ? jourLongEdition(es.date) : '';
   if (jourChange && es.date < todayStr()) return { erreur: 'Choisissez aujourd’hui ou un jour à venir pour déplacer ce dossier.' };
   const slotCheck = validateSlotWindow(jourChange ? es.date : state.selectedRes.date, es.startTime, duration, { allowPastStart: true });
   if (!slotCheck.ok) return { erreur: slotCheck.message };
@@ -32139,7 +32384,8 @@ function preparerModificationEdition() {
       return { erreur: 'Impossible de libérer ' + requiredCount + ' piste(s) pour ' + pax + ' joueurs sur ce créneau. Changez l’heure, la durée, ou libérez une piste.' };
     }
     lanes = suggested;
-    state.editState.lanesStr = formatLaneInput(lanes);
+    // (a blanc, le verdict ne touche pas aux pistes cochees)
+    if (!options.aBlanc) state.editState.lanesStr = formatLaneInput(lanes);
   }
   if (!jourChange && lanes.some(l => state.laneStatuses[l] === 'maintenance')) return { erreur: 'Une des pistes choisies est en maintenance.' };
   const conflicts = jourChange ? [] : lanesConflict(state.selectedRes.date, debutBowlingEdition(dossierFormule, es), duration, lanes, state.selectedRes.id);
@@ -32178,6 +32424,10 @@ function preparerModificationEdition() {
     programme = { items };
     const nomOrigine = (dossierFormule.formuleId ? resolveDisplayFormule(dossierFormule.formuleId)?.name : '') || dossierFormule.label || '';
     libelleAdapte = nomOrigine ? `${nomOrigine} (adaptée)`.slice(0, 160) : (dossierFormule.label || 'Sur mesure');
+    // SANS BOWLING AU PROGRAMME, AUCUNE PISTE N EST DEMANDEE (2026-11-15) : le
+    // bowling retire, l enregistrement repondait « pas sur les pistes demandées :
+    // aucune au lieu de 5, 6. Le créneau ne les laissait pas libres. »
+    if (!items.some((item) => item.activityId === 'bowling')) lanesVoulues.length = 0;
   }
   const nouvelleFormule = formuleChangee ? resolveDisplayFormule(es.formuleId) : null;
   // CE QU ON AFFICHE EST CE QUI S ECRIT. Un prix tape, ou celui que le dossier
@@ -32262,7 +32512,9 @@ async function saveEdit(e) {
   if (envoi.erreur) { failEdit(envoi.erreur); return; }
   const { es, origine, versionDeBase, appliquer, requiresLanes, lanesVoulues, jourChange, jourLong, touches, prixSuivi } = envoi;
   const previousReservation = state.selectedRes;
-  if (touches.includes('startTime') && origine?.opsPlan?.resourceBlocks?.length) {
+  // Le verdict a jour montre deja, dans le programme, les heures que le planning
+  // donnera : la question native ne les redit pas (un clic de moins).
+  if (touches.includes('startTime') && origine?.opsPlan?.resourceBlocks?.length && !dossierEcritDuVerdict()) {
     const delta = timeToNum(es.startTime) - timeToNum(origine.startTime);
     const horaires = [...new Map(origine.opsPlan.resourceBlocks.filter(block => block.startTime)
       .map(block => [`${block.activityId || block.resourceType}:${block.startTime}`, block])).values()];
@@ -32305,7 +32557,8 @@ async function saveEdit(e) {
     // reconstruire le creneau (combinaison d'ancres refusee, plus rien de libre),
     // la reservation est bien ecrite mais elle part en « à surveiller » : le
     // dire, sinon le staff repart en croyant son planning a jour.
-    const aVerifier = payload.reservation && payload.reservation.validationStatus === 'staff_review';
+    // (un dossier deja « à vérifier » le reste : le moteur n a rien refuse cette fois, 2026-11-15)
+    const aVerifier = payload.reservation && payload.reservation.validationStatus === 'staff_review' && !(previousReservation && previousReservation.validationStatus === 'staff_review');
     // CE QUE LA MODIFICATION LAISSE A FAIRE (2026-11-02) : une partie de laser que
     // le plan ne pose pas se place au planning ; une formule adaptee devient une
     // visite cote serveur, sa ligne ne dit plus la formule.
@@ -32345,11 +32598,14 @@ async function saveEdit(e) {
         : error.message);
       return;
     }
-    applyOptimisticReservation(previousReservation, { preserveEditState: true });
+    // (sans preserveEditState : l option REFAIT l etat d edition depuis le
+    // dossier, et la saisie repartait a zero a chaque refus du serveur ;
+    // corrige le 2026-11-15, joue par scripts/modifier-verdict-check.js)
+    applyOptimisticReservation(previousReservation);
     // La saisie est GARDEE a l'ecran (rien a retaper), donc l'ecran montrerait
     // des valeurs que la base n'a pas : le motif doit rester lisible a cote du
     // bouton, sinon l'ecart passe pour un bug muet.
-    const motif = error.message || 'Impossible de mettre à jour la réservation.';
+    const motif = motifPourLeComptoir(error.message) || 'Impossible de mettre à jour la réservation.';
     failEdit(`${jourChange ? `Pas de déplacement au ${jourLong} : ${motif}` : motif} Rien n’a été enregistré.`);
   }
 }
@@ -41315,19 +41571,21 @@ function renderPosInner() {
   } : null;
   overlay.classList.remove('hidden');
   overlay.classList.add('centered');
+  // Le jour, le lieu, le numero, l occasion : sur la ligne du nom (2026-11-15,
+  // Ansar : « trop long [...] faut tout one shot »), l en-tete tient en deux lignes.
+  const faitsEnTete = `<div class="fz-faits">
+    <p class="dossier-facts">${facts}</p>
+    ${derniereModif ? `<p class="fx-modif" data-fx-modif>${escapeHtml(derniereModif)}</p>` : ''}
+    ${etiquettes.length ? `<p class="fx-etiquettes">${etiquettes.map(e => e.ton === 'suivi'
+      ? `<span class="fx-etiquette is-suivi"><b>${escapeHtml(e.titre)}</b>${e.texte ? ` ${escapeHtml(e.texte)}` : ''}</span>`
+      : `<span class="fx-etiquette">${escapeHtml(e.titre)}${e.texte ? ` · ${escapeHtml(e.texte)}` : ''}</span>`).join('')}</p>` : ''}
+    </div>`;
   overlay.innerHTML = `
     <div class="edit-modal fx-modal fz${isEdit ? ' is-edition' : ''}" role="dialog" aria-modal="true" aria-labelledby="posTitle" tabindex="-1">
       <div class="edit-modal-head dossier-head">
         <div class="edit-modal-ident dossier-heading">
-          <div class="dossier-title-row"><h3 id="posTitle" class="dossier-title">${escapeHtml(r.name)}</h3><span class="dossier-status is-${escapeHtml(dossierStatus.className)}">${escapeHtml(dossierStatus.label)}</span></div>
+          <div class="dossier-title-row"><h3 id="posTitle" class="dossier-title">${escapeHtml(r.name)}</h3><span class="dossier-status is-${escapeHtml(dossierStatus.className)}">${escapeHtml(dossierStatus.label)}</span>${faitsEnTete}</div>
           <p class="fx-chiffres">${chiffres}</p>
-          <div class="fz-faits">
-          <p class="dossier-facts">${facts}</p>
-          ${derniereModif ? `<p class="fx-modif" data-fx-modif>${escapeHtml(derniereModif)}</p>` : ''}
-          ${etiquettes.length ? `<p class="fx-etiquettes">${etiquettes.map(e => e.ton === 'suivi'
-            ? `<span class="fx-etiquette is-suivi"><b>${escapeHtml(e.titre)}</b>${e.texte ? ` ${escapeHtml(e.texte)}` : ''}</span>`
-            : `<span class="fx-etiquette">${escapeHtml(e.titre)}${e.texte ? ` · ${escapeHtml(e.texte)}` : ''}</span>`).join('')}</p>` : ''}
-          </div>
         </div>
         <div class="fz-tete-droite">
         ${peutModifier ? `<div class="modal-tabs dossier-tabs" role="tablist" aria-label="Vues de la fiche">

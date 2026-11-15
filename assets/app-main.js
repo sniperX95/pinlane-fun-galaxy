@@ -27614,7 +27614,7 @@ function renderGroupeTerminer(r) {
   if (!reste) return '<span class="gc-done-all">Tout est fait</span>';
   // Cocher demande le droit de changer un statut (activityToggle, serveur).
   if (reste < 2 || !(typeof canUseStaffPermission !== 'function' || canUseStaffPermission(['reservations.status', 'reservations.edit']))) return '';
-  return `<button type="button" class="gc-btn gc-finish" data-pl-focus="fiche.terminer.${Number(r.id)}" onclick="terminerGroupe(${Number(r.id)}, event)">Tout est fait${reste < etapes.length ? ` (${reste} restante${reste > 1 ? 's' : ''})` : ''}</button>`;
+  return `<button type="button" class="gc-btn gc-finish" data-pl-focus="fiche.terminer.${Number(r.id)}" onclick="terminerGroupe(${Number(r.id)}, event)">Tout cocher</button>`;
 }
 
 // LES JOUEURS D UNE ACTIVITE SE LISENT D ABORD (2026-10-27, Movsar : « heure
@@ -27684,9 +27684,27 @@ function renderGroupeEtapes(r, moment, options = {}) {
     // lecteurs d ecran). Sur la carte, la ligne coche au lieu d ouvrir la fiche.
     const cochable = Boolean(etape.coche) && r.status !== 'cancelled' && peutCocher;
     const appel = cochable ? `toggleFormulaActivity(${Number(r.id)}, '${escapeJsString(etape.coche)}', event)` : '';
+    // DANS LA FICHE, UNE VRAIE CASE (2026-11-15, Ansar : « pouvoir cocher toutes
+    // les choses bien plus stylé et mieux fait ») : un rond vide a gauche de
+    // chaque activite, plein et coche une fois faite ; la photo du centre et la
+    // couleur de l activite disent laquelle c est. La carte du planning garde
+    // son icone dans le rond.
+    const enFiche = Boolean(options.coches);
     const repere = cochable
-      ? `<button type="button" class="gc-check${etape.fait ? ' is-on' : ''}" data-pl-focus="${options.coches ? 'fiche' : 'carte'}.activite.${Number(r.id)}.${escapeHtml(etape.coche)}" aria-pressed="${etape.fait}" aria-label="${escapeHtml(etape.nom)}${etape.quoi ? ` ${escapeHtml(etape.quoi)}` : ''} : ${etape.fait ? 'fait, annuler' : 'marquer comme fait'}" onclick="${appel}">${etape.fait ? ACTIVITY_CHECK_SVG : `<span class="gc-check-icon" aria-hidden="true">${renderActivityIcon(etape.activityId)}</span>`}</button>`
-      : `<span class="gc-step-icon" aria-hidden="true">${renderActivityIcon(etape.activityId)}</span>`;
+      ? `<button type="button" class="gc-check${etape.fait ? ' is-on' : ''}" data-pl-focus="${enFiche ? 'fiche' : 'carte'}.activite.${Number(r.id)}.${escapeHtml(etape.coche)}" aria-pressed="${etape.fait}" aria-label="${escapeHtml(etape.nom)}${etape.quoi ? ` ${escapeHtml(etape.quoi)}` : ''} : ${etape.fait ? 'fait, annuler' : 'marquer comme fait'}" onclick="${appel}">${etape.fait ? ACTIVITY_CHECK_SVG : (enFiche ? '' : `<span class="gc-check-icon" aria-hidden="true">${renderActivityIcon(etape.activityId)}</span>`)}</button>`
+      : (enFiche
+        ? `<span class="gc-check is-lecture${etape.fait ? ' is-on' : ''}" aria-hidden="true">${etape.fait ? ACTIVITY_CHECK_SVG : ''}</span>`
+        : `<span class="gc-step-icon" aria-hidden="true">${renderActivityIcon(etape.activityId)}</span>`);
+    if (enFiche) {
+      return `<li class="gc-step is-${phase.cle}${index === focus ? ' is-focus' : ''}${cochable ? ' is-cochable' : ''}" style="--fz-act:${rvCouleur(etape.activityId || etape.nom)}"${cochable ? ` onclick="${appel}"` : ''}>
+      ${repere}
+      ${quand}
+      ${ficheVisuelActivite(r, etape)}
+      <span class="gc-step-what">${lienPlanning(etape)}${details ? `<small>${joueursEnTete(escapeHtml(details))}</small>` : ''}</span>
+      ${phase.mot ? `<span class="gc-step-state">${escapeHtml(phase.mot)}</span>` : ''}
+      ${montant}
+    </li>`;
+    }
     return `<li class="gc-step is-${phase.cle}${index === focus ? ' is-focus' : ''}${cochable ? ' is-cochable' : ''}"${cochable ? ` onclick="${appel}"` : ''}>
       ${quand}
       ${repere}
@@ -29090,56 +29108,144 @@ function ficheAppeler(r) {
   return `<a class="fx-appel" href="tel:${escapeHtml(String(r.phone).replace(/[^0-9+]/g, ''))}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span>Appeler</span></a>`;
 }
 
-// L ETAT DU DOSSIER EN UNE LIGNE (2026-10-26, Movsar : « tout est reparti
-// partout avec des repetitions »). A gauche le moment, a droite l argent,
-// chacun une seule fois ; dessous, les boutons d etat que le role peut toucher.
-// La pastille de l en-tete dit deja « En retard » ou « À vérifier » : le retard
-// et la demande a verifier colorent la phrase et posent « Appeler » a cote, au
-// lieu d un bandeau qui redisait la pastille.
-function ficheEtat(r, moment, droits) {
+// ---------------------------------------------------------------------------
+// LA FICHE REFAITE DE ZERO (2026-11-15, Ansar : « j aime pas du tout, pas
+// intuitif [...] plein d info dispersée partout, l idée c est de savoir tout
+// direct, de pouvoir cocher toutes les choses bien plus stylé [...] vraiment
+// pro, rapide, user friendly et complet »). Elle se lit comme la visite se
+// vit, et chaque chose a un bloc :
+//   - l en-tete : qui, quand, combien, quelle formule, et les gestes du
+//     comptoir (retard, note, message) toujours sous la main ;
+//   - a gauche, le programme a cocher de haut en bas : l arrivee du groupe
+//     d abord (le moment s y lit), puis chaque activite, sa photo et sa case ;
+//   - a droite, la caisse (le montant en grand, « Payé » a cote), le client,
+//     l historique.
+// Les quatre boutons d etat en rangee ont disparu : l arrivee se coche comme
+// une activite (la decocher rend le dossier « Confirmé »), « Payé » vit avec le
+// montant, « Valider » dans le bandeau de la demande a verifier.
+// ---------------------------------------------------------------------------
+
+// La photo de l activite : celle du centre (BDG_PHOTOS, celles de Gembloux
+// seulement a Gembloux), sinon son icone sur sa couleur. En fond, pas en
+// <img> : la fiche se redessine a chaque coche, une image se rechargerait.
+const FICHE_PHOTO_PAR_ID = { playground: 'plaine', fun_run: 'pixel', party_table: 'anniv' };
+function ficheVisuelActivite(r, etape) {
+  const centre = String(r.centerId || (typeof getActiveOpsCenterId === 'function' ? getActiveOpsCenterId() : '') || '');
+  const id = String(etape.activityId || '');
+  const cle = `${FICHE_PHOTO_PAR_ID[id] || id} ${etape.nom || ''}`;
+  const trouve = (BDG_PHOTOS[centre] || []).find(([motif]) => motif.test(cle));
+  return trouve
+    ? `<span class="fz-photo" style="background-image:url('/assets/fungalaxy/${trouve[1]}-carte.webp')" aria-hidden="true"></span>`
+    : `<span class="fz-photo is-icone" aria-hidden="true">${renderActivityIcon(id)}</span>`;
+}
+
+// LA DEMANDE A VERIFIER ET L ABSENCE, EN BANDEAU : ce qui bloque le reste se
+// lit avant tout, son geste a cote (« Valider », « Appeler », « Annuler »).
+function ficheBandeau(r, moment, droits) {
+  if (r.absentAt) return renderGroupeEncaisseAbsence(r);
+  if (r.status === 'cancelled' || !isReservationAwaitingReview(r)) return '';
+  const phrase = fichePhraseMoment(r, moment, droits);
+  return `<section class="fz-bandeau is-verifier" role="status">
+      <p class="fx-moment is-verifier"><span>${escapeHtml(phrase)}</span></p>
+      <div class="fz-bandeau-gestes">${ficheAppeler(r)}${droits.valider ? renderReservationFirstStatusButton(r, { fiche: true, suivant: true }) : ''}</div>
+    </section>`;
+}
+
+// L ARRIVEE SE COCHE COMME UNE ACTIVITE. La ligne dit le moment (« Attendu à
+// 14:00, il y a 20 min », « Fin prévue à 16:50 ») et porte son geste : toute
+// la ligne pointe l arrivee, la retoucher la retire (le dossier redevient
+// « Confirmé »). Pointe, « Ils sont 10 » ouvre le compte (ouvrirCompteArrivee).
+// Paye, la ligne ne se touche plus : l encaissement s annule d abord, dans la
+// caisse.
+function ficheBasculerArrivee(id, ev) {
+  const r = findStaffReservationById(Number(id)) || state.selectedRes;
+  if (!r) return;
+  setReservationStatusDirect(id, r.status === 'arrived' ? 'pending' : 'arrived', ev);
+}
+
+function ficheArrivee(r, moment, droits) {
+  if (r.status === 'cancelled' || r.absentAt) return '';
+  const id = Number(r.id);
+  const paye = r.status === 'paid';
+  const arrive = r.status === 'arrived' || paye;
+  const span = moment && moment.item ? moment.item : getStaffTerrainSpan(r);
+  const pax = Math.trunc(Number(r.pax) || 0);
+  const enRetard = groupeEnRetardAuPlanning(r, moment);
+  const suivant = ficheGesteSuivant(r, moment) === 'arrive';
+  const attendu = `Attendu à ${formatClockDisplay(span.start)}`;
+  // La demande a verifier dit sa raison dans le bandeau : ici, l heure seule.
+  let phrase = isReservationAwaitingReview(r) ? attendu : (fichePhraseMoment(r, moment, droits) || attendu);
+  if (!arrive && !/\d:\d\d/.test(phrase)) phrase = `${phrase}, ${attendu.charAt(0).toLowerCase()}${attendu.slice(1)}`;
+  const rond = `<span class="fz-rond${arrive ? ' is-on' : ''}" aria-hidden="true">${arrive ? ACTIVITY_CHECK_SVG : ''}</span>`;
+  const texte = `<span class="fz-arrivee-texte"><b>${arrive ? 'Groupe arrivé' : 'Arrivée du groupe'}</b><small class="fx-moment${enRetard ? ' is-retard' : ''}"${enRetard ? ' role="status"' : ''}><span>${escapeHtml(phrase)}</span></small></span>`;
+  const ligne = droits.statut && !paye
+    ? `<button type="button" class="fz-arrivee-ligne${suivant ? ' is-suivant' : ''}" aria-pressed="${arrive}" data-pl-focus="fiche.arrivee.${id}" aria-label="${arrive ? 'Groupe arrivé : retirer l’arrivée' : 'Pointer l’arrivée du groupe'}" onclick="ficheBasculerArrivee(${id}, event)">${rond}${texte}${arrive ? '' : '<span class="fz-arrivee-geste">Arrivé</span>'}</button>`
+    : `<div class="fz-arrivee-ligne is-lecture">${rond}${texte}</div>`;
+  // LE COMPTE A L ARRIVEE (2026-10-29) : qui peut modifier le dossier touche
+  // « Ils sont 10 » et change le nombre dans la bulle.
+  const compte = r.status === 'arrived' && peutCompterArrivee(r)
+    ? `<button type="button" class="fz-bouton fz-compte" data-compte-id="${id}" aria-haspopup="dialog" aria-label="Ils sont ${pax} : changer le nombre" onclick="ouvrirCompteArrivee(${id}, this, event)">Ils sont ${pax}<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button>`
+    : '';
+  // LE CHOIX DE DIRE « PAS VENU » (2026-11-08) : sur la ligne de l arrivee, la
+  // ou la question se pose, des que l heure du groupe est passee.
+  const pasVenu = !arrive && renderGroupePasVenu(r)
+    ? `<button type="button" class="fz-bouton fz-pas-venu" data-pl-focus="fiche.pasvenu.${id}" onclick="basculerAbsence(${id}, true, event)">Pas venu</button>`
+    : '';
+  return `<div class="fz-arrivee${arrive ? ' is-fait' : ''}${enRetard ? ' is-retard' : ''}">${ligne}${enRetard ? ficheAppeler(r) : ''}${compte}${pasVenu}</div>`;
+}
+
+// LE PROGRAMME A COCHER : l arrivee, puis chaque activite a son heure. La
+// jauge dit ou on en est d un coup d oeil, un segment par activite.
+function ficheParcours(r, moment, droits) {
+  const cochables = r.status === 'cancelled' ? [] : getGroupeProgramme(r).filter(etape => etape.coche);
+  const faites = cochables.filter(etape => etape.fait).length;
+  const jauge = cochables.length > 1
+    ? `<span class="fz-jauge" role="img" aria-label="${faites} activité${faites > 1 ? 's' : ''} faite${faites > 1 ? 's' : ''} sur ${cochables.length}">${cochables.map(etape => `<i${etape.fait ? ' class="on"' : ''}></i>`).join('')}<span aria-hidden="true">${faites} sur ${cochables.length}</span></span>`
+    : '';
+  return `<section class="info-block gc-sheet-block fx-programme fz-carte" aria-label="Programme">
+      <div class="gc-sheet-head"><h4 class="fx-titre">Programme</h4>${jauge}${renderGroupeTerminer(r)}</div>
+      ${ficheArrivee(r, moment, droits)}
+      ${renderGroupeEtapes(r, moment, { coches: true }) || '<p class="pos-note">Aucune activité au programme.</p>'}
+    </section>`;
+}
+
+// LA CAISSE : le montant en grand, dit UNE fois (« À encaisser 312 € »,
+// « Encaissé 390 € »), les deux « Payé » juste dessous, puis ce qui fait le
+// montant, ligne par ligne. Paye, le moyen choisi reste enfonce ; un role sans
+// ces boutons le lit dans la phrase. Un encaisse different du prix au centime
+// (la regle du serveur, noterEncaisseOuAbsence) dit sur quoi.
+function ficheCaisse(r, moment, droits) {
+  const annule = r.status === 'cancelled';
   const paid = r.status === 'paid';
   const moyen = getMoyenPaiementLabel(r.paymentMethod);
   const connu = prixDossierConnu(r);
-  // Paye, le bouton enfonce dit deja le moyen (« Payé · Carte ») : un role sans
-  // ces boutons le lit ici. Un encaisse different du prix au centime (la regle
-  // du serveur, noterEncaisseOuAbsence) dit sur quoi.
+  const addition = additionDuGroupe(r);
   const moyenEcrit = moyen && !droits.encaisser ? `, ${escapeHtml(moyen.toLowerCase())}` : '';
   const remise = paid && r.amountPaid != null && Math.round(Number(r.amountPaid) * 100) !== Math.round((Number(r.price) || 0) * 100);
-  const argent = r.status === 'cancelled' ? '' : paid
+  const mot = texte => `<span class="fz-caisse-mot">${texte}</span>`;
+  const montant = (valeur, texte = false) => `<b class="fz-montant${texte ? ' is-texte' : ''}">${escapeHtml(valeur)}</b>`;
+  const argent = annule ? '' : paid
     ? (connu
-      ? `Encaissé <b>${escapeHtml(formatMoneyCentimes(r.amountPaid != null ? r.amountPaid : r.price))}</b>${remise ? ` sur ${escapeHtml(formatMoneyCentimes(r.price))}${r.discountReason ? `, ${escapeHtml(r.discountReason)}` : ''}` : ''}${moyenEcrit}`
-      : `Payé${moyenEcrit}`)
-    : (connu ? `À encaisser <b>${escapeHtml(formatMoneyCentimes(r.price))}</b>` : 'Prix au comptoir');
-  const suivant = ficheGesteSuivant(r, moment);
-  const ton = isReservationAwaitingReview(r) ? 'is-verifier' : groupeEnRetardAuPlanning(r, moment) ? 'is-retard' : '';
-  const phrase = fichePhraseMoment(r, moment, droits);
-  const boutons = [];
-  if (isReservationAwaitingReview(r) ? droits.valider : droits.statut) {
-    boutons.push(renderReservationFirstStatusButton(r, { fiche: true, suivant: suivant === 'valider' }));
-  }
-  if (droits.statut) {
-    // LE COMPTE A L ARRIVEE (2026-10-29) : pointe, le bouton dit « Ils sont 10 »,
-    // et le toucher une seconde fois ouvre le compte (ouvrirCompteArrivee).
-    // Qui ne peut pas modifier le dossier lit le meme nombre, sans la bulle.
-    const arrive = r.status === 'arrived';
-    const compter = peutCompterArrivee(r);
-    const pax = Math.trunc(Number(r.pax) || 0);
-    boutons.push(`<button type="button" class="res-status-btn arrived${suivant === 'arrive' ? ' is-suivant' : ''} ${arrive ? 'active arrived' : ''}" aria-pressed="${arrive}"${compter ? ` data-compte-id="${r.id}" aria-haspopup="dialog" aria-label="Arrivé, ils sont ${pax} : changer le nombre"` : ''} onclick="${compter ? `ouvrirCompteArrivee(${r.id}, this, event)` : `setReservationStatusDirect(${r.id}, 'arrived')`}">${arrive ? `Ils sont ${pax}` : 'Arrivé'}</button>`);
-  }
-  if (droits.encaisser) {
-    GROUPE_MOYENS.forEach(m => {
+      ? `${mot('Encaissé')} ${montant(formatMoneyCentimes(r.amountPaid != null ? r.amountPaid : r.price))}${remise || moyenEcrit ? ` <span class="fz-caisse-suite">${remise ? `sur ${escapeHtml(formatMoneyCentimes(r.price))}${r.discountReason ? `, ${escapeHtml(r.discountReason)}` : ''}` : ''}${moyenEcrit}</span>` : ''}`
+      : `${montant('Payé', true)}${moyenEcrit ? ` <span class="fz-caisse-suite">${moyenEcrit}</span>` : ''}`)
+    : (connu ? `${mot('À encaisser')} ${montant(formatMoneyCentimes(r.price))}` : montant('Prix au comptoir', true));
+  const suivant = ficheGesteSuivant(r, moment) === 'payer';
+  const boutons = droits.encaisser && !annule
+    ? GROUPE_MOYENS.map(m => {
       const actif = paid && moyen === m.mot;
-      boutons.push(`<button type="button" class="res-status-btn paid${suivant === 'payer' ? ' is-suivant' : ''} ${actif ? 'active paid' : ''}" aria-pressed="${actif}" onclick="encaisserReservation(${r.id}, '${m.valeur}', event)">Payé · ${m.mot}</button>`);
-    });
-  }
-  return `<section class="pos-act fx-act" aria-label="État du dossier">
-      ${phrase || ton || argent ? `<div class="pos-act-head">
-        <p class="fx-moment${ton ? ` ${ton}` : ''}"${ton ? ' role="status"' : ''}>${phrase ? `<span>${escapeHtml(phrase)}</span>` : ''}${ton ? ficheAppeler(r) : ''}</p>
-        ${argent ? `<span class="pos-act-money ${paid ? 'is-paid' : ''}">${argent}</span>` : ''}
-      </div>` : ''}
-      ${r.status === 'cancelled' || !boutons.length ? '' : `<div class="res-status-row pos-act-row gc-sheet-states">${boutons.join('')}</div>`}
-      ${renderGroupeEncaisseAbsence(r)}
-      ${ficheOutils(r, droits)}
+      return `<button type="button" class="res-status-btn paid${suivant ? ' is-suivant' : ''} ${actif ? 'active paid' : ''}" aria-pressed="${actif}" onclick="encaisserReservation(${r.id}, '${m.valeur}', event)">Payé · ${m.mot}</button>`;
+    }).join('')
+    : '';
+  return `<section class="info-block gc-bill fz-carte fz-caisse${paid ? ' is-paye' : ''}" aria-label="Caisse">
+      ${argent ? `<p class="pos-act-money ${paid ? 'is-paid' : ''}">${argent}</p>` : '<h4 class="fx-titre">Prix</h4>'}
+      ${addition.unite && !annule ? `<p class="gc-bill-unit">${addition.unite}</p>` : ''}
+      ${boutons ? `<div class="res-status-row gc-sheet-states fz-payer">${boutons}</div>` : ''}
+      ${paid && droits.statut ? `<button type="button" class="fz-bouton fz-desencaisser" data-pl-focus="fiche.desencaisser.${Number(r.id)}" onclick="setReservationStatusDirect(${r.id}, 'arrived', event)">Annuler l’encaissement</button>` : ''}
+      ${paid ? renderGroupeEncaisseAbsence(r) : ''}
+      ${addition.lignes.length || addition.etat.ajuste ? `<dl class="gc-bill-lines">${addition.lignes.map(l => `<div><dt>${escapeHtml(l.nom)}${l.detail ? ` <small>${escapeHtml(l.detail)}</small>` : ''}</dt><dd>${escapeHtml(l.montant || '')}</dd></div>`).join('')}
+        ${addition.etat.ajuste ? `<div class="is-adjust"><dt>Prix ajusté <small>tarif ${escapeHtml(formatMoneyCentimes(addition.etat.reference))}</small></dt><dd>${addition.etat.ecart < 0 ? '−' : '+'}${escapeHtml(formatMoneyCentimes(Math.abs(addition.etat.ecart)))}</dd></div>` : ''}
+      </dl>` : ''}
+      ${addition.incomplet ? '<p class="pos-note">Les activités « au comptoir » se règlent en plus, au tarif du jour.</p>' : ''}
     </section>`;
 }
 
@@ -29156,7 +29262,7 @@ function ficheClient(r) {
     r.email ? `<li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg><a href="mailto:${escapeHtml(r.email)}">${escapeHtml(r.email)}</a></li>` : '',
   ].join('');
   const manque = !r.phone && !r.email ? 'Ni téléphone ni e-mail' : !r.phone ? 'Pas de téléphone' : !r.email ? 'Pas d’e-mail' : '';
-  return `<section class="fx-bloc fx-client" aria-label="Client">
+  return `<section class="fx-bloc fx-client fz-carte" aria-label="Client">
       <h4 class="fx-titre">Client</h4>
       ${contacts ? `<ul class="fx-contact">${contacts}</ul>` : ''}
       ${manque ? `<p class="fx-vide">${manque}</p>` : ''}
@@ -29171,12 +29277,12 @@ const plisRetardOuverts = new Set();
 
 // LES GESTES DU COMPTOIR A UN TOUCHER (2026-11-14, Ansar : « pour des
 // etudiants jeunes il faut un truc simple rapide et complet [...] le retard
-// [...] la note [...] modifier rapidement »). Sous les boutons d etat, une
-// rangee : « Retard » ouvre ses minutes juste dessous (il vivait dans un pli
-// ferme en bas de la colonne), « Note pour l’équipe » ouvre son champ en tete
-// des notes, « Message au client » ; « Annuler la réservation » au bout, a
-// l ecart. Chaque bouton n existe que si le role a le geste. Le bouton du
-// retard ne porte jamais les minutes : il ne change pas a chaque releve.
+// [...] la note [...] modifier rapidement »). Dans l en-tete de la fiche
+// (2026-11-15), toujours a l ecran : « Retard » ouvre ses minutes en tete du
+// corps, « Note pour l’équipe » ouvre son champ en tete des notes, « Message
+// au client » ; « Annuler la réservation » au bout, a l ecart. Chaque bouton
+// n existe que si le role a le geste. Le bouton du retard ne porte jamais les
+// minutes : il ne change pas a chaque releve.
 const FICHE_ICONE_HORLOGE = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
 const FICHE_ICONE_NOTE = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8z"/><path d="M15 3v4a2 2 0 0 0 2 2h4"/></svg>';
 const FICHE_ICONE_MESSAGE = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
@@ -29189,7 +29295,6 @@ function ficheOutils(r, droits) {
   const id = Number(r.id);
   const boutons = [];
   const retard = ficheRetardPossible(r, droits);
-  const late = retard ? getLateArrivalMinutes(r) : 0;
   const ouvert = retard && plisRetardOuverts.has(id);
   if (retard) {
     // Rouge quand la pastille de l en-tete dit « En retard », jamais autrement :
@@ -29198,11 +29303,17 @@ function ficheOutils(r, droits) {
     boutons.push(`<button type="button" class="fx-outil fx-outil-retard${enRetard ? ' is-retard' : ''}" aria-expanded="${ouvert}" aria-controls="fxRetard${id}" data-pl-focus="fiche.retard.ouvrir.${id}" onclick="basculerRetardFiche(${id}, event)">${FICHE_ICONE_HORLOGE}${enRetard ? 'En retard' : 'Retard'}</button>`);
   }
   boutons.push(renderNoteEquipeBouton(r));
-  if (droits.ecrire) boutons.push(`<button type="button" class="fx-outil comm-open-btn fx-message" onclick="openCommCenter(${id}, event)">${FICHE_ICONE_MESSAGE}Message au client</button>`);
-  if (droits.annuler && r.status !== 'cancelled') boutons.push(`<button type="button" class="fx-outil fx-annuler" onclick="cancelRes(${id}, event)">Annuler la réservation</button>`);
+  if (droits.ecrire) boutons.push(`<button type="button" class="fx-outil comm-open-btn fx-message" onclick="openCommCenter(${id}, event)">${FICHE_ICONE_MESSAGE}<span>Message<span class="fz-long"> au client</span></span></button>`);
+  if (droits.annuler && r.status !== 'cancelled') boutons.push(`<button type="button" class="fx-outil fx-annuler" onclick="cancelRes(${id}, event)"><span>Annuler<span class="fz-long"> la réservation</span></span></button>`);
   const rangee = boutons.filter(Boolean);
   if (!rangee.length) return '';
-  return `<div class="fx-outils" role="group" aria-label="Gestes du dossier">${rangee.join('')}</div>${ouvert ? ficheRetardPanneau(r, late) : ''}`;
+  return `<div class="fx-outils" role="group" aria-label="Gestes du dossier">${rangee.join('')}</div>`;
+}
+
+// Le retard ouvert depuis l en-tete : son panneau en tete du corps.
+function ficheRetardOuvert(r, droits) {
+  if (!ficheRetardPossible(r, droits) || !plisRetardOuverts.has(Number(r.id))) return '';
+  return ficheRetardPanneau(r, getLateArrivalMinutes(r));
 }
 
 // Qui peut ecrire une note, la reecrire ou la retirer : comme au serveur,
@@ -29224,7 +29335,7 @@ function renderNoteEquipeBouton(r) {
   const id = Number(r.id);
   if (!ficheDroitsNotes(r).peutAjouter) return '';
   const ouvert = notesEquipeOuvertes.has(id) || Boolean(notesEquipeBrouillons.get(id));
-  return `<button type="button" class="fx-outil gc-note-ouvrir" aria-expanded="${ouvert}" data-pl-focus="fiche.note.ouvrir.${id}" onclick="ouvrirNoteEquipe(${id}, event)">${FICHE_ICONE_NOTE}Note pour l’équipe</button>`;
+  return `<button type="button" class="fx-outil gc-note-ouvrir" aria-expanded="${ouvert}" data-pl-focus="fiche.note.ouvrir.${id}" onclick="ouvrirNoteEquipe(${id}, event)">${FICHE_ICONE_NOTE}<span>Note<span class="fz-long"> pour l’équipe</span></span></button>`;
 }
 
 // LE RETARD, OUVERT JUSTE SOUS SON BOUTON : les minutes d un toucher, puis le
@@ -29287,31 +29398,23 @@ function renderPosDetails(r) {
   // (recherche, clients) ne se lit pas a l heure de la page.
   const moment = getStaffReservationMoments([r], r.date || state.currentDate).get(String(r.id)) || null;
   const droits = ficheDroits();
-  // LE CHOIX SE VOIT QUAND LE GROUPE EST EN RETARD (2026-11-08, Ansar : « le choix de dire pas
-  // arrivé ») : juste sous son etat ; sinon, en bas de la colonne.
-  const aTrancher = groupeEnRetardAuPlanning(r, moment);
-  const pasVenu = renderGroupePasVenu(r);
-  // LA FICHE DU COMPTOIR (2026-11-14, Ansar : « tout est placé un peu partout
-  // [...] un truc simple rapide et complet où tout est super facile d'accès »).
-  // De haut en bas, dans l ordre ou on s en sert : l etat et ses gestes, les
-  // notes sur toute la largeur (une allergie, un gateau se lisent avant le
-  // programme), puis le programme a gauche et, a droite, le prix, le client et
-  // l historique.
+  // De haut en bas : le retard ouvert depuis l en-tete, ce qui bloque (demande
+  // a verifier, absence), puis deux colonnes. A gauche ce qui se fait : les
+  // notes (une allergie, un gateau se lisent avant le programme) et le
+  // programme a cocher. A droite ce qui se lit et se regle : la caisse, le
+  // client, l historique. Au telephone, une colonne : notes, caisse,
+  // programme, client, historique.
   return `<div class="${posSheetClass()} gc-sheet fx">
-    ${ficheEtat(r, moment, droits)}
-    ${aTrancher ? pasVenu : ''}
-    ${renderGroupeNotes(r)}
+    ${ficheRetardOuvert(r, droits)}
+    ${ficheBandeau(r, moment, droits)}
     <div class="fx-colonnes">
       <div class="fx-principal">
-        <section class="info-block gc-sheet-block fx-programme">
-          <div class="gc-sheet-head"><h4 class="fx-titre">Programme</h4>${renderGroupeTerminer(r)}</div>
-          ${renderGroupeEtapes(r, moment, { coches: true }) || '<p class="pos-note">Aucune activité au programme.</p>'}
-        </section>
+        ${renderGroupeNotes(r)}
+        ${ficheParcours(r, moment, droits)}
       </div>
       <aside class="fx-cote">
-        ${renderGroupeAddition(r)}
+        ${ficheCaisse(r, moment, droits)}
         ${ficheClient(r)}
-        ${aTrancher ? '' : pasVenu}
         ${renderGroupeHistorique(r)}
       </aside>
     </div>
@@ -29577,7 +29680,7 @@ function retirerNoteEquipe(reservationId, le, ev) {
 // joueur, le prix ajuste et son ecart, ce qui reste a regler au comptoir.
 // Chaque ligne vient d un montant ENREGISTRE sur le dossier ; ce qui n a pas
 // de montant ne s invente pas (« au comptoir »).
-function renderGroupeAddition(r) {
+function additionDuGroupe(r) {
   const etat = getReservationPriceState(r);
   const extras = Array.isArray(r.extras) ? r.extras : [];
   const totalExtras = extras.reduce((somme, e) => somme + (Number(e.price) || 0), 0);
@@ -29620,23 +29723,18 @@ function renderGroupeAddition(r) {
   const connu = prixDossierConnu(r);
   // Au centime : 280 € pour 30 joueurs, c est 9,33 €, pas « 9 € ».
   const parJoueur = total > 0 && joueurs > 0 ? formatMoneyCentimes(total / joueurs) : '';
-  const incomplet = r.program && r.program.priceComplete === false;
-  // L ADDITION SANS REDITE (2026-10-26). Paye ou a encaisser se lit une fois,
-  // dans la ligne d etat en haut de la fiche. Une addition d une seule ligne
-  // n ecrit pas son total une deuxieme fois, et le prix par joueur se tait
-  // quand le calcul de la ligne le dit deja (« 39 € × 10 joueurs »).
+  // L ADDITION SANS REDITE (2026-10-26, puis 2026-11-15). Le total se lit une
+  // fois, en grand, en tete de la caisse : aucune ligne « Total » ne le redit.
+  // Une addition d une seule ligne qui vaut le total ne redit pas son montant,
+  // et le prix par joueur se tait quand le calcul de la ligne le dit deja
+  // (« 39 € × 10 joueurs »).
   const seule = lignes.length === 1 && !etat.ajuste && (!connu || lignes[0].montant === formatMoneyCentimes(total));
-  if (seule && !lignes[0].montant) lignes[0].montant = 'au comptoir';
-  const unite = parJoueur && !(seule && lignes[0].detail.includes(parJoueur))
-    ? `<small>soit ${escapeHtml(parJoueur)} par ${dossierAvecEffectifsDistincts(r) ? 'personne présente' : 'joueur'}</small>` : '';
-  return `<section class="info-block gc-bill">
-    <div class="info-label">Prix</div>
-    <dl class="gc-bill-lines">${lignes.map(l => `<div><dt>${escapeHtml(l.nom)}${l.detail ? ` <small>${escapeHtml(l.detail)}</small>` : ''}</dt><dd>${escapeHtml(l.montant || '')}</dd></div>`).join('')}
-      ${etat.ajuste ? `<div class="is-adjust"><dt>Prix ajusté <small>tarif ${escapeHtml(formatMoneyCentimes(etat.reference))}</small></dt><dd>${etat.ecart < 0 ? '−' : '+'}${escapeHtml(formatMoneyCentimes(Math.abs(etat.ecart)))}</dd></div>` : ''}
-    </dl>
-    ${seule ? (unite ? `<p class="gc-bill-unit">${unite}</p>` : '') : `<div class="gc-bill-total"><span>Total</span><b>${connu ? escapeHtml(formatMoneyCentimes(total)) : 'Prix au comptoir'}</b>${unite}</div>`}
-    ${incomplet ? '<p class="pos-note">Les activités « au comptoir » se règlent en plus, au tarif du jour.</p>' : ''}
-  </section>`;
+  // Sans calcul a montrer, cette ligne ne dirait que le nom de la formule, deja
+  // en grand dans l en-tete : elle se tait.
+  if (seule) { lignes[0].montant = ''; if (!lignes[0].detail) lignes.length = 0; }
+  const unite = parJoueur && !(seule && lignes.length && lignes[0].detail.includes(parJoueur))
+    ? `soit ${escapeHtml(parJoueur)} par ${dossierAvecEffectifsDistincts(r) ? 'personne présente' : 'joueur'}` : '';
+  return { lignes, etat, unite, incomplet: Boolean(r.program && r.program.priceComplete === false) };
 }
 
 // === Gestion des retards (staff) ============================================
@@ -31249,7 +31347,7 @@ function renderEditFormuleBloc(r, formule, lignes, controls = {}) {
       ? placees.slice(0, 3).map((etape, index) => `<span class="fm-heure${index ? ' is-suite' : ''}">${index === 2 && placees.length > 3 ? `+${placees.length - 2}` : escapeHtml(formatClockDisplay(etape.start))}</span>`).join('')
       : `<span class="fm-heure is-vide">${etapes.some(etape => etape.libre) ? 'Libre' : '--:--'}</span>`;
     return `<section class="fm-act dossier-activity is-on" data-edit-activity="${escapeHtml(choice.id)}" aria-label="${escapeHtml(choice.label)}">
-      <div class="fm-act-heure"><span class="visually-hidden">Heure prévue : </span>${heureHtml}</div>
+      <div class="fm-act-heure"><span class="visually-hidden">Heure prévue : </span>${heureHtml}${ficheVisuelActivite(r, { activityId: choice.id, nom: choice.label })}</div>
       <div class="fm-act-corps">
         <div class="fm-act-tete"><h5>${escapeHtml(choice.label)}</h5>${detail ? `<span class="fm-act-detail">${escapeHtml(detail)}</span>` : ''}<button type="button" class="dossier-remove-activity fm-retirer" aria-label="Retirer ${escapeHtml(choice.label)} de cette visite" onclick="toggleEditActivity('${escapeJsString(choice.id)}')">Retirer</button></div>
         <div class="fm-act-reglages">${renderActivityParticipantsControl(choice.id, 'edit', 'ecart')}${options}</div>
@@ -41183,7 +41281,10 @@ function renderPosInner() {
   // LA FORMULE EN GRAND, A COTE DE L HEURE ET DES JOUEURS (2026-11-14, Ansar :
   // « savoir si c une formule ou pas »). Sans formule, « À la carte ».
   const nomFormule = ficheNomFormule(r);
-  const chiffres = faitModifiable('Horaires', horaires.replace(' → ', ` ${fleche} `), 'fx-heures', 'heure')
+  // Les mots d une heure longue (« Arrivée 14:50, début 15:00 ») restent en
+  // texte courant : seuls les chiffres prennent la typo d affiche.
+  const heuresAffichees = horaires.includes('&') ? horaires : horaires.replace(/,?\s*[A-Za-zÀ-ÿ][^0-9→]*/g, mot => `<span class="fz-mot">${mot}</span>`);
+  const chiffres = faitModifiable('Horaires', heuresAffichees.replace(' → ', ` ${fleche} `), 'fx-heures', 'heure')
     + faitModifiable('Groupe', joueurs.replace(/^(\d+)\s/, '<span class="fx-nombre">$1</span> '), 'fx-joueurs', 'joueurs')
     + fait('Formule', nomFormule ? escapeHtml(nomFormule) : 'À la carte', nomFormule ? 'fx-formule' : 'fx-formule is-carte');
   const facts = fait('Date', jour) + fait('Ressources', lieu) + fait('Réservation', `n° ${escapeHtml(String(r.id))}`, 'fx-numero');
@@ -41215,24 +41316,29 @@ function renderPosInner() {
   overlay.classList.remove('hidden');
   overlay.classList.add('centered');
   overlay.innerHTML = `
-    <div class="edit-modal fx-modal" role="dialog" aria-modal="true" aria-labelledby="posTitle" tabindex="-1">
+    <div class="edit-modal fx-modal fz${isEdit ? ' is-edition' : ''}" role="dialog" aria-modal="true" aria-labelledby="posTitle" tabindex="-1">
       <div class="edit-modal-head dossier-head">
         <div class="edit-modal-ident dossier-heading">
           <div class="dossier-title-row"><h3 id="posTitle" class="dossier-title">${escapeHtml(r.name)}</h3><span class="dossier-status is-${escapeHtml(dossierStatus.className)}">${escapeHtml(dossierStatus.label)}</span></div>
           <p class="fx-chiffres">${chiffres}</p>
+          <div class="fz-faits">
           <p class="dossier-facts">${facts}</p>
           ${derniereModif ? `<p class="fx-modif" data-fx-modif>${escapeHtml(derniereModif)}</p>` : ''}
           ${etiquettes.length ? `<p class="fx-etiquettes">${etiquettes.map(e => e.ton === 'suivi'
             ? `<span class="fx-etiquette is-suivi"><b>${escapeHtml(e.titre)}</b>${e.texte ? ` ${escapeHtml(e.texte)}` : ''}</span>`
             : `<span class="fx-etiquette">${escapeHtml(e.titre)}${e.texte ? ` · ${escapeHtml(e.texte)}` : ''}</span>`).join('')}</p>` : ''}
+          </div>
         </div>
-        <button type="button" class="close-btn" aria-label="Fermer la fiche" onclick="fermerFiche()">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
+        <div class="fz-tete-droite">
         ${peutModifier ? `<div class="modal-tabs dossier-tabs" role="tablist" aria-label="Vues de la fiche">
           <button type="button" role="tab" aria-selected="${!isEdit}" class="tab ${!isEdit ? 'active' : ''}" onclick="setTab('details')">Infos</button>
           <button type="button" role="tab" aria-selected="${isEdit}" class="tab ${isEdit ? 'active' : ''}" onclick="setTab('modifier')">Modifier</button>
         </div>` : ''}
+        <button type="button" class="close-btn" aria-label="Fermer la fiche" onclick="fermerFiche()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+        </div>
+        ${isEdit ? '' : ficheOutils(r, ficheDroits())}
       </div>
       <div class="edit-modal-body" data-scroll-key="fiche.corps">${bodyHtml}</div>
     </div>

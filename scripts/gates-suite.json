@@ -407,6 +407,7 @@
     "test:retards-places",
     "test:retards-console",
     "test:retard-verrou",
+    "test:comptoir-dotation",
     "test:reservation-edit-clarity",
     "test:rush-status",
     "test:notes-scope",

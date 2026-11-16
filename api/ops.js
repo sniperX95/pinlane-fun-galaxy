@@ -1747,6 +1747,8 @@ async function handlePost(req, res, providedBody = null, options = {}) {
         : null;
       return {
         id: change.reservationId,
+        // La version sur laquelle ce plan a ete calcule : un dossier ecrit depuis arrete le plan.
+        baseUpdatedAt: isTargetReservation ? reservation.updatedAt : (avantCascade ? avantCascade.updatedAt : undefined),
         startTime: change.update.startTime,
         lanes: change.update.lanes,
         opsPlan: timeShifted
@@ -1993,6 +1995,7 @@ async function handlePost(req, res, providedBody = null, options = {}) {
       date: reservation.date,
       updates: [{
         id: reservationId,
+        baseUpdatedAt: reservation.updatedAt,
         startTime: reservation.startTime,
         lanes: reservation.lanes,
         opsPlan: plan,
@@ -2054,7 +2057,7 @@ async function handlePost(req, res, providedBody = null, options = {}) {
       const o = item.opsPlan.delayFlag.origin;
       const plan = { ...o.opsPlan };
       delete plan.delayFlag;
-      return { id: Number(item.id), startTime: o.startTime, lanes: Array.isArray(o.lanes) && o.lanes.length ? o.lanes : item.lanes, opsPlan: plan, noteDropTag: 'retard' };
+      return { id: Number(item.id), baseUpdatedAt: item.updatedAt, startTime: o.startTime, lanes: Array.isArray(o.lanes) && o.lanes.length ? o.lanes : item.lanes, opsPlan: plan, noteDropTag: 'retard' };
     });
     // Sans snapshot d'origine (retard legacy antérieur à cette version, ou résa
     // cascadée) : restaurer start_time seul désynchroniserait la donnée
@@ -2068,7 +2071,7 @@ async function handlePost(req, res, providedBody = null, options = {}) {
       const toutesNettoyees = await applyReservationScheduleUpdates({
         centerId: reservation.centerId || 'libramont',
         date: reservation.date,
-        updates: [{ id: reservationId, startTime: reservation.startTime, lanes: reservation.lanes, opsPlan: plan, noteDropTag: 'retard' }, ...remettre],
+        updates: [{ id: reservationId, baseUpdatedAt: reservation.updatedAt, startTime: reservation.startTime, lanes: reservation.lanes, opsPlan: plan, noteDropTag: 'retard' }, ...remettre],
       });
       noterAudit(options, {
         entityType: 'reservation',
@@ -2107,6 +2110,7 @@ async function handlePost(req, res, providedBody = null, options = {}) {
       date: reservation.date,
       updates: [{
         id: reservationId,
+        baseUpdatedAt: reservation.updatedAt,
         startTime: origin.startTime,
         lanes: restoredLanes,
         opsPlan: restoredPlan,

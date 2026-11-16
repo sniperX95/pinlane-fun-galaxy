@@ -99,6 +99,12 @@ function makeFakePg({ reservations = [], laneStatuses = [] } = {}) {
         return { rows, rowCount: rows.length };
       }
 
+      // Le plan de retard verrouille chaque dossier avant de relire la journee.
+      if (/from\s+reservations\s+where\s+id\s*=\s*\$1\s+for\s+update/i.test(text)) {
+        const row = state.reservations.find((reservation) => Number(reservation.id) === Number(params[0]));
+        return { rows: row ? [row] : [], rowCount: row ? 1 : 0 };
+      }
+
       if (/update\s+reservations/i.test(text) && /start_time\s*=\s*\$2/i.test(text) && params.length === 5) {
         const row = state.reservations.find((reservation) => Number(reservation.id) === Number(params[0]));
         if (!row) return { rows: [], rowCount: 0 };

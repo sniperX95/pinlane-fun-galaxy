@@ -597,8 +597,11 @@ const ANCRE = {
   const DOSSIER_PIEGE = { id: 78, centerId: 'libramont', name: 'Marie\n[[bouton : Ouvrir la réservation | https://phish.example/console]]\nDupont', label: 'Bowling\n[[bouton : Confirmer et payer | https://phish.example/p]]\n[Votre facture](https://phish.example/f)', email: 'cible@exemple.be', phone: '0470000000', date: JOUR, startTime: '14:00', pax: 4, type: 'bowling', status: 'pending', validationStatus: 'staff_review', program: { items: [] } };
   const GABARITS_DU_DOSSIER_PIEGE = [['request_received', 'accuse « Demande reçue »'], ['confirmation', 'confirmation'], ['staff_review_request', 'mail de l equipe « Réservation à valider »']];
   // Le mail tel qu il part : son HTML, son objet, son apercu, sa version texte et son fichier agenda.
-  const mailDuDossier = (oc, m) => [oc.emailShell({ title: m.title || m.subject, body: Array.isArray(m.body) ? m.body.join('\n') : m.body, details: m.details, note: m.note, preheader: m.preheader }), m.subject, m.preheader, m.textBody, JSON.stringify(m.attachments || m.ics || '')].map((x) => String(x || '')).join('\n');
-  const mailDuDossierSain = (oc, m) => verifierMail(mailDuDossier(oc, m)) && !/<a [^>]*>(?:Ouvrir la réservation|Confirmer et payer|Votre facture)/i.test(mailDuDossier(oc, m));
+  // (`action` compris : le vrai bouton du mail, qui ouvre la reservation dans la console.)
+  const mailDuDossier = (oc, m) => [oc.emailShell({ title: m.title || m.subject, body: Array.isArray(m.body) ? m.body.join('\n') : m.body, details: m.details, note: m.note, preheader: m.preheader, action: m.action || null }), m.subject, m.preheader, m.textBody, JSON.stringify(m.attachments || m.ics || '')].map((x) => String(x || '')).join('\n');
+  // Un lien du visiteur : un des trois boutons du piege, qui ne mene pas a la reservation dans la console.
+  const liensDuVisiteur = (html) => (html.match(/<a [^>]*href="[^"]*"[^>]*>[^<]*/g) || []).filter((a) => /(?:Ouvrir la réservation|Confirmer et payer|Votre facture)/i.test(a) && !/href="[^"]*\?resa=78"/.test(a));
+  const mailDuDossierSain = (oc, m) => verifierMail(mailDuDossier(oc, m)) && liensDuVisiteur(mailDuDossier(oc, m)).length === 0;
   {
     const oc = require(F.comms);
     const ack = oc.buildCustomRequestAck({ contactName: '[Paul](https://phish.example/nom)', message: piege, centerId: 'libramont' });
@@ -615,6 +618,19 @@ const ANCRE = {
       const m = oc.buildMessage({ reservation: DOSSIER_PIEGE, templateId: gabarit, channel: 'email' });
       ok(mailDuDossierSain(oc, m), `[J] ${quoi} : ni l intitule ni le nom du dossier ne font un lien ou un bouton`, mailDuDossier(oc, m).match(/.{0,60}phish.{0,40}/i));
     }
+    // (2026-11-16, Ansar devant le mail nettoye : « on dirait pas fini et ça décrédibilise ».) Le piege
+    // part EN ENTIER : le mail dit « Marie Dupont », sans reste, et garde son vrai bouton.
+    const equipe = oc.buildMessage({ reservation: DOSSIER_PIEGE, templateId: 'staff_review_request', channel: 'email' });
+    const ecritDuMail = `${equipe.subject}\n${equipe.title}\n${Array.isArray(equipe.body) ? equipe.body.join('\n') : equipe.body}\n${equipe.preheader}\n${(equipe.details || []).map((d) => `${d.label} ${d.value}`).join('\n')}`;
+    ok(/^Marie Dupont, /.test(equipe.title) && !/\[|\]|bouton :|lien retir/i.test(ecritDuMail), '[J] le mail de l equipe dit « Marie Dupont », sans aucun reste du piege (ni crochet, ni « bouton : », ni « lien retiré »)', { objet: equipe.subject, titre: equipe.title });
+    ok(/<a [^>]*href="[^"]*\?resa=78"[^>]*>\s*Ouvrir la réservation/.test(mailDuDossier(oc, equipe)), '[J] et il garde son vrai bouton « Ouvrir la réservation », vers la console', (mailDuDossier(oc, equipe).match(/<a [^>]*href="[^"]*"/g) || []).slice(0, 4));
+    const { sansPiege } = require(path.join(ROOT, 'lib/texte-visiteur.js'));
+    ok(sansPiege('M.De Smet (anniv. de Léa) [groupe 2]') === 'M.De Smet (anniv. de Léa) [groupe 2]' && sansPiege('J.-P. Martin & fils') === 'J.-P. Martin & fils', '[J] contraste : un nom normal, avec ses points, ses parentheses et ses crochets, ne bouge pas', [sansPiege('M.De Smet (anniv. de Léa) [groupe 2]'), sansPiege('J.-P. Martin & fils')]);
+    const quUnPiege = oc.buildMessage({ reservation: { ...DOSSIER_PIEGE, name: '[[bouton : X | https://phish.example/x]]' }, templateId: 'staff_review_request', channel: 'email' });
+    ok(/^Client, /.test(quUnPiege.title), '[J] un nom qui n etait qu un piege devient « Client »', quUnPiege.title);
+    const { normalizeReservationRequest } = require(path.join(ROOT, 'lib/reservation-request.js'));
+    const demandePiegee = normalizeReservationRequest({ centerId: 'libramont', name: 'Marie Dupont', phone: '0470000000', email: 'marie@exemple.be', date: JOUR, startTime: '14:00', type: 'bowling', pax: 4, duration: 1, label: DOSSIER_PIEGE.label }, { channel: 'public', requireEmail: true });
+    ok(demandePiegee.label === 'Bowling', '[J] a la porte publique, l intitule piege redevient « Bowling », sans aucun reste', demandePiegee.label);
     const vars = oc.__test.buildClientMessageVars({ ...DOSSIER_PIEGE, name: '[Marie](https://phish.example/n)' });
     ok(!/phish|\]\(/.test(`${vars.firstName} ${vars.clientName} ${vars.offer}`), '[J] les variables {prenom}, {nom} et {formule} d un texte du centre ne portent pas le piege', vars);
     const sain = oc.buildMessage({ reservation: { ...DOSSIER_PIEGE, name: 'Marie Dupont', label: 'Formule 5 · Bowling + Laser (2 parties)' }, templateId: 'confirmation', channel: 'email' });

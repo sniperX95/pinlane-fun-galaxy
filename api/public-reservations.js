@@ -23,7 +23,8 @@ const planPublic = (plan) => sansValidationInterne({ opsPlan: plan }).opsPlan;
 const { findReservationAlternatives } = require('../lib/reservation-alternatives');
 const { normalizeReservationRequest } = require('../lib/reservation-request');
 const { ouvrirDemandePublique, estErreurInfra, signatureDemande, requestFromHeldUpsell } = require('../lib/demande-publique');
-const { enforceRateLimit, getClientIp, cleDeLAdresse } = require('../lib/rate-limit');
+const { enforceRateLimit, getClientIp } = require('../lib/rate-limit');
+const { blocDeLAdresse } = require('../lib/adresse-reseau');
 const { writeAuditLog, newRequestId } = require('../lib/audit-log');
 const { alerter } = require('../lib/garde-alertes');
 const { annoncerReservation } = require('../lib/garde-annonces');
@@ -130,7 +131,7 @@ function empreinteAppareil(req) {
   if (!brute || brute === 'unknown') return '';
   // Une IPv6 se compte par son bloc /64, comme au limiteur (2026-11-16) : changer d adresse dans son
   // bloc donnait un « appareil » neuf a chaque retenue, et le plafond de trois ne tenait plus.
-  const ip = cleDeLAdresse(brute);
+  const ip = blocDeLAdresse(brute);
   return crypto.createHmac('sha256', `pinlane-slot-holds:${process.env.STAFF_AUTH_SECRET || ''}`).update(ip).digest('hex');
 }
 

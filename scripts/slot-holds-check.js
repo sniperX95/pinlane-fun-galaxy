@@ -37,6 +37,8 @@
 //   [G] LE LASER : un blocage compte dans l arene comme une reservation.
 //   [H] LE PLAFOND PAR APPAREIL : 3 blocages en cours, pas un de plus.
 //   [I] LA CONFIRMATION RENVOYEE (reponse perdue) rend la meme reservation ;
+//       SANS BLOCAGE aussi (2026-11-16) : la cle tiree par le formulaire est notee avec la
+//       reservation, le second envoi la retrouve, deux envois simultanes n en creent qu une ;
 //       deux envois simultanes n en creent qu une ; un jeton confirme ne
 //       retient plus rien.
 //   [J] LE STAFF est refuse sur un creneau retenu, et le message dit quand la
@@ -208,6 +210,17 @@ async function sqlBlocages(tx, s, p) {
   if (/^select count\(\*\)::int as n from slot_holds where ip_hash = \$1 and token_hash <> \$2 and center_id = \$3 and released_at is null and expires_at > now\(\);?$/.test(s)) {
     const n = [...vue(tx, 'holds').values()].filter((h) => h.ip_hash === p[0] && h.token_hash !== p[1] && h.center_id === p[2] && ACTIF(h)).length;
     return { rows: [{ n }], rowCount: 1 };
+  }
+  if (/^insert into slot_holds \(center_id, date, start_time, token_hash, payload, expires_at, released_at, release_reason, reservation_id\) values \(\$1, \$2, \$3, \$4, \$5::jsonb, now\(\), now\(\), 'converted', \$6\);?$/.test(s)) {
+    // La cle d une confirmation sans blocage : deja rendue, deja echue, elle ne retient rien.
+    base.seqHold += 1;
+    const row = {
+      id: base.seqHold, center_id: p[0], date: p[1], start_time: p[2], token_hash: p[3], ip_hash: '',
+      payload: JSON.parse(p[4]), created_at: maintenant(), expires_at: maintenant(),
+      released_at: maintenant(), release_reason: 'converted', reservation_id: Number(p[5]),
+    };
+    ecrire(tx, 'holds', row.id, row);
+    return { rows: [], rowCount: 1 };
   }
   let m = /^update slot_holds set released_at = now\(\), release_reason = '(replaced|released)' where token_hash = \$1 and released_at is null;?$/.exec(s);
   if (m) {
@@ -641,6 +654,46 @@ async function scenarioPlanRetenu(S) {
   };
 }
 
+// LA CONFIRMATION SANS BLOCAGE (2026-11-16) : la retenue des horaires n a pas repondu, le formulaire
+// confirme avec la cle qu il a tiree pour ce choix.
+const CLE = (lettre) => lettre.repeat(40);
+async function scenarioRejeuSansBlocage(S) {
+  semer([]);
+  const corps = avecContact({ ...BOWLING('15:00'), cleConfirmation: CLE('a') }, 7);
+  const une = await confirmer(S, corps);
+  const deux = await confirmer(S, corps);
+  // Deux envois simultanes de la meme confirmation.
+  const corpsB = avecContact({ ...BOWLING('17:00'), cleConfirmation: CLE('b') }, 8);
+  const ensemble = await Promise.all([confirmer(S, corpsB), confirmer(S, corpsB)]);
+  // Un jeton dont le blocage a ete rendu avant la confirmation, sans cle du formulaire (une page
+  // ouverte avant la mise en ligne) : le jeton en tient lieu.
+  const rendu = await retenir(S, BOWLING('19:00'));
+  await liberer(S, rendu.json.holdToken);
+  const corpsC = avecContact({ ...BOWLING('19:00'), holdToken: rendu.json.holdToken }, 9);
+  const jetonRendu = [await confirmer(S, corpsC), await confirmer(S, corpsC)];
+  const lignes = reservationsPubliques().length;
+  // La cle ne retient rien : aucun blocage en cours, et un autre choix du meme client reserve.
+  const enCours = blocagesEnCours().length;
+  const autreChoix = await confirmer(S, avecContact({ ...BOWLING('16:00'), cleConfirmation: CLE('c') }, 7));
+  // Une cle mal formee n est pas une cle : la confirmation passe, comme sans.
+  const malFormee = await confirmer(S, avecContact({ ...BOWLING('18:00'), cleConfirmation: 'trop court' }, 11));
+  // L entonnoir des chiffres ne compte pas ces lignes : rien n a ete retenu.
+  const { analyserDonnees } = require(path.join(ROOT, 'lib/donnees-clients.js'));
+  const cles = [...base.holds.values()].filter((h) => h.payload && h.payload.confirmationSansBlocage);
+  const chiffres = analyserDonnees({ history: [], holds: [...base.holds.values()].map((h) => ({ date: h.date, payload: h.payload, reservation_id: h.reservation_id, release_reason: h.release_reason })), demandes: [], startDate: JOUR, endDate: JOUR });
+  return {
+    une: une.statut, deux: deux.statut, rejoue: deux.json.replay === true,
+    memeId: Boolean(une.json.reservation && deux.json.reservation && une.json.reservation.id === deux.json.reservation.id),
+    ensemble: ensemble.map((r) => r.statut).sort().join(','),
+    ensembleMemeId: Boolean(ensemble[0].json.reservation && ensemble[1].json.reservation && ensemble[0].json.reservation.id === ensemble[1].json.reservation.id),
+    jetonRendu: jetonRendu.map((r) => r.statut).join(','),
+    jetonRenduMemeId: Boolean(jetonRendu[0].json.reservation && jetonRendu[1].json.reservation && jetonRendu[0].json.reservation.id === jetonRendu[1].json.reservation.id),
+    lignes, enCours, autreChoix: autreChoix.statut, malFormee: malFormee.statut,
+    cles: cles.length,
+    retenusDansLesChiffres: (chiffres.entonnoir || []).reduce((n, e) => n + e.creneauxRetenus, 0),
+  };
+}
+
 async function tout(S) {
   return {
     trois: await scenarioTrois(S),
@@ -651,6 +704,7 @@ async function tout(S) {
     laser: await scenarioLaser(S),
     plafond: await scenarioPlafond(S),
     rejeu: await scenarioRejeu(S),
+    sansBlocage: await scenarioRejeuSansBlocage(S),
     staff: await scenarioStaff(S),
     sansTable: await scenarioSansTable(S),
     planRetenu: await scenarioPlanRetenu(S),
@@ -710,6 +764,14 @@ async function main() {
   ok(R.rejeu.encore === 409 && R.rejeu.encoreCode === 'already_confirmed', 'un jeton confirme ne retient plus rien', `${R.rejeu.encore} ${R.rejeu.encoreCode}`);
   ok(R.rejeu.ensemble === '200,201' && R.rejeu.ensembleMemeId, 'deux envois simultanes : une reservation, rendue deux fois', R.rejeu.ensemble);
   ok(R.rejeu.lignes === 2, 'deux confirmations distinctes, deux reservations, pas quatre', String(R.rejeu.lignes));
+  const SB = R.sansBlocage;
+  ok(SB.une === 201 && SB.deux === 200 && SB.rejoue && SB.memeId, 'sans blocage, avec la cle du formulaire : renvoyee, elle rend la meme reservation', `${SB.une} ${SB.deux}`);
+  ok(SB.ensemble === '200,201' && SB.ensembleMemeId, 'sans blocage, deux envois simultanes : une reservation, rendue deux fois', SB.ensemble);
+  ok(SB.jetonRendu === '201,200' && SB.jetonRenduMemeId, 'un jeton dont le blocage a ete rendu : la confirmation se rejoue quand meme', SB.jetonRendu);
+  ok(SB.lignes === 3, 'trois confirmations distinctes, trois reservations, pas six', String(SB.lignes));
+  ok(SB.enCours === 0 && SB.autreChoix === 201, 'la cle ne retient rien, et un autre choix du meme client reserve avec une autre cle', `${SB.enCours} en cours, ${SB.autreChoix}`);
+  ok(SB.malFormee === 201, 'une cle mal formee n est pas une cle : la confirmation passe', String(SB.malFormee));
+  ok(SB.cles === 4 && SB.retenusDansLesChiffres === 1, 'l entonnoir des chiffres ne compte que le vrai blocage (rendu), pas les cles', `${SB.cles} cles, ${SB.retenusDansLesChiffres} creneau(x) retenu(s)`);
 
   console.log('\n[J] Le staff');
   ok(R.staff.tenu === 201 && /Aucune piste/.test(R.staff.refus) && LIBERE_A.test(R.staff.refus), 'le staff est refuse sur la piste retenue, et le message dit quand elle se libere', R.staff.refus);
@@ -728,9 +790,11 @@ async function main() {
   console.log('\n[M] Contre-epreuves (code casse en memoire, le disque n est jamais touche)');
   const CONTRE = [
     { label: 'sans les blocages dans la lecture sous verrou, trois clients prennent la meme piste', de: '  if (options.blocages === false) return reservations;', vers: '  return reservations;', rouge: (r) => r.trois.statuts !== '201,409,409' },
-    { label: 'sans le verrou de la journee, deux blocages passent ensemble', de: "async function verifierRessourcesSousVerrou(client, payload, { saufJeton = '', verifierProgramme = null, signatureDemande = '' } = {}) {\n  await lockDate(client, payload.date, payload.centerId);", vers: "async function verifierRessourcesSousVerrou(client, payload, { saufJeton = '', verifierProgramme = null, signatureDemande = '' } = {}) {", rouge: (r) => r.trois.statuts !== '201,409,409' },
+    { label: 'sans le verrou de la journee, deux blocages passent ensemble', de: "async function verifierRessourcesSousVerrou(client, payload, { saufJeton = '', verifierProgramme = null, signatureDemande = '', cleConfirmation = '' } = {}) {\n  await lockDate(client, payload.date, payload.centerId);", vers: "async function verifierRessourcesSousVerrou(client, payload, { saufJeton = '', verifierProgramme = null, signatureDemande = '' } = {}) {", rouge: (r) => r.trois.statuts !== '201,409,409' },
     { label: 'sans exclure son propre jeton, le client ne peut plus confirmer', de: '  const valeurs = [centerId, date, empreinteJetonBlocage(saufJeton)];', vers: "  const valeurs = [centerId, date, ''];", rouge: (r) => r.confirmer.lui !== 201 },
-    { label: 'sans la conversion, le blocage survit a la reservation', de: '    await convertirBlocage(client, input.holdToken, reservation.id);', vers: '', rouge: (r) => r.confirmer.enCours !== 0 },
+    { label: 'sans la conversion, le blocage survit a la reservation', de: '    const blocagesConvertis = await convertirBlocage(client, input.holdToken, reservation.id);', vers: '    const blocagesConvertis = 1;', rouge: (r) => r.confirmer.enCours !== 0 },
+    { label: 'sans noter la cle, une confirmation sans blocage renvoyee cree une deuxieme reservation', de: '    if (!blocagesConvertis) await noterConfirmationSansBlocage(client, input.cleConfirmation || input.holdToken, payload, reservation.id);', vers: '', rouge: (r) => r.sansBlocage.deux !== 200 || r.sansBlocage.jetonRendu !== '201,200' },
+    { label: 'sans relire la cle sous le verrou, deux envois simultanes sans blocage passent ensemble', de: '    if (dejaParCle) throw reservationDejaConfirmeeErreur(dejaParCle);', vers: '', rouge: (r) => r.sansBlocage.ensemble !== '200,201' },
     { label: 'sans l echeance de 10 minutes, la place ne revient pas', de: 'const DUREE_BLOCAGE_MINUTES = 10;', vers: 'const DUREE_BLOCAGE_MINUTES = 100000;', rouge: (r) => r.echeance.apres === 409 },
     { label: 'sans le plafond, un appareil retient tout', de: '      if (Number(autres.rows[0] && autres.rows[0].n) >= BLOCAGES_MAX_PAR_APPAREIL) {', vers: '      if (false) {', rouge: (r) => r.plafond.statuts !== '201,201,201,429' },
     { label: 'sans le rejeu, une confirmation renvoyee cree une deuxieme reservation', de: '    if (deja) throw reservationDejaConfirmeeErreur(deja);', vers: '', rouge: (r) => r.rejeu.ensemble !== '200,201' || r.rejeu.encore !== 409 },

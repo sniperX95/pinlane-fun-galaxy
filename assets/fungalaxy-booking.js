@@ -6511,6 +6511,21 @@
   // Ce que le client a choisi : sa demande, puis ses heures.
   function cleChoix() { return cleDemande() + '|' + JSON.stringify(state.pins) + '|' + JSON.stringify(state.laserParts) + (state.arcade ? '|' + state.arcade : '') + (state.arrivee ? '|a' + state.arrivee : ''); }
   function cleBlocage() { return cleChoix() + '|' + (state.heure || ''); }
+  // LA CLE DE LA CONFIRMATION (2026-11-16). Quand la retenue des horaires n a pas repondu, la
+  // confirmation partait sans jeton : un second envoi (reponse perdue, second clic) creait une
+  // seconde reservation et un second mail. Une cle tiree ici pour CE choix voyage avec chaque
+  // confirmation ; au second envoi, le serveur rend la reservation deja faite. Un autre choix
+  // (jour, groupe, activites, heure) tire une autre cle ; les coordonnees n y entrent pas.
+  var confirmation = { cle: '', pour: '' };
+  function cleDeConfirmation() {
+    var pour = cleBlocage();
+    if (confirmation.cle && confirmation.pour === pour) return confirmation.cle;
+    var hasard = window.crypto && window.crypto.getRandomValues ? window.crypto.getRandomValues(new Uint8Array(24)) : null;
+    if (!hasard) return '';
+    confirmation.cle = Array.prototype.map.call(hasard, function (o) { return (o < 16 ? '0' : '') + o.toString(16); }).join('');
+    confirmation.pour = pour;
+    return confirmation.cle;
+  }
   // Le corps de la reservation, sans les coordonnees : un blocage n a ni nom,
   // ni telephone, ni e-mail.
   function corpsBlocage() {
@@ -6618,7 +6633,7 @@
     });
   }
   // La reservation est faite : le blocage est devenu elle, le jeton est mort.
-  function finirBlocage() { blocage.jeton = ''; blocage.cle = ''; arreterDecompte(); }
+  function finirBlocage() { blocage.jeton = ''; blocage.cle = ''; confirmation.cle = ''; confirmation.pour = ''; arreterDecompte(); }
   function surEcranDuBlocage() { return sceneCourante === 'contact' || sceneCourante === 'recap'; }
   function tic() {
     if (blocage.etat !== 'tenu') return;
@@ -7536,6 +7551,8 @@
     enFile(function () {
       var corps = payload();
       if (blocage.jeton) corps.holdToken = blocage.jeton;
+      var cle = cleDeConfirmation();
+      if (cle) corps.cleConfirmation = cle;
       return fetch('/api/public-reservations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corps), credentials: 'omit' });
     })
       .then(function (r) { return r.json().then(function (j) { return { status: r.status, json: j || {} }; }); })

@@ -28,6 +28,8 @@
 //   [F] Sans serveur de blocage (503), le client avance sans bandeau.
 //   [G] A 390 px, le bandeau tient dans l ecran, le decompte se voit.
 //   [H] Contre-epreuves : chaque regle retiree du formulaire, ce gate ROUGIT.
+//   [I] Sans blocage, la confirmation porte une cle tiree pour ce choix : la meme au second envoi
+//       (le serveur rend alors la reservation deja faite), une autre pour un autre choix.
 //
 // Captures dans ux/holds (a regarder, pas a comparer au pixel).
 // AUCUNE BASE, AUCUN ENVOI.
@@ -404,6 +406,79 @@ async function scenarioChanger(browser, mock, etiquette) {
   return { t0, t1, demandes, libere, etat };
 }
 
+// [I] SANS BLOCAGE, LA CONFIRMATION PORTE SA CLE (2026-11-16). La retenue des horaires ne repond pas
+// (503) ; les deux premieres reponses de la confirmation se perdent en route. Le meme choix renvoye
+// porte la meme cle (le serveur rend alors la reservation deja faite) ; un autre choix en tire une autre.
+async function jusqua(fn, ms) {
+  const fin = Date.now() + ms;
+  while (Date.now() < fin) { if (fn()) return true; await pause(100); }
+  return Boolean(fn());
+}
+async function scenarioCle(browser, mock, etiquette) {
+  semer(mock);
+  blocagesEnPanne = '503';
+  try {
+    const A = await client(browser, mock, { etiquette: `${etiquette}-a` });
+    const envois = [];
+    let aPerdre = 2;
+    await A.page.route('**/api/public-reservations', async (route) => {
+      let corps = {};
+      try { corps = route.request().postDataJSON() || {}; } catch (error) { corps = {}; }
+      envois.push({ cle: String(corps.cleConfirmation || ''), jeton: String(corps.holdToken || ''), heure: String(corps.startTime || '') });
+      if (aPerdre > 0) { aPerdre -= 1; await route.abort('failed'); return; }
+      await route.continue();
+    });
+    const repos = () => attendre(A.page, () => { const b = document.querySelector('#confirmBtn'); return b && !b.classList.contains('is-busy'); }, 10000);
+    await continuer(A.page);
+    await remplirContact(A.page);
+    await passerLaVitrine(A.page);
+    // Deux envois du meme choix : les deux reponses se perdent.
+    await cliquer(A.page, '#confirmBtn');
+    await jusqua(() => envois.length >= 1, 8000);
+    await repos();
+    await cliquer(A.page, '#confirmBtn');
+    await jusqua(() => envois.length >= 2, 8000);
+    await repos();
+    // Un autre choix : retour aux horaires, une autre heure, puis le recapitulatif.
+    await cliquer(A.page, '.fg-scene[data-scene="recap"] [data-back]');
+    await attendre(A.page, () => document.querySelector('.fg-scene[data-scene="contact"].is-active') && !document.querySelector('.fg-scene.is-entering'), 8000);
+    await cliquer(A.page, '.fg-scene[data-scene="contact"] [data-back]');
+    await attendre(A.page, () => document.querySelector('.fg-scene[data-scene="heures"].is-active') && !document.querySelector('.fg-scene.is-entering'), 8000);
+    const avant = await heureBowling(A.page);
+    const autre = avant === '14:00' ? '16:00' : '14:00';
+    const sel = `#hourZone .fg-track[data-activity="bowling"] .fg-chip[data-time="${autre}"]`;
+    const periode = await A.page.evaluate((s) => { const c = document.querySelector(s); const sec = c && c.closest('.fg-period'); return sec && !sec.classList.contains('is-open') ? sec.dataset.period : ''; }, sel);
+    if (periode) await cliquer(A.page, `#hourZone .fg-track[data-activity="bowling"] .fg-period[data-period="${periode}"] .fg-period__btn`);
+    await attendre(A.page, (s) => { const c = document.querySelector(s); return c && c.getBoundingClientRect().height > 30; }, 4000, sel);
+    await cliquer(A.page, sel);
+    await attendre(A.page, () => !document.querySelector('#hourZone').classList.contains('is-busy') && !document.querySelector('#goContact').disabled, 15000);
+    await pause(300);
+    await continuer(A.page);
+    await cliquer(A.page, '#goRecap');
+    const surRecap = await attendre(A.page, () => document.querySelector('.fg-scene[data-scene="recap"].is-active') && !document.querySelector('.fg-scene.is-entering'), 8000);
+    if (!surRecap) await remplirContact(A.page);
+    await passerLaVitrine(A.page);
+    await cliquer(A.page, '#confirmBtn');
+    const fin = await attendre(A.page, () => document.querySelector('.fg-scene[data-scene="fin"].is-active'), 15000);
+    const erreurs = A.erreurs.slice();
+    await A.ctx.close();
+    return { envois, fin, erreurs };
+  } finally {
+    blocagesEnPanne = '';
+  }
+}
+function verifierCle(r, dire = true) {
+  const [un, deux, trois] = r.envois;
+  const v = [
+    [r.envois.length === 3 && r.fin, '[I] trois envois : deux reponses perdues, le troisieme arrive a la page de fin', `${r.envois.length} envoi(s), fin ${Boolean(r.fin)}`],
+    [un && /^[0-9a-f]{48}$/.test(un.cle) && !un.jeton, '[I] sans blocage, la confirmation porte une cle tiree par le formulaire, et aucun jeton', un && `${un.cle.slice(0, 6)}… / jeton « ${un.jeton} »`],
+    [un && deux && deux.cle === un.cle && deux.heure === un.heure, '[I] le meme choix renvoye porte la meme cle', un && deux && `${un.cle.slice(0, 6)}… / ${deux.cle.slice(0, 6)}…`],
+    [un && trois && /^[0-9a-f]{48}$/.test(trois.cle) && trois.cle !== un.cle && trois.heure !== un.heure, '[I] un autre choix (une autre heure) tire une autre cle', un && trois && `${un.heure} ${un.cle.slice(0, 6)}… / ${trois.heure} ${trois.cle.slice(0, 6)}…`],
+    [!r.erreurs.length, '[I] aucune erreur de page', r.erreurs.join(' | ')],
+  ];
+  return v.map(([c, l, d]) => (dire ? ok(c, l, d) : Boolean(c))).every(Boolean);
+}
+
 const REFUS_CENTRE = 'Ce centre n’accepte pas de réservation en ligne pour le moment.';
 async function scenarioPanne(browser, mock, etiquette, mode = '503') {
   semer(mock);
@@ -550,6 +625,8 @@ async function main() {
     verifierAdresseAbsente(await scenarioPanne(browser, mock, 'absente', '404-brut'));
     const refusCentre = await scenarioPanne(browser, mock, 'centre', '404-centre');
     ok(!refusCentre.surContact && refusCentre.alerte === REFUS_CENTRE, '[F] un vrai refus du centre (404 JSON ok:false) reste un refus : le client reste sur les horaires, la phrase du centre s affiche', JSON.stringify({ contact: refusCentre.surContact, alerte: refusCentre.alerte }));
+    section('[I] SANS BLOCAGE, LA CLE DE LA CONFIRMATION');
+    verifierCle(await scenarioCle(browser, mock, 'cle'));
     section('[G] A 390 PX');
     const tel = await scenarioTelephone(browser, mock, 'tel');
     ok(tel.bandeau && tel.bandeau.visible && tel.bandeau.gauche >= 0 && tel.bandeau.droite <= tel.largeur && tel.bandeau.deborde <= 0, '[G] le bandeau tient dans l ecran, rien ne deborde', JSON.stringify({ g: tel.bandeau && tel.bandeau.gauche, d: tel.bandeau && tel.bandeau.droite, deborde: tel.bandeau && tel.bandeau.deborde }));
@@ -581,10 +658,28 @@ async function main() {
         label: 'sans l echeance a l ecran, le bandeau promet encore une place rendue : ce gate ROUGIRAIT',
       },
       {
-        de: '      if (blocage.jeton) corps.holdToken = blocage.jeton;\n      return fetch(\'/api/public-reservations\'',
-        vers: '      return fetch(\'/api/public-reservations\'',
+        de: '      if (blocage.jeton) corps.holdToken = blocage.jeton;\n      var cle = cleDeConfirmation();',
+        vers: '      var cle = cleDeConfirmation();',
         jouer: async () => !verifierConfirmer(await scenarioConfirmer(browser, mock, 'k-sans-jeton'), false),
         label: 'sans le jeton a la confirmation, le blocage ne devient pas la reservation : ce gate ROUGIRAIT',
+      },
+      {
+        de: '      var cle = cleDeConfirmation();\n      if (cle) corps.cleConfirmation = cle;\n',
+        vers: '',
+        jouer: async () => !verifierCle(await scenarioCle(browser, mock, 'k-sans-cle'), false),
+        label: 'sans la cle a la confirmation, un second envoi sans blocage creerait une seconde reservation : ce gate ROUGIRAIT',
+      },
+      {
+        de: '    if (confirmation.cle && confirmation.pour === pour) return confirmation.cle;\n',
+        vers: '',
+        jouer: async () => !verifierCle(await scenarioCle(browser, mock, 'k-cle-refaite'), false),
+        label: 'une cle refaite a chaque envoi ne relie plus les deux envois du meme choix : ce gate ROUGIRAIT',
+      },
+      {
+        de: '    if (confirmation.cle && confirmation.pour === pour) return confirmation.cle;\n',
+        vers: '    if (confirmation.cle) return confirmation.cle;\n',
+        jouer: async () => !verifierCle(await scenarioCle(browser, mock, 'k-cle-gardee'), false),
+        label: 'une cle gardee d un choix a l autre rendrait l ancienne reservation pour le nouveau choix : ce gate ROUGIRAIT',
       },
       {
         de: 'goContact.disabled = true; annulerPlan(); libererBlocage(); }',

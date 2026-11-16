@@ -310,6 +310,9 @@ module.exports = async (req, res) => {
     // qu il remplissait ses coordonnees, ne le bloquent pas lui-meme, et
     // deviennent sa reservation dans la meme transaction.
     holdToken = String((body && body.holdToken) || '').trim();
+    // LA CLE DE CETTE CONFIRMATION, tiree par le formulaire pour ce choix (2026-11-16) : elle rend la
+    // confirmation rejouable meme sans blocage (lib/database noterConfirmationSansBlocage).
+    const cleConfirmation = empreinteJetonBlocage(body && body.cleConfirmation) ? String(body.cleConfirmation).trim() : '';
     const frozen = typeof readUpsellSlotHold === 'function' ? await readUpsellSlotHold(holdToken, body, empreinteAppareil(req), { includeConverted: true }) : null;
     const choices = Array.isArray(body.program) ? body.program : body.program?.items;
     if (empreinteJetonBlocage(holdToken) && choices?.some(item => item.upsell || item.extraLaser) && !frozen) {
@@ -326,6 +329,11 @@ module.exports = async (req, res) => {
         sendError(res, 409, 'Cette confirmation ne correspond pas à votre réservation temporaire.'); return;
       }
       reponseRejouee(res, deja);
+      return;
+    }
+    const dejaParCle = cleConfirmation && cleConfirmation !== holdToken ? await reservationDejaConfirmee(cleConfirmation) : null;
+    if (dejaParCle) {
+      reponseRejouee(res, dejaParCle);
       return;
     }
     const held = typeof readMatchingSlotHold === 'function' ? await readMatchingSlotHold(holdToken, request, signatureDemande(request)) : null;
@@ -367,6 +375,7 @@ module.exports = async (req, res) => {
           ...(pistesDuPlan.length ? { lanes: pistesDuPlan } : {}),
           channel: 'public',
           holdToken,
+          cleConfirmation,
           // La case « Je ne souhaite pas recevoir les offres » du formulaire :
           // un booleen, ou rien (une surface sans la case ne decide rien).
           ...(body && typeof body.sansOffres === 'boolean' ? { choixOffres: { refuse: body.sansOffres } } : {}),

@@ -631,8 +631,8 @@ const ANCRE = {
     const { normalizeReservationRequest } = require(path.join(ROOT, 'lib/reservation-request.js'));
     const demandePiegee = normalizeReservationRequest({ centerId: 'libramont', name: 'Marie Dupont', phone: '0470000000', email: 'marie@exemple.be', date: JOUR, startTime: '14:00', type: 'bowling', pax: 4, duration: 1, label: DOSSIER_PIEGE.label }, { channel: 'public', requireEmail: true });
     ok(demandePiegee.label === 'Bowling', '[J] a la porte publique, l intitule piege redevient « Bowling », sans aucun reste', demandePiegee.label);
-    const demandeNormale = normalizeReservationRequest({ centerId: 'libramont', name: 'Marie Dupont', phone: '0470000000', email: 'marie@exemple.be', date: JOUR, startTime: '14:00', type: 'bowling', pax: 4, duration: 1, label: 'BACK TO SCHOOL/WORK – 20 % !' }, { channel: 'public', requireEmail: true });
-    ok(demandeNormale.label === 'BACK TO SCHOOL/WORK – 20 % !', '[J] contraste : un vrai intitule garde sa barre, son tiret, son pourcentage', demandeNormale.label);
+    const demandeNormale = normalizeReservationRequest({ centerId: 'libramont', name: 'Marie Dupont', phone: '0470000000', email: 'marie@exemple.be', date: JOUR, startTime: '14:00', type: 'bowling', pax: 4, duration: 1, label: 'BACK TO SCHOOL/WORK - 20 % !' }, { channel: 'public', requireEmail: true });
+    ok(demandeNormale.label === 'BACK TO SCHOOL/WORK - 20 % !', '[J] contraste : un vrai intitule garde sa barre, son tiret, son pourcentage', demandeNormale.label);
     const vars = oc.__test.buildClientMessageVars({ ...DOSSIER_PIEGE, name: '[Marie](https://phish.example/n)' });
     ok(!/phish|\]\(/.test(`${vars.firstName} ${vars.clientName} ${vars.offer}`), '[J] les variables {prenom}, {nom} et {formule} d un texte du centre ne portent pas le piege', vars);
     const sain = oc.buildMessage({ reservation: { ...DOSSIER_PIEGE, name: 'Marie Dupont', label: 'Formule 5 · Bowling + Laser (2 parties)' }, templateId: 'confirmation', channel: 'email' });

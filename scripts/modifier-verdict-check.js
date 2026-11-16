@@ -34,6 +34,8 @@
 //        « pas sur les pistes demandées », un dossier deja « à vérifier » ne se
 //        lit pas « le moteur n’a pas pu replacer » ;
 //   [A1] deplacer un dossier a une autre annee dit l annee ;
+//   [P1] sans session, le calcul a blanc repond 401 sans rien lire : la meme
+//        reponse que le numero de dossier existe ou non (2026-11-16) ;
 //   [J1] aucune erreur JS.
 // La console reelle (scripts/planning-v3-fixtures.js, journee « pic » de Fun
 // Galaxy Libramont a 15:10) ; ses PATCH et ses calculs a blanc partent au VRAI
@@ -252,6 +254,20 @@ async function scenarioMuet(browser) {
   ok(!c.erreurs.length && !a.erreurs.length, '[J1] aucune erreur JS (muet, autre annee)', c.erreurs.concat(a.erreurs).slice(0, 3));
 }
 
+// [P1] LA PORTE (2026-11-16). Le calcul a blanc lisait le dossier AVANT de demander une
+// session : un inconnu recevait 404 pour un numero libre et un refus pour un numero pris,
+// de quoi compter les dossiers d un centre. Le vrai handler, sans navigateur.
+async function scenarioPorte() {
+  B.semer(FIXTURE.staffState.reservations.map(ligneDepuis));
+  const serveur = B.monter({ mutations: mutation ? mutation.editions.filter((ed) => ed.serveur) : [] });
+  serveur.changerSession(null);
+  const demander = (id) => serveur.appeler('POST', '/api/staff-reservations', { dryRun: true, centerId: 'libramont', modification: { id, pax: 2 } }).catch((e) => ({ statut: 500, json: { message: String(e && e.message) } }));
+  const connu = await demander(CLARA);
+  const inconnu = await demander(999999);
+  ok(connu.statut === 401 && inconnu.statut === 401 && JSON.stringify(connu.json) === JSON.stringify(inconnu.json) && !connu.json.modification,
+    '[P1] sans session, le calcul a blanc repond 401, la meme reponse que le dossier existe ou non', { connu, inconnu });
+}
+
 const REFUS = ['refus'];
 const PASSE = ['passe'];
 const MUTATIONS = [
@@ -268,6 +284,7 @@ const MUTATIONS = [
   { nom: 'conseil-qui-promet', lettre: 'V8', scenarios: REFUS, editions: [{ fichier: JS, de: '    if (jour && (!libres || libres.length < requis)) return', vers: '    if (false) return' }] },
   { nom: 'pistes-refusees-a-tort', lettre: 'V9', scenarios: PASSE, editions: [{ fichier: JS, de: "    if (!items.some((item) => item.activityId === 'bowling')) lanesVoulues.length = 0;\n", vers: '' }] },
   { nom: 'moteur-accuse-a-tort', lettre: 'V9', scenarios: PASSE, editions: [{ fichier: JS, de: " && !(previousReservation && previousReservation.validationStatus === 'staff_review');", vers: ';' }] },
+  { nom: 'blanc-sans-porte', lettre: 'P1', scenarios: ['porte'], editions: [{ fichier: 'api/staff-reservations.js', serveur: true, de: '        if (!(await requireAnyStaffSession(req, res))) return;\n        await warmCenterKnowledge();\n        const blanc = await modifierABlanc(', vers: '        await warmCenterKnowledge();\n        const blanc = await modifierABlanc(' }] },
   { nom: 'annee-tue', lettre: 'A1', scenarios: ['muet'], editions: [{ fichier: JS, de: "...(autreAnnee ? { year: 'numeric' } : {}) });", vers: '});' }] },
 ];
 
@@ -276,6 +293,7 @@ async function jouer(browser, noms) {
     if (nom === 'refus') await scenarioRefus(browser);
     if (nom === 'passe') await scenarioPasse(browser);
     if (nom === 'muet') await scenarioMuet(browser);
+    if (nom === 'porte') await scenarioPorte();
   }
 }
 
@@ -285,7 +303,7 @@ async function main() {
   const t0 = Date.now();
   try {
     if (!process.argv.includes('--contre-preuves')) {
-      await jouer(browser, ['refus', 'passe', 'muet']);
+      await jouer(browser, ['refus', 'passe', 'muet', 'porte']);
     } else {
       console.log('[K] contre-preuves : chaque regle retiree fait rougir sa lettre');
       for (const m of MUTATIONS.filter((x) => !process.env.MV_MUTATIONS || liste(process.env.MV_MUTATIONS).includes(x.nom))) {

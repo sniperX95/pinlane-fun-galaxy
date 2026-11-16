@@ -509,6 +509,10 @@ async function poserEquipe() {
   const chef = await appel({ action: 'createRole', centerId: 'libramont', name: 'Chef d’équipe', permissions: ['dashboard.view', 'planning.view', 'reservations.view', 'users.manage'] }, proprio);
   chefRoleId = String((chef.json.createdRole && chef.json.createdRole.id) || '');
   ok(chef.statut === 200 && Boolean(chefRoleId), 'montage : le role « Chef d’équipe » (gere l equipe, pas la Direction)', { statut: chef.statut, erreur: message(chef) });
+  // Le nom du role de la plateforme est reserve (2026-11-16) : un role d equipe « Platform Owner » donnait un
+  // membre que le serveur prenait pour le fondateur, invisible a la Direction.
+  const reserve = await appel({ action: 'createRole', centerId: 'libramont', name: 'Platform Owner', permissions: ['dashboard.view', 'reservations.view'] }, proprio);
+  ok(reserve.statut === 422 && !reserve.json.newAccessCode && !reserve.json.createdRole, '[S] un role d equipe ne prend pas le nom de la plateforme : « Platform Owner » est refuse', { statut: reserve.statut, erreur: message(reserve) });
   const membre = await appel({ action: 'createMember', centerId: 'libramont', name: 'Chef', contact: '', roleId: chefRoleId }, proprio);
   ok(membre.statut === 200 && Boolean(membre.json.newAccessCode), 'montage : une personne avec ce role', { statut: membre.statut, erreur: message(membre) });
   codes['libramont:Chef'] = membre.json.newAccessCode;

@@ -784,6 +784,10 @@ const traiter = async (req, res) => {
       // « Modifier » demande ce que son enregistrement ecrirait (modifierABlanc) :
       // son droit est celui de modifier, pas celui de creer.
       if (body.dryRun === true && body.modification && typeof body.modification === 'object' && !Array.isArray(body.modification)) {
+        // Une session d abord, comme le PATCH : sans elle, 401 sans avoir rien
+        // lu (2026-11-16 : un inconnu recevait 404 pour un numero libre et 401
+        // pour un numero pris, de quoi compter les dossiers).
+        if (!(await requireAnyStaffSession(req, res))) return;
         await warmCenterKnowledge();
         const blanc = await modifierABlanc(req, res, body.modification);
         if (blanc) sendJson(res, 200, blanc);

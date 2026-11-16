@@ -471,6 +471,17 @@ function regle() {
   const secours = staffAuth.__test.createEmergencyOwnerSession({ centerId: 'libramont', code: OWNER }).session;
   ok(F.estFondateur(fondateur) && F.estFondateur(secours) && !F.estFondateur(direction) && !F.estFondateur(null), '[R] estFondateur : la permission de plateforme, session de secours comprise, jamais la Direction verrouillee');
   ok(F.estMembreFondateur(FONDATEUR) && F.estMembreFondateur(SECOURS) && !F.estMembreFondateur('libramont:direction-marie') && !F.estMembreFondateur(''), '[R] une ligne ecrite est du fondateur par son membre (:platform-owner), secours compris');
+  // (2026-11-16) Un role d equipe nomme « Platform Owner » donne le membre partage
+  // `<centre>:role:platform-owner-xxx` : ce n est PAS le fondateur. La sous-chaine le cachait a la
+  // Direction, lui, ses connexions et ses gestes.
+  const FAUX = 'libramont:role:platform-owner-mwj8bubp';
+  const aucunNom = new Set();
+  const vuFaux = F.masquerFondateur({ members: [{ id: FAUX, name: 'Faux' }], par: `${FAUX} Faux`, message: `ecrit par ${FAUX}` }, aucunNom);
+  ok(!F.estMembreFondateur(FAUX) && !F.estMembreFondateur('libramont:role:platform-owner') && !F.estTraceDuFondateur(`${FAUX} Faux`, aucunNom)
+    && vuFaux.members.length === 1 && vuFaux.par === `${FAUX} Faux` && vuFaux.message === `ecrit par ${FAUX}`,
+  '[R] le membre d un role d equipe nomme comme la plateforme n est pas le fondateur : il reste visible', vuFaux);
+  ok(F.masquerFondateur({ note: `vu par ${FONDATEUR} hier` }, aucunNom).note === '' && F.estTraceDuFondateur(`${SECOURS} Ansar`, aucunNom),
+    '[R] le vrai identifiant du fondateur, pose dans un texte, part toujours');
   ok(F.signatureVisible(fondateur) === '' && F.signatureVisible(secours) === '' && F.signatureVisible(direction) === 'Marie Dumont', '[R] la signature d une trace : celle du membre, rien pour le fondateur');
   const noms = new Set(['ansar pinlane', 'proprietaire plateforme']);
   const note = (par, t, le) => `[equipe] ${JSON.stringify({ t, par, le })}`;
@@ -825,6 +836,8 @@ const CONTRE_PREUVES = [
     de: 'const lesMembres = estFondateur(session) ? membres.rows : membres.rows.filter((m) => !estMembreFondateur(m.id));', vers: 'const lesMembres = membres.rows;' },
   { nom: 'les outils lus sans le filtre du fondateur', section: 'J', jouer: journauxAssistant, fichier: LIB('assistant-outils.js'),
     de: "const sortie = await require('./fondateur-invisible').pourLaSession(ctx.session, await outil.lire(ctx, donnees, ouverte, suivi));", vers: 'const sortie = await outil.lire(ctx, donnees, ouverte, suivi);' },
+  { nom: 'un role d equipe pris pour le fondateur (sous-chaine)', section: 'R', jouer: regle, fichier: LIB('fondateur-invisible.js'),
+    de: "return ID_MEMBRE.test(String(memberId ?? '').trim());", vers: "return String(memberId ?? '').includes(MARQUE_MEMBRE);" },
   { nom: 'le tableau compact du modele garde son nom', section: 'J', jouer: journauxAssistant, fichier: LIB('fondateur-invisible.js'),
     de: "ligne.map((v, i) => (CLE_D_AUTEUR.test(copie.colonnes[i] || '') && estTraceDuFondateur(v, ensemble) ? '' : v))", vers: 'ligne' },
   { nom: 'le parcours de la session de secours trace par la console', section: 'J', jouer: journalConsole, ecran: { fichier: 'assets/app-main.js',

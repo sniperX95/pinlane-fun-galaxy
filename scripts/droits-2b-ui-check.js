@@ -373,7 +373,7 @@ async function scenario(browser) {
 // ---------------------------------------------------------------------------
 const MUTATIONS = [
   { nom: 'en-tete-muet', lettre: 'M', editions: [{ fichier: JS, de: "    ${derniereModif ? `<p class=\"fx-modif\" data-fx-modif>${escapeHtml(derniereModif)}</p>` : ''}\n", vers: '' }] },
-  { nom: 'en-tete-11px', lettre: 'M', editions: [{ fichier: CSS, de: 'body:is(.staff-mode, .admin-mode) .fx-modal .fx-modif { margin: 4px 0 0; font-size: 13px;', vers: 'body:is(.staff-mode, .admin-mode) .fx-modal .fx-modif { margin: 4px 0 0; font-size: 11px;' }] },
+  { nom: 'en-tete-11px', lettre: 'M', editions: [{ fichier: CSS, de: 'body:is(.staff-mode, .admin-mode) .fx-modal .fz-ligne :is(.dossier-facts, .dossier-facts .dossier-fact strong, .fx-etiquette, .fx-etiquette small, .fx-modif) { font-size: 15.5px;', vers: 'body:is(.staff-mode, .admin-mode) .fx-modal .fz-ligne :is(.dossier-facts, .dossier-facts .dossier-fact strong, .fx-etiquette, .fx-etiquette small, .fx-modif) { font-size: 11px;' }] },
   { nom: 'historique-absent', lettre: 'H', editions: [{ fichier: JS, de: '        ${renderGroupeHistorique(r)}\n', vers: '' }] },
   { nom: 'historique-lu-d-avance', lettre: 'H', editions: [{ fichier: JS, de: '  const ouvert = historiquesOuverts.has(id);', vers: '  const ouvert = historiquesOuverts.has(id);\n  if (!historiquesLus.has(id)) chargerHistoriqueDossier(r);' }] },
   { nom: 'historique-meta-11px', lettre: 'H', editions: [{ fichier: CSS, de: '.fx-histo-meta { display: flex; flex-wrap: wrap; gap: 0 8px; margin: 0; font-size: 12px;', vers: '.fx-histo-meta { display: flex; flex-wrap: wrap; gap: 0 8px; margin: 0; font-size: 11px;' }] },

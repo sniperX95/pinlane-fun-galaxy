@@ -281,7 +281,7 @@ async function main() {
       `AUCUNE animation rejouee malgre ${mute.renders.staffData} rendus (${mute.anim.length}${mute.anim.length ? ' : ' + detail(mute.anim) : ''})`);
 
     console.log('\n[3] COCHER UNE ACTIVITE : UN SEUL changement visible, rien ne saute');
-    await page.setViewportSize({ width: 1200, height: 560 });
+    await page.setViewportSize({ width: 1200, height: 440 });
     await page.evaluate(() => { openPos(9020); });
     await page.waitForTimeout(900);
     await page.evaluate(() => { window.__ANIM__ = []; window.__RENDERS__ = { staffData: 0, table: 0, pos: 0, planning: 0 }; });
@@ -291,7 +291,8 @@ async function main() {
     // premiere case se voit sans defiler, et une mesure faite a 0 px ne
     // prouverait rien. Le corps descend donc aussi loin qu il peut en gardant
     // la DERNIERE case du programme dans le cadre : la mesure porte sur une
-    // fiche defilee.
+    // fiche defilee. (2026-11-16 : la fiche tient sur un ecran ; la fenetre de ce
+    // test descend a 440 px de haut pour qu elle ait encore de quoi defiler.)
     const defilerSurLaDerniereCase = () => page.evaluateHandle(() => {
       const corps = document.querySelector('#posOverlay .edit-modal-body');
       const cases = [...document.querySelectorAll('#posOverlay .gc-check')];
@@ -521,7 +522,7 @@ async function main() {
     // (a) La fiche reprend son animation d entree a CHAQUE rendu : c est
     //     exactement l etat d avant le 2026-08-26, ou .fade-in etait pose sur
     //     un conteneur reconstruit a chaque fois.
-    await page.setViewportSize({ width: 1200, height: 560 });
+    await page.setViewportSize({ width: 1200, height: 440 });
     await page.evaluate(() => {
       window.__ORIG_SHEET__ = window.posSheetClass;
       window.posSheetClass = function () { return 'pos-sheet fade-in'; };

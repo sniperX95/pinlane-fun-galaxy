@@ -4,16 +4,18 @@
 // infos mais super bien positionner [...] on regarde on sait direct prcq celui
 // actuel tout est reparti partout avec des repetitions ». La regle : chaque
 // information a UNE place.
-//   [T1] l en-tete tient en deux lignes (Ansar, 15/11 : « trop long [...] faut
-//        tout one shot ») : le nom, sa pastille, puis le jour, le lieu et le
-//        numero en texte courant ; dessous, en grand, l heure, les joueurs
-//        (Movsar, 27/10 : « heure activité joueur plus visible ») et la
-//        formule ; aucun libelle ecrit, ils restent pour la synthese vocale ;
+//   [T1] sous le nom, UNE SEULE LIGNE, TOUT A LA MEME TAILLE (Ansar, 16/11, sur
+//        l heure et les joueurs en chiffres d affiche : « la DA de merde la
+//        avec les chiffres en grands gras et le texte qui l introduit en petit
+//        [...] toute l endroit de A a Z ») : l heure, les joueurs et la formule
+//        en gras, puis le jour, le lieu et le numero en gris ; chaque mot a la
+//        taille des chiffres, dans la police de la console (plus d affiche) ;
+//        aucun libelle ecrit, ils restent pour la synthese vocale ;
 //   [U1] (Ansar, 15/11 : « en plein rush on veut la rapidité ») sur un
 //        ordinateur, la fiche d un groupe se lit sans faire defiler : le corps
 //        ne deborde pas, une activite tient sur une ligne de 48 px au plus ;
 //   [T2] l occasion s ecrit en texte, pas en pastille ;
-//   [T3] la formule du catalogue en grand, ou « À la carte » (Ansar, 14/11 :
+//   [T3] la formule du catalogue dans la ligne, ou « À la carte » (Ansar, 14/11 :
 //        « savoir si c une formule ou pas ») ; l occasion ne la redit pas ;
 //   [E1] la phrase du moment (sur la ligne de l arrivee, ou dans le bandeau
 //        d une demande a verifier) ne redit pas la pastille de l en-tete, le
@@ -41,11 +43,10 @@
 //   [G1] (Ansar, 14/11 : « pour des etudiants jeunes il faut un truc simple
 //        rapide et complet [...] le retard [...] la note [...] modifier
 //        rapidement ») dans l en-tete, donc toujours a l ecran, « Retard »,
-//        « Note pour l’équipe » et « Message au client », EN TEXTE SEUL (Ansar,
-//        15/11, sur la rangee de boutons encadres a pictogramme : « on dirait
-//        ia ») : ni bord ni pictogramme ; « Annuler la réservation », qui
-//        n est pas un geste de rush, au bas de la colonne de droite, a
-//        l ecran sans faire defiler ; le bouton dit « Retard », rouge quand la pastille
+//        « Note pour l’équipe », « Message au client » et « Annuler la
+//        réservation », en boutons de la console, encadres (essayes en texte
+//        seul le 15/11 ; Ansar, le 16 : « je preferais encore celui
+//        d avant ») ; le bouton dit « Retard », rouge quand la pastille
 //        dit « En retard » (il ne la redit pas, jamais de minutes) ; il ouvre
 //        ses minutes
 //        en tete du corps, la note ouvre son champ le curseur dedans, toucher
@@ -130,7 +131,8 @@ function lireFiche({ nom, contact }) {
     const lib = f.querySelector('span');
     const val = f.querySelector('strong');
     const chiffre = f.querySelector('.fx-nombre') || val;
-    return { libelle: txt(lib), valeur: txt(val), libVu: Boolean(lib) && R(lib).width > 1 && R(lib).height > 1 && cs(lib).clip !== 'rect(0px, 0px, 0px, 0px)', haut: Math.round(R(val).top), bas: Math.round(R(val).bottom), ligne: f.closest('.fx-chiffres') ? 'chiffres' : 'faits', px: parseFloat(cs(chiffre).fontSize) };
+    return { libelle: txt(lib), valeur: txt(val), libVu: Boolean(lib) && R(lib).width > 1 && R(lib).height > 1 && cs(lib).clip !== 'rect(0px, 0px, 0px, 0px)', haut: Math.round(R(val).top), bas: Math.round(R(val).bottom), ligne: f.closest('.fx-chiffres') ? 'chiffres' : 'faits', px: parseFloat(cs(chiffre).fontSize),
+      mots: Array.from(val.querySelectorAll('.fz-mot, .fx-nombre')).map((n) => parseFloat(cs(n).fontSize)), police: cs(chiffre).fontFamily, poids: Number(cs(val).fontWeight) };
   });
   // La phrase du moment : celle du bandeau d une demande a verifier, sinon
   // celle de la ligne d arrivee.
@@ -202,13 +204,12 @@ function lireFiche({ nom, contact }) {
     lignesAddition: Array.from(m.querySelectorAll('.gc-bill-lines > div')).map((d) => txt(d)),
     total: ligne(m.querySelector('.gc-bill-total')),
     principal: principal ? Array.from(principal.children).map((c) => (c.matches('.gc-notes') ? 'notes' : c.matches('.fx-programme') ? 'programme' : c.className)) : [],
-    cote: cote ? Array.from(cote.children).map((c) => (c.matches('.gc-notes') ? 'notes' : c.matches('.fz-caisse') ? 'caisse' : c.matches('.fx-client') ? 'client' : c.matches('.fx-historique') ? 'historique' : c.matches('.fz-fin') ? 'annuler' : c.matches('.fx-pli') ? 'pli' : c.className)) : [],
+    cote: cote ? Array.from(cote.children).map((c) => (c.matches('.gc-notes') ? 'notes' : c.matches('.fz-caisse') ? 'caisse' : c.matches('.fx-client') ? 'client' : c.matches('.fx-historique') ? 'historique' : c.matches('.fx-pli') ? 'pli' : c.className)) : [],
     ordre: feuille ? Array.from(feuille.children).map((c) => (c.matches('.fz-bandeau') ? 'bandeau' : c.matches('.gc-notes') ? 'notes' : c.matches('.fx-colonnes') ? 'colonnes' : c.matches('.pos-absent') ? 'absent' : c.matches('.fx-retard') ? 'retard' : c.className)) : [],
     attenduNotes: Boolean(String(r.notes || '').trim()),
     formuleCatalogue,
-    outils: Array.from(m.querySelectorAll('.dossier-head .fx-outils .fx-outil')).map((b) => ({ t: txt(b), vu: vuEnTete(b), rouge: b.classList.contains('is-retard'), nu: parseFloat(getComputedStyle(b).borderTopWidth) === 0 && Array.from(b.querySelectorAll('svg')).every((g) => g.getBoundingClientRect().width === 0) })),
-    annuler: Array.from(m.querySelectorAll('.fx-cote .fz-fin .fx-annuler')).map((b) => ({ t: txt(b), vu: R(b).height > 0 && R(b).bottom <= innerHeight && R(b).top >= R(corps).top - 1 && R(b).bottom <= R(corps).bottom + 1 })),
-    annulerEnTete: m.querySelectorAll('.dossier-head .fx-annuler').length,
+    outils: Array.from(m.querySelectorAll('.dossier-head .fx-outils .fx-outil')).map((b) => ({ t: txt(b), vu: vuEnTete(b), rouge: b.classList.contains('is-retard'), encadre: parseFloat(getComputedStyle(b).borderTopWidth) >= 1 })),
+    annulerDansLeCorps: m.querySelectorAll('.edit-modal-body .fx-annuler').length,
     notesHaut: notes ? Math.round(R(notes).top) : null,
     corpsBas: Math.round(R(corps).bottom),
     client: ligne(m.querySelector('.fx-client')),
@@ -286,20 +287,21 @@ function juger(f, label, appareil) {
   const courants = f.faits.filter((x) => x.ligne === 'faits');
   ok(chiffres.map((x) => x.libelle).join() === 'Horaires,Groupe,Formule' && courants.map((x) => x.libelle).join() === 'Date,Ressources,Réservation' && f.faits.every((x) => x.valeur && !x.libVu),
     `[T1] ${label} : l heure, les joueurs et la formule d abord, puis le jour, le lieu et le numero, sans libelle ecrit`, f.faits);
-  const plusPetitChiffre = Math.min(...chiffres.map((x) => x.px));
-  ok(plusPetitChiffre >= 22 && courants.every((x) => x.px <= 15 && x.px < plusPetitChiffre), `[T1] ${label} : l heure et les joueurs en grand (${plusPetitChiffre} px), le reste en texte courant`, f.faits.map((x) => `${x.valeur}:${x.px}`));
-  // Une ligne : les deux boites se recouvrent en hauteur (le nombre de joueurs
-  // et l heure n ont pas la meme taille, leurs hauts different).
-  // Au telephone, la formule peut passer a la ligne sous l heure et les joueurs.
+  // Une seule taille : celle de l heure vaut pour les joueurs, la formule, le
+  // jour, le lieu, le numero, et pour chaque mot (« Arrivée », « joueurs »).
+  const taille = chiffres.length ? chiffres[0].px : 0;
+  ok(taille >= 14 && taille <= 17 && f.faits.every((x) => x.px === taille && x.mots.every((px) => px === taille)) && f.faits.every((x) => !/anton|impact/i.test(x.police)),
+    `[T1] ${label} : tout a la meme taille (${taille} px), chaque mot comme les chiffres, dans la police de la console`, f.faits.map((x) => `${x.valeur}:${x.px}${x.mots.length ? `(${x.mots.join()})` : ''}`));
+  ok(chiffres.every((x) => x.poids >= 600 || x.valeur === 'À la carte') && courants.every((x) => x.poids <= 500), `[T1] ${label} : l heure, les joueurs et la formule en gras (« À la carte » en gris), le reste en gris`, f.faits.map((x) => `${x.valeur}:${x.poids}`));
+  // Sur un ordinateur, une ligne ; au telephone elle coule comme une phrase.
   const memeLigne = (a, b) => Boolean(a && b) && b.haut < a.bas && b.bas > a.haut;
-  ok(chiffres.length === 3 && memeLigne(chiffres[0], chiffres[1]) && (!ordi || memeLigne(chiffres[0], chiffres[2])) && courants.every((x) => x.bas <= Math.min(...chiffres.map((c) => c.haut)) + 2), `[T1] ${label} : les faits courants sur la ligne du nom, puis l heure et les joueurs sur une ligne${ordi ? ', la formule a cote' : ''}`, f.faits.map((x) => `${x.valeur}@${x.haut}`));
-  if (ordi) ok(new Set(courants.map((x) => x.haut)).size === 1, `[T1] ${label} : les faits courants tiennent sur une ligne`, courants.map((x) => `${x.valeur}@${x.haut}`));
+  if (ordi) ok(chiffres.length === 3 && f.faits.every((x) => memeLigne(chiffres[0], x)), `[T1] ${label} : une seule ligne sous le nom`, f.faits.map((x) => `${x.valeur}@${x.haut}`));
   // [T2]
   ok(f.etiquettes.every((e) => (/rgba\([^)]*,\s*0\)$|transparent/.test(e.fond)) && e.pad === '0px'), `[T2] ${label} : l occasion s ecrit en texte, pas en pastille`, f.etiquettes);
   // [T3]
   const formuleVue = chiffres[2] ? chiffres[2].valeur : '';
   ok(formuleVue === (f.formuleCatalogue || 'À la carte') && (!f.formuleCatalogue || f.etiquettes.every((e) => !e.t.includes(f.formuleCatalogue))),
-    `[T3] ${label} : ${f.formuleCatalogue ? `la formule « ${f.formuleCatalogue} » en grand, l occasion ne la redit pas` : '« À la carte » en grand'}`, { vue: formuleVue, catalogue: f.formuleCatalogue, etiquettes: f.etiquettes.map((e) => e.t) });
+    `[T3] ${label} : ${f.formuleCatalogue ? `la formule « ${f.formuleCatalogue} » dans la ligne, l occasion ne la redit pas` : '« À la carte » dans la ligne'}`, { vue: formuleVue, catalogue: f.formuleCatalogue, etiquettes: f.etiquettes.map((e) => e.t) });
   // [E1]
   ok(f.pastille === f.pastilleAttendue, `[E1] ${label} : la pastille de l en-tete dit « ${f.pastilleAttendue} »`, f.pastille);
   ok(f.momentPhrase && !f.moment.toLowerCase().includes(f.pastille.toLowerCase()),
@@ -335,8 +337,8 @@ function juger(f, label, appareil) {
   // fixture, Direction, a le niveau « historique » ; la demande a verifier a
   // son bandeau au-dessus des colonnes)
   ok(JSON.stringify(f.ordre) === JSON.stringify((f.pastille === 'À vérifier' ? ['bandeau'] : []).concat(['colonnes']))
-    && JSON.stringify(f.principal) === JSON.stringify((f.attenduNotes ? ['notes'] : []).concat(['programme'])) && JSON.stringify(f.cote) === JSON.stringify(['caisse', 'client', 'historique', 'annuler']),
-    `[C1] ${label} : ${f.pastille === 'À vérifier' ? 'le bandeau, puis ' : ''}a gauche ${f.attenduNotes ? 'les notes et ' : ''}le programme, a droite la caisse, le client, l historique, puis Annuler`, { ordre: f.ordre, principal: f.principal, cote: f.cote });
+    && JSON.stringify(f.principal) === JSON.stringify((f.attenduNotes ? ['notes'] : []).concat(['programme'])) && JSON.stringify(f.cote) === JSON.stringify(['caisse', 'client', 'historique']),
+    `[C1] ${label} : ${f.pastille === 'À vérifier' ? 'le bandeau, puis ' : ''}a gauche ${f.attenduNotes ? 'les notes et ' : ''}le programme, a droite la caisse, le client, l historique`, { ordre: f.ordre, principal: f.principal, cote: f.cote });
   if (ordi && f.attenduNotes) ok(f.notesHaut !== null && f.notesHaut < f.corpsBas - 40, `[C1] ${label} : les notes se lisent sans faire defiler`, { notes: f.notesHaut, bas: f.corpsBas });
   // [P1]
   ok(f.arrivee && f.arrivee.avantLesActivites && f.arrivee.coche === f.pointe && f.arrivee.touchable === !f.paye,
@@ -349,11 +351,9 @@ function juger(f, label, appareil) {
   // [P2]
   ok(JSON.stringify(f.payer) === JSON.stringify(['Payé · Carte', 'Payé · Espèces']), `[P2] ${label} : « Payé · Carte » et « Payé · Espèces » dans la caisse, sous le montant`, f.payer);
   // [G1]
-  ok(JSON.stringify(f.outils.map((o) => o.t)) === JSON.stringify(['Retard', 'Note pour l’équipe', 'Message au client'])
-    && f.outils.every((o) => o.vu && o.nu) && f.outils.every((o, i) => o.rouge === (i === 0 && f.pastille === 'En retard')),
-    `[G1] ${label} : « Retard », la note et le message dans l en-tete, en texte seul (ni bord ni pictogramme), toujours a l ecran, le retard rouge seulement en retard`, f.outils);
-  ok(f.annulerEnTete === 0 && f.annuler.length === 1 && f.annuler[0].t === 'Annuler la réservation' && (!ordi || f.annuler[0].vu),
-    `[G1] ${label} : « Annuler la réservation » au bas de la colonne de droite${ordi ? ', a l ecran sans faire defiler' : ''}, plus dans l en-tete`, { annuler: f.annuler, enTete: f.annulerEnTete });
+  ok(JSON.stringify(f.outils.map((o) => o.t)) === JSON.stringify(['Retard', 'Note pour l’équipe', 'Message au client', 'Annuler la réservation'])
+    && f.outils.every((o) => o.vu && o.encadre) && f.outils.every((o, i) => o.rouge === (i === 0 && f.pastille === 'En retard')) && f.annulerDansLeCorps === 0,
+    `[G1] ${label} : « Retard », la note, le message et Annuler dans l en-tete, en boutons encadres, toujours a l ecran, le retard rouge seulement en retard`, { outils: f.outils, corps: f.annulerDansLeCorps });
   // [C2]
   const joignable = f.liens.length > 0;
   ok(!/non renseign/i.test(f.client) && (joignable
@@ -410,8 +410,10 @@ const MUTATIONS = [
   { nom: 'libelles-ecrits', lettre: 'T1', scenarios: ORDI, editions: [{ fichier: JS, de: '<span class="visually-hidden">${libelle} </span><strong>${valeur}</strong></span>', vers: '<span>${libelle} </span><strong>${valeur}</strong></span>' }] },
   { nom: 'formule-perdue', lettre: 'T3', scenarios: ORDI, editions: [{ fichier: JS, de: "    + fait('Formule', nomFormule ? escapeHtml(nomFormule) : 'À la carte', nomFormule ? 'fx-formule' : 'fx-formule is-carte');", vers: "    + '';" }] },
   { nom: 'formule-redite', lettre: 'T3', scenarios: ORDI, editions: [{ fichier: JS, de: ".map(e => (e.ton === 'occasion' && nomFormule ?", vers: '.map(e => (false ?' }] },
-  { nom: 'chiffres-petits', lettre: 'T1', scenarios: ORDI, editions: [{ fichier: CSS, de: '.fx-modal .fx-chiffres .dossier-fact strong { font-family: var(--fz-anton); font-size: 30px;', vers: '.fx-modal .fx-chiffres .dossier-fact strong { font-family: var(--fz-anton); font-size: 15px;' }] },
-  { nom: 'faits-empiles', lettre: 'T1', scenarios: ORDI, editions: [{ fichier: CSS, de: '.fx-modal .dossier-fact { display: inline; }', vers: '.fx-modal .dossier-fact { display: grid; }' }] },
+  { nom: 'chiffres-en-affiche', lettre: 'T1', scenarios: ORDI, editions: [{ fichier: CSS, de: '.fx-modal .fx-chiffres .dossier-fact strong { font-size: 15.5px; font-weight: 650;', vers: '.fx-modal .fx-chiffres .dossier-fact strong { font-family: var(--fz-anton); font-size: 30px; font-weight: 400;' }] },
+  { nom: 'mots-en-petit', lettre: 'T1', scenarios: ORDI, editions: [{ fichier: CSS, de: '.fx-modal .fx-chiffres .dossier-fact strong :is(.fz-mot, .fx-nombre) { font-size: inherit; line-height: inherit; color: inherit; }', vers: '' }] },
+  { nom: 'gestes-en-texte', lettre: 'G1', scenarios: ORDI, editions: [{ fichier: CSS, de: "min-height: 36px; margin: 0; padding: 0 12px; border: 1px solid var(--control-border); border-radius: 8px; background: var(--surface); color: var(--text); font: inherit; font-size: 13.5px;", vers: "min-height: 36px; margin: 0; padding: 0 12px; border: 0; border-radius: 8px; background: var(--surface); color: var(--text); font: inherit; font-size: 13.5px;" }] },
+  { nom: 'faits-empiles', lettre: 'T1', scenarios: ORDI, editions: [{ fichier: CSS, de: '.fx-modal .fz-ligne :is(.fx-chiffres, .fz-faits > p, .dossier-fact, .fx-etiquettes) { display: inline; margin: 0; }', vers: '.fx-modal .fz-ligne :is(.fx-chiffres, .fz-faits > p, .dossier-fact, .fx-etiquettes) { display: block; margin: 0; }' }] },
   { nom: 'occasion-en-pastille', lettre: 'T2', scenarios: ORDI, editions: [{ fichier: CSS, de: '.fx-modal .fx-etiquette { display: inline; padding: 0; border-radius: 0; background: none;', vers: '.fx-modal .fx-etiquette { display: inline; padding: 3px 8px; border-radius: 6px; background: var(--subtle);' }] },
   { nom: 'pastille-redite', lettre: 'E1', scenarios: ORDI, editions: [{ fichier: JS, de: "      : `Fin prévue à ${formatClockDisplay(span.end)}`;", vers: "      : `Sur place, fin prévue à ${formatClockDisplay(span.end)}`;" }] },
   { nom: 'arrivee-redit-la-pastille', lettre: 'E1', scenarios: ORDI, editions: [{ fichier: JS, de: "<b>${arrive ? 'Groupe arrivé' : 'Arrivée du groupe'}</b>", vers: "<b>${arrive ? 'Sur place' : 'À venir, en retard'}</b>" }] },
@@ -432,12 +434,10 @@ const MUTATIONS = [
   { nom: 'retard-avec-minutes', lettre: 'G1', scenarios: ORDI, editions: [{ fichier: JS, de: '${FICHE_ICONE_HORLOGE}Retard</button>', vers: "${FICHE_ICONE_HORLOGE}${enRetard ? 'En retard de 15 min' : 'Retard'}</button>" }] },
   { nom: 'activite-sur-deux-lignes', lettre: 'U1', scenarios: ORDI, editions: [{ fichier: CSS, de: '.fx-modal .fx-programme .gc-step-what { flex-direction: row; flex-wrap: wrap; align-items: baseline; gap: 0 8px; }', vers: '.fx-modal .fx-programme .gc-step-what { flex-direction: column; padding: 8px 0; }' }] },
   { nom: 'ajouter-perdu', lettre: 'C2', scenarios: ORDI, editions: [{ fichier: JS, de: "onclick=\"modifierDepuisFiche('telephone', event)\">Ajouter</button>", vers: "onclick=\"modifierDepuisFiche('telephone', event)\"></button>" }] },
-  { nom: 'gestes-encadres', lettre: 'G1', scenarios: ORDI, editions: [{ fichier: CSS, de: '.fx-modal .fx-outils .fx-outil { min-height: 34px; padding: 0 10px; border: 0; background: none; }', vers: '.fx-modal .fx-outils .fx-outil { min-height: 34px; padding: 0 10px; background: none; }' }] },
-  { nom: 'annuler-en-tete', lettre: 'G1', scenarios: ORDI, editions: [{ fichier: JS, de: "  const rangee = boutons.filter(Boolean);\n  if (!rangee.length) return '';\n  return `<div class=\"fx-outils\"", vers: "  const rangee = boutons.concat(ficheAnnuler(r, droits)).filter(Boolean);\n  if (!rangee.length) return '';\n  return `<div class=\"fx-outils\"" }] },
   { nom: 'retard-rouge-partout', lettre: 'G1', scenarios: ORDI, editions: [{ fichier: JS, de: "const enRetard = getStaffDashboardStatusMeta(r).className === 'late';", vers: 'const enRetard = true;' }] },
   { nom: 'retard-qui-ne-s-ouvre-pas', lettre: 'G1', scenarios: ORDI, editions: [{ fichier: JS, de: '  if (plisRetardOuverts.has(n)) plisRetardOuverts.delete(n); else plisRetardOuverts.add(n);', vers: '' }] },
   { nom: 'note-sans-curseur', lettre: 'G1', scenarios: ORDI, editions: [{ fichier: JS, de: '  const champ = document.getElementById(`gcNoteEquipe${id}`);\n  if (champ) champ.focus();', vers: '  const champ = document.getElementById(`gcNoteEquipe${id}`);' }] },
-  { nom: 'joueurs-sans-geste', lettre: 'G1', scenarios: ORDI, editions: [{ fichier: JS, de: "const FICHE_CHAMPS_MODIFIABLES = { heure: 'editStartInput', joueurs: 'editPaxInput' };", vers: "const FICHE_CHAMPS_MODIFIABLES = { heure: 'editStartInput' };" }] },
+  { nom: 'joueurs-sans-geste', lettre: 'G1', scenarios: ORDI, editions: [{ fichier: JS, de: "const FICHE_CHAMPS_MODIFIABLES = { heure: 'editStartInput', joueurs: 'editPaxInput', telephone: 'editPhoneInput' };", vers: "const FICHE_CHAMPS_MODIFIABLES = { heure: 'editStartInput', telephone: 'editPhoneInput' };" }] },
   { nom: 'client-non-renseigne', lettre: 'C2', scenarios: ORDI, editions: [{ fichier: JS, de: "!r.phone && !r.email ? 'Ni téléphone ni e-mail'", vers: "!r.phone && !r.email ? 'Non renseigné'" }] },
   { nom: 'etat-en-pastille', lettre: 'V1', scenarios: ORDI, editions: [{ fichier: CSS, de: '.fx-modal .gc-step .gc-step-state { padding: 0; border-radius: 0; background: none;', vers: '.fx-modal .gc-step .gc-step-state { border-radius: 0;' }] },
   { nom: 'libre-redit', lettre: 'V1', scenarios: ORDI, editions: [{ fichier: CSS, de: '.fx-modal .gc-step.is-libre .gc-step-state { display: none; }', vers: '.fx-modal .gc-step.is-libre .gc-step-state { }' }] },

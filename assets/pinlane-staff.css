@@ -19543,8 +19543,7 @@ body:is(.staff-mode, .admin-mode) .fx-modal .dossier-heading { display: contents
 body:is(.staff-mode, .admin-mode) .fx-modal .dossier-title-row { grid-area: 1 / 1; align-items: baseline; gap: 4px 10px; }
 body:is(.staff-mode, .admin-mode) .fx-modal .dossier-title-row .dossier-status { align-self: center; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fz-tete-droite { grid-area: 1 / 2; display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
-body:is(.staff-mode, .admin-mode) .fx-modal .edit-modal-head .close-btn { width: 36px; height: 36px; border: 0; background: none; }
-body:is(.staff-mode, .admin-mode) .fx-modal .edit-modal-head .close-btn:hover { background: var(--subtle); }
+body:is(.staff-mode, .admin-mode) .fx-modal .edit-modal-head .close-btn { width: 36px; height: 36px; }
 body:is(.staff-mode, .admin-mode) .fx-modal .dossier-title { font-size: 20px; line-height: 1.25; }
 /* Les onglets : deux positions d un meme interrupteur, a cote de la croix. */
 body:is(.staff-mode, .admin-mode) .fx-modal .dossier-tabs { display: inline-flex; grid-column: auto; gap: 2px; padding: 3px; border-radius: 10px; background: var(--subtle); }
@@ -19568,23 +19567,33 @@ body:is(.staff-mode, .admin-mode) .fx-modal .dossier-status.is-pending { backgro
    activité joueur plus visible » ; Ansar, 2026-11-14 : « savoir si c une
    formule ou pas »). Le texte ne change pas, la typo d affiche dit ce qui
    compte. L heure et les joueurs se touchent pour les modifier. */
-body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres { grid-area: 2 / 1; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 24px; margin: 0; }
+/* UNE SEULE LIGNE SOUS LE NOM, TOUT A LA MEME TAILLE (Ansar, 2026-11-16, sur
+   l heure et les joueurs en chiffres d affiche : « la DA [...] avec les
+   chiffres en grands gras et le texte qui l introduit en petit »). Elle coule
+   comme une phrase : l heure, les joueurs et la formule en gras, le jour, le
+   lieu, le numero et l occasion en gris, un point median entre deux. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-ligne { grid-area: 2 / 1 / auto / -1; min-width: 0; margin: 0; font-size: 15.5px; line-height: 1.55; color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-ligne :is(.fx-chiffres, .fz-faits > p, .dossier-fact, .fx-etiquettes) { display: inline; margin: 0; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres > *::after, body:is(.staff-mode, .admin-mode) .fx-modal .fz-ligne .fz-faits > p:not(:last-child)::after { content: "\0000b7"; margin: 0 8px; color: var(--faint); font-weight: 400; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .dossier-fact strong :is(.fz-mot, .fx-nombre) { font-size: inherit; line-height: inherit; color: inherit; }
+/* (un blanc du gabarit suit deja ces points-la) */
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres > :last-child::after, body:is(.staff-mode, .admin-mode) .fx-modal .fz-ligne .fz-faits > p:not(:last-child)::after { margin-right: 4px; }
 body:is(.staff-mode, .admin-mode) .fx-modal .dossier-fact { display: inline; }
-body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .dossier-fact strong { font-family: var(--fz-anton); font-size: 30px; font-weight: 400; line-height: 1.1; letter-spacing: 0.012em; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--text); }
-body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fx-fleche { display: inline-flex; margin: 0 2px; color: var(--faint); vertical-align: 6px; }
-body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fx-fleche svg { width: 20px; height: 13px; }
-body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fz-mot { font-family: var(--font-ui); font-size: 15px; font-weight: 500; letter-spacing: 0; color: var(--muted); }
-body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fx-joueurs strong { font-family: inherit; font-size: 15px; font-weight: 500; letter-spacing: 0; color: var(--muted); }
-body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fx-nombre { font-family: var(--fz-anton); font-size: 30px; font-weight: 400; letter-spacing: 0.012em; color: var(--text); }
-body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fx-formule strong { font-size: 26px; text-transform: uppercase; white-space: normal; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .dossier-fact strong { font-size: 15.5px; font-weight: 650; line-height: 1.5; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--text); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fx-fleche { display: inline-flex; margin: 0 1px; color: var(--muted); vertical-align: 1px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fx-fleche svg { width: 15px; height: 10px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fz-mot { font-weight: 400; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fx-formule strong { white-space: normal; }
 /* Sans formule, « À la carte » garde la taille et passe en gris. */
-body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fx-formule.is-carte strong { color: var(--muted); }
-body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fx-fait-modif { appearance: none; margin: 0 -6px; padding: 0 6px; border: 0; border-radius: 6px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
-body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fx-fait-modif:hover { background: var(--subtle); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fx-formule.is-carte strong { font-weight: 500; color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fx-fait-modif { appearance: none; margin: 0; padding: 0; border: 0; border-radius: 4px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fx-fait-modif:hover strong { text-decoration: underline; text-decoration-color: var(--faint); text-underline-offset: 3px; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fx-fait-modif:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 1px; }
 /* Le jour, le lieu, le numero, puis l occasion et « À surveiller » : du
    texte courant sur une ligne, pas des pastilles. */
-body:is(.staff-mode, .admin-mode) .fx-modal .fz-faits { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 14px; margin: 0; min-width: 0; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-faits { display: contents; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-ligne :is(.dossier-facts, .dossier-facts .dossier-fact strong, .fx-etiquette, .fx-etiquette small, .fx-modif) { font-size: 15.5px; font-weight: 400; line-height: 1.5; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-ligne .fx-modif { margin: 0; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fz-faits > p { margin: 0; }
 body:is(.staff-mode, .admin-mode) .fx-modal .dossier-facts { display: block; font-size: 13.5px; line-height: 1.5; color: var(--muted); }
 body:is(.staff-mode, .admin-mode) .fx-modal .dossier-facts .dossier-fact strong { font-size: 13.5px; font-weight: 500; line-height: 1.5; white-space: nowrap; font-variant-numeric: tabular-nums; }
@@ -19598,26 +19607,19 @@ body:is(.staff-mode, .admin-mode) .fx-modal .fx-etiquette.is-suivi b { font-weig
 
 /* LES GESTES DU COMPTOIR, DANS L EN-TETE (Ansar, 2026-11-14 : « un truc
    simple rapide et complet ou tout est super facile d acces ») : ils ne
-   defilent jamais. EN TEXTE SEUL (Ansar, 2026-11-15, sur la rangee de boutons
-   encadres a pictogramme : « on dirait ia ») : ni bord, ni pictogramme, comme
-   les gestes de l en-tete des Demandes ; le fond vient au survol. « Annuler
-   la réservation » n est pas un geste de rush : au bas de la colonne de
-   droite (.fz-fin). */
-body:is(.staff-mode, .admin-mode) .fx-modal .fx-outils { grid-area: 2 / 2; align-self: end; display: flex; align-items: center; justify-content: flex-end; gap: 2px; margin: 0 -10px -4px 0; }
+   defilent jamais. Boutons de la console, blancs a bord, sur leur rangee ;
+   « Annuler la réservation » au bout, a l ecart. (Essayes en texte seul le
+   15/11 ; Ansar, le 16 : « je preferais encore celui d avant ».) */
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-outils { grid-area: 3 / 1 / auto / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; }
 body:is(.staff-mode, .admin-mode) .fx-modal :is(.fx-outil, .fz-bouton, .fx-appel) { appearance: none; display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 36px; margin: 0; padding: 0 12px; border: 1px solid var(--control-border); border-radius: 8px; background: var(--surface); color: var(--text); font: inherit; font-size: 13.5px; font-weight: 600; line-height: 1.2; text-decoration: none; white-space: nowrap; cursor: pointer; }
 body:is(.staff-mode, .admin-mode) .fx-modal :is(.fx-outil, .fz-bouton, .fx-appel) svg { flex: none; color: var(--muted); }
 body:is(.staff-mode, .admin-mode) .fx-modal :is(.fx-outil, .fz-bouton, .fx-appel):hover { background: var(--subtle); }
 body:is(.staff-mode, .admin-mode) .fx-modal :is(.fx-outil, .fz-bouton, .fx-appel):active { transform: scale(0.975); }
 body:is(.staff-mode, .admin-mode) .fx-modal :is(.fx-outil, .fz-bouton, .fx-appel):focus-visible { outline: 2px solid var(--console-focus); outline-offset: 2px; }
-body:is(.staff-mode, .admin-mode) .fx-modal .fx-outils .fx-outil { min-height: 34px; padding: 0 10px; border: 0; background: none; }
-body:is(.staff-mode, .admin-mode) .fx-modal .fx-outils .fx-outil svg { display: none; }
-body:is(.staff-mode, .admin-mode) .fx-modal .fx-outils .fx-outil:hover, body:is(.staff-mode, .admin-mode) .fx-modal .fx-outils .fx-outil[aria-expanded='true'] { background: var(--subtle); }
-body:is(.staff-mode, .admin-mode) .fx-modal .fx-outils .fx-outil.is-retard { color: var(--danger); }
-body:is(.staff-mode, .admin-mode) .fx-modal .fx-outil .fz-long { display: none; }
-@media (min-width: 1181px) { body:is(.staff-mode, .admin-mode) .fx-modal .fx-outil .fz-long { display: inline; } }
-body:is(.staff-mode, .admin-mode) .fx-modal .fz-fin { display: flex; justify-content: flex-end; margin: -4px 0 0; }
-body:is(.staff-mode, .admin-mode) .fx-modal .fz-fin .fx-annuler { min-height: 32px; padding: 0 10px; border: 0; background: none; font-weight: 500; }
-body:is(.staff-mode, .admin-mode) .fx-modal .fz-fin .fx-annuler:hover { background: var(--danger-soft); color: var(--danger); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-outil[aria-expanded='true'] { border-color: var(--text); background: var(--subtle); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-outil.is-retard { border-color: var(--danger); color: var(--danger); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-outil.is-retard svg { color: var(--danger); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-outil.fx-annuler { margin-left: auto; border-color: var(--line-strong); color: var(--danger); }
 @media (pointer: coarse) { body:is(.staff-mode, .admin-mode) .fx-modal :is(.fx-outil, .fz-bouton, .fx-appel) { min-height: 44px; } }
 
 /* == LE CORPS : des blocs blancs sur le fond de la page. == */
@@ -19640,7 +19642,6 @@ body:is(.staff-mode, .admin-mode) .fx-modal :is(.fx-principal, .fx-cote) { displ
   body:is(.staff-mode, .admin-mode) .fx-modal .fx-colonnes .fx-programme { order: 3; }
   body:is(.staff-mode, .admin-mode) .fx-modal .fx-colonnes .fx-client { order: 4; }
   body:is(.staff-mode, .admin-mode) .fx-modal .fx-colonnes .fx-historique { order: 5; }
-  body:is(.staff-mode, .admin-mode) .fx-modal .fx-colonnes .fz-fin { order: 6; }
 }
 body:is(.staff-mode, .admin-mode) .fx-modal .fx :is(.fz-carte, .fx-historique, .gc-notes, .fx-retard) { margin: 0; padding: 12px 14px; border: 0; border-radius: var(--fz-r); background: var(--fz-carte); box-shadow: var(--fz-ombre); }
 body:is(.staff-mode, .admin-mode) .fx-modal :is(.fx-titre, .pos-sheet .info-label) { margin: 0; font-size: 14.5px; font-weight: 650; letter-spacing: 0; text-transform: none; color: var(--text); }
@@ -19804,18 +19805,17 @@ body:is(.staff-mode, .admin-mode) .fx-modal .fx-historique > summary { display: 
    heures un cran plus petits. == */
 @media (max-width: 760px) {
   body:is(.staff-mode, .admin-mode) .fx-modal .edit-modal-head { grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 10px 12px 10px; }
-  body:is(.staff-mode, .admin-mode) .fx-modal :is(.dossier-title-row, .fz-tete-droite, .fx-chiffres, .fx-outils) { grid-area: auto; grid-column: 1; }
+  body:is(.staff-mode, .admin-mode) .fx-modal :is(.dossier-title-row, .fz-tete-droite, .fz-ligne, .fx-outils) { grid-area: auto; grid-column: 1; }
   body:is(.staff-mode, .admin-mode) .fx-modal .fz-tete-droite { order: -1; justify-content: space-between; }
   body:is(.staff-mode, .admin-mode) .fx-modal .edit-modal-body { padding: 12px 12px 20px; }
   body:is(.staff-mode, .admin-mode) .fx-modal .dossier-title { font-size: 18px; }
   body:is(.staff-mode, .admin-mode) .fx-modal .dossier-tabs .tab { padding: 0 12px; }
-  body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres { gap: 0 18px; margin: 0; }
-  body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .dossier-fact:not(.fx-joueurs) strong, body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fx-nombre { font-size: 26px; }
-  body:is(.staff-mode, .admin-mode) .fx-modal .fx-chiffres .fx-formule strong { font-size: 22px; }
   body:is(.staff-mode, .admin-mode) .fx-modal .dossier-facts { display: block; }
-  body:is(.staff-mode, .admin-mode) .fx-modal .fx-outils { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 0; }
-  body:is(.staff-mode, .admin-mode) .fx-modal .fx-outils .fx-outil { min-height: 40px; padding: 0 4px; background: var(--fz-fond); font-size: 13px; }
-  body:is(.staff-mode, .admin-mode) .fx-modal .fz-fin { justify-content: center; margin: 0; }
+  body:is(.staff-mode, .admin-mode) .fx-modal .fx-outils { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+  body:is(.staff-mode, .admin-mode) .fx-modal .fx-outil { gap: 6px; min-height: 40px; padding: 0 4px; font-size: 13px; }
+  body:is(.staff-mode, .admin-mode) .fx-modal .fx-outil svg { display: none; }
+  body:is(.staff-mode, .admin-mode) .fx-modal .fx-outil.fx-annuler { margin-left: 0; padding: 2px 4px; font-size: 12.5px; line-height: 1.15; white-space: normal; text-align: center; }
+  body:is(.staff-mode, .admin-mode) .fx-modal .fx-outil:not(.fx-annuler) .fz-long { display: none; }
   body:is(.staff-mode, .admin-mode) .fx-modal .fz-jauge i { display: none; }
   body:is(.staff-mode, .admin-mode) .fx-modal .fz-jauge span { margin-left: 0; }
   body:is(.staff-mode, .admin-mode) .fx-modal .fz-arrivee { padding: 0 0 8px; }
@@ -19823,7 +19823,7 @@ body:is(.staff-mode, .admin-mode) .fx-modal .fx-historique > summary { display: 
   body:is(.staff-mode, .admin-mode) .fx-modal .fz-arrivee.is-fait { padding: 0 8px 0 0; }
   body:is(.staff-mode, .admin-mode) .fx-modal .fz-arrivee.is-fait .fz-arrivee-ligne { flex-basis: 0; }
   /* Dans Modifier, le formulaire redit l heure et les joueurs : l en-tete garde le nom. */
-  body:is(.staff-mode, .admin-mode) .fx-modal.is-edition :is(.fx-chiffres, .fz-faits) { display: none; }
+  body:is(.staff-mode, .admin-mode) .fx-modal.is-edition .fz-ligne { display: none; }
   body:is(.staff-mode, .admin-mode) .fx-modal .fz-arrivee > :is(.fz-bouton, .fx-appel) { margin: 0 0 0 8px; min-height: 40px; }
   body:is(.staff-mode, .admin-mode) .fx-modal .fx :is(.fz-carte, .fx-historique, .gc-notes, .fx-retard) { padding: 12px; }
   body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .gc-step { grid-template-columns: 24px 46px 40px minmax(0, 1fr); gap: 8px; }
@@ -19843,13 +19843,13 @@ body:is(.staff-mode, .admin-mode) .fx-modal .fx-historique > summary { display: 
   body:is(.staff-mode, .admin-mode) .fx-modal .edit-modal-body { padding: 10px 20px 12px; }
   body:is(.staff-mode, .admin-mode) .fx-modal .fx, body:is(.staff-mode, .admin-mode) .fx-modal .fx-colonnes, body:is(.staff-mode, .admin-mode) .fx-modal :is(.fx-principal, .fx-cote) { gap: 8px; }
   body:is(.staff-mode, .admin-mode) .fx-modal .fx :is(.fz-carte, .fx-historique, .gc-notes, .fx-retard) { padding: 10px 14px; }
-  body:is(.staff-mode, .admin-mode) .fx-modal .fm .fm-pied.dossier-actions { bottom: -12px; margin: 12px -20px -12px; }
+  body:is(.staff-mode, .admin-mode) .fx-modal.is-edition .fm .fm-pied.dossier-actions { bottom: -12px; margin: 12px -20px -12px; }
 }
 /* AU DOIGT, 44 px : pose apres les regles du telephone, qui ont le meme poids
    (les gestes de l en-tete et ceux de la ligne d arrivee y tombaient a 40 px,
    le titre du pli Historique a 28 px). */
 @media (pointer: coarse) {
-  body:is(.staff-mode, .admin-mode) .fx-modal .fx-outils .fx-outil, body:is(.staff-mode, .admin-mode) .fx-modal .fz-fin .fx-annuler, body:is(.staff-mode, .admin-mode) .fx-modal .fz-arrivee > :is(.fz-bouton, .fx-appel), body:is(.staff-mode, .admin-mode) .fx-modal .fx-historique > summary { min-height: 44px; }
+  body:is(.staff-mode, .admin-mode) .fx-modal .fx-outil, body:is(.staff-mode, .admin-mode) .fx-modal .fz-arrivee > :is(.fz-bouton, .fx-appel), body:is(.staff-mode, .admin-mode) .fx-modal .fx-historique > summary { min-height: 44px; }
 }
 
 /* L ONGLET MODIFIER, EN BLOCS COMME LA FICHE (2026-10-27, Movsar : « surtout

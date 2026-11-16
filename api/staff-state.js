@@ -102,7 +102,8 @@ const traiter = async (req, res) => {
     // l equipe, comme la classification.
     let accueil;
     try { accueil = normalizeAccueil(getCenter(centerId)?.accueil); } catch (error) { accueil = undefined; }
-    sendJson(res, 200, { ok: true, ...snapshot, classification, accueil, ouvertures });
+    // (`modificationABlanc` : ce serveur sait dire ce que « Modifier » ecrirait, POST dryRun + modification)
+    sendJson(res, 200, { ok: true, ...snapshot, classification, accueil, ouvertures, modificationABlanc: true });
   } catch (error) {
     require('../lib/garde-serveur').signalerPanneServeur('api/staff-state', error);
     if (isStaffAuthStorageError(error)) {

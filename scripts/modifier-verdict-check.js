@@ -206,8 +206,8 @@ async function scenarioRefus(browser) {
     '[V5] apres le refus du serveur, le prix tape et ce qui partait restent a l ecran, a cote du motif', p.apres);
   // Lina passe en Formule 4 : ses pistes ne sont pas libres a l heure de son bowling.
   const l = await jouerCas(browser, { id: LINA, geste: async (page) => { await page.selectOption('#posOverlay #editFormuleSelect', 'f4'); } });
-  ok(l.avant.ton === 'refus' && /Les pistes demandées ne sont pas libres/.test(l.avant.verdict) && !/relancer la recherche/.test(l.avant.verdict + (l.apres ? l.apres.erreur : '')),
-    '[V1] des pistes prises a l heure du bowling : le refus se lit avant le clic, dans les mots du comptoir', { verdict: l.avant.verdict, erreur: l.apres && l.apres.erreur });
+  ok(l.avant.ton === 'refus' && /Ce créneau vient de changer/.test(l.avant.verdict) && l.reponses.join() === '400',
+    '[V1] des pistes prises a l heure du bowling : le refus du serveur se lit avant le clic, mot pour mot', { verdict: l.avant.verdict, reponses: l.reponses });
   ok(l.apres && !l.apres.fermee && /Formule 5 → Formule 4/.test(l.apres.pied) && !l.ecrit, '[V5] apres ce refus, la formule choisie reste a l ecran', l.apres && l.apres.pied);
   ok([c, m, p, l].every((x) => !x.erreurs.length), '[J1] aucune erreur JS (refus)', [c, m, p, l].flatMap((x) => x.erreurs).slice(0, 3));
 }
@@ -269,7 +269,6 @@ const MUTATIONS = [
   { nom: 'pistes-refusees-a-tort', lettre: 'V9', scenarios: PASSE, editions: [{ fichier: JS, de: "    if (!items.some((item) => item.activityId === 'bowling')) lanesVoulues.length = 0;\n", vers: '' }] },
   { nom: 'moteur-accuse-a-tort', lettre: 'V9', scenarios: PASSE, editions: [{ fichier: JS, de: " && !(previousReservation && previousReservation.validationStatus === 'staff_review');", vers: ';' }] },
   { nom: 'annee-tue', lettre: 'A1', scenarios: ['muet'], editions: [{ fichier: JS, de: "...(autreAnnee ? { year: 'numeric' } : {}) });", vers: '});' }] },
-  { nom: 'mots-du-formulaire-public', lettre: 'V1', scenarios: REFUS, editions: [{ fichier: JS, de: "  if (/Ce créneau vient de changer/.test(texte)) return", vers: '  if (false) return' }] },
 ];
 
 async function jouer(browser, noms) {

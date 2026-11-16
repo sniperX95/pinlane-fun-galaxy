@@ -589,9 +589,9 @@ const ORDI = [{ appareil: 'ordinateur', dossiers: ['Club de foot'] }];
 const GESTES = [{ appareil: 'ordinateur', dossiers: [], gestes: true }];
 const FORMULES = [{ appareil: 'ordinateur', dossiers: [], formules: true }];
 const MUTATIONS = [
-  { nom: 'une-seule-colonne', lettre: 'M1', scenarios: ORDI, editions: [{ fichier: CSS, de: '.fx-modal .fm-colonnes { grid-template-columns: minmax(0, 1.55fr) minmax(280px, 1fr);', vers: '.fx-modal .fm-colonnes { grid-template-columns: minmax(0, 1fr);' }] },
+  { nom: 'une-seule-colonne', lettre: 'M1', scenarios: ORDI, editions: [{ fichier: CSS, de: '.fx-modal .fm-colonnes { grid-template-columns: minmax(0, 1.62fr) minmax(300px, 1fr);', vers: '.fx-modal .fm-colonnes { grid-template-columns: minmax(0, 1fr);' }] },
   { nom: 'client-en-tete', lettre: 'M1', scenarios: ORDI, editions: [{ fichier: JS, de: '        <aside class="fm-cote">\n          ${adapte ? renderEditPrix(r) : \'\'}', vers: '        <aside class="fm-cote">\n          <section class="fm-client"></section>${adapte ? renderEditPrix(r) : \'\'}' }] },
-  { nom: 'heures-perdues', lettre: 'M2', scenarios: ORDI, editions: [{ fichier: JS, de: '    const heureHtml = placees.length', vers: '    const heureHtml = false' }] },
+  { nom: 'heures-perdues', lettre: 'M2', scenarios: ORDI, editions: [{ fichier: JS, de: '  return placees.length\n    ? placees.slice(0, 3)', vers: '  return false\n    ? placees.slice(0, 3)' }] },
   { nom: 'statut-revenu', lettre: 'M3', scenarios: ORDI, editions: [{ fichier: JS, de: '          <section class="fm-programme', vers: '          <div class="es-seg" role="radiogroup"><button type="button" class="es-seg-btn" data-statut="pending">Confirmé</button></div><section class="fm-programme' }] },
   { nom: 'aide-revenue', lettre: 'M3', scenarios: ORDI, editions: [{ fichier: JS, de: '    <p class="fm-replan" role="status">', vers: '    <p class="dossier-edit-help">Réglez les joueurs et les options de chaque activité, puis cliquez sur Enregistrer.</p><p class="fm-replan" role="status">' }] },
   { nom: 'explication-toujours', lettre: 'M3', scenarios: ORDI, editions: [{ fichier: JS, de: "  const explique = explicit === 'ecart' ? Number(courant) !== Number(pax) : Boolean(explicit);", vers: '  const explique = Boolean(explicit);' }] },

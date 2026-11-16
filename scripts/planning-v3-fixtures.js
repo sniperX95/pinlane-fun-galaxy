@@ -197,6 +197,9 @@ function mockNavigateur(cfg) {
       state.currentDate = JOUR; state.adminCenterId = 'libramont'; state.staffMenuPage = 'planning'; state.staffResourceView = 'all'; state.staffTheme = theme;
       state.searchTerm = ''; state.staffStatusFilter = 'all'; state.staffPlanningExpanded = false; state.staffLaserPlanningExpanded = false; state.staffTableExpanded = false; state.staffGlobalExpanded = false;
       state.reservations = jours[JOUR].map(function (x) { return Object.assign({}, x); });
+      // (un gate qui branche le calcul a blanc l annonce, comme le ferait staff-state)
+      /* global serveurSaitModifierABlanc:writable */
+      if (typeof window.__fixtureBlanc === 'function') serveurSaitModifierABlanc = true;
       // (l etat des pistes et les reservations en ligne en cours : ceux que
       // staff-state servirait)
       if (fixture.staffState.laneStatuses) state.laneStatuses = Object.assign({}, fixture.staffState.laneStatuses);

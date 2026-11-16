@@ -3369,6 +3369,7 @@ async function syncDateReservations(dateStr, opts = {}) {
       error.status = 503;
       throw error;
     }
+    if (payload.modificationABlanc === true) serveurSaitModifierABlanc = true;
     const nextRevision = response.headers.get('ETag') || payload.revision || '';
     const changed = nextRevision !== knownRevision;
     // Baseline connu (pas le 1er sync) + IDs déjà en mémoire AVANT remplacement :
@@ -29309,17 +29310,10 @@ function ficheOutils(r, droits) {
   }
   boutons.push(renderNoteEquipeBouton(r));
   if (droits.ecrire) boutons.push(`<button type="button" class="fx-outil comm-open-btn fx-message" title="Message au client" onclick="openCommCenter(${id}, event)">${FICHE_ICONE_MESSAGE}<span>Message<span class="fz-long"> au client</span></span></button>`);
+  if (droits.annuler && r.status !== 'cancelled') boutons.push(`<button type="button" class="fx-outil fx-annuler" onclick="cancelRes(${id}, event)"><span>Annuler<span class="fz-long"> la réservation</span></span></button>`);
   const rangee = boutons.filter(Boolean);
   if (!rangee.length) return '';
   return `<div class="fx-outils" role="group" aria-label="Gestes du dossier">${rangee.join('')}</div>`;
-}
-
-// « ANNULER LA RESERVATION » N EST PAS UN GESTE DE RUSH (Ansar, 15/11, sur la
-// rangee de boutons encadres de l en-tete : « on dirait ia »). Il quitte
-// l en-tete : au bas de la colonne de droite, en texte, rouge au survol.
-function ficheAnnuler(r, droits) {
-  if (!droits.annuler || r.status === 'cancelled') return '';
-  return `<p class="fz-fin"><button type="button" class="fx-outil fx-annuler" onclick="cancelRes(${Number(r.id)}, event)">Annuler la réservation</button></p>`;
 }
 
 // Le retard ouvert depuis l en-tete : son panneau en tete du corps.
@@ -29430,7 +29424,6 @@ function renderPosDetails(r) {
         ${ficheCaisse(r, moment, droits)}
         ${ficheClient(r)}
         ${renderGroupeHistorique(r)}
-        ${ficheAnnuler(r, droits)}
       </aside>
     </div>
   </div>`;
@@ -31840,6 +31833,11 @@ function majModifsEdition() {
 // bloque : « Enregistrer » reste le geste, le serveur garde le dernier mot.
 // Sans reponse (hors ligne, serveur d avant), la console se tait.
 // ---------------------------------------------------------------------------
+// Le serveur dit qu il sait calculer a blanc dans l etat de la journee que la
+// console lit deja (api/staff-state.js, `modificationABlanc`). Sans ce mot (un
+// serveur d avant ce jour, un banc d essai), rien ne part.
+let serveurSaitModifierABlanc = false;
+
 function verdictEdition() {
   if (!verdictEdition.etat) verdictEdition.etat = { pour: null, cle: '', jeton: 0, minuterie: 0, enCours: false, resultat: null };
   return verdictEdition.etat;
@@ -31870,7 +31868,7 @@ function demanderVerdictEdition() {
   const e = state.editState;
   const r = state.selectedRes;
   const oublier = () => { clearTimeout(v.minuterie); v.jeton += 1; v.cle = ''; v.enCours = false; v.resultat = null; };
-  if (!e || !r || state.activeTab !== 'modifier') { oublier(); v.pour = null; return; }
+  if (!e || !r || state.activeTab !== 'modifier' || !serveurSaitModifierABlanc) { oublier(); v.pour = null; return; }
   let envoi = null;
   let corps = null;
   let cle = '';
@@ -31909,7 +31907,7 @@ function lireVerdictEdition(reponse, envoi) {
   if (reponse.refus) {
     // Un collegue a change le dossier : « Enregistrer » sait rejouer dessus.
     if (reponse.refus.code === 'reservation_modifiee') return null;
-    return { refus: motifPourLeComptoir(reponse.refus.message) || 'le serveur n’a pas donné de motif.', lignes: [], ecrit: null, prixSuivi: false };
+    return { refus: String(reponse.refus.message || 'le serveur n’a pas donné de motif.'), lignes: [], ecrit: null, prixSuivi: false };
   }
   const ecrit = reponse.reservation;
   const r = state.selectedRes;
@@ -31954,11 +31952,16 @@ function occupantPisteEdition(piste) {
   return conflit ? String(conflit.name || 'un autre groupe') : null;
 }
 
-// L heure ou la duree changent sans re-rendu : les pistes prises se relisent en place.
+// L heure ou la duree changent sans re-rendu : les pistes prises se relisent en
+// place, et les touches cochees suivent celles que la console propose (une
+// heure changee retirait la piste 6 du dossier, sa touche restait bleue).
 function peindrePistesPrises() {
+  const choisies = new Set(getEditLaneNumbers());
   document.querySelectorAll('#posOverlay .fm .lane-picker .lane-chip').forEach((bouton) => {
     if (bouton.disabled) return;
     const piste = Number(bouton.textContent);
+    bouton.classList.toggle('is-on', choisies.has(piste));
+    bouton.setAttribute('aria-pressed', choisies.has(piste) ? 'true' : 'false');
     const occupant = occupantPisteEdition(piste);
     bouton.classList.toggle('is-prise', Boolean(occupant));
     if (occupant) {
@@ -31969,14 +31972,6 @@ function peindrePistesPrises() {
       bouton.removeAttribute('aria-label');
     }
   });
-}
-
-// Une phrase que le serveur a ecrite pour le formulaire public (« relancer la
-// recherche »), redite pour le comptoir.
-function motifPourLeComptoir(message) {
-  const texte = String(message || '');
-  if (/Ce créneau vient de changer/.test(texte)) return 'Les pistes demandées ne sont pas libres à cette heure. Changez de pistes ou d’heure.';
-  return texte;
 }
 
 // Le dossier que le serveur ecrirait, quand le verdict vaut pour l etat a l ecran.
@@ -32605,7 +32600,7 @@ async function saveEdit(e) {
     // La saisie est GARDEE a l'ecran (rien a retaper), donc l'ecran montrerait
     // des valeurs que la base n'a pas : le motif doit rester lisible a cote du
     // bouton, sinon l'ecart passe pour un bug muet.
-    const motif = motifPourLeComptoir(error.message) || 'Impossible de mettre à jour la réservation.';
+    const motif = error.message || 'Impossible de mettre à jour la réservation.';
     failEdit(`${jourChange ? `Pas de déplacement au ${jourLong} : ${motif}` : motif} Rien n’a été enregistré.`);
   }
 }
@@ -41538,7 +41533,7 @@ function renderPosInner() {
   // « savoir si c une formule ou pas »). Sans formule, « À la carte ».
   const nomFormule = ficheNomFormule(r);
   // Les mots d une heure longue (« Arrivée 14:50, début 15:00 ») restent en
-  // texte courant : seuls les chiffres prennent la typo d affiche.
+  // texte courant, a la taille des chiffres : seul le gras les distingue.
   const heuresAffichees = horaires.includes('&') ? horaires : horaires.replace(/,?\s*[A-Za-zÀ-ÿ][^0-9→]*/g, mot => `<span class="fz-mot">${mot}</span>`);
   const chiffres = faitModifiable('Horaires', heuresAffichees.replace(' → ', ` ${fleche} `), 'fx-heures', 'heure')
     + faitModifiable('Groupe', joueurs.replace(/^(\d+)\s/, '<span class="fx-nombre">$1</span> '), 'fx-joueurs', 'joueurs')
@@ -41571,8 +41566,11 @@ function renderPosInner() {
   } : null;
   overlay.classList.remove('hidden');
   overlay.classList.add('centered');
-  // Le jour, le lieu, le numero, l occasion : sur la ligne du nom (2026-11-15,
-  // Ansar : « trop long [...] faut tout one shot »), l en-tete tient en deux lignes.
+  // UNE SEULE LIGNE SOUS LE NOM, TOUT A LA MEME TAILLE (2026-11-16, Ansar, sur
+  // l heure et les joueurs en chiffres d affiche : « la DA de merde la avec les
+  // chiffres en grands gras et le texte qui l introduit en petit [...] toute
+  // l endroit de A a Z »). L heure, les joueurs et la formule en gras, puis le
+  // jour, le lieu, le numero et l occasion en gris ; aucune taille ne change.
   const faitsEnTete = `<div class="fz-faits">
     <p class="dossier-facts">${facts}</p>
     ${derniereModif ? `<p class="fx-modif" data-fx-modif>${escapeHtml(derniereModif)}</p>` : ''}
@@ -41584,8 +41582,8 @@ function renderPosInner() {
     <div class="edit-modal fx-modal fz${isEdit ? ' is-edition' : ''}" role="dialog" aria-modal="true" aria-labelledby="posTitle" tabindex="-1">
       <div class="edit-modal-head dossier-head">
         <div class="edit-modal-ident dossier-heading">
-          <div class="dossier-title-row"><h3 id="posTitle" class="dossier-title">${escapeHtml(r.name)}</h3><span class="dossier-status is-${escapeHtml(dossierStatus.className)}">${escapeHtml(dossierStatus.label)}</span>${faitsEnTete}</div>
-          <p class="fx-chiffres">${chiffres}</p>
+          <div class="dossier-title-row"><h3 id="posTitle" class="dossier-title">${escapeHtml(r.name)}</h3><span class="dossier-status is-${escapeHtml(dossierStatus.className)}">${escapeHtml(dossierStatus.label)}</span></div>
+          <div class="fz-ligne"><p class="fx-chiffres">${chiffres}</p>${faitsEnTete}</div>
         </div>
         <div class="fz-tete-droite">
         ${peutModifier ? `<div class="modal-tabs dossier-tabs" role="tablist" aria-label="Vues de la fiche">

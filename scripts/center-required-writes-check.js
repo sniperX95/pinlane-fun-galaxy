@@ -111,6 +111,12 @@ async function main() {
   await handlerMeta(fakeReq({ ...lead, centerId: 'libramont' }, '/api/public-booking-meta'), leadAvec);
   ok(!/Centre manquant/.test(leadAvec.body),
     `custom-request avec centre : jamais « Centre manquant » (recu ${leadAvec.statusCode})`);
+  // (2026-11-16) Un centre inconnu ne recoit pas la demande sans `details` : elle s enregistrait
+  // orpheline, hors de la coupure, et son accuse de reception partait quand meme.
+  const leadInconnu = fakeRes();
+  await handlerMeta(fakeReq({ ...lead, centerId: 'centre-qui-n-existe-pas' }, '/api/public-booking-meta'), leadInconnu);
+  ok(leadInconnu.statusCode === 404 && /Centre inconnu/.test(leadInconnu.body),
+    `custom-request pour un centre inconnu : 404 « Centre inconnu » (recu ${leadInconnu.statusCode} ${leadInconnu.body.slice(0, 90)})`);
 
   if (failures) {
     console.error(`\ncenter-required-writes-check: ${failures} defaut(s).`);
@@ -149,6 +155,11 @@ if (process.argv.includes('--mutate')) {
   // m3 : 422 retire de la demande sur-mesure -> D rougit.
   applique(META, "  if (!centerId) {", '  if (false) {', '422 custom-request');
   if (run().status === 0) { console.error('CONTRE-EPREUVE 3 RATEE : 422 custom-request retire, gate vert.'); rate += 1; } else console.log('contre-epreuve 3 OK : retirer le 422 custom-request fait rougir le gate.');
+  restaure();
+
+  // m4 : le centre inconnu de nouveau accepte par la demande sur-mesure -> D rougit.
+  applique(META, '  if (!centreDeLaDemande) {', '  if (false) {', '404 custom-request');
+  if (run().status === 0) { console.error('CONTRE-EPREUVE 4 RATEE : centre inconnu accepte, gate vert.'); rate += 1; } else console.log('contre-epreuve 4 OK : accepter un centre inconnu fait rougir le gate.');
   restaure();
 
   process.exit(rate ? 1 : 0);

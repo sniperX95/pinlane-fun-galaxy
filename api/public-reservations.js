@@ -12,7 +12,7 @@ const {
   empreinteJetonBlocage,
 } = require('../lib/database');
 const { readJson, sendError, sendJson, setCors } = require('../lib/http');
-const { afterReservationCreated, decisionDeValidation, dotationDepassee, prepareReservationOps, resumeValidation, sansValidationInterne } = require('../lib/reservation-ops');
+const { afterReservationCreated, avertissementsPourLeVisiteur, decisionDeValidation, dotationDepassee, messagesPourLeVisiteur, prepareReservationOps, resumeValidation, sansValidationInterne } = require('../lib/reservation-ops');
 const { modeValidationFormule } = require('../lib/validation-policy');
 const { getFormula } = require('../lib/ops-knowledge');
 const { normaliserAcquisition } = require('../lib/acquisition');
@@ -23,7 +23,7 @@ const planPublic = (plan) => sansValidationInterne({ opsPlan: plan }).opsPlan;
 const { findReservationAlternatives } = require('../lib/reservation-alternatives');
 const { normalizeReservationRequest } = require('../lib/reservation-request');
 const { ouvrirDemandePublique, estErreurInfra, signatureDemande, requestFromHeldUpsell } = require('../lib/demande-publique');
-const { enforceRateLimit, getClientIp } = require('../lib/rate-limit');
+const { enforceRateLimit, getClientIp, cleDeLAdresse } = require('../lib/rate-limit');
 const { writeAuditLog, newRequestId } = require('../lib/audit-log');
 const { alerter } = require('../lib/garde-alertes');
 const { annoncerReservation } = require('../lib/garde-annonces');
@@ -126,8 +126,11 @@ function reponseRejouee(res, reservation) {
 // l adresse. Poivree par le secret du serveur quand il existe : sans lui, une
 // empreinte d IPv4 se retrouverait en essayant les quatre milliards.
 function empreinteAppareil(req) {
-  const ip = String(getClientIp(req) || '').trim();
-  if (!ip || ip === 'unknown') return '';
+  const brute = String(getClientIp(req) || '').trim();
+  if (!brute || brute === 'unknown') return '';
+  // Une IPv6 se compte par son bloc /64, comme au limiteur (2026-11-16) : changer d adresse dans son
+  // bloc donnait un « appareil » neuf a chaque retenue, et le plafond de trois ne tenait plus.
+  const ip = cleDeLAdresse(brute);
   return crypto.createHmac('sha256', `pinlane-slot-holds:${process.env.STAFF_AUTH_SECRET || ''}`).update(ip).digest('hex');
 }
 
@@ -423,8 +426,8 @@ module.exports = async (req, res) => {
         planWarning: ops.planWarning,
         autoDecision: ops.requiresHumanReview ? 'human_review_required' : 'auto_confirmed',
       },
-      communications: postCreate.communications,
-      warnings: auditPublic.warning ? [...(postCreate.warnings || []), auditPublic.warning] : postCreate.warnings,
+      communications: messagesPourLeVisiteur(postCreate.communications),
+      warnings: avertissementsPourLeVisiteur(auditPublic.warning ? [...(postCreate.warnings || []), auditPublic.warning] : postCreate.warnings),
     });
   } catch (error) {
     // Deux envois simultanes de la meme confirmation : le second rend la

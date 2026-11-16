@@ -444,6 +444,8 @@ async function modifierABlanc(req, res, corps) {
     if (versionAttendue !== null && !memeVersion(current.updatedAt, versionAttendue)) throw reservationModifieeEntreTemps(current);
     const { patch, ops, shouldReplan } = await calculerLaModification({ body, current, session, requestedCenterId });
     const reservation = await updateReservation({ ...patch, ...ops, channel: patch.channel || current.channel || 'staff', aBlanc: true });
+    // Les verrous du jour etaient pris par un vrai geste : pas de verdict, la console se tait.
+    if (!reservation) return { ok: true, dryRun: true };
     const planNonRefait = shouldReplan && ops.planAvailable === false ? (ops.planRefusal || ops.planWarning || 'le moteur n’a pas donné de motif.') : '';
     return { ok: true, dryRun: true, modification: true, reservation, ...(planNonRefait ? { planNonRefait } : {}) };
   } catch (error) {

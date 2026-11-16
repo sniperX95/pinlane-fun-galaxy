@@ -374,7 +374,7 @@ async function handleCustomRequest(req, res, body) {
   const pax = Math.max(0, Math.trunc(Number(body.pax) || 0));
   // Meme discipline que public-reservations : pas de repli 'libramont', une
   // demande sans centre serait invisible pour la bonne equipe.
-  const centerId = clean(body.centerId ?? body.center_id, 60);
+  const centerId = clean(body.centerId ?? body.center_id, 60).toLowerCase();
 
   if (!centerId) {
     sendError(res, 422, 'Centre manquant : precisez le centre de la demande.');
@@ -385,6 +385,19 @@ async function handleCustomRequest(req, res, body) {
   const coupure = coupureEnLigne(centerId);
   if (coupure) {
     sendError(res, 422, coupure, { code: CODE_COUPURE });
+    return;
+  }
+  // LE CENTRE EXISTE, POUR TOUTE DEMANDE (2026-11-16). La demande sans `details` (ancienne fenetre)
+  // s enregistrait sous l identifiant tel qu ecrit, « Libramont » ou un centre invente : hors de la
+  // coupure, visible d aucune equipe, et son accuse de reception partait quand meme a l adresse donnee.
+  let centreDeLaDemande = null;
+  try { centreDeLaDemande = getCenter(centerId); } catch (error) { centreDeLaDemande = null; }
+  if (!centreDeLaDemande) {
+    sendError(res, 404, 'Centre inconnu.');
+    return;
+  }
+  if (centreDeLaDemande.demonstration === true) {
+    sendError(res, 422, 'Ce formulaire est la démonstration de Pinlane, et rien n’y est enregistré.');
     return;
   }
   if (!contactName || !email) {

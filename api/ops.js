@@ -4394,7 +4394,11 @@ module.exports = async (req, res) => {
       return;
     }
     if (req.method === 'POST') {
-      const body = await readJson(req);
+      // UN CORPS ILLISIBLE N EST PAS UNE PANNE (2026-11-16). Lu avant la session, il tombait dans le filet
+      // des pannes : un inconnu faisait sonner « une panne s est produite » en envoyant un simple `{`.
+      // C est une requete mal faite : 400, sans alerte.
+      let body;
+      try { body = await readJson(req); } catch (corpsIllisible) { sendError(res, 400, 'Requête illisible.'); return; }
       const action = getAction(req, body);
       const requestedCenterId = getBodyCenterId(body);
       const session = await requireStaffPermission(req, res, getRequiredOpsPermission('POST', action), {

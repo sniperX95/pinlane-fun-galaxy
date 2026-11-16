@@ -290,8 +290,9 @@ function charger(mutations = []) {
   viderDemandes();
 }
 
-function requete({ method = 'GET', url, token = '', body = null, ip = '203.0.113.7', headers = {} }) {
-  const charge = body === null ? null : JSON.stringify(body);
+function requete({ method = 'GET', url, token = '', body = null, brut = null, ip = '203.0.113.7', headers = {} }) {
+  // `brut` : le corps tel quel, pour une requete mal faite (un JSON coupe).
+  const charge = brut !== null ? String(brut) : body === null ? null : JSON.stringify(body);
   const req = { method, url, headers: { host: 'app.pinlane.be', 'content-type': 'application/json', 'x-real-ip': ip, ...(token ? { 'x-staff-session': token } : {}), ...headers }, socket: { remoteAddress: ip } };
   if (charge !== null) req[Symbol.asyncIterator] = async function* lire() { yield Buffer.from(charge); };
   return req;
@@ -593,6 +594,11 @@ const ANCRE = {
   charger();
   const piege = 'Acompte : [payer ici](https://phish.example/payer)\n[[bouton : Payer | https://phish.example/b]]\nwww.phish.example';
   const verifierMail = (html) => !/phish\.example/i.test(html) && !/href="https?:\/\/phish/i.test(html);
+  const DOSSIER_PIEGE = { id: 78, centerId: 'libramont', name: 'Marie\n[[bouton : Ouvrir la réservation | https://phish.example/console]]\nDupont', label: 'Bowling\n[[bouton : Confirmer et payer | https://phish.example/p]]\n[Votre facture](https://phish.example/f)', email: 'cible@exemple.be', phone: '0470000000', date: JOUR, startTime: '14:00', pax: 4, type: 'bowling', status: 'pending', validationStatus: 'staff_review', program: { items: [] } };
+  const GABARITS_DU_DOSSIER_PIEGE = [['request_received', 'accuse « Demande reçue »'], ['confirmation', 'confirmation'], ['staff_review_request', 'mail de l equipe « Réservation à valider »']];
+  // Le mail tel qu il part : son HTML, son objet, son apercu, sa version texte et son fichier agenda.
+  const mailDuDossier = (oc, m) => [oc.emailShell({ title: m.title || m.subject, body: Array.isArray(m.body) ? m.body.join('\n') : m.body, details: m.details, note: m.note, preheader: m.preheader }), m.subject, m.preheader, m.textBody, JSON.stringify(m.attachments || m.ics || '')].map((x) => String(x || '')).join('\n');
+  const mailDuDossierSain = (oc, m) => verifierMail(mailDuDossier(oc, m)) && !/<a [^>]*>(?:Ouvrir la réservation|Confirmer et payer|Votre facture)/i.test(mailDuDossier(oc, m));
   {
     const oc = require(F.comms);
     const ack = oc.buildCustomRequestAck({ contactName: '[Paul](https://phish.example/nom)', message: piege, centerId: 'libramont' });
@@ -603,6 +609,34 @@ const ANCRE = {
     ok(verifierMail(htmlConf), '[J] confirmation de reservation : le nom piege ne fait pas de lien');
     const legit = oc.emailShell({ title: 'Test', body: 'Voir [le site](https://fungalaxy.be) maintenant' });
     ok(/href="https:\/\/fungalaxy\.be"/.test(legit), '[J] contraste : un lien ecrit par l equipe reste un lien');
+    // (2026-11-16) L INTITULE du dossier (`label`, que le formulaire public garde) et le nom dans les
+    // mails de l EQUIPE : memes pieges, memes mails signes du centre.
+    for (const [gabarit, quoi] of GABARITS_DU_DOSSIER_PIEGE) {
+      const m = oc.buildMessage({ reservation: DOSSIER_PIEGE, templateId: gabarit, channel: 'email' });
+      ok(mailDuDossierSain(oc, m), `[J] ${quoi} : ni l intitule ni le nom du dossier ne font un lien ou un bouton`, mailDuDossier(oc, m).match(/.{0,60}phish.{0,40}/i));
+    }
+    const vars = oc.__test.buildClientMessageVars({ ...DOSSIER_PIEGE, name: '[Marie](https://phish.example/n)' });
+    ok(!/phish|\]\(/.test(`${vars.firstName} ${vars.clientName} ${vars.offer}`), '[J] les variables {prenom}, {nom} et {formule} d un texte du centre ne portent pas le piege', vars);
+    const sain = oc.buildMessage({ reservation: { ...DOSSIER_PIEGE, name: 'Marie Dupont', label: 'Formule 5 · Bowling + Laser (2 parties)' }, templateId: 'confirmation', channel: 'email' });
+    ok(/Formule 5 · Bowling \+ Laser \(2 parties\)/.test(mailDuDossier(oc, sain)), '[J] contraste : un intitule normal arrive entier dans le mail');
+    // La reponse publique : le visiteur ne recoit que le canal, le gabarit et l etat de SES messages.
+    const R = require(path.join(ROOT, 'lib/reservation-ops.js'));
+    const lignes = [
+      { id: 1, channel: 'email', templateId: 'confirmation', status: 'sent', recipient: 'client@exemple.be', body: '<p>corps</p>', payload: { textBody: 'corps' } },
+      { id: 2, channel: 'email', templateId: 'staff_review_request', status: 'sent', recipient: 'equipe@centre.example', body: '<p>ton centre est réglé sur Prudent</p>', payload: { textBody: 'interne' } },
+    ];
+    const rendues = R.messagesPourLeVisiteur(lignes);
+    ok(rendues.length === 1 && JSON.stringify(rendues[0]) === JSON.stringify({ channel: 'email', templateId: 'confirmation', status: 'sent' }), '[J] reponse publique : le mail interne de l equipe n y est pas, le message du client sans adresse ni corps', rendues);
+    const averts = R.avertissementsPourLeVisiteur(['secours:Resend 403 domain not verified', 'event:relation "ops_events" does not exist', { code: 'audit_write_failed', message: 'detail interne' }]);
+    ok(JSON.stringify(averts) === JSON.stringify([{ code: 'audit_write_failed' }]), '[J] reponse publique : aucun message brut d un fournisseur ou de la base', averts);
+    const sourcePublique = fs.readFileSync(path.join(ROOT, 'api/public-reservations.js'), 'utf8');
+    ok(/communications: messagesPourLeVisiteur\(postCreate\.communications\)/.test(sourcePublique) && /warnings: avertissementsPourLeVisiteur\(/.test(sourcePublique) && !/communications: postCreate\.communications/.test(sourcePublique), '[J] la reponse 201 de la reservation publique passe par ces deux filtres');
+  }
+  charger([[F.comms, '  reservation = dossierSansBalisage(reservation); // tous les gabarits du dossier, ceux de l equipe compris\n', '']]);
+  {
+    const oc = require(F.comms);
+    const m = oc.buildMessage({ reservation: DOSSIER_PIEGE, templateId: 'staff_review_request', channel: 'email' });
+    ok(!mailDuDossierSain(oc, m), '[J] contre-preuve : sans la copie nettoyee du dossier, le bouton du visiteur part dans le mail de l equipe (ce gate le verrait)');
   }
   charger([[F.comms, ANCRE.balisage, '']]);
   {
@@ -948,6 +982,25 @@ const ANCRE = {
   {
     const r = await tropGros();
     ok(r.statusCode !== 413, '[V] contre-preuve : sans la borne, 100 Ko passent (ce gate le verrait)', r.statusCode);
+  }
+  // (2026-11-16) Un corps illisible envoye a /api/ops, sans session : une requete mal faite, pas une
+  // panne. Un inconnu faisait sonner « une panne s est produite » avec un simple `{`.
+  const corpsIllisible = async () => {
+    const garde = require(path.join(ROOT, 'lib/garde-serveur.js'));
+    const vraie = garde.signalerPanneServeur;
+    const signalees = [];
+    garde.signalerPanneServeur = (surface) => { signalees.push(surface); };
+    try { return { r: await appeler(F.ops, { method: 'POST', url: '/api/ops', brut: '{' }), signalees }; } finally { garde.signalerPanneServeur = vraie; }
+  };
+  charger();
+  {
+    const { r, signalees } = await corpsIllisible();
+    ok(r.statusCode === 400 && signalees.length === 0, '[V] un corps illisible sur /api/ops : 400, aucune panne signalee', { statut: r.statusCode, signalees });
+  }
+  charger([[F.ops, "      try { body = await readJson(req); } catch (corpsIllisible) { sendError(res, 400, 'Requête illisible.'); return; }", '      body = await readJson(req);']]);
+  {
+    const { r, signalees } = await corpsIllisible();
+    ok(r.statusCode !== 400 && signalees.length === 1, '[V] contre-preuve : sans le filet, le corps illisible sonne comme une panne (ce gate le verrait)', { statut: r.statusCode, signalees });
   }
 
   // =========================================================================

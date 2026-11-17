@@ -214,6 +214,7 @@
     "test:centre-marque",
     "test:habillage-centre",
     "test:centre-publie",
+    "test:centre-nom-de-ville",
     "test:laser-par-centre",
     "test:site-centres",
     "test:centres-dissocies",

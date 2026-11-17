@@ -2471,12 +2471,16 @@ function normalizeStaffCenterId(value, fallback = 'libramont') {
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
   if (!clean) return fallback;
-  if (['libramont', 'gembloux', 'ciney'].includes(clean)) return clean;
-  if (clean.includes('gembloux')) return 'gembloux';
-  if (clean.includes('ciney')) return 'ciney';
+  // UN NOM DE VILLE N EST PAS UN CENTRE (D4, 2026-11-17) : « bowling-gembloux » est un autre client,
+  // plus Fun Galaxy Gembloux. Seules la ville seule ou la ville avec « Fun Galaxy » y menent, comme
+  // cote serveur (lib/staff-auth.js, centreFunGalaxy).
+  const funGalaxy = clean.match(/^(?:(?:fun galaxy|fungalaxy)(?: (?:centre|center))?(?: de)? )?(libramont(?: chevigny)?|gembloux|ciney)$|^(libramont(?: chevigny)?|gembloux|ciney) (?:fun galaxy|fungalaxy)$/);
+  if (funGalaxy) {
+    const ville = funGalaxy[1] || funGalaxy[2];
+    return ville.startsWith('libramont') ? 'libramont' : ville;
+  }
   if (
-    clean.includes('libramont')
-    || clean === 'fun galaxy centre'
+    clean === 'fun galaxy centre'
     || clean === 'fun galaxy center'
     || clean === 'fungalaxy centre'
     || clean === 'fungalaxy center'

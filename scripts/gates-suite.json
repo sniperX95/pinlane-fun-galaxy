@@ -290,6 +290,7 @@
     "test:visual",
     "test:reserver-sans-centre",
     "test:wallonia-calendar",
+    "test:feries-par-pays",
     "test:fungalaxy-form",
     "test:formulaire-lenteur",
     "test:formulaire-fluide",

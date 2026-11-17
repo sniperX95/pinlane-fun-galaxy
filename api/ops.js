@@ -1175,7 +1175,11 @@ async function handleGet(req, res, options = {}) {
     // les centres, dont ceux d'autres clients) par la liste scopee serveur.
     const centers = await listCentersForSession(pool, session);
     const activities = activitesDuSocle(loadOpsKnowledge());
-    sendJson(res, 200, { ok: true, centers, activities });
+    // LE CALENDRIER DE CHAQUE CENTRE HORS FEDERATION (2026-11-17, D5) : ses feries et ses conges, relus puis
+    // envoyes a la page (l annee qu elle montre, et jusqu ou les conges sont connus). La liste des calendriers
+    // proposes part avec : la page ne la recopie pas.
+    const calendriers = require('../lib/booking-config');
+    sendJson(res, 200, { ok: true, centers: await calendriers.centresAvecCalendrier(centers), activities, calendriersDeVacances: calendriers.listeDesCalendriers() });
     return;
   }
 

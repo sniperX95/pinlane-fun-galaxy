@@ -1,0 +1,626 @@
+[
+ {
+  "startDate": "2025-07-06",
+  "endDate": "2025-08-31",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Vacances d'été"
+   }
+  ],
+  "nationwide": false,
+  "subdivisions": [
+   {
+    "code": "FR-IF"
+   },
+   {
+    "code": "FR-BF"
+   },
+   {
+    "code": "FR-NO"
+   },
+   {
+    "code": "FR-OC"
+   },
+   {
+    "code": "FR-PC"
+   },
+   {
+    "code": "FR-GE"
+   },
+   {
+    "code": "FR-ZC"
+   },
+   {
+    "code": "FR-BT"
+   },
+   {
+    "code": "FR-NA"
+   },
+   {
+    "code": "FR-CV"
+   },
+   {
+    "code": "FR-PL"
+   },
+   {
+    "code": "FR-AR"
+   },
+   {
+    "code": "FR-HF"
+   },
+   {
+    "code": "FR-ZA"
+   },
+   {
+    "code": "FR-ZB"
+   }
+  ]
+ },
+ {
+  "startDate": "2025-10-19",
+  "endDate": "2025-11-02",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Vacances de la Toussaint"
+   }
+  ],
+  "nationwide": false,
+  "subdivisions": [
+   {
+    "code": "FR-IF"
+   },
+   {
+    "code": "FR-BF"
+   },
+   {
+    "code": "FR-NO"
+   },
+   {
+    "code": "FR-OC"
+   },
+   {
+    "code": "FR-PC"
+   },
+   {
+    "code": "FR-GE"
+   },
+   {
+    "code": "FR-ZC"
+   },
+   {
+    "code": "FR-BT"
+   },
+   {
+    "code": "FR-NA"
+   },
+   {
+    "code": "FR-CV"
+   },
+   {
+    "code": "FR-PL"
+   },
+   {
+    "code": "FR-AR"
+   },
+   {
+    "code": "FR-HF"
+   },
+   {
+    "code": "FR-ZA"
+   },
+   {
+    "code": "FR-ZB"
+   }
+  ]
+ },
+ {
+  "startDate": "2025-12-21",
+  "endDate": "2026-01-04",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Vacances de Noël"
+   }
+  ],
+  "nationwide": false,
+  "subdivisions": [
+   {
+    "code": "FR-IF"
+   },
+   {
+    "code": "FR-BF"
+   },
+   {
+    "code": "FR-NO"
+   },
+   {
+    "code": "FR-OC"
+   },
+   {
+    "code": "FR-PC"
+   },
+   {
+    "code": "FR-GE"
+   },
+   {
+    "code": "FR-ZC"
+   },
+   {
+    "code": "FR-BT"
+   },
+   {
+    "code": "FR-NA"
+   },
+   {
+    "code": "FR-CV"
+   },
+   {
+    "code": "FR-PL"
+   },
+   {
+    "code": "FR-AR"
+   },
+   {
+    "code": "FR-HF"
+   },
+   {
+    "code": "FR-ZA"
+   },
+   {
+    "code": "FR-ZB"
+   }
+  ]
+ },
+ {
+  "startDate": "2026-02-15",
+  "endDate": "2026-03-01",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Vacances d'hiver"
+   }
+  ],
+  "nationwide": false,
+  "subdivisions": [
+   {
+    "code": "FR-NO"
+   },
+   {
+    "code": "FR-PC"
+   },
+   {
+    "code": "FR-GE"
+   },
+   {
+    "code": "FR-BT"
+   },
+   {
+    "code": "FR-CV"
+   },
+   {
+    "code": "FR-PL"
+   },
+   {
+    "code": "FR-HF"
+   },
+   {
+    "code": "FR-ZB"
+   }
+  ]
+ },
+ {
+  "startDate": "2026-04-12",
+  "endDate": "2026-04-26",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Vacances de printemps"
+   }
+  ],
+  "nationwide": false,
+  "subdivisions": [
+   {
+    "code": "FR-NO"
+   },
+   {
+    "code": "FR-PC"
+   },
+   {
+    "code": "FR-GE"
+   },
+   {
+    "code": "FR-BT"
+   },
+   {
+    "code": "FR-CV"
+   },
+   {
+    "code": "FR-PL"
+   },
+   {
+    "code": "FR-HF"
+   },
+   {
+    "code": "FR-ZB"
+   }
+  ]
+ },
+ {
+  "startDate": "2026-07-05",
+  "endDate": "2026-08-31",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Vacances d'été"
+   }
+  ],
+  "nationwide": false,
+  "subdivisions": [
+   {
+    "code": "FR-IF"
+   },
+   {
+    "code": "FR-BF"
+   },
+   {
+    "code": "FR-NO"
+   },
+   {
+    "code": "FR-OC"
+   },
+   {
+    "code": "FR-PC"
+   },
+   {
+    "code": "FR-GE"
+   },
+   {
+    "code": "FR-ZC"
+   },
+   {
+    "code": "FR-BT"
+   },
+   {
+    "code": "FR-NA"
+   },
+   {
+    "code": "FR-CV"
+   },
+   {
+    "code": "FR-PL"
+   },
+   {
+    "code": "FR-AR"
+   },
+   {
+    "code": "FR-HF"
+   },
+   {
+    "code": "FR-ZA"
+   },
+   {
+    "code": "FR-ZB"
+   }
+  ]
+ },
+ {
+  "startDate": "2026-10-18",
+  "endDate": "2026-11-01",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Vacances de la Toussaint"
+   }
+  ],
+  "nationwide": false,
+  "subdivisions": [
+   {
+    "code": "FR-IF"
+   },
+   {
+    "code": "FR-BF"
+   },
+   {
+    "code": "FR-NO"
+   },
+   {
+    "code": "FR-OC"
+   },
+   {
+    "code": "FR-PC"
+   },
+   {
+    "code": "FR-GE"
+   },
+   {
+    "code": "FR-ZC"
+   },
+   {
+    "code": "FR-BT"
+   },
+   {
+    "code": "FR-NA"
+   },
+   {
+    "code": "FR-CV"
+   },
+   {
+    "code": "FR-PL"
+   },
+   {
+    "code": "FR-AR"
+   },
+   {
+    "code": "FR-HF"
+   },
+   {
+    "code": "FR-ZA"
+   },
+   {
+    "code": "FR-ZB"
+   }
+  ]
+ },
+ {
+  "startDate": "2026-12-20",
+  "endDate": "2027-01-03",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Vacances de Noël"
+   }
+  ],
+  "nationwide": false,
+  "subdivisions": [
+   {
+    "code": "FR-IF"
+   },
+   {
+    "code": "FR-BF"
+   },
+   {
+    "code": "FR-NO"
+   },
+   {
+    "code": "FR-OC"
+   },
+   {
+    "code": "FR-PC"
+   },
+   {
+    "code": "FR-GE"
+   },
+   {
+    "code": "FR-ZC"
+   },
+   {
+    "code": "FR-BT"
+   },
+   {
+    "code": "FR-NA"
+   },
+   {
+    "code": "FR-CV"
+   },
+   {
+    "code": "FR-PL"
+   },
+   {
+    "code": "FR-AR"
+   },
+   {
+    "code": "FR-HF"
+   },
+   {
+    "code": "FR-ZA"
+   },
+   {
+    "code": "FR-ZB"
+   }
+  ]
+ },
+ {
+  "startDate": "2027-02-21",
+  "endDate": "2027-03-07",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Vacances d'hiver"
+   }
+  ],
+  "nationwide": false,
+  "subdivisions": [
+   {
+    "code": "FR-NO"
+   },
+   {
+    "code": "FR-PC"
+   },
+   {
+    "code": "FR-GE"
+   },
+   {
+    "code": "FR-BT"
+   },
+   {
+    "code": "FR-CV"
+   },
+   {
+    "code": "FR-PL"
+   },
+   {
+    "code": "FR-HF"
+   },
+   {
+    "code": "FR-ZB"
+   }
+  ]
+ },
+ {
+  "startDate": "2027-04-18",
+  "endDate": "2027-05-02",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Vacances de printemps"
+   }
+  ],
+  "nationwide": false,
+  "subdivisions": [
+   {
+    "code": "FR-NO"
+   },
+   {
+    "code": "FR-PC"
+   },
+   {
+    "code": "FR-GE"
+   },
+   {
+    "code": "FR-BT"
+   },
+   {
+    "code": "FR-CV"
+   },
+   {
+    "code": "FR-PL"
+   },
+   {
+    "code": "FR-HF"
+   },
+   {
+    "code": "FR-ZB"
+   }
+  ]
+ },
+ {
+  "startDate": "2027-05-06",
+  "endDate": "2027-05-09",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Pont de l'Ascension"
+   }
+  ],
+  "nationwide": false,
+  "subdivisions": [
+   {
+    "code": "FR-IF"
+   },
+   {
+    "code": "FR-BF"
+   },
+   {
+    "code": "FR-NO"
+   },
+   {
+    "code": "FR-OC"
+   },
+   {
+    "code": "FR-PC"
+   },
+   {
+    "code": "FR-GE"
+   },
+   {
+    "code": "FR-ZC"
+   },
+   {
+    "code": "FR-BT"
+   },
+   {
+    "code": "FR-NA"
+   },
+   {
+    "code": "FR-CV"
+   },
+   {
+    "code": "FR-PL"
+   },
+   {
+    "code": "FR-AR"
+   },
+   {
+    "code": "FR-HF"
+   },
+   {
+    "code": "FR-ZA"
+   },
+   {
+    "code": "FR-ZB"
+   }
+  ]
+ },
+ {
+  "startDate": "2027-07-03",
+  "endDate": "2027-07-03",
+  "type": "EndOfLessons",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Fin des cours"
+   }
+  ],
+  "nationwide": false,
+  "subdivisions": [
+   {
+    "code": "FR-IF"
+   },
+   {
+    "code": "FR-BF"
+   },
+   {
+    "code": "FR-NO"
+   },
+   {
+    "code": "FR-OC"
+   },
+   {
+    "code": "FR-PC"
+   },
+   {
+    "code": "FR-GE"
+   },
+   {
+    "code": "FR-ZC"
+   },
+   {
+    "code": "FR-BT"
+   },
+   {
+    "code": "FR-NA"
+   },
+   {
+    "code": "FR-CV"
+   },
+   {
+    "code": "FR-PL"
+   },
+   {
+    "code": "FR-AR"
+   },
+   {
+    "code": "FR-HF"
+   },
+   {
+    "code": "FR-ZA"
+   },
+   {
+    "code": "FR-ZB"
+   }
+  ]
+ }
+]

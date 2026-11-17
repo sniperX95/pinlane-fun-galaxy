@@ -602,6 +602,31 @@ function getBelgianPublicHoliday(dateStr) {
 function getWalloniaSchoolHoliday(dateStr) {
   return WALLONIA_SCHOOL_HOLIDAYS.find(range => isDateWithinRange(dateStr, range.start, range.end)) || null;
 }
+// LE CALENDRIER DU CENTRE (2026-11-17, D5). Un centre qui a choisi un autre calendrier que la Federation
+// Wallonie-Bruxelles (holidaySettings.calendar) recoit du serveur ses feries et ses conges (holidayCalendar,
+// lib/booking-config calendrierPourLeClient) : ce fichier ne lui applique plus jamais ceux de la Belgique, meme
+// si le serveur ne les a pas envoyes (alors : aucun, la console dit pourquoi). Sans choix : comme avant.
+function getCenterHolidayCalendarCode() {
+  const settings = centerScheduleConfig?.holidaySettings;
+  const code = settings && typeof settings === 'object' && typeof settings.calendar === 'string' ? settings.calendar.trim().toUpperCase() : '';
+  return code && code !== 'BE-FR' ? code : '';
+}
+function getCenterHolidayCalendar() {
+  const calendrier = centerScheduleConfig?.holidayCalendar;
+  return calendrier && typeof calendrier === 'object' && calendrier.code === getCenterHolidayCalendarCode() ? calendrier : null;
+}
+function getPublicHoliday(dateStr) {
+  if (!getCenterHolidayCalendarCode()) return getBelgianPublicHoliday(dateStr);
+  const calendrier = getCenterHolidayCalendar();
+  const feries = calendrier && calendrier.feries && typeof calendrier.feries === 'object' ? calendrier.feries : {};
+  return (dateStr && typeof feries[dateStr] === 'string' && feries[dateStr]) || null;
+}
+function getSchoolHoliday(dateStr) {
+  if (!getCenterHolidayCalendarCode()) return getWalloniaSchoolHoliday(dateStr);
+  const calendrier = getCenterHolidayCalendar();
+  const conges = calendrier && Array.isArray(calendrier.conges) ? calendrier.conges : [];
+  return conges.find(range => range && isDateWithinRange(dateStr, range.start, range.end)) || null;
+}
 function getManualHolidayOverride(dateStr) {
   const settings = centerScheduleConfig?.holidaySettings;
   if (!settings || typeof settings !== 'object') return null;
@@ -610,8 +635,8 @@ function getManualHolidayOverride(dateStr) {
   return found ? found.mode : null;
 }
 function getSpecialOpeningContext(dateStr, manualHolidayOverride = false) {
-  const schoolHoliday = getWalloniaSchoolHoliday(dateStr);
-  const publicHoliday = getBelgianPublicHoliday(dateStr);
+  const schoolHoliday = getSchoolHoliday(dateStr);
+  const publicHoliday = getPublicHoliday(dateStr);
   const autoDetected = Boolean(schoolHoliday || publicHoliday);
   const settings = centerScheduleConfig?.holidaySettings;
   const override = getManualHolidayOverride(dateStr);
@@ -2054,6 +2079,8 @@ function getFormulaActivityProgressSummary(reservation) {
     isDateWithinRange,
     getBelgianPublicHoliday,
     getWalloniaSchoolHoliday,
+    getPublicHoliday,
+    getSchoolHoliday,
     getSpecialOpeningContext,
     isHolidayScheduleDate,
     isFormulaBlockedDate,

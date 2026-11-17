@@ -13925,7 +13925,9 @@ async function loadStaffCenterConfig(force = false) {
       loading: false,
       error: '',
       centers: Array.isArray(response.centers) ? response.centers : [],
-      activities: Array.isArray(response.activities) ? response.activities : []
+      activities: Array.isArray(response.activities) ? response.activities : [],
+      // Les calendriers de vacances proposes (2026-11-17, D5) : la liste du serveur, jamais recopiee ici.
+      calendriers: Array.isArray(response.calendriersDeVacances) ? response.calendriersDeVacances : []
     };
     // Pousse la config fraîche (horaires, vacances/fériés, offres) dans
     // booking-core : planning staff et espace client la reflètent sans délai.
@@ -14535,6 +14537,8 @@ async function submitCenterConfig(centerId) {
     holidaySettings: {
       enabled: !!document.getElementById('estab-holiday-enabled')?.checked,
       overrides: establishmentHolidayOverridesDraft.map(item => ({ date: item.date, mode: item.mode })),
+      // Le calendrier du centre (2026-11-17, D5) : seulement si la page l a montre, sinon celui enregistre reste.
+      ...(document.getElementById('estab-holiday-calendar') ? { calendar: document.getElementById('estab-holiday-calendar').value } : {}),
       formulaBlockedPeriods
     },
     offerAvailability,
@@ -15126,6 +15130,11 @@ function ebContexte(center, canEdit) {
     classification: center.classification && typeof center.classification === 'object' ? center.classification : {},
     holidaySettings,
     bloquees: Array.isArray(holidaySettings.formulaBlockedPeriods) ? holidaySettings.formulaBlockedPeriods : ['public', 'school_short', 'manual'],
+    // Le calendrier du centre (2026-11-17, D5) : son code, la liste proposee par le serveur, et ce que le serveur
+    // en sait (jusqu ou les conges scolaires sont connus) pour un centre hors Federation.
+    calendrier: typeof holidaySettings.calendar === 'string' && holidaySettings.calendar ? holidaySettings.calendar : 'BE-FR',
+    calendriers: Array.isArray(staffCenterConfigCache.calendriers) ? staffCenterConfigCache.calendriers : [],
+    etatCalendrier: center.holidayCalendar && typeof center.holidayCalendar === 'object' ? center.holidayCalendar : null,
     formules: getConsoleFormuleCatalog(),
     activites: staffCenterConfigCache.activities || [],
     retard: Number.isFinite(Number(center.accueil && center.accueil.lateThresholdMinutes)) ? Math.trunc(Number(center.accueil.lateThresholdMinutes)) : STAFF_LATE_THRESHOLD_DEFAUT,
@@ -15221,12 +15230,45 @@ function ebCalendrierHtml() {
   const lettres = 'LMMJVSD'.repeat(6).slice(0, 37).split('').map(x => `<i>${x}</i>`).join('');
   return `<div class="eb-cal"><div class="eb-an"><div class="eb-leg"><span class="k-n">Ouvert</span><span class="k-v">Vacances scolaires</span><span class="k-f">Jour férié</span><span class="k-x">Fermé chaque semaine</span><span class="k-b">Fermeture décidée</span><span class="k-p">Fermé une partie du jour</span><span class="k-a">Piste ou activité fermée</span></div><div class="eb-ent" aria-hidden="true"><b></b><div>${lettres}</div></div>${lignes.join('')}</div><aside class="eb-jour" id="ebJour" aria-live="polite" aria-label="Le jour choisi"></aside></div>`;
 }
+// LE CALENDRIER DU CENTRE (2026-11-17, D5) : le pays et la region dont les jours feries et les conges scolaires
+// font passer aux horaires de vacances. La liste vient du serveur (lib/booking-config listeDesCalendriers).
+function ebLibelleCalendrier(c) {
+  const trouve = (c.calendriers || []).find(x => x && x.code === c.calendrier);
+  return trouve ? trouve.libelle : (c.calendrier === 'BE-FR' ? 'Belgique, Fédération Wallonie-Bruxelles' : c.calendrier);
+}
+function ebAideCalendrier(c) {
+  if (c.calendrier === 'BE-FR') return 'Ses jours fériés et ses congés scolaires font passer aux horaires de vacances.';
+  const etat = c.etatCalendrier;
+  // Des conges publies seulement pour une annee deja finie ne disent rien de celle qui vient.
+  const aujourdhui = ebIso(new Date());
+  if (etat && etat.connuJusquau && etat.connuJusquau >= aujourdhui) {
+    const jusqua = new Date(`${etat.connuJusquau}T12:00:00`).toLocaleDateString('fr-BE', { day: 'numeric', month: 'long', year: 'numeric' });
+    return `Ses jours fériés sont connus chaque année. Ses congés scolaires sont publiés jusqu’au ${ebE(jusqua)} : au-delà, seuls les jours fériés passent aux horaires de vacances.`;
+  }
+  return 'Ses jours fériés sont connus chaque année. Ses congés scolaires ne sont pas encore publiés : seuls les jours fériés passent aux horaires de vacances. Un jour de congé se pose dans « Jours à part ».';
+}
+function ebChoixCalendrierHtml(c) {
+  const liste = (c.calendriers || []).filter(x => x && x.code && x.libelle);
+  const options = liste.length ? liste : [{ code: c.calendrier, pays: '', libelle: ebLibelleCalendrier(c) }];
+  const pays = [...new Set(options.map(x => x.pays || ''))];
+  const groupes = pays.map(p => {
+    const lignes = options.filter(x => (x.pays || '') === p).map(x => `<option value="${ebE(x.code)}" ${x.code === c.calendrier ? 'selected' : ''}>${ebE(x.libelle)}</option>`).join('');
+    return p ? `<optgroup label="${ebE(p)}">${lignes}</optgroup>` : lignes;
+  }).join('');
+  return ebR('Le calendrier du centre', `<span id="ebCalendrierAide">${ebAideCalendrier(c)}</span>`, `<select id="estab-holiday-calendar" class="eb-f" aria-label="Le calendrier du centre" onchange="ebCalendrierChoisi(this)">${groupes}</select>`);
+}
+// Un autre calendrier se lit apres Enregistrer : le serveur relit ses conges, la page n invente rien avant.
+function ebCalendrierChoisi(select) {
+  const aide = document.getElementById('ebCalendrierAide');
+  if (aide) aide.textContent = 'Enregistrez : les jours fériés et les congés de ce calendrier s’appliqueront, et l’année plus bas les montrera.';
+}
 function ebVacancesHtml(c) {
-  return `${ebCase('estab-holiday-enabled', 'Passer tout seul aux horaires de vacances', { on: c.holidaySettings.enabled !== false, aide: 'Pendant les congés scolaires et les jours fériés, la colonne « Vacances » de la semaine s’applique.' })}
+  return `${ebChoixCalendrierHtml(c)}
+    ${ebCase('estab-holiday-enabled', 'Passer tout seul aux horaires de vacances', { on: c.holidaySettings.enabled !== false, aide: 'Pendant les congés scolaires et les jours fériés, la colonne « Vacances » de la semaine s’applique.' })}
     <div class="eb-sous-t">Les formules marquées « pas en vacances »</div>
     ${ebCase('estab-fbp-public', 'Bloquées les jours fériés', { on: c.bloquees.includes('public') })}
-    ${ebCase('estab-fbp-short', 'Bloquées aux petits congés', { on: c.bloquees.includes('school_short'), aide: 'Automne, hiver, détente et printemps.' })}
-    ${ebCase('estab-fbp-summer', 'Bloquées aux grandes vacances', { on: c.bloquees.includes('school_summer'), aide: 'Juillet et août.' })}`;
+    ${ebCase('estab-fbp-short', 'Bloquées aux petits congés', { on: c.bloquees.includes('school_short'), aide: c.calendrier === 'BE-FR' ? 'Automne, hiver, détente et printemps.' : 'Tous les congés scolaires, sauf les grandes vacances d’été.' })}
+    ${ebCase('estab-fbp-summer', 'Bloquées aux grandes vacances', { on: c.bloquees.includes('school_summer'), aide: c.calendrier === 'BE-FR' ? 'Juillet et août.' : 'Les grandes vacances d’été.' })}`;
 }
 function ebJoursAPartHtml() {
   return `<div id="estabHolidayOverridesList" class="eb-liste" data-eb-watch="exceptions">${renderEstablishmentOverridesList()}</div>
@@ -15304,7 +15346,7 @@ function ebCentreHtml(c) {
 // ── Horaires ─────────────────────────────────────────────────────────────────
 function ebHorairesHtml(c) {
   return ebG('La semaine', 'Les heures où les clients peuvent réserver. Une fermeture après minuit se met à l’heure du lendemain, jusqu’à 06:00.', ebSemaineHtml(c), { cls: 'eb-g-sem' })
-    + ebG('Vacances et jours fériés', 'Les jours fériés belges et les congés scolaires de la Fédération Wallonie-Bruxelles.', ebVacancesHtml(c))
+    + ebG('Vacances et jours fériés', c.calendrier === 'BE-FR' ? 'Les jours fériés belges et les congés scolaires de la Fédération Wallonie-Bruxelles.' : `Les jours fériés et les congés scolaires du calendrier choisi : ${ebE(ebLibelleCalendrier(c))}.`, ebVacancesHtml(c))
     + ebG('Jours à part', 'Un jour précis qui suit les horaires de vacances ou les horaires normaux. Il part avec Enregistrer.', ebJoursAPartHtml())
     + ebG('Fermetures programmées', 'Tout le centre, une piste, une activité ou une formule. La fermeture part tout de suite, sans Enregistrer.', `${ebFermetureFormHtml()}<div id="avbList" class="eb-liste">${renderAvailabilityBlocksList()}</div>`)
     + ebG('L’année', 'Touchez un jour pour voir ses heures, le fermer ou le rouvrir.', ebCalendrierHtml(), { cls: 'eb-g-an' });
@@ -15717,8 +15759,9 @@ async function ebFermerPlage(debut) {
 function ebStatutDuJour(iso) {
   const date = new Date(`${iso}T12:00:00`);
   const dow = String(date.getDay());
-  const ferie = getBelgianPublicHoliday(iso);
-  const conge = getWalloniaSchoolHoliday(iso);
+  // Le calendrier DU CENTRE (2026-11-17, D5, assets/booking-core.js) : la Federation sans choix, comme avant.
+  const ferie = getPublicHoliday(iso);
+  const conge = getSchoolHoliday(iso);
   const force = establishmentHolidayOverridesDraft.find(o => o.date === iso);
   const autoCase = document.getElementById('estab-holiday-enabled');
   const auto = autoCase ? autoCase.checked : true;

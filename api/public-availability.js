@@ -14,7 +14,7 @@ const {
   getSchedule,
   numToTime,
   refreshFormuleOverrides,
-  refreshWalloniaSchoolHolidays,
+  refreshSchoolHolidaysFor,
   reservationNeedsLanes,
   roundUpHalfHour,
   timeToNum,
@@ -405,8 +405,9 @@ module.exports = async (req, res) => {
     // Le calendrier scolaire officiel se relit fail-soft (24 h par instance,
     // delai borne) avant de lire les horaires du jour : les heures de vacances
     // suivent l annee en cours sans retaper la table. Un echec ou un delai
-    // laisse la table statique faire foi.
-    try { await refreshWalloniaSchoolHolidays(); } catch (error) { /* table statique */ }
+    // laisse la table statique faire foi. Celui DE CE CENTRE (2026-11-17, D5) :
+    // la Federation sans choix, sinon son pays et sa region.
+    try { await refreshSchoolHolidaysFor(centerDoc); } catch (error) { /* table statique */ }
     // LA DUREE DE CHAQUE FORMULE, pour ses cartes (Movsar, 2026-09-30 : « mettre
     // le temps que ca dure chaque formule »). Les plans que le tunnel propose
     // ce jour-la a ce groupe, sur une journee VIDE : la duree d une formule ne

@@ -1,0 +1,485 @@
+[
+ {
+  "startDate": "2025-06-19",
+  "endDate": "2025-08-20",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Été"
+   }
+  ],
+  "nationwide": false,
+  "subdivisions": [
+   {
+    "code": "CH-VS"
+   }
+  ],
+  "comment": [
+   {
+    "language": "FR",
+    "text": "francophon"
+   }
+  ]
+ },
+ {
+  "startDate": "2025-06-28",
+  "endDate": "2025-08-17",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Été"
+   }
+  ],
+  "nationwide": false,
+  "subdivisions": [
+   {
+    "code": "CH-VS"
+   }
+  ],
+  "comment": [
+   {
+    "language": "FR",
+    "text": "germanophone"
+   }
+  ]
+ },
+ {
+  "startDate": "2025-10-11",
+  "endDate": "2025-10-26",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Automne"
+   }
+  ],
+  "nationwide": false,
+  "subdivisions": [
+   {
+    "code": "CH-VS"
+   }
+  ],
+  "comment": [
+   {
+    "language": "FR",
+    "text": "germanophone"
+   }
+  ]
+ },
+ {
+  "startDate": "2025-10-16",
+  "endDate": "2025-10-26",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Automne"
+   }
+  ],
+  "nationwide": false,
+  "subdivisions": [
+   {
+    "code": "CH-VS"
+   }
+  ],
+  "comment": [
+   {
+    "language": "FR",
+    "text": "francophon"
+   }
+  ]
+ },
+ {
+  "startDate": "2025-12-20",
+  "endDate": "2026-01-04",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Noël"
+   }
+  ],
+  "nationwide": false,
+  "subdivisions": [
+   {
+    "code": "CH-VS"
+   }
+  ],
+  "comment": [
+   {
+    "language": "FR",
+    "text": "germanophone"
+   }
+  ]
+ },
+ {
+  "startDate": "2025-12-20",
+  "endDate": "2026-01-04",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Noël"
+   }
+  ],
+  "nationwide": false,
+  "subdivisions": [
+   {
+    "code": "CH-VS"
+   }
+  ],
+  "comment": [
+   {
+    "language": "FR",
+    "text": "francophon"
+   }
+  ]
+ },
+ {
+  "startDate": "2026-02-14",
+  "endDate": "2026-02-22",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Sport"
+   }
+  ],
+  "nationwide": false,
+  "subdivisions": [
+   {
+    "code": "CH-VS"
+   }
+  ],
+  "comment": [
+   {
+    "language": "FR",
+    "text": "francophon"
+   }
+  ]
+ },
+ {
+  "startDate": "2026-02-21",
+  "endDate": "2026-03-08",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Sport"
+   }
+  ],
+  "nationwide": false,
+  "subdivisions": [
+   {
+    "code": "CH-VS"
+   }
+  ],
+  "comment": [
+   {
+    "language": "FR",
+    "text": "germanophone"
+   }
+  ]
+ },
+ {
+  "startDate": "2026-02-28",
+  "endDate": "2026-03-08",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Sport"
+   }
+  ],
+  "nationwide": false,
+  "subdivisions": [
+   {
+    "code": "CH-VS"
+   }
+  ],
+  "comment": [
+   {
+    "language": "DE",
+    "text": "Tourismusgemeinden Oberwallis"
+   }
+  ]
+ },
+ {
+  "startDate": "2026-04-03",
+  "endDate": "2026-04-12",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Printemps"
+   }
+  ],
+  "nationwide": false,
+  "subdivisions": [
+   {
+    "code": "CH-VS"
+   }
+  ],
+  "comment": [
+   {
+    "language": "FR",
+    "text": "francophon"
+   }
+  ]
+ },
+ {
+  "startDate": "2026-05-02",
+  "endDate": "2026-05-17",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Printemps"
+   }
+  ],
+  "nationwide": false,
+  "subdivisions": [
+   {
+    "code": "CH-VS"
+   }
+  ],
+  "comment": [
+   {
+    "language": "DE",
+    "text": "Tourismusgemeinden Oberwallis"
+   }
+  ]
+ },
+ {
+  "startDate": "2026-05-09",
+  "endDate": "2026-05-17",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Printemps"
+   }
+  ],
+  "nationwide": false,
+  "subdivisions": [
+   {
+    "code": "CH-VS"
+   }
+  ],
+  "comment": [
+   {
+    "language": "FR",
+    "text": "germanophone"
+   }
+  ]
+ },
+ {
+  "startDate": "2026-06-27",
+  "endDate": "2026-08-19",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Été"
+   }
+  ],
+  "nationwide": false,
+  "subdivisions": [
+   {
+    "code": "CH-VS"
+   }
+  ],
+  "comment": [
+   {
+    "language": "FR",
+    "text": "francophon"
+   }
+  ]
+ },
+ {
+  "startDate": "2026-07-01",
+  "endDate": "2026-08-16",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Été"
+   }
+  ],
+  "nationwide": false,
+  "subdivisions": [
+   {
+    "code": "CH-VS"
+   }
+  ],
+  "comment": [
+   {
+    "language": "DE",
+    "text": "Tourismusgemeinden Oberwallis"
+   }
+  ]
+ },
+ {
+  "startDate": "2026-07-01",
+  "endDate": "2026-08-16",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Été"
+   }
+  ],
+  "nationwide": false,
+  "subdivisions": [
+   {
+    "code": "CH-VS"
+   }
+  ],
+  "comment": [
+   {
+    "language": "FR",
+    "text": "germanophone"
+   }
+  ]
+ },
+ {
+  "startDate": "2026-10-10",
+  "endDate": "2026-10-25",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Automne"
+   }
+  ],
+  "nationwide": false,
+  "subdivisions": [
+   {
+    "code": "CH-VS"
+   }
+  ],
+  "comment": [
+   {
+    "language": "FR",
+    "text": "germanophone"
+   }
+  ]
+ },
+ {
+  "startDate": "2026-10-10",
+  "endDate": "2026-10-25",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Automne"
+   }
+  ],
+  "nationwide": false,
+  "subdivisions": [
+   {
+    "code": "CH-VS"
+   }
+  ],
+  "comment": [
+   {
+    "language": "DE",
+    "text": "Tourismusgemeinden Oberwallis"
+   }
+  ]
+ },
+ {
+  "startDate": "2026-10-15",
+  "endDate": "2026-10-25",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Automne"
+   }
+  ],
+  "nationwide": false,
+  "subdivisions": [
+   {
+    "code": "CH-VS"
+   }
+  ],
+  "comment": [
+   {
+    "language": "FR",
+    "text": "francophon"
+   }
+  ]
+ },
+ {
+  "startDate": "2026-12-19",
+  "endDate": "2027-01-03",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Noël"
+   }
+  ],
+  "nationwide": false,
+  "subdivisions": [
+   {
+    "code": "CH-VS"
+   }
+  ],
+  "comment": [
+   {
+    "language": "FR",
+    "text": "germanophone"
+   }
+  ]
+ },
+ {
+  "startDate": "2026-12-19",
+  "endDate": "2027-01-03",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Noël"
+   }
+  ],
+  "nationwide": false,
+  "subdivisions": [
+   {
+    "code": "CH-VS"
+   }
+  ],
+  "comment": [
+   {
+    "language": "DE",
+    "text": "Tourismusgemeinden Oberwallis"
+   }
+  ]
+ },
+ {
+  "startDate": "2026-12-24",
+  "endDate": "2027-01-10",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Noël"
+   }
+  ],
+  "nationwide": false,
+  "subdivisions": [
+   {
+    "code": "CH-VS"
+   }
+  ],
+  "comment": [
+   {
+    "language": "FR",
+    "text": "francophon"
+   }
+  ]
+ }
+]

@@ -138,7 +138,9 @@ const db = {
     { id: 'libramont', name: 'Fun Galaxy Libramont', status: 'active', timezone: 'Europe/Brussels', settings: null, client_id: 'fungalaxy' },
     { id: 'gembloux', name: 'Fun Galaxy Gembloux', status: 'active', timezone: 'Europe/Brussels', settings: null, client_id: 'fungalaxy' },
     { id: 'centre-neuf', name: 'Centre Neuf', status: 'planned', timezone: 'Europe/Brussels', settings: null, client_id: 'client-neuf' },
-    { id: 'n4-bowling', name: 'N4 Bowling', status: 'active', timezone: 'Europe/Brussels', client_id: 'n4-bowling', settings: { config: { resources: { bowling: { laneCount: 8, normalCapacityPerLane: 6, emergencyCapacityPerLane: 7, pricing: TARIF_N4 }, laser: { weaponCount: 0 }, partyTables: null }, activityAvailability: { bowling: true } } } },
+    // N4 a publie ses horaires, comme en production : sans eux, un centre hors du socle ne vend rien en ligne
+    // (lib/centre-publie.js, 2026-11-17). Les memes heures que le repli, pour ne rien changer aux mesures d ici.
+    { id: 'n4-bowling', name: 'N4 Bowling', status: 'active', timezone: 'Europe/Brussels', client_id: 'n4-bowling', settings: { config: { defaultSchedule: { regular: { 0: { open: '10:00', close: '22:00' }, 2: { open: '14:00', close: '22:00' }, 3: { open: '12:00', close: '22:00' }, 4: { open: '14:00', close: '22:00' } } }, resources: { bowling: { laneCount: 8, normalCapacityPerLane: 6, emergencyCapacityPerLane: 7, pricing: TARIF_N4 }, laser: { weaponCount: 0 }, partyTables: null }, activityAvailability: { bowling: true } } } },
   ],
 };
 let versionCentres = 1;

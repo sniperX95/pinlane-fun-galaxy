@@ -54,9 +54,13 @@ function section(title) { console.log(`\n${title}`); }
 // qu un refus tombe avant elle.
 const CENTRE_ACTIF = 'gate-console-actif';
 const CENTRE_PREVU = 'gate-console-prevu';
+// Actif, mais son gerant n a rien saisi : ni horaires ni tarifs (avant-lancement D2, 2026-11-17).
+const CENTRE_NU = 'gate-console-nu';
 const INCONNU = 'centre-qui-n-existe-pas';
 const CENTERS = [
-  { id: CENTRE_ACTIF, name: 'Gate Console Actif', status: 'active', timezone: 'Europe/Brussels', settings: null },
+  // Le centre actif a publie ses horaires et sa grille du bowling : sans eux, il ne serait plus servi.
+  { id: CENTRE_ACTIF, name: 'Gate Console Actif', status: 'active', timezone: 'Europe/Brussels', settings: { config: { defaultSchedule: { regular: { 0: { open: '10:00', close: '22:00' }, 1: { open: '10:00', close: '22:00' }, 2: { open: '10:00', close: '22:00' }, 3: { open: '10:00', close: '22:00' }, 4: { open: '10:00', close: '22:00' }, 5: { open: '10:00', close: '22:00' }, 6: { open: '10:00', close: '22:00' } }, holiday: {} }, grillesTarif: { bowling: { 0.5: 18, 1: 34, 1.5: 50, 2: 66 }, laser: { 1: 9, 2: 16, 3: 22 } } } } },
+  { id: CENTRE_NU, name: 'Gate Console Nu', status: 'active', timezone: 'Europe/Brussels', settings: null },
   { id: CENTRE_PREVU, name: 'Gate Console Prevu', status: 'planned', timezone: 'Europe/Brussels', settings: null },
 ];
 const ecritures = [];
@@ -253,7 +257,20 @@ const REFUS_CENTRE = /inconnu|pas encore|ne prend plus/i;
     section('[G] CONTRE-MESURE : le centre actif ne recoit aucun de ces refus');
     {
       const r = await ecrireReservation(bodyFor(CENTRE_ACTIF, bientot));
-      record('ni inconnu, ni en preparation, ni ferme', r.status !== 404 && !REFUS_CENTRE.test(r.message), `status=${r.status} message=${r.message || '(vide)'}`);
+      record('ni inconnu, ni en preparation, ni ferme, ni « rien de publie »', r.status !== 404 && !REFUS_CENTRE.test(r.message) && !/n’a pas publié/.test(r.message), `status=${r.status} message=${r.message || '(vide)'}`);
+    }
+
+    section('[H] Un centre actif qui n a publie ni horaires ni tarifs : rien ne se vend, et il le dit');
+    {
+      const r = await lireDispo(dispo(CENTRE_NU));
+      const creneaux = r.json && Array.isArray(r.json.slots) ? r.json.slots.length : -1;
+      record('aucun creneau, la ou il servait ceux des heures de depart', creneaux === 0, `creneaux=${creneaux} status=${r.status}`);
+      record('la reponse dit que ses horaires ne sont pas publies', Boolean(r.json && /n’a pas publié ses horaires/.test(r.json.message || '')), (r.json && r.json.message) || '(aucun message)');
+      ecritures.length = 0;
+      const e = await ecrireReservation(bodyFor(CENTRE_NU, bientot));
+      record('la reservation est refusee', e.status === 422, `status=${e.status}`);
+      record('avec la meme phrase', /n’a pas publié ses horaires/.test(e.message), e.message || '(aucun message)');
+      record('aucune insertion tentee', ecritures.length === 0, ecritures[0] || 'aucune');
     }
   } catch (error) {
     console.error('\nERREUR DU GATE:', error && (error.stack || error.message || error));

@@ -655,12 +655,34 @@ async function run() {
   ok(getCenter('libramont')?.name === 'Fun Galaxy Libramont',
     'les centres du fichier restent intacts (non-regression)');
 
+  section('[4b] Sans tarifs publies, rien ne se vend en ligne (avant-lancement D2)');
+  // Le centre a ses horaires (Etablissement) mais pas encore sa grille de prix : le bowling a l heure se
+  // vendrait au prix de depart, celui de Fun Galaxy. Son formulaire se ferme et le serveur ne propose rien ;
+  // puis son gerant pose SA grille par l action de la console, et tout s ouvre.
+  const metaSansTarifs = await callHandler(metaHandler, { url: `/api/public-booking-meta?centerId=${SECOND_CENTER_ID}&date=${DATE}` });
+  ok(/n’a pas publié ses tarifs/.test(String(metaSansTarifs.json?.coupure || '')),
+    `sans grille posee, son formulaire se ferme et dit pourquoi (obtenu "${metaSansTarifs.json?.coupure || ''}")`);
+  const dispoSansTarifs = await callHandler(availabilityHandler, {
+    url: `/api/public-availability?centerId=${SECOND_CENTER_ID}&date=${DATE}&type=bowling&pax=4&duration=1`,
+  });
+  ok((dispoSansTarifs.json?.slots || []).length === 0 && /n’a pas publié ses tarifs/.test(JSON.stringify(dispoSansTarifs.json || {})),
+    `et aucun creneau n est propose (obtenu ${(dispoSansTarifs.json?.slots || []).length} creneau(x), "${dispoSansTarifs.json?.message || ''}")`);
+  const poseGrille = await callHandler(opsHandler, {
+    method: 'POST', url: '/api/ops', token: STRIKE_TOKEN,
+    body: { action: 'saveGrillesTarif', centerId: SECOND_CENTER_ID, grilles: { bowling: { 0.5: 18, 1: 34, 1.5: 50, 2: 66 } } },
+  });
+  ok(poseGrille.res.statusCode === 200,
+    `son gerant pose SA grille du bowling depuis la console (obtenu ${poseGrille.res.statusCode}${poseGrille.res.statusCode !== 200 ? ` : ${poseGrille.json?.error || poseGrille.res.body}` : ''})`);
+  await refreshCenterOverrides(pool, { force: true });
+
   section('[5] Le tunnel public sert SES horaires et SON catalogue (blocage A, suite)');
   const metaSecond = await callHandler(metaHandler, { url: `/api/public-booking-meta?centerId=${SECOND_CENTER_ID}&date=${DATE}` });
   const metaFunGalaxy = await callHandler(metaHandler, { url: `/api/public-booking-meta?centerId=libramont&date=${DATE}` });
   const scheduleSecond = metaSecond.json?.center?.day?.schedule || null;
   const scheduleFunGalaxy = metaFunGalaxy.json?.center?.day?.schedule || null;
   ok(metaSecond.res.statusCode === 200, `le tunnel du deuxieme client repond 200 (obtenu ${metaSecond.res.statusCode})`);
+  ok(!metaSecond.json?.coupure && metaSecond.json?.bowlingPrices?.['1'] === 34 && metaFunGalaxy.json?.bowlingPrices?.['1'] === 39,
+    `sa grille posee, le formulaire s ouvre et sert SES prix, pas ceux de Fun Galaxy (obtenu ${metaSecond.json?.bowlingPrices?.['1']} contre ${metaFunGalaxy.json?.bowlingPrices?.['1']}, coupure "${metaSecond.json?.coupure || ''}")`);
   ok(metaSecond.json?.center?.id === SECOND_CENTER_ID, `le payload porte SON id (obtenu ${metaSecond.json?.center?.id})`);
   ok(scheduleSecond?.open === 11 && scheduleSecond?.close === 19,
     `SES horaires (11h-19h) sont servis (obtenu ${scheduleSecond?.label})`);

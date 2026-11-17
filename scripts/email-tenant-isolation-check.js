@@ -101,7 +101,9 @@ async function requete(texte, params = []) {
   // Les fiches de centre en base : c est ce qui fait exister N4 Bowling et MI12
   // aux yeux du moteur, comme en production (refreshCenterOverrides).
   if (sql === 'select id, name, status, timezone, settings from centers;') {
-    return lignes(CENTRES.map((c) => ({ id: c.id, name: c.nom, status: 'active', timezone: 'Europe/Brussels', settings: null })));
+    // Les centres nes dans la console ont publie leurs horaires, comme N4 en production : sans eux, un centre
+    // hors du socle ne prend aucune demande en ligne (lib/centre-publie.js, 2026-11-17).
+    return lignes(CENTRES.map((c) => ({ id: c.id, name: c.nom, status: 'active', timezone: 'Europe/Brussels', settings: c.client_id === 'fungalaxy' ? null : { config: { defaultSchedule: { regular: { 0: { open: '10:00', close: '22:00' }, 3: { open: '12:00', close: '22:00' }, 5: { open: '14:00', close: '23:00' }, 6: { open: '10:00', close: '23:00' } } }, grillesTarif: { bowling: { 1: 34 }, laser: { 1: 9 } } } } })));
   }
   if (sql === 'select center_id, email from email_identities;') {
     return lignes(IDENTITES.map((i) => ({ center_id: i.center_id, email: i.email })));

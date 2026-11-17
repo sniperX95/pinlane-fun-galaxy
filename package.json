@@ -296,6 +296,7 @@
     "test:tarifs-effets": "node scripts/tarifs-effets-check.js",
     "test:tarifs-grilles": "node scripts/tarifs-grilles-check.js",
     "test:centre-marque": "node scripts/centre-marque-check.js && node scripts/centre-marque-check.js --contre-preuves",
+    "test:centre-publie": "node scripts/centre-publie-check.js && node scripts/centre-publie-check.js --contre-preuves",
     "test:habillage-centre": "node scripts/habillage-instantanes.js --verifier && node scripts/habillage-centre-check.js && node scripts/habillage-centre-check.js --contre-preuves",
     "test:laser-par-centre": "node scripts/laser-par-centre-check.js && node scripts/laser-par-centre-check.js --contre-preuves",
     "test:site-centres": "node scripts/site-centres-check.js",

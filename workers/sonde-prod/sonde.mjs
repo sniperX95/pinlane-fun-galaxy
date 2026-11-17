@@ -93,6 +93,12 @@ const CLE_SIMULATION = 'simulation';
 const CRON_BILAN = '0 7 * * 1';
 const LIMITE = 'limite de débit';
 const VIDE = 'aucun créneau';
+// UNE COUPURE N EST PAS UNE PANNE (2026-11-17). La Tour de controle peut couper la reservation en ligne d un
+// centre (lib/ops-knowledge.js, coupureEnLigne) : ses creneaux repondent alors vides, avec ce code. C est une
+// decision de l equipe. Comptee comme panne, elle a fige la sonde en « panne » du 14/11 au 17/11, et dans cet
+// etat plus aucune nouvelle panne n etait dite (decider). Le catalogue du centre coupe, lui, reste servi et lu.
+const CODE_COUPURE = 'reservation_en_ligne_coupee';
+const COUPE = 'coupé par l’équipe';
 
 const ETAT_INITIAL = {
   statut: 'ok',
@@ -246,6 +252,7 @@ const contratCatalogue = (centre) => (c) => {
 };
 const contratCreneaux = (c) => {
   if (c.ok !== true || !Array.isArray(c.slots)) return 'créneaux refusés';
+  if (c.code === CODE_COUPURE) return COUPE;
   return c.slots.length ? null : VIDE;
 };
 
@@ -256,6 +263,7 @@ async function verifierCreneaux(fetcher, site, maintenant, centre) {
   for (let i = 0; i < SAMEDIS; i += 1) {
     const url = `${site}/api/public-availability?centerId=${centre}&date=${date}&pax=6&type=bowling`;
     const refus = await verifierJson(fetcher, url, contratCreneaux);
+    if (refus === COUPE) return null;
     if (refus !== VIDE) return refus;
     date = prochainSamedi(Date.parse(`${date}T12:00:00Z`));
   }

@@ -31,6 +31,10 @@
 //   [M] Gembloux : son formulaire, son catalogue et ses creneaux cassent la sonde comme
 //       ceux de Libramont ; une base qui n ecrit plus est une panne ; la garde arretee
 //       depuis plus de 45 min : un message, un autre quand elle repart.
+//   [N] une reservation en ligne coupee par l equipe (code reservation_en_ligne_coupee,
+//       aucun creneau) n est pas une panne ; la sonde figee en « panne » par une coupure
+//       (du 14/11 au 17/11) revient en trois passages sans sonnerie, et la panne suivante
+//       sonne de nouveau ; sans ce code, quatre samedis vides restent une panne.
 //
 // Usage : node scripts/sonde-prod-check.js
 'use strict';
@@ -110,6 +114,8 @@ const SAMEDI = Date.parse('2026-11-04T09:06:00Z'); // minute 6 : surface seule
 const FOND = Date.parse('2026-11-04T09:16:00Z'); // minute 16 : le fond se joue
 const santeDe = (date) => (url) => (url.includes('/api/healthz') ? json({ ok: true, db: true, ...(date === undefined ? {} : { derniereSauvegarde: date }) }) : null);
 const ilYA = (heures) => new Date(FOND - heures * 3_600_000).toISOString();
+// La reservation en ligne coupee par l equipe, comme public-availability la rend (lue en production le 17/11).
+const coupee = (url) => (url.includes('/api/public-availability') ? json({ ok: true, slots: [], code: 'reservation_en_ligne_coupee', message: 'Les réservations en ligne de Fun Galaxy Libramont ne se prennent pas ici pour le moment.' }) : null);
 
 // Joue une suite de passages espaces de 5 minutes et rend ce qui est parti.
 async function jouer(sonde, { kv = fauxKv(), passages, envoyer, depart = SAMEDI }) {
@@ -201,7 +207,10 @@ async function preuves(sonde) {
   await estPanne('le fichier de la page absent', (url) => (url.includes('fungalaxy-booking.js') ? reponse('non', 404, 'text/plain') : null));
   await estPanne('un fichier servi en page HTML', (url) => (url.includes('fungalaxy-booking.css') ? reponse('<html>') : null));
   await estPanne('une page sans son contenu', (url) => (url.endsWith('/menu/libramont/') ? reponse('<html></html>') : null));
-  await estPanne('une page sans ses fichiers', (url) => (url.includes('/fungalaxy/libramont') ? reponse('<title>Fun Galaxy</title>') : null));
+  // Le repere y est (le titre du premier ecran), les fichiers non : c est bien « sans ses fichiers » qui casse.
+  await estPanne('une page sans ses fichiers', (url) => (url.includes('/fungalaxy/libramont') ? reponse('<h1 id="t-date">Réservez</h1>') : null));
+  const sansFichiers = await sonde.sonder({ fetcher: fauxSite((url) => (url.includes('/fungalaxy/libramont') ? reponse('<h1 id="t-date">Réservez</h1>') : null)), maintenant: SAMEDI, attendre: async () => {} });
+  ok(sansFichiers.casses.some((c) => c.detail === 'page sans ses fichiers'), '[F] et la cause dite est l absence de ses fichiers', JSON.stringify(sansFichiers.casses));
   await estPanne('un 401 du garde', (url) => (url.includes('app.pinlane.be') ? reponse('Unauthorized', 401, 'text/plain') : null));
   let samedis = 0;
   const unSamediVide = await sonde.sonder({
@@ -379,6 +388,19 @@ async function preuves(sonde) {
   const finSimulee = await jouer(sonde, { kv: kvSauvegarde, passages: fois(6, sain) });
   ok(finSimulee.messages.length === 1 && finSimulee.messages[0].startsWith('[simulation] Réglé : la sauvegarde de la nuit n’était pas partie'), '[L] le retour aussi', finSimulee.messages[0]);
 
+  // [N] Une coupure decidee par l equipe n est pas une panne (2026-11-17).
+  const coupure12 = await jouer(sonde, { passages: fois(12, coupee), depart: FOND });
+  ok(coupure12.messages.length === 0, '[N] la reservation en ligne coupee par l equipe, 12 passages : aucun message', `${coupure12.messages.length}`);
+  ok(JSON.parse(coupure12.kv.valeurs.get('etat') || '{"statut":"ok"}').statut === 'ok', '[N] et la sonde reste « ok »');
+  // L etat de la production lu le 17/11 : en « panne » depuis trois jours, a cause de la coupure.
+  const kvFige = fauxKv();
+  kvFige.valeurs.set('etat', JSON.stringify({ statut: 'panne', echecs: 3, succes: 0, depuis: FOND - 3 * 24 * 3_600_000, casses: [{ nom: 'créneaux', detail: 'aucun créneau sur 4 samedis' }, { nom: 'créneaux de Gembloux', detail: 'aucun créneau sur 4 samedis' }], simulation: false, dernierePanne: null, aEnvoyer: [], sauvegardeEnRetard: null, gardeEnRetard: false }));
+  const degel = await jouer(sonde, { kv: kvFige, passages: [...fois(3, coupee), ...fois(3, toutCasse)], depart: FOND });
+  ok(degel.messages.length === 2 && degel.calmes[0] === true && /^Réglé : /.test(degel.messages[0] || ''), '[N] la sonde figee par la coupure revient en trois passages, sans sonnerie', JSON.stringify(degel.messages));
+  ok(degel.calmes[1] === false && /^Pinlane : le site ne marche plus/.test(degel.messages[1] || ''), '[N] et la panne suivante sonne de nouveau', degel.messages[1]);
+  const vraiVide = await sonde.sonder({ fetcher: fauxSite((url) => (url.includes('/api/public-availability') ? json({ ok: true, slots: [] }) : null)), maintenant: FOND, attendre: async () => {} });
+  ok(vraiVide.verdict === 'ko', '[N] sans le code de la coupure, quatre samedis vides restent une panne', JSON.stringify(vraiVide.casses));
+
   return resultat;
 }
 
@@ -461,6 +483,10 @@ async function contrePreuves() {
   const sansGembloux = await chargerMutant("const CENTRES = ['libramont', 'gembloux'];", "const CENTRES = ['libramont'];");
   const gemblouxMort = await sansGembloux.sonder({ fetcher: fauxSite((url) => (url.includes('public-booking-meta') && url.includes('centerId=gembloux') ? json({ ok: false }) : null)), maintenant: FOND, attendre: async () => {} });
   ok(gemblouxMort.verdict === 'ok', '[contre-épreuve] sans Gembloux dans la liste : sa panne ne se voit pas, [M] rougit');
+
+  const coupureEnPanne = await chargerMutant('  if (c.code === CODE_COUPURE) return COUPE;\n', '');
+  const fige = await jouer(coupureEnPanne, { passages: fois(12, coupee), depart: FOND });
+  ok(fige.messages.length > 0, '[contre-épreuve] la coupure comptee comme panne : [N] rougit', `${fige.messages.length}`);
 
   const horsDuFond = await chargerMutant('if (profond && !surLeSite) {', 'if (!surLeSite) {');
   const journal2 = [];

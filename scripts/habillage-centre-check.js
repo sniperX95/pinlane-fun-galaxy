@@ -55,6 +55,7 @@ const MUTATIONS = {
   'serveur-sans-couleurs': { f: 'lib/habillage-formulaire.js', de: '    couleurs: couleursDuFormulaire(c.branding),', vers: '    couleurs: null,', lettre: 'A' },
   'contraste-non-garanti': { f: 'lib/habillage-formulaire.js', de: 'const accent = jusquA(jusquA(accentDeclare, NOIR, 4.5, BLANC), BLANC, 3, FOND);', vers: 'const accent = accentDeclare;', lettre: 'A' },
   'cadre-photo-vide': { f: 'assets/fungalaxy-booking.js', de: "    body.classList.toggle('fg-sans-photos', !pool.length);\n", vers: '', lettre: 'D' },
+  'accent-clair-perdu': { f: 'lib/habillage-formulaire.js', de: '  const clair = contraste(accentDeclare, BLANC) < 4.5;', vers: '  const clair = false;', lettre: 'A' },
   'marque-du-voisin': { f: 'lib/habillage-formulaire.js', de: "    carte: marque ? `Carte ${marque}` : 'Carte de jeu',", vers: "    carte: 'Carte Fun Galaxy',", lettre: 'A' },
   'teintes-reglees-jetees': { f: 'lib/center-config.js', de: '...(formulaire ? { formulaire } : {}), ', vers: '', lettre: 'A' },
   'centre-de-l-adresse-different': { f: 'assets/fungalaxy-habillage.js', de: "return SLUG_RX.test(brut) ? brut : 'centre-inconnu';", vers: "return SLUG_RX.test(brut) ? brut : 'libramont';", lettre: 'A' },
@@ -146,6 +147,10 @@ function regle() {
   ok(atlas.titre === 'Réserver à Namur · Bowling Atlas' && atlas.carte === 'Carte Bowling Atlas' && atlas.logoAlt === 'Bowling Atlas', 'un autre centre porte SON nom dans l onglet et sur sa carte de jeu', `${atlas.titre} | ${atlas.carte}`);
   ok(rien.titre === 'Réserver · Salle Test' && rien.carte === 'Carte de jeu' && rien.couleurs === null && rien.logo === '' && rien.site === '', 'un centre qui n a rien declare : son nom, « Carte de jeu », aucune couleur, aucun logo', JSON.stringify(rien));
   ok(![atlas, rien, demo, H.habillageDuFormulaire({})].some((h) => MARQUE_FG.test(JSON.stringify(h))), 'aucun centre qui n est pas Fun Galaxy ne recoit le nom, le site ou le logo de Fun Galaxy');
+  // Les couleurs lues en production le 17/11 : le jaune de N4 Bowling, l orange de MI12.
+  const jaune = H.couleursDuFormulaire({ accent: '#e3bf0d' });
+  const orange = H.couleursDuFormulaire({ accent: '#ff9500' });
+  ok(jaune.accentTitre === '#e3bf0d' && jaune.second === '#e3bf0d' && jaune.accent !== '#e3bf0d' && H.contraste('#ffffff', jaune.accent) >= 4.5 && orange.accentTitre === '#ff9500' && orange.second === '#ff9500', 'un accent clair reste la couleur du titre et de l etiquette, et ne fonce que sous le blanc des boutons', JSON.stringify(jaune));
   ok(atlas.couleurs && atlas.couleurs.second === '#ffd166' && !Object.values(atlas.couleurs).some((c) => Object.values(FUN_GALAXY).includes(c)), 'ses couleurs viennent de SA marque, aucune de celles de Fun Galaxy', JSON.stringify(atlas.couleurs));
 
   // Lisible quel que soit l accent declare : du blanc dessus, l encre sur le fond, du sombre sur la seconde.

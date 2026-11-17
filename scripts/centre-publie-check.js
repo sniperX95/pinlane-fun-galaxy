@@ -39,7 +39,7 @@ const ROOT = path.resolve(__dirname, '..');
 const MUTATIONS = {
   'socle-plus-exempt': { f: 'lib/centre-publie.js', de: " || SOCLE.has(String(centre.id || ''))) return '';", vers: ") return '';", lettre: 'A' },
   'horaires-non-exiges': { f: 'lib/centre-publie.js', de: "  if (!require('./center-facts').joursOuvertsDeclares(centre.defaultSchedule)) return 'horaires';\n", vers: '', lettre: 'A' },
-  'tarifs-non-exiges': { f: 'lib/centre-publie.js', de: "    if (!grilleDeclaree(centre, nom)) return 'tarifs';\n", vers: '', lettre: 'A' },
+  'tarifs-non-exiges': { f: 'lib/centre-publie.js', de: '    if (!grilleDeclaree(centre, nom)) manquants.push(activite);\n', vers: '', lettre: 'A' },
   'tarif-a-la-partie-oublie': { f: 'lib/centre-publie.js', de: "    if (nom === 'bowling' && centre.resources && centre.resources.bowling && centre.resources.bowling.pricing) continue;\n", vers: '', lettre: 'A' },
   'refus-du-serveur-debranche': { f: 'lib/ops-knowledge.js', de: "  return require('./centre-publie').phraseNonPublie(center);\n}", vers: "  return '';\n}", lettre: 'B' },
   'formulaire-pas-ferme': { f: 'lib/ops-knowledge.js', de: "  if (!center.embed || center.embed.actif !== false) return /^(planned|closed)$/.test(String(center.status || '')) ? '' : require('./centre-publie').phraseNonPublie(center);", vers: "  if (!center.embed || center.embed.actif !== false) return '';", lettre: 'B' },

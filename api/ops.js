@@ -1175,7 +1175,10 @@ async function handleGet(req, res, options = {}) {
     // les centres, dont ceux d'autres clients) par la liste scopee serveur.
     const centers = await listCentersForSession(pool, session);
     const activities = activitesDuSocle(loadOpsKnowledge());
-    sendJson(res, 200, { ok: true, centers, activities });
+    // LA MISE EN ROUTE de chaque centre neuf (D7, 2026-11-17, lib/mise-en-route.js), lue avec le catalogue du
+    // centre comme la regle du formulaire : sans lui, elle verrait le catalogue de depart.
+    try { await refreshCatalog(pool); } catch (error) { /* catalogue fichier */ }
+    sendJson(res, 200, { ok: true, centers: require('../lib/mise-en-route').avecMiseEnRoute(centers), activities });
     return;
   }
 

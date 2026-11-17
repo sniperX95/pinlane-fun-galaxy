@@ -15537,6 +15537,7 @@ function renderStaffUtilityEstablishment() {
   setTimeout(ebAfterRender, 0);
   return `<div class="establishment-page eb${canEdit ? '' : ' eb-ro'}" data-estab-page data-eb-center="${ebE(center.id)}" oninput="ebOnChange(event)" onchange="ebOnChange(event)" onclick="ebOnClick(event)">
     <div class="eb-haut"><div class="eb-haut-g"><h1 class="eb-name">${ebE(center.name)}</h1><p class="eb-auj" data-eb-auj></p>${canEdit ? '' : '<p class="eb-note">Lecture seule : la direction règle cette page.</p>'}</div><div class="eb-haut-d">${ebCentresHtml(c)}<a class="eb-voir" href="/reserver/${encodeURIComponent(center.id)}" target="_blank" rel="noopener">Voir le formulaire</a></div></div>
+    ${ebMiseEnRouteHtml(center, canEdit)}
     <div class="eb-cadre">
       <nav class="eb-nav" aria-label="Rubriques de l’établissement">${nav}</nav>
       <div class="eb-det">
@@ -15552,6 +15553,39 @@ function renderStaffUtilityEstablishment() {
       </div>
     </div>
   </div>`;
+}
+
+// LA MISE EN ROUTE D UN CENTRE NEUF (D7, 2026-11-17). Les etapes viennent du serveur (lib/mise-en-route.js,
+// les memes regles que celles du formulaire) avec la config du centre. Chaque etape mene a l endroit ou la
+// faire ; la premiere qui reste a faire porte le bouton plein. Un centre en ligne, du socle ou archive n en a
+// pas : rien ne s affiche.
+function ebMiseEnRouteHtml(center, canEdit) {
+  const m = center && center.miseEnRoute;
+  if (!m || !Array.isArray(m.etapes) || !m.etapes.length || m.enLigne) return '';
+  const prochaine = m.etapes.find(e => !e.fait);
+  const coche = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
+  const lignes = m.etapes.map((e, i) => {
+    const principale = Boolean(prochaine) && e.cle === prochaine.cle;
+    const permis = e.aller && e.aller.page === 'prices' ? canUseStaffPermission('pricing.manage') : canEdit;
+    const bouton = permis ? `<button type="button" class="eb-b${principale ? ' eb-mer-plein' : ''}" onclick="ebAllerEtape('${ebJs(e.cle)}')">${ebE(e.bouton)}</button>` : '';
+    return `<li class="eb-mer-e${e.fait ? ' est-fait' : ''}${principale ? ' est-prochaine' : ''}" data-mer="${ebE(e.cle)}"><span class="eb-mer-n">${e.fait ? `${coche}<span class="sr-only">Fait</span>` : `<span aria-hidden="true">${i + 1}</span><span class="sr-only">À faire</span>`}</span><span class="eb-mer-t"><b>${ebE(e.titre)}</b><span>${ebE(e.phrase)}</span></span>${bouton}</li>`;
+  }).join('');
+  const reste = Number(m.restantes) || 0;
+  return `<section class="eb-mer" aria-labelledby="eb-mer-h"><div class="eb-mer-h"><h2 id="eb-mer-h">Mise en route</h2><p>${reste === 1 ? 'Encore une étape' : `Encore ${reste} étapes`} avant que vos clients puissent réserver en ligne.</p></div><ol class="eb-mer-l">${lignes}</ol></section>`;
+}
+
+// Une etape de la mise en route : la page, la rubrique et le champ ou la faire.
+function ebAllerEtape(cle) {
+  const center = getEstablishmentCenter();
+  const etape = center && center.miseEnRoute && (center.miseEnRoute.etapes || []).find(e => e.cle === cle);
+  const aller = etape && etape.aller;
+  if (!aller) return;
+  if (aller.page !== 'establishment') { openStaffMenuPage(aller.page); return; }
+  ebOuvrir(aller.rubrique);
+  const champ = aller.champ ? document.getElementById(aller.champ) : null;
+  if (champ) { focusEstablishmentField(champ); return; }
+  const panneau = document.getElementById(`eb-p-${aller.rubrique}`);
+  if (panneau && panneau.scrollIntoView) panneau.scrollIntoView({ block: 'start' });
 }
 
 function ebAfterRender() {

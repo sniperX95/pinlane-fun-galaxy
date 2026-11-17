@@ -215,6 +215,7 @@
     "test:habillage-centre",
     "test:centre-publie",
     "test:centre-nom-de-ville",
+    "test:mise-en-route",
     "test:laser-par-centre",
     "test:site-centres",
     "test:centres-dissocies",

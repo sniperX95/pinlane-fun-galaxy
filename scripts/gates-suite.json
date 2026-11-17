@@ -215,6 +215,7 @@
     "test:habillage-centre",
     "test:centre-publie",
     "test:devise-balayage",
+    "test:devise-centre",
     "test:laser-par-centre",
     "test:site-centres",
     "test:centres-dissocies",

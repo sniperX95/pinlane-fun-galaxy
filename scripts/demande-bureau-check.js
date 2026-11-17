@@ -933,7 +933,7 @@ async function verifierSuiviEnBase() {
     return [
       [note && note.payload && note.payload.suivi && note.payload.suivi.notes[0].texte === 'Rappeler mardi' && note.payload.demande.participants === 31,
         'la note est ecrite dans le suivi, la demande du client intacte'],
-      [JSON.stringify(ordre) === JSON.stringify(['BEGIN', 'select payload', 'update custom_requests', 'COMMIT']), 'une transaction : lecture, ecriture, validation', JSON.stringify(ordre)],
+      [JSON.stringify(ordre) === JSON.stringify(['BEGIN', 'set local', 'select payload', 'update custom_requests', 'COMMIT']), 'une transaction : sa limite d attente sur les verrous, lecture, ecriture, validation', JSON.stringify(ordre)],
       [lecture && /for update/i.test(lecture.sql), 'la ligne est verrouillee le temps d ecrire : deux postes ne s ecrasent pas', lecture && lecture.sql],
       [lecture && lecture.params[1] === 'libramont' && !/libramont/.test(lecture.sql), 'le centre voyage en parametre, jamais dans le texte SQL'],
       [etranger && etranger.statusCode === 404 && etranger.expose === true && annule && JSON.stringify(base.lignes[1].payload) === '{}',

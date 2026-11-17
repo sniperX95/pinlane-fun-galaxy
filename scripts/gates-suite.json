@@ -409,6 +409,7 @@
     "test:retards-console",
     "test:retard-verrou",
     "test:comptoir-dotation",
+    "test:attente-verrou",
     "test:reservation-edit-clarity",
     "test:rush-status",
     "test:notes-scope",

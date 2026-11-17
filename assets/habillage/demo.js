@@ -1,0 +1,2 @@
+/* Habillage de demo, ecrit par scripts/habillage-instantanes.js depuis ops-knowledge/centers.json : ne pas editer. */
+window.PinlaneHabillage&&window.PinlaneHabillage.instantane({"centre":"demo","nom":"Démonstration Pinlane","titre":"Réserver · Démonstration Pinlane","carte":"Carte de jeu","logo":"/assets/brand/pinlane-logo.svg","logoSurSombre":false,"logoAlt":"Démonstration Pinlane","site":"https://pinlane.be","couleurs":null,"logoTaille":[446,100]});

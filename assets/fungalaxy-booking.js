@@ -1340,6 +1340,9 @@
       var x = pool[i]; pool[i] = pool[j]; pool[j] = x;
     }
     tirage = pool;
+    // UN CENTRE SANS PHOTOS N A PAS DE CADRE VIDE (2026-11-17) : ses ecrans se centrent, sans la place
+    // que la photo aurait prise.
+    body.classList.toggle('fg-sans-photos', !pool.length);
     if (!pool.length) return;
     $$('.fg-scene').forEach(function (scene, k) {
       var img = $('.fg-art img', scene);
@@ -2207,11 +2210,13 @@
   // (duree de piste, parties, session), DEUX pour les billards (combien de
   // tables, combien d heures). Chaque pastille de duree dit ce que la ligne
   // couterait avec elle ; une pastille de tables dit un nombre de tables.
+  // LA CARTE DE JEU DES ARCADES porte la marque du centre quand il en a une (center.habillage.carte).
+  function carteDeJeu() { return String((meta && meta.center && meta.center.habillage && meta.center.habillage.carte) || 'Carte de jeu'); }
   function groupesOptions(a) {
     if (!meta || !a) return [];
     var ar = reglageArcade(a);
     if (ar) return [
-      { cle: 'arcadeMode', titre: 'Carte Fun Galaxy', choisie: ar.mode, options: [{ valeur: 'time', label: 'Temps', sous: 'Sans cadeaux', disabled: !ar.time.length }, { valeur: 'credit', label: 'Crédits', sous: 'Tous les jeux', disabled: !ar.credit.length }].filter(function (o) { return !o.disabled; }) },
+      { cle: 'arcadeMode', titre: carteDeJeu(), choisie: ar.mode, options: [{ valeur: 'time', label: 'Temps', sous: 'Sans cadeaux', disabled: !ar.time.length }, { valeur: 'credit', label: 'Crédits', sous: 'Tous les jeux', disabled: !ar.credit.length }].filter(function (o) { return !o.disabled; }) },
       { cle: 'arcadeOfferId', titre: ar.mode === 'time' ? 'Durée par carte' : 'Crédits par carte', choisie: ar.offer.id, select: ar.mode === 'credit', options: ar.offers.map(function (o) { if (o.id === ar.offer.id) o = ar.offer; return { valeur: o.id, label: ar.mode === 'time' ? minutesLabel(o.minutes) : credits(o.credits) + ' + ' + credits(o.bonusCredits || 0) + ' bonus', prix: Number(o.price) }; }) },
     ];
     if (a.priceType === 'per_unit_hour') {
@@ -7872,7 +7877,7 @@
   // forme). Un fichier qui echoue se redemande au clic suivant, celui qui est
   // arrive ne se recharge pas.
   var SM_JS = '/assets/fungalaxy-sur-mesure.js?v=20261113groupe';
-  var SM_CSS = '/assets/fungalaxy-sur-mesure.css?v=20261106surmesure1';
+  var SM_CSS = '/assets/fungalaxy-sur-mesure.css?v=20261117habillage';
   var smModule = null, smFichiers = {};
   function chargerFichier(cle, balise, attributs) {
     if (!smFichiers[cle]) {
@@ -8122,10 +8127,13 @@
         // LE CENTRE SE VOIT TOUT LE TEMPS (Ansar, 2026-11-04, lancement sur deux centres) : le
         // client ne doit jamais douter de l endroit ou il reserve.
         var villeCentre = String(meta.center && meta.center.city || '').trim() || nomOffres;
-        if (villeCentre) {
-          $$('[data-centre-ville]').forEach(function (el) { el.textContent = villeCentre; });
-          document.title = 'Réserver à ' + villeCentre + ' · Fun Galaxy';
-        }
+        if (villeCentre) $$('[data-centre-ville]').forEach(function (el) { el.textContent = villeCentre; });
+        // L HABILLAGE DU CENTRE (2026-11-17) : le titre de l onglet, le logo, son lien et les couleurs viennent
+        // du serveur (center.habillage). La page ne porte la marque d aucun centre : fungalaxy-habillage.js a
+        // pose avant le premier affichage ce qu il savait deja, la reponse du serveur fait foi.
+        var habillage = (meta.center && meta.center.habillage) || null;
+        if (habillage && habillage.titre) document.title = String(habillage.titre);
+        if (window.PinlaneHabillage) window.PinlaneHabillage.appliquer(habillage);
         if (meta.center && meta.center.status && meta.center.status !== 'active') {
           direErreur('Ce centre n’ouvre pas encore ses réservations en ligne.');
         }

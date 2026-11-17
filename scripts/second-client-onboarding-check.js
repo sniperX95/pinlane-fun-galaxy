@@ -672,6 +672,20 @@ async function run() {
   ok(idsSecond.includes('bowling'), `SON catalogue contient le bowling (obtenu: ${idsSecond.join(', ') || 'vide'})`);
   ok(!idsSecond.includes('laser_game'), 'SON catalogue ne contient PAS le laser game, qu il ne vend pas');
   ok(idsFunGalaxy.includes('laser_game'), 'contraste : le catalogue Fun Galaxy contient bien le laser game');
+  // L HABILLAGE DU VRAI FORMULAIRE (2026-11-17, avant-lancement D1) : le endpoint sert a chaque centre ce que
+  // fungalaxy.html montre de lui (onglet, carte de jeu, logo, couleurs). Le parcours dans un navigateur est
+  // joue par scripts/habillage-centre-check.js ; ici, c est le VRAI endpoint sur un centre monte en console.
+  const habillageSecond = metaSecond.json?.center?.habillage || null;
+  const habillageFunGalaxy = metaFunGalaxy.json?.center?.habillage || null;
+  ok(habillageSecond && habillageSecond.titre === 'Réserver · Strike Namur' && habillageSecond.carte === 'Carte de jeu',
+    `le formulaire du deuxieme client porte SON nom dans l onglet et une carte de jeu sans marque (obtenu ${JSON.stringify(habillageSecond && [habillageSecond.titre, habillageSecond.carte])})`);
+  ok(habillageSecond && habillageSecond.couleurs && /^#[0-9a-f]{6}$/.test(habillageSecond.couleurs.accent) && habillageSecond.couleurs.accent !== '#944292',
+    `ses couleurs viennent de SA marque (${SECOND_ACCENT}), pas du violet de Fun Galaxy (obtenu ${habillageSecond?.couleurs?.accent})`);
+  ok(habillageSecond && !/fun[\s-]galaxy|fungalaxy\.be/i.test(JSON.stringify(habillageSecond)),
+    'son habillage ne porte ni le nom, ni le site, ni le logo de Fun Galaxy');
+  ok(habillageFunGalaxy && habillageFunGalaxy.titre === 'Réserver à Libramont · Fun Galaxy' && habillageFunGalaxy.carte === 'Carte Fun Galaxy'
+    && habillageFunGalaxy.logo === '/assets/brand/logo-fun-galaxy.svg' && habillageFunGalaxy.couleurs?.accent === '#944292' && habillageFunGalaxy.couleurs?.second === '#67baac',
+    `contraste : Fun Galaxy garde son onglet, sa carte, son logo et ses couleurs (obtenu ${JSON.stringify(habillageFunGalaxy && [habillageFunGalaxy.titre, habillageFunGalaxy.carte, habillageFunGalaxy.couleurs?.accent])})`);
 
   section('[6] Le tunnel public sert SES creneaux, dans SES heures');
   const availabilitySecond = await callHandler(availabilityHandler, {
@@ -1702,7 +1716,14 @@ const FORBIDDEN_MAGENTA = /#944292/i;
 function scanRuntimeForMagenta() {
   const roots = ['lib', 'api', 'assets'];
   const binaryExt = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico', '.woff', '.woff2', '.ttf', '.eot', '.pdf', '.mp4', '.zip']);
-  const isClientBrandFile = (file) => /fun-?galaxy/i.test(path.basename(file));
+  // Les fichiers qui SONT la donnee d un client : ses logos, ses photos (assets/fungalaxy/) et l instantane
+  // de l habillage de ses centres (assets/habillage/, ecrit depuis ops-knowledge/centers.json). Le formulaire
+  // (assets/fungalaxy-*.js et .css) n en fait plus partie depuis le 2026-11-17 : exclu par son seul nom de
+  // fichier, il portait le violet en dur sans que ce gate le voie.
+  const isClientBrandFile = (file) => {
+    const rel = path.relative(ROOT, file).split(path.sep).join('/');
+    return /^assets\/(?:brand\/)?(?:logo-)?fun-galaxy[^/]*\.(?:svg|png)$/i.test(rel) || /^assets\/fungalaxy\//i.test(rel) || /^assets\/habillage\//i.test(rel);
+  };
   const hits = [];
   const walk = (dir) => {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {

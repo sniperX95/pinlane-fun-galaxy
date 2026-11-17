@@ -33,6 +33,7 @@ process.env.PINLANE_CALENDAR_SYNC = 'off';
 // s applique compris (le laser se joue a deux), jamais la constante brute.
 const { BOWLING_PRICES, DURATION_OPTIONS, LASER_GAME_OPTIONS, FUN_RUN_OPTIONS, getEffectiveFormules } = require('../lib/booking-config');
 const FUN_GALAXY_CENTER = require('../ops-knowledge/centers.json').centers.find((center) => center.id === 'libramont');
+const { habillageDuFormulaire } = require('../lib/habillage-formulaire');
 
 const PORT = Number(process.env.PINLANE_DEVTUNNEL_PORT || 4230);
 const MIME = {
@@ -212,6 +213,8 @@ function metaPayload(brandMode, calendarDays = 0, calendarFrom = '') {
       // defauts de lib/formula-visit, l arrivee proposee.
       formulaVisit: normalizeFormulaVisit(FUN_GALAXY_CENTER.formulaVisit),
       branding: brandingFor(brandMode) || FUN_GALAXY_CENTER.branding,
+      // L habillage, calcule par la vraie regle du serveur (lib/habillage-formulaire.js), comme la prod.
+      habillage: habillageDuFormulaire({ id: 'libramont', name: FUN_GALAXY_CENTER.name, city: info.city || '', identity: FUN_GALAXY_CENTER.identity, branding: brandingFor(brandMode) || FUN_GALAXY_CENTER.branding }),
       defaultSchedule: { regular: { 0: { open: '10:00', close: '22:00' }, 1: null, 2: { open: '14:00', close: '22:00' }, 3: { open: '12:00', close: '22:00' }, 4: { open: '14:00', close: '22:00' }, 5: { open: '14:00', close: '24:00' }, 6: { open: '10:00', close: '24:00' } }, holiday: {} },
       holidaySettings: { enabled: true, overrides: [], formulaBlockedPeriods: [] }, offerAvailability: {},
       activityAvailability: FUN_GALAXY_CENTER.activityAvailability || null,

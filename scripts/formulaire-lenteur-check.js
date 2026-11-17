@@ -206,8 +206,8 @@ const MUTATIONS = [
   {
     nom: 'l eclat d arrivee anime le fond de la ligne ouverte',
     fichier: 'assets/fungalaxy-booking.css',
-    de: '  30% { box-shadow: inset 0 0 0 100vmax rgba(103, 186, 172, 0.14); }',
-    vers: '  30% { background-color: rgba(103, 186, 172, 0.14); }',
+    de: '  30% { box-shadow: inset 0 0 0 100vmax rgba(var(--fg-teal-rvb), 0.14); }',
+    vers: '  30% { background-color: rgba(var(--fg-teal-rvb), 0.14); }',
     attendu: '[J1]', scenarios: ['J'],
   },
   {

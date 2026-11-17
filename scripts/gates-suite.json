@@ -212,6 +212,7 @@
     "test:tarifs-effets",
     "test:tarifs-grilles",
     "test:centre-marque",
+    "test:habillage-centre",
     "test:laser-par-centre",
     "test:site-centres",
     "test:centres-dissocies",

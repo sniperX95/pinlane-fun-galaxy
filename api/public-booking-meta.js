@@ -46,6 +46,7 @@ const { getFormulaAnchorModel, ANCHOR_ACTIVITY_IDS, LASER_LAUNCH_GRID_MINUTES } 
 const { listSellableActivities } = require('../lib/activity-catalog');
 const { formuleAvecChoix, formuleDuCentre } = require('../lib/formula-choice');
 const { normalizeBranding, normalizeIdentity, customRequestFromPax, normalizeFormulaVisit } = require('../lib/center-config');
+const { habillageDuFormulaire } = require('../lib/habillage-formulaire');
 const surMesure = require('../lib/custom-request');
 const { writeAuditLog, newRequestId } = require('../lib/audit-log');
 const { customRequestChanges, ACTEUR_FORMULAIRE_PUBLIC } = require('../lib/registre');
@@ -1200,6 +1201,16 @@ async function routeur(req, res) {
         // quatre jetons hexadecimaux par theme, tout le reste est jete. null =
         // ce centre n'a pas de marque, le tunnel garde l'accent plateforme.
         branding: normalizeBranding(center.branding),
+        // CE QUE LE FORMULAIRE EN LIGNE MONTRE DE CE CENTRE (2026-11-17) : le titre de l onglet, le logo et son
+        // lien, le nom de la carte de jeu, ses couleurs. La page est neutre, elle ne porte la marque d aucun
+        // centre : tout vient d ici, calcule a un seul endroit (lib/habillage-formulaire.js).
+        habillage: habillageDuFormulaire({
+          id: center.id,
+          name: center.name,
+          city: centerPublicInfo && typeof centerPublicInfo.city === 'string' ? centerPublicInfo.city : '',
+          identity: center.identity,
+          branding: center.branding,
+        }),
         defaultSchedule: center.defaultSchedule && typeof center.defaultSchedule === 'object' ? center.defaultSchedule : null,
         holidaySettings: center.holidaySettings && typeof center.holidaySettings === 'object'
           ? center.holidaySettings

@@ -733,7 +733,14 @@ const FICHIERS = ['assets/fungalaxy-booking.js', 'assets/fungalaxy-booking.css',
 // GitHub (+0,99 et +0,25 Ko contre bb55bea). Poids mort cherche avant : les 535 fonctions nommees sont toutes citees.
 // La mesure de vitesse du formulaire (test:fungalaxy-perf) est verte sur la suite GitHub de la meme version.
 // Plafonds 392 et 114 Ko : une police ou une bibliotheque les font toujours sauter.
-const BUDGET_SERVI = 392 * 1024;
+// 2026-11-17, la page ne porte plus la marque d un centre (avant-lancement D1) : les couleurs deviennent des
+// jetons que le serveur remplit par centre (les fonds translucides passent de valeurs en dur a
+// rgba(var(--jeton), a)), le logo se pose depuis la donnee, un centre sans photos n a plus de cadre vide.
+// 392,28 Ko servis et 113,32 Ko transferes, contre 391,22 et 113,21 sur db4670b (memes fichiers passes par le
+// build, fins de ligne Windows) : +1,06 Ko, presque tout dans la feuille. Retire avant de monter : un selecteur
+// en double. Le script de l habillage (assets/fungalaxy-habillage.js) est un quatrieme fichier, hors de ce
+// compte : 4,05 Ko servis, 1,83 transferes, charge avant le premier affichage. Plafonds 393 et 114 Ko.
+const BUDGET_SERVI = 393 * 1024;
 const BUDGET_TRANSFERE = 114 * 1024;
 
 let failures = 0;

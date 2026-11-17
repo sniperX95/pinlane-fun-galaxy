@@ -297,6 +297,13 @@
         "glow": "#67baac",
         "buttons": "neon",
         "cards": "neon",
+        "formulaire": {
+          "accentVif": "#b04fb0",
+          "accentEncre": "#d98ad4",
+          "accentTitre": "#c25ec2",
+          "secondEncre": "#8fd6c9",
+          "secondSombre": "#3f8c84"
+        },
         "activityImages": {
           "bowling": "/assets/img/heroes/hero-bowling.jpg",
           "laser_game": "/assets/img/heroes/hero-laser-game.jpg",
@@ -555,6 +562,13 @@
         "glow": "#67baac",
         "buttons": "neon",
         "cards": "neon",
+        "formulaire": {
+          "accentVif": "#b04fb0",
+          "accentEncre": "#d98ad4",
+          "accentTitre": "#c25ec2",
+          "secondEncre": "#8fd6c9",
+          "secondSombre": "#3f8c84"
+        },
         "activityImages": {
           "bowling": "/assets/img/heroes/hero-bowling.jpg",
           "laser_game": "/assets/img/heroes/hero-laser-game.jpg",
@@ -611,6 +625,13 @@
         "glow": "#67baac",
         "buttons": "neon",
         "cards": "neon",
+        "formulaire": {
+          "accentVif": "#b04fb0",
+          "accentEncre": "#d98ad4",
+          "accentTitre": "#c25ec2",
+          "secondEncre": "#8fd6c9",
+          "secondSombre": "#3f8c84"
+        },
         "activityImages": {
           "bowling": "/assets/img/heroes/hero-bowling.jpg",
           "laser_game": "/assets/img/heroes/hero-laser-game.jpg",

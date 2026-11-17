@@ -268,8 +268,11 @@ export function listerEtapes({ site, consoleStaff, maintenant, profond }) {
     faire: (f) => verifierPage(f, { url: racine + chemin, marqueur, fichiers }),
   });
   const surface = [
-    page('page de réservation', '/fungalaxy/libramont', 'Fun Galaxy', /\/assets\/fungalaxy-booking\.(?:js|css)[^"\s]*/g),
-    page('page de réservation de Gembloux', '/fungalaxy/gembloux', 'Fun Galaxy'),
+    // Le repere de la page de reservation est le titre de son premier ecran, pas une marque : depuis le
+    // 2026-11-17 elle ne porte le nom d aucun centre (son habillage vient des donnees du centre), et son
+    // fichier d habillage se verifie avec les autres.
+    page('page de réservation', '/fungalaxy/libramont', 'id="t-date"', /\/assets\/fungalaxy-(?:booking|habillage)\.(?:js|css)[^"\s]*/g),
+    page('page de réservation de Gembloux', '/fungalaxy/gembloux', 'id="t-date"'),
     page('console', '/', '<title>Pinlane', /\/assets\/app-main\.js[^"\s]*/g, consoleStaff),
     page('menu de Libramont', '/menu/libramont/', 'Fun Galaxy Libramont'),
     page('menu de Gembloux', '/menu/gembloux/', 'Fun Galaxy Gembloux'),

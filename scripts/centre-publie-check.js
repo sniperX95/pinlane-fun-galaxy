@@ -14,6 +14,12 @@
 //     creneaux et des reservations (publicBookingBlockReason) et la fermeture du formulaire (coupureEnLigne)
 //     disent la meme phrase. Un centre qui a publie n en recoit aucune. Un centre en preparation garde son
 //     propre refus. Les centres du socle ne bougent pas. La coupure decidee par l equipe garde sa phrase.
+// [C] LES PORTES (la reservation et la retenue : lib/demande-publique.js ; la demande sur mesure :
+//     api/public-booking-meta.js, les vrais gestionnaires) relisent le catalogue du centre AVANT de poser la
+//     question. La regle lit ce que le centre vend : lue avant, elle voyait le catalogue de depart, laser
+//     compris, et refusait sur une instance fraiche un centre ne dans la console qui vend son bowling a sa
+//     grille (vu le 17/11 par center-console-reservation-check). Les rechauffages sont des espions : on
+//     regarde l ordre dans lequel la porte les appelle.
 //
 // Le parcours entier (console, catalogue, creneaux, reservation) est joue sur les vrais endpoints par
 // scripts/second-client-onboarding-check.js et scripts/public-center-guard-check.js.
@@ -37,6 +43,8 @@ const MUTATIONS = {
   'tarif-a-la-partie-oublie': { f: 'lib/centre-publie.js', de: "    if (nom === 'bowling' && centre.resources && centre.resources.bowling && centre.resources.bowling.pricing) continue;\n", vers: '', lettre: 'A' },
   'refus-du-serveur-debranche': { f: 'lib/ops-knowledge.js', de: "  return require('./centre-publie').phraseNonPublie(center);\n}", vers: "  return '';\n}", lettre: 'B' },
   'formulaire-pas-ferme': { f: 'lib/ops-knowledge.js', de: "  if (!center.embed || center.embed.actif !== false) return /^(planned|closed)$/.test(String(center.status || '')) ? '' : require('./centre-publie').phraseNonPublie(center);", vers: "  if (!center.embed || center.embed.actif !== false) return '';", lettre: 'B' },
+  'reservation-sans-catalogue-frais': { f: 'lib/demande-publique.js', de: "  try { await refreshCatalog(getPool()); } catch (error) { /* catalogue fichier */ }\n", vers: '', lettre: 'C' },
+  'sur-mesure-sans-catalogue-frais': { f: 'api/public-booking-meta.js', de: "  try { await refreshCatalog(getPool()); } catch (error) { /* catalogue fichier */ }\n  const coupure = coupureEnLigne(centerId);", vers: '  const coupure = coupureEnLigne(centerId);', lettre: 'C' },
 };
 const MUTATION = (process.argv.find((a) => a.startsWith('--mutation=')) || '').slice('--mutation='.length);
 if (MUTATION && !MUTATIONS[MUTATION]) { console.error(`mutation inconnue : ${MUTATION}`); process.exit(2); }
@@ -125,5 +133,55 @@ section('[B] LE SERVEUR : il refuse et ferme le formulaire avec la meme phrase')
   ok(/ne se prennent pas ici pour le moment/.test(ops.coupureEnLigne('gate-coupe')) && !/n’a pas publié/.test(ops.coupureEnLigne('gate-coupe')), 'la coupure decidee par l equipe garde sa phrase', ops.coupureEnLigne('gate-coupe'));
 }
 
-console.log(rouges ? `\ncentre-publie-check: ${rouges} ROUGE(S)` : '\ncentre-publie-check: ALL OK');
-process.exit(rouges ? 1 : 0);
+// Le corps d une requete et une reponse en memoire, comme scripts/coupure-en-ligne-check.js.
+async function appeler(handler, { method = 'GET', url, body = null }) {
+  const { Readable } = require('stream');
+  const corps = body ? JSON.stringify(body) : '';
+  const req = Readable.from(corps ? [Buffer.from(corps)] : []);
+  Object.assign(req, { method, url, headers: { host: 'app.pinlane.test', 'content-type': 'application/json', origin: 'https://fungalaxy.be' }, socket: { remoteAddress: '203.0.113.9' }, connection: { remoteAddress: '203.0.113.9' } });
+  const res = {
+    statusCode: 200, headers: {}, headersSent: false,
+    setHeader(k, v) { this.headers[String(k).toLowerCase()] = v; },
+    getHeader(k) { return this.headers[String(k).toLowerCase()]; },
+    removeHeader(k) { delete this.headers[String(k).toLowerCase()]; },
+    writeHead(s, h) { this.statusCode = s; if (h) Object.entries(h).forEach(([k, v]) => this.setHeader(k, v)); return this; },
+    write(b) { this.corps = (this.corps || '') + String(b || ''); return true; },
+    end(b) { if (b) this.corps = (this.corps || '') + String(b); this.headersSent = true; },
+  };
+  await handler(req, res);
+  let json = null;
+  try { json = JSON.parse(res.corps || ''); } catch (error) { json = null; }
+  return { statut: res.statusCode, json };
+}
+
+(async () => {
+  section('[C] LES PORTES relisent le catalogue du centre avant de dire ce qu il n a pas publie');
+  {
+    const ops = require('../lib/ops-knowledge');
+    const catalogue = require('../lib/catalog-store');
+    const base = require('../lib/database');
+    const ordre = [];
+    // Les portes prennent ces fonctions a leur chargement : les espions sont poses AVANT de les charger.
+    base.getPool = () => ({});
+    ops.refreshCenterOverrides = async () => { ordre.push('centres'); };
+    catalogue.refreshCatalog = async () => { ordre.push('catalogue'); };
+    ops.refreshCatalog = catalogue.refreshCatalog;
+    ops.getCenter = (id) => ({ id, name: 'Gate Console', status: 'active' });
+    ops.coupureEnLigne = () => { ordre.push('question'); return 'ARRET DU GATE'; };
+    const frais = (relatif) => { delete require.cache[require.resolve(relatif)]; return require(relatif); };
+    const dans10Jours = new Intl.DateTimeFormat('fr-CA', { timeZone: 'Europe/Brussels', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(Date.now() + 10 * 86400000));
+    const avantLaQuestion = () => ordre.includes('catalogue') && ordre.indexOf('catalogue') < ordre.indexOf('question');
+
+    const reservation = await frais('../lib/demande-publique').ouvrirDemandePublique({ centerId: 'gate-console', date: dans10Jours, pax: 4 });
+    ok(reservation && reservation.status === 422 && reservation.message === 'ARRET DU GATE', 'MONTAGE : la porte des reservations s arrete sur la question', JSON.stringify(reservation));
+    ok(avantLaQuestion(), 'la reservation et la retenue relisent le catalogue du centre avant la question', ordre.join(' > '));
+
+    ordre.length = 0;
+    const surMesure = await appeler(frais('../api/public-booking-meta'), { method: 'POST', url: '/api/custom-request', body: { kind: 'custom-request', centerId: 'gate-console', contactName: 'Essai du gate', email: 'essai@exemple.invalid', phone: '0400000000', pax: 40, message: 'Un groupe de quarante.', requestedDate: dans10Jours } });
+    ok(surMesure.statut === 422 && surMesure.json && /ARRET DU GATE/.test(String(surMesure.json.message || surMesure.json.error || '')), 'MONTAGE : la demande sur mesure s arrete sur la question', JSON.stringify(surMesure));
+    ok(avantLaQuestion(), 'la demande sur mesure relit le catalogue du centre avant la question', ordre.join(' > '));
+  }
+
+  console.log(rouges ? `\ncentre-publie-check: ${rouges} ROUGE(S)` : '\ncentre-publie-check: ALL OK');
+  process.exit(rouges ? 1 : 0);
+})().catch((error) => { console.error(error); process.exit(1); });

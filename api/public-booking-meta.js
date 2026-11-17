@@ -383,6 +383,8 @@ async function handleCustomRequest(req, res, body) {
   }
   // Coupe depuis la Tour de controle (2026-11-14) : aucune demande sur mesure, donc aucun accuse de reception.
   try { await refreshCenterOverrides(getPool()); } catch (error) { /* socle fichier */ }
+  // Le catalogue du centre aussi : la regle « rien de publie, rien en ligne » lit ce qu il vend (2026-11-17).
+  try { await refreshCatalog(getPool()); } catch (error) { /* catalogue fichier */ }
   const coupure = coupureEnLigne(centerId);
   if (coupure) {
     sendError(res, 422, coupure, { code: CODE_COUPURE });

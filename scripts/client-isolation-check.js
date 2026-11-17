@@ -82,15 +82,23 @@ function hashSecret(value) {
 }
 
 // ── Base en memoire ─────────────────────────────────────────────────────────
+// CE QU UN CENTRE PUBLIE AVANT DE VENDRE EN LIGNE (2026-11-17, lib/centre-publie.js) : ses horaires et la
+// grille de ce qu il vend a la grille (ici le bowling). Sans eux, les trois centres seraient fermes en ligne
+// et les verdicts de [8] changeraient de cause : ce gate parle de catalogue, pas de publication.
+const OUVERT = { open: '10:00', close: '23:00' };
+const PUBLIE = { config: {
+  defaultSchedule: { regular: { 0: OUVERT, 1: OUVERT, 2: OUVERT, 3: OUVERT, 4: OUVERT, 5: OUVERT, 6: OUVERT }, holiday: {} },
+  grillesTarif: { bowling: { 0.5: 20, 1: 39, 1.5: 59, 2: 78 } },
+} };
 const db = {
   clients: [
     { id: ALPHA, name: 'Alpha Loisirs', status: 'active', plan: 'standard' },
     { id: BETA, name: 'Beta Bowling', status: 'active', plan: 'standard' },
   ],
   centers: [
-    { id: ALPHA_UN, name: 'Alpha Un', status: 'active', timezone: 'Europe/Brussels', settings: null, client_id: ALPHA },
-    { id: ALPHA_DEUX, name: 'Alpha Deux', status: 'active', timezone: 'Europe/Brussels', settings: null, client_id: ALPHA },
-    { id: BETA_UN, name: 'Beta Un', status: 'active', timezone: 'Europe/Brussels', settings: null, client_id: BETA },
+    { id: ALPHA_UN, name: 'Alpha Un', status: 'active', timezone: 'Europe/Brussels', settings: PUBLIE, client_id: ALPHA },
+    { id: ALPHA_DEUX, name: 'Alpha Deux', status: 'active', timezone: 'Europe/Brussels', settings: PUBLIE, client_id: ALPHA },
+    { id: BETA_UN, name: 'Beta Un', status: 'active', timezone: 'Europe/Brussels', settings: PUBLIE, client_id: BETA },
   ],
   formulas: [],
   formula_steps: [],

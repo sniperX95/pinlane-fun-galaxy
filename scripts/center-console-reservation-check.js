@@ -188,6 +188,9 @@ function fixture() {
             regular: { 0: OPEN_DAY, 1: OPEN_DAY, 2: OPEN_DAY, 3: OPEN_DAY, 4: OPEN_DAY, 5: OPEN_DAY, 6: OPEN_DAY },
             holiday: {},
           },
+          // Sa grille de bowling, publiee (2026-11-17, lib/centre-publie.js) : hors du fichier socle, un
+          // centre qui vend a la grille sans l avoir posee ne vend rien en ligne. Les prix sont ceux de depart.
+          grillesTarif: { bowling: { 0.5: 20, 1: 39, 1.5: 59, 2: 78 } },
         },
       },
     }],

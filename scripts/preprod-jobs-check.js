@@ -78,7 +78,8 @@ if (!mode) {
         if(token&&/locked_at\s*=\s*\$7/.test(q)&&(r.status!=='processing'||r.locked_at!==token))return clones([]);
         r.status=p[1];r.attempts+=p[2];r.locked_at=null;r.updated_at=new Date(now).toISOString();return clones([r]);
       }
-      assert(/^(BEGIN|COMMIT|ROLLBACK)$/i.test(q));return clones([]);
+      // `set local lock_timeout` : la limite d attente que chaque transaction pose en entrant (lib/database.js).
+      assert(/^(BEGIN|COMMIT|ROLLBACK)$/i.test(q)||/^set local lock_timeout\b/i.test(q));return clones([]);
     }
     class FakePool{on(){}async connect(){return{query,release(){}};}async query(...args){return query(...args);}}
     const pg=require.resolve('pg');require.cache[pg]={id:pg,filename:pg,loaded:true,exports:{Pool:FakePool}};

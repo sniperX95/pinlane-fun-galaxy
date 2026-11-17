@@ -330,7 +330,9 @@ async function main() {
     const route = lf('api/public-booking-meta.js');
     ok(/if \(body\?\.kind === 'heures-pleines' && url\.pathname\.endsWith\('\/public-booking-meta'\)\) \{\n\s*await handleHeuresPleines\(req, res, body\);/.test(route), 'la route publique aiguille « heures-pleines » vers son traitement');
     // Aucune regle du planning ne lit ces statistiques : c est le navigateur qui les declare.
-    const lecteurs = ['lib', 'api'].flatMap((d) => fs.readdirSync(path.join(ROOT, d)).filter((f) => f.endsWith('.js')).map((f) => `${d}/${f}`)).filter((f) => /formulaire_heures_pleines|formulaire-heures/.test(lf(f))).sort().join(',');
+    // lib/migrations-attendues.js ne lit rien : c est la liste des mises a jour que le site attend, elle
+    // porte le NOM de la migration 0061 et rien d autre.
+    const lecteurs = ['lib', 'api'].flatMap((d) => fs.readdirSync(path.join(ROOT, d)).filter((f) => f.endsWith('.js')).map((f) => `${d}/${f}`)).filter((f) => f !== 'lib/migrations-attendues.js' && /formulaire_heures_pleines|formulaire-heures/.test(lf(f))).sort().join(',');
     ok(lecteurs === 'api/public-booking-meta.js,lib/donnees-api.js,lib/formulaire-heures.js', 'seules la route qui ecrit et la lecture de la page Donnees touchent a ces statistiques : aucune regle du planning n en depend', lecteurs);
   }
 

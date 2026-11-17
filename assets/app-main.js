@@ -14215,6 +14215,9 @@ function removeEstablishmentDeclaredResource(id) {
 
 function renderEstablishmentOverridesList() {
   if (!establishmentHolidayOverridesDraft.length) {
+    // Hors Federation (D5), les feries ne sont pas belges : la phrase suit le calendrier du centre.
+    const reglages = (getEstablishmentCenter() || {}).holidaySettings || {};
+    if (typeof reglages.calendar === 'string' && reglages.calendar && reglages.calendar !== 'BE-FR') return '<p class="estab-overrides-empty">Aucun jour à part. Les jours fériés et les congés scolaires du calendrier du centre s’appliquent tout seuls.</p>';
     return '<p class="estab-overrides-empty">Aucun jour à part : les jours fériés belges et les congés scolaires s’appliquent tout seuls.</p>';
   }
   return establishmentHolidayOverridesDraft
@@ -15271,9 +15274,9 @@ function ebAideCalendrier(c) {
   const aujourdhui = ebIso(new Date());
   if (etat && etat.connuJusquau && etat.connuJusquau >= aujourdhui) {
     const jusqua = new Date(`${etat.connuJusquau}T12:00:00`).toLocaleDateString('fr-BE', { day: 'numeric', month: 'long', year: 'numeric' });
-    return `Ses jours fériés sont connus chaque année. Ses congés scolaires sont publiés jusqu’au ${ebE(jusqua)} : au-delà, seuls les jours fériés passent aux horaires de vacances.`;
+    return `Ses jours fériés sont connus chaque année. Ses congés scolaires sont publiés jusqu’au ${ebE(jusqua)}. Au-delà, seuls les jours fériés passent aux horaires de vacances.`;
   }
-  return 'Ses jours fériés sont connus chaque année. Ses congés scolaires ne sont pas encore publiés : seuls les jours fériés passent aux horaires de vacances. Un jour de congé se pose dans « Jours à part ».';
+  return 'Ses jours fériés sont connus chaque année. Ses congés scolaires ne sont pas encore publiés. Seuls les jours fériés passent aux horaires de vacances. Un jour de congé se pose dans « Jours à part ».';
 }
 function ebChoixCalendrierHtml(c) {
   const liste = (c.calendriers || []).filter(x => x && x.code && x.libelle);
@@ -15374,7 +15377,7 @@ function ebCentreHtml(c) {
 // ── Horaires ─────────────────────────────────────────────────────────────────
 function ebHorairesHtml(c) {
   return ebG('La semaine', 'Les heures où les clients peuvent réserver. Une fermeture après minuit se met à l’heure du lendemain, jusqu’à 06:00.', ebSemaineHtml(c), { cls: 'eb-g-sem' })
-    + ebG('Vacances et jours fériés', c.calendrier === 'BE-FR' ? 'Les jours fériés belges et les congés scolaires de la Fédération Wallonie-Bruxelles.' : `Les jours fériés et les congés scolaires du calendrier choisi : ${ebE(ebLibelleCalendrier(c))}.`, ebVacancesHtml(c))
+    + ebG('Vacances et jours fériés', c.calendrier === 'BE-FR' ? 'Les jours fériés belges et les congés scolaires de la Fédération Wallonie-Bruxelles.' : `Les jours fériés et les congés scolaires du calendrier « ${ebE(ebLibelleCalendrier(c))} ».`, ebVacancesHtml(c))
     + ebG('Jours à part', 'Un jour précis qui suit les horaires de vacances ou les horaires normaux. Il part avec Enregistrer.', ebJoursAPartHtml())
     + ebG('Fermetures programmées', 'Tout le centre, une piste, une activité ou une formule. La fermeture part tout de suite, sans Enregistrer.', `${ebFermetureFormHtml()}<div id="avbList" class="eb-liste">${renderAvailabilityBlocksList()}</div>`)
     + ebG('L’année', 'Touchez un jour pour voir ses heures, le fermer ou le rouvrir.', ebCalendrierHtml(), { cls: 'eb-g-an' });

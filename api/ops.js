@@ -454,7 +454,10 @@ async function handleGet(req, res, options = {}) {
   if (action === 'menuCenters') {
     const centers = await listCentersForSession(getPool(), options.session);
     const owner = sessionHasPermission(options.session, 'platform.admin');
-    sendJson(res, 200, { ok: true, centers, owner });
+    // La mise en route de chaque centre neuf (D7, 2026-11-17) : la Vue d ensemble la met dans « À traiter ».
+    // Lue avec le catalogue du centre, comme la page Etablissement.
+    try { await refreshCatalog(getPool()); } catch (error) { /* catalogue fichier */ }
+    sendJson(res, 200, { ok: true, centers: require('../lib/mise-en-route').avecMiseEnRoute(centers), owner });
     return;
   }
 

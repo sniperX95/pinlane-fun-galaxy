@@ -11382,8 +11382,32 @@ function renderStaffDashNow(live) {
 // absent n'est pas un zero.
 const DASH_TODO_ICONS = {
   payment: 'euro', overdue: 'clock', noshow: 'userCheck', review: 'shield', warning: 'alert',
-  maintenance: 'wrench', lead: 'users', inbox: 'mail', agent: 'bulb', bounce: 'mailOff'
+  maintenance: 'wrench', lead: 'users', inbox: 'mail', agent: 'bulb', bounce: 'mailOff', setup: 'wrench'
 };
+
+// LA MISE EN ROUTE SE VOIT DES L ACCUEIL (D7, 2026-11-17). Un centre neuf qui ne vend pas encore en ligne
+// affichait « Tout est à jour » en vert. Une ligne de « À traiter » dit ce qui reste et mene a la carte de la
+// page Etablissement. Les etapes viennent du serveur (lib/mise-en-route.js) : la config fraiche de la page
+// Etablissement si elle est lue, sinon la liste des centres du menu. Pour qui regle le centre, seulement.
+function getDashMiseEnRouteTodos() {
+  if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('settings.manage')) return [];
+  const id = getCurrentStaffCenterId();
+  const fraiche = staffCenterConfigCache.loaded ? (staffCenterConfigCache.centers || []).find(c => c && c.id === id) : null;
+  const centre = fraiche || (getScopedCenters() || []).find(c => c && c.id === id);
+  const m = centre && centre.miseEnRoute;
+  const reste = m ? Number(m.restantes) || 0 : 0;
+  if (!m || !Array.isArray(m.etapes) || reste < 1) return [];
+  return [{
+    kind: 'setup',
+    priority: m.enLigne ? 'info' : 'important',
+    title: 'Mise en route du centre',
+    text: m.enLigne
+      ? `Vos clients réservent déjà en ligne. ${reste === 1 ? 'Il reste une étape' : `Il reste ${reste} étapes`}.`
+      : `${reste === 1 ? 'Encore une étape' : `Encore ${reste} étapes`} avant la réservation en ligne.`,
+    cta: 'Continuer',
+    open: "openStaffMenuPage('establishment')",
+  }];
+}
 
 function renderDashTodoRow(alert) {
   const meta = getStaffAlertPriorityMeta(alert);
@@ -12511,7 +12535,7 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
   // l argent des groupes finis dans « En ce moment » (band), le reste dans
   // « À traiter ». La pastille du haut compte les deux, et les nomme.
   const inboxKnown = isDashInboxKnown();
-  const inboxTodos = getDashInboxTodos();
+  const inboxTodos = [...getDashMiseEnRouteTodos(), ...getDashInboxTodos()];
   const dayAlerts = getStaffDashboardAlertDefinitions(metrics);
   const urgent = dayAlerts.filter(alert => alert.band);
   const listed = [...inboxTodos, ...dayAlerts.filter(alert => !alert.band)];
@@ -15561,7 +15585,7 @@ function renderStaffUtilityEstablishment() {
 // pas : rien ne s affiche.
 function ebMiseEnRouteHtml(center, canEdit) {
   const m = center && center.miseEnRoute;
-  if (!m || !Array.isArray(m.etapes) || !m.etapes.length || m.enLigne) return '';
+  if (!m || !Array.isArray(m.etapes) || !m.etapes.length || !(Number(m.restantes) > 0)) return '';
   const prochaine = m.etapes.find(e => !e.fait);
   const coche = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
   const lignes = m.etapes.map((e, i) => {
@@ -15571,7 +15595,10 @@ function ebMiseEnRouteHtml(center, canEdit) {
     return `<li class="eb-mer-e${e.fait ? ' est-fait' : ''}${principale ? ' est-prochaine' : ''}" data-mer="${ebE(e.cle)}"><span class="eb-mer-n">${e.fait ? `${coche}<span class="sr-only">Fait</span>` : `<span aria-hidden="true">${i + 1}</span><span class="sr-only">À faire</span>`}</span><span class="eb-mer-t"><b>${ebE(e.titre)}</b><span>${ebE(e.phrase)}</span></span>${bouton}</li>`;
   }).join('');
   const reste = Number(m.restantes) || 0;
-  return `<section class="eb-mer" aria-labelledby="eb-mer-h"><div class="eb-mer-h"><h2 id="eb-mer-h">Mise en route</h2><p>${reste === 1 ? 'Encore une étape' : `Encore ${reste} étapes`} avant que vos clients puissent réserver en ligne.</p></div><ol class="eb-mer-l">${lignes}</ol></section>`;
+  const dit = m.enLigne
+    ? `Vos clients réservent déjà en ligne. ${reste === 1 ? 'Il reste une étape' : `Il reste ${reste} étapes`}.`
+    : `${reste === 1 ? 'Encore une étape' : `Encore ${reste} étapes`} avant que vos clients puissent réserver en ligne.`;
+  return `<section class="eb-mer" aria-labelledby="eb-mer-h"><div class="eb-mer-h"><h2 id="eb-mer-h">Mise en route</h2><p>${dit}</p></div><ol class="eb-mer-l">${lignes}</ol></section>`;
 }
 
 // Une etape de la mise en route : la page, la rubrique et le champ ou la faire.

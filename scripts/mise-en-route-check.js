@@ -32,14 +32,17 @@ const ROOT = path.resolve(__dirname, '..');
 const MUTATIONS = {
   'socle-guide': { f: 'lib/mise-en-route.js', de: "  if (!centre || typeof centre !== 'object' || estDuSocle(centre)) return null;", vers: "  if (!centre || typeof centre !== 'object') return null;", lettre: 'A' },
   'tarifs-oublies': { f: 'lib/mise-en-route.js', de: '      fait: vendues.length > 0 && sansPrix.length === 0,', vers: '      fait: vendues.length > 0,', lettre: 'A' },
-  'en-ligne-sans-la-regle': { f: 'lib/mise-en-route.js', de: '  const enLigne = ouvert && !manqueAPublier(centre, { activites: vendues });', vers: '  const enLigne = ouvert;', lettre: 'A' },
-  'page-sans-mise-en-route': { f: 'api/ops.js', de: "centers: require('../lib/mise-en-route').avecMiseEnRoute(centers),", vers: 'centers,', lettre: 'B' },
+  'en-ligne-sans-la-regle': { f: 'lib/mise-en-route.js', de: '  const enLigne = ouvert && vendues.length > 0 && !manqueAPublier(centre, { activites: vendues });', vers: '  const enLigne = ouvert && vendues.length > 0;', lettre: 'A' },
+  'page-sans-mise-en-route': { f: 'api/ops.js', de: "centers: require('../lib/mise-en-route').avecMiseEnRoute(centers), activities", vers: 'centers, activities', lettre: 'B' },
   'mise-en-route-sans-catalogue': { f: 'api/ops.js', de: '    try { await refreshCatalog(pool); } catch (error) { /* catalogue fichier */ }\n', vers: '', lettre: 'B' },
   'carte-absente': { f: 'assets/app-main.js', de: '    ${ebMiseEnRouteHtml(center, canEdit)}\n', vers: '', lettre: 'C' },
   'bouton-plein-au-premier': { f: 'assets/app-main.js', de: 'const principale = Boolean(prochaine) && e.cle === prochaine.cle;', vers: 'const principale = i === 0;', lettre: 'C' },
   'champ-pas-pose': { f: 'assets/app-main.js', de: 'if (champ) { focusEstablishmentField(champ); return; }', vers: 'if (champ) { return; }', lettre: 'C' },
   'lecture-seule-avec-boutons': { f: 'assets/app-main.js', de: "const permis = e.aller && e.aller.page === 'prices' ? canUseStaffPermission('pricing.manage') : canEdit;", vers: 'const permis = true;', lettre: 'C' },
   'bouton-plein-repeint': { f: 'assets/pinlane-staff.css', de: '.establishment-page.eb .eb-b.eb-mer-plein {', vers: '.establishment-page.eb .eb-mer-plein {', lettre: 'C' },
+  'menu-sans-mise-en-route': { f: 'api/ops.js', de: "sendJson(res, 200, { ok: true, centers: require('../lib/mise-en-route').avecMiseEnRoute(centers), owner });", vers: 'sendJson(res, 200, { ok: true, centers, owner });', lettre: 'B' },
+  'accueil-tout-a-jour': { f: 'assets/app-main.js', de: 'const inboxTodos = [...getDashMiseEnRouteTodos(), ...getDashInboxTodos()];', vers: 'const inboxTodos = getDashInboxTodos();', lettre: 'C' },
+  'en-ligne-sans-activite': { f: 'lib/mise-en-route.js', de: '  const enLigne = ouvert && vendues.length > 0 && !manqueAPublier(centre, { activites: vendues });', vers: '  const enLigne = ouvert && !manqueAPublier(centre, { activites: vendues });', lettre: 'A' },
 };
 const MUTATION = (process.argv.find((a) => a.startsWith('--mutation=')) || '').slice('--mutation='.length);
 if (MUTATION && !MUTATIONS[MUTATION]) { console.error(`mutation inconnue : ${MUTATION}`); process.exit(2); }
@@ -108,8 +111,8 @@ ok(etape(vide, 'horaires').aller.page === 'establishment' && etape(vide, 'horair
   && etape(vide, 'coordonnees').aller.champ === 'estab-address' && etape(vide, 'ouvrir').aller.champ === 'estab-status', 'chaque etape dit ou la faire', JSON.stringify(vide && vide.etapes.map((e) => e.aller)));
 const sansPrix = miseEnRoute(neuf({ defaultSchedule: SEMAINE, publicInfo: { address: CONTACT.address } }), { activites: [BOWLING, LASER, KARA] });
 ok(etape(sansPrix, 'horaires').fait && etape(sansPrix, 'horaires').phrase === 'Ouvert 6 jours sur 7.', 'des horaires poses : l etape est faite et dit combien de jours', etape(sansPrix, 'horaires').phrase);
-ok(etape(sansPrix, 'activites').fait && etape(sansPrix, 'activites').phrase === 'Bowling, Laser Game et Kara Box.', 'les activites vendues se nomment', etape(sansPrix, 'activites').phrase);
-ok(!etape(sansPrix, 'tarifs').fait && etape(sansPrix, 'tarifs').phrase === 'Il manque le prix : Bowling et Laser Game.', 'les activites vendues a la grille sans prix se nomment, pas celle a prix fixe', etape(sansPrix, 'tarifs').phrase);
+ok(etape(sansPrix, 'activites').fait && etape(sansPrix, 'activites').phrase === 'Bowling, Laser Game et Kara Box se réservent.', 'les activites vendues se nomment', etape(sansPrix, 'activites').phrase);
+ok(!etape(sansPrix, 'tarifs').fait && etape(sansPrix, 'tarifs').phrase === 'Bowling et Laser Game n’ont pas encore de prix.', 'les activites vendues a la grille sans prix se nomment, pas celle a prix fixe', etape(sansPrix, 'tarifs').phrase);
 ok(!etape(sansPrix, 'coordonnees').fait && etape(sansPrix, 'coordonnees').aller.champ === 'estab-phone' && /votre téléphone/.test(etape(sansPrix, 'coordonnees').phrase), 'l adresse posee sans telephone : l etape mene au champ du telephone', JSON.stringify(etape(sansPrix, 'coordonnees')));
 const pret = neuf({ defaultSchedule: SEMAINE, publicInfo: CONTACT, grillesTarif: { bowling: { 1: 30 }, laser: { 1: 9 } } });
 const mPret = miseEnRoute(pret, { activites: [BOWLING, LASER, KARA] });
@@ -117,13 +120,19 @@ ok(etape(mPret, 'tarifs').fait && etape(mPret, 'coordonnees').fait && !etape(mPr
 const ouvert = miseEnRoute({ ...pret, status: 'active' }, { activites: [BOWLING, LASER, KARA] });
 ok(ouvert.enLigne === true && ouvert.restantes === 0, 'tout pose et ouvert : en ligne, rien ne reste', JSON.stringify(ouvert));
 const tropTot = miseEnRoute(neuf({ status: 'active', grillesTarif: { bowling: { 1: 30 } } }), { activites: [BOWLING] });
-ok(tropTot.enLigne === false && !etape(tropTot, 'ouvrir').fait && /mais le formulaire reste fermé/.test(etape(tropTot, 'ouvrir').phrase), 'ouvert trop tot (sans horaires) : la carte dit pourquoi le formulaire reste ferme', etape(tropTot, 'ouvrir').phrase);
+ok(tropTot.enLigne === false && !etape(tropTot, 'ouvrir').fait && etape(tropTot, 'ouvrir').phrase === 'Votre centre est ouvert, mais le formulaire reste fermé tant que les horaires manquent.', 'ouvert trop tot (sans horaires) : la carte dit pourquoi le formulaire reste ferme', etape(tropTot, 'ouvrir').phrase);
+const sansActivite = miseEnRoute(neuf({ status: 'active', defaultSchedule: SEMAINE }), { activites: [] });
+ok(sansActivite.enLigne === false && etape(sansActivite, 'ouvrir').phrase === 'Votre centre est ouvert, mais le formulaire reste fermé tant que les activités manquent.', 'ouvert sans aucune activite : pas « en ligne », rien ne se vend', JSON.stringify(sansActivite));
 const variantes = [
   [neuf(), []], [neuf({ status: 'active' }), [BOWLING]], [neuf({ status: 'active', defaultSchedule: SEMAINE }), [BOWLING]],
   [neuf({ status: 'active', defaultSchedule: SEMAINE }), [KARA]], [{ ...pret, status: 'active' }, [BOWLING, LASER]], [neuf({ status: 'active', defaultSchedule: SEMAINE, resources: { bowling: { pricing: { perGame: 6 } } } }), [BOWLING]],
+  [neuf({ status: 'active', defaultSchedule: SEMAINE }), []],
 ];
-const desaccords = variantes.filter(([c, activites]) => miseEnRoute(c, { activites }).enLigne !== (c.status === 'active' && manqueAPublier(c, { activites }) === ''));
-ok(desaccords.length === 0, '« en ligne » dit exactement ce que dit la regle du formulaire (6 variantes)', desaccords.map(([c]) => JSON.stringify(c)).join(' | '));
+const desaccords = variantes.filter(([c, activites]) => miseEnRoute(c, { activites }).enLigne !== (c.status === 'active' && activites.length > 0 && manqueAPublier(c, { activites }) === ''));
+ok(desaccords.length === 0, '« en ligne » dit ce que dit la regle du formulaire, avec quelque chose a vendre (7 variantes)', desaccords.map(([c]) => JSON.stringify(c)).join(' | '));
+// Ansar rejette le deux-points au milieu d une phrase (memoire ce-qu-ansar-appelle-fait-ia).
+const phrases = [vide, sansPrix, mPret, ouvert, tropTot, sansActivite].flatMap((m) => m.etapes.map((e) => e.phrase));
+ok(phrases.every((p) => !/ : /.test(p)), 'aucune phrase n a de deux-points au milieu', phrases.filter((p) => / : /.test(p)).join(' | '));
 
 section('[B] LE SERVEUR : api/ops.js, action centerConfig');
 const liste = avecMiseEnRoute([{ id: 'libramont', name: 'Libramont', status: 'active' }, neuf(), neuf({ id: 'vieux', status: 'closed' })]);
@@ -135,6 +144,11 @@ const iCatalogue = bloc.indexOf('await refreshCatalog(pool)');
 const iEnvoi = bloc.indexOf("centers: require('../lib/mise-en-route').avecMiseEnRoute(centers)");
 ok(iEnvoi > 0, 'la page Etablissement recoit la mise en route de chaque centre', bloc.slice(-300));
 ok(iCatalogue > 0 && iCatalogue < iEnvoi, 'le catalogue du centre est rechauffe avant de lire ses etapes', `${iCatalogue} / ${iEnvoi}`);
+const debutMenu = ops.indexOf("  if (action === 'menuCenters') {");
+const blocMenu = debutMenu < 0 ? '' : ops.slice(debutMenu, ops.indexOf('\n    return;\n  }', debutMenu));
+const iMenuCatalogue = blocMenu.indexOf('await refreshCatalog(getPool())');
+const iMenuEnvoi = blocMenu.indexOf("centers: require('../lib/mise-en-route').avecMiseEnRoute(centers), owner");
+ok(iMenuEnvoi > 0 && iMenuCatalogue > 0 && iMenuCatalogue < iMenuEnvoi, 'la liste des centres du menu (la Vue d ensemble) porte aussi la mise en route, catalogue rechauffe avant', blocMenu.slice(-300));
 
 (async () => {
   if (SANS_PAGE) { fin(); return; }
@@ -182,7 +196,7 @@ async function page() {
     delete funGalaxy.miseEnRoute;
 
     const ouvrirConsole = async (lectureSeule) => {
-      const p = await navigateur.newPage({ viewport: { width: 1280, height: 900 } });
+      const p = await navigateur.newPage({ viewport: { width: 1280, height: 900 }, deviceScaleFactor: CAPTURES ? 2 : 1 });
       p.on('pageerror', (err) => erreurs.push(String(err && err.message)));
       await p.addInitScript(({ lectureSeule, expiresAt }) => {
         const toutes = ['dashboard.view', 'planning.view', 'reservations.view', 'settings.manage', 'direction.view', 'pricing.manage'];
@@ -196,6 +210,7 @@ async function page() {
           if (u.pathname === '/api/staff-auth') return J({ ok: true, authenticated: true, session, accessControl: { selectedRoleId: roleId, selectedMemberId: 'qa', roles: [{ id: roleId, name: session.role.name, code: 'QA', tone: 'admin', accessCode: 'X', updatedAt: new Date().toISOString(), locked: !lectureSeule, permissions: perms }], members: [{ id: 'qa', name: 'QA', contact: 'q@x', roleId, status: 'active', code: 'X', lastSeen: new Date().toISOString() }], events: [], permissions: perms } });
           if (u.pathname === '/api/staff-state') return J({ ok: true, revision: 'qa', reservations: [], laneStatuses: {}, centerId: 'bowling-atlas' });
           if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'centerConfig') return J({ ok: true, centers: window.__CENTRES__ || [], activities: [] });
+          if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'menuCenters') return J({ ok: true, centers: window.__CENTRES__ || [], owner: false });
           if (u.pathname.startsWith('/api/')) return J({ ok: true, reservations: [], emails: [], communications: [], samples: [], suggestions: [], events: [], agents: [], activations: [], orchestration: {} });
           return natif(input, init);
         };
@@ -240,6 +255,7 @@ async function page() {
     ok(await p.evaluate(() => !document.getElementById('eb-p-activites').hidden), '« Choisir les activités » ouvre la rubrique des activites');
     await p.click('.eb-mer-e[data-mer="coordonnees"] button');
     ok(await p.evaluate(() => !document.getElementById('eb-p-centre').hidden && document.activeElement && document.activeElement.id === 'estab-address'), '« Ajouter » ouvre la rubrique du centre, le curseur dans l adresse', await p.evaluate(() => (document.activeElement || {}).id));
+    if (CAPTURES && !MUTATION) { await p.waitForTimeout(300); await p.screenshot({ path: path.join(CAPTURES, 'mise-en-route-adresse.png') }); }
     await p.click('.eb-mer-e[data-mer="tarifs"] button');
     await p.waitForTimeout(200);
     ok(await p.evaluate(() => state.staffMenuPage === 'prices'), '« Poser les prix » ouvre la page des prix', await p.evaluate(() => state.staffMenuPage));
@@ -249,10 +265,43 @@ async function page() {
     ok(!(await lire(p)).carte, 'Fun Galaxy : aucune carte');
     await p.close();
 
+    // La Vue d ensemble, premier ecran du gerant, sans passer par Etablissement : la liste des centres du menu.
+    const accueil = await ouvrirConsole(false);
+    const lireAccueil = async (centres) => {
+      await accueil.evaluate(async (centres) => {
+        window.__CENTRES__ = centres;
+        state.adminCenterId = centres[0].id;
+        state.staffTheme = 'dark';
+        setView('staff');
+        await loadMenuCenters(true);
+        openStaffMenuPage('dashboard');
+        renderStaff();
+      }, centres);
+      await accueil.waitForSelector('#staffDashboardPage .dash-todo-card', { timeout: 15000 });
+      await accueil.waitForTimeout(300);
+      return accueil.evaluate(() => {
+        const ligne = document.querySelector('#staffDashboardPage [data-todo="setup"]');
+        const lu = (sel) => (ligne && ligne.querySelector(sel) ? ligne.querySelector(sel).textContent : '');
+        return { ligne: Boolean(ligne), titre: lu('strong'), texte: lu('p'), bouton: lu('button'), etat: ((document.querySelector('#staffDashboardPage .dash-state') || {}).textContent || '').trim() };
+      });
+    };
+    const dash = await lireAccueil([centreNeuf]);
+    ok(dash.ligne && dash.titre === 'Mise en route du centre' && dash.texte === 'Encore 4 étapes avant la réservation en ligne.' && dash.bouton === 'Continuer', 'la Vue d ensemble met la mise en route dans « À traiter »', JSON.stringify(dash));
+    ok(dash.etat && !/Tout est à jour/.test(dash.etat), 'la Vue d ensemble ne dit plus « Tout est à jour » a un centre qui ne vend rien', dash.etat);
+    if (CAPTURES && !MUTATION) await accueil.screenshot({ path: path.join(CAPTURES, 'accueil-mise-en-route.png') });
+    await accueil.click('#staffDashboardPage [data-todo="setup"] button');
+    await accueil.waitForSelector('.eb-mer', { timeout: 15000 }).catch(() => {});
+    ok(await accueil.evaluate(() => state.staffMenuPage === 'establishment' && Boolean(document.querySelector('.eb-mer'))), '« Continuer » ouvre la page Etablissement sur sa mise en route');
+    ok(!(await lireAccueil([funGalaxy])).ligne, 'Fun Galaxy : rien dans « À traiter »');
+    await accueil.close();
+
     const regard = await ouvrirConsole(true);
     await montrer(regard, [centreNeuf]);
     const vuRegard = await lire(regard);
     ok(vuRegard.carte && vuRegard.lignes.length === 5 && vuRegard.lignes.every((l) => !l.bouton), 'en lecture seule : la carte se lit, sans aucun bouton', JSON.stringify(vuRegard.lignes));
+    await regard.evaluate(() => { openStaffMenuPage('dashboard'); renderStaff(); });
+    await regard.waitForSelector('#staffDashboardPage .dash-todo-card', { timeout: 15000 });
+    ok(!(await regard.evaluate(() => Boolean(document.querySelector('#staffDashboardPage [data-todo="setup"]')))), 'en lecture seule : rien dans « À traiter », ce role ne regle pas le centre');
     await regard.close();
     const miennes = erreurs.filter((e) => /ebMiseEnRoute|ebAllerEtape|miseEnRoute/.test(e));
     ok(miennes.length === 0, 'aucune erreur de la carte dans la page', miennes.join(' | '));

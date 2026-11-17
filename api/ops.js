@@ -1181,7 +1181,12 @@ async function handleGet(req, res, options = {}) {
     // LA MISE EN ROUTE de chaque centre neuf (D7, 2026-11-17, lib/mise-en-route.js), lue avec le catalogue du
     // centre comme la regle du formulaire : sans lui, elle verrait le catalogue de depart.
     try { await refreshCatalog(pool); } catch (error) { /* catalogue fichier */ }
-    sendJson(res, 200, { ok: true, centers: require('../lib/mise-en-route').avecMiseEnRoute(centers), activities });
+    // LE CALENDRIER DE CHAQUE CENTRE HORS FEDERATION (2026-11-17, D5) : ses feries et ses conges, relus puis
+    // envoyes a la page (l annee qu elle montre, et jusqu ou les conges sont connus). La liste des calendriers
+    // proposes part avec : la page ne la recopie pas.
+    const calendriers = require('../lib/booking-config');
+    const avecCalendrier = await calendriers.centresAvecCalendrier(centers);
+    sendJson(res, 200, { ok: true, centers: require('../lib/mise-en-route').avecMiseEnRoute(avecCalendrier), activities, calendriersDeVacances: calendriers.listeDesCalendriers() });
     return;
   }
 

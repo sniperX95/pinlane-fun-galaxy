@@ -33,7 +33,7 @@ const MUTATIONS = {
   'socle-guide': { f: 'lib/mise-en-route.js', de: "  if (!centre || typeof centre !== 'object' || estDuSocle(centre)) return null;", vers: "  if (!centre || typeof centre !== 'object') return null;", lettre: 'A' },
   'tarifs-oublies': { f: 'lib/mise-en-route.js', de: '      fait: vendues.length > 0 && sansPrix.length === 0,', vers: '      fait: vendues.length > 0,', lettre: 'A' },
   'en-ligne-sans-la-regle': { f: 'lib/mise-en-route.js', de: '  const enLigne = ouvert && vendues.length > 0 && !manqueAPublier(centre, { activites: vendues });', vers: '  const enLigne = ouvert && vendues.length > 0;', lettre: 'A' },
-  'page-sans-mise-en-route': { f: 'api/ops.js', de: "centers: require('../lib/mise-en-route').avecMiseEnRoute(centers), activities", vers: 'centers, activities', lettre: 'B' },
+  'page-sans-mise-en-route': { f: 'api/ops.js', de: "centers: require('../lib/mise-en-route').avecMiseEnRoute(avecCalendrier), activities", vers: 'centers: avecCalendrier, activities', lettre: 'B' },
   'mise-en-route-sans-catalogue': { f: 'api/ops.js', de: '    try { await refreshCatalog(pool); } catch (error) { /* catalogue fichier */ }\n', vers: '', lettre: 'B' },
   'carte-absente': { f: 'assets/app-main.js', de: '    ${ebMiseEnRouteHtml(center, canEdit)}\n', vers: '', lettre: 'C' },
   'bouton-plein-au-premier': { f: 'assets/app-main.js', de: 'const principale = Boolean(prochaine) && e.cle === prochaine.cle;', vers: 'const principale = i === 0;', lettre: 'C' },
@@ -141,7 +141,7 @@ const ops = muter('api/ops.js', fs.readFileSync(path.join(ROOT, 'api', 'ops.js')
 const debut = ops.indexOf("  if (action === 'centerConfig') {");
 const bloc = debut < 0 ? '' : ops.slice(debut, ops.indexOf('\n    return;\n  }', debut));
 const iCatalogue = bloc.indexOf('await refreshCatalog(pool)');
-const iEnvoi = bloc.indexOf("centers: require('../lib/mise-en-route').avecMiseEnRoute(centers)");
+const iEnvoi = bloc.indexOf("centers: require('../lib/mise-en-route').avecMiseEnRoute(avecCalendrier)");
 ok(iEnvoi > 0, 'la page Etablissement recoit la mise en route de chaque centre', bloc.slice(-300));
 ok(iCatalogue > 0 && iCatalogue < iEnvoi, 'le catalogue du centre est rechauffe avant de lire ses etapes', `${iCatalogue} / ${iEnvoi}`);
 const debutMenu = ops.indexOf("  if (action === 'menuCenters') {");

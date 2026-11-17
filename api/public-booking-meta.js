@@ -7,13 +7,16 @@ const {
   isOfferEnabled,
   getSchedule,
   refreshFormuleOverrides,
-  refreshWalloniaSchoolHolidays,
+  refreshSchoolHolidaysFor,
   resolveBowlingCapacity,
   todayStr,
   currentTimeDecimal,
   BOOKING_HORIZON_DAYS,
   reglesDeReservation,
   LASER_GAME_ARENA_MINUTES,
+  CALENDRIER_PAR_DEFAUT,
+  calendrierDuCentre,
+  calendrierPourLeClient,
 } = require('../lib/booking-config');
 const { getPool, checkDatabaseHealth, createCustomRequest } = require('../lib/database');
 const { readJson, sendError, sendJson, setCors } = require('../lib/http');
@@ -1109,8 +1112,9 @@ async function routeur(req, res) {
   if (center && (dayDate || calendarDays)) {
     // Le calendrier scolaire officiel se relit fail-soft (24 h par instance,
     // delai borne) : les horaires de vacances suivent l annee en cours sans
-    // retaper la table. Un echec laisse la table statique faire foi.
-    try { await refreshWalloniaSchoolHolidays(); } catch (error) { /* table statique */ }
+    // retaper la table. Un echec laisse la table statique faire foi. Celui DE CE
+    // CENTRE (2026-11-17, D5) : la Federation sans choix, sinon son pays et sa region.
+    try { await refreshSchoolHolidaysFor(center); } catch (error) { /* table statique */ }
     let blocks = [];
     try { blocks = await loadAvailabilityBlocks(getPool(), centerId); } catch (error) { blocks = []; }
     if (dayDate) {
@@ -1134,6 +1138,11 @@ async function routeur(req, res) {
   if (center) {
     const regles = reglesDeReservation(center);
     if ((regles.minDaysAhead > 0 || regles.horizonDays < BOOKING_HORIZON_DAYS) && !(await sessionDuPersonnel(req))) reglesEnLigne = regles;
+  }
+  // Le calendrier envoye au navigateur d un centre hors Federation se relit aussi quand la page ne demande ni
+  // jour ni calendrier (meme cache de 24 h : un seul appel par instance et par jour).
+  if (center && calendrierDuCentre(center) !== CALENDRIER_PAR_DEFAUT) {
+    try { await refreshSchoolHolidaysFor(center); } catch (error) { /* rien de lu : le calendrier le dira */ }
   }
 
   // Coupe depuis la Tour de controle (2026-11-14) : le formulaire se retire des qu il lit ce champ. Cle ADDITIVE,
@@ -1217,6 +1226,7 @@ async function routeur(req, res) {
         holidaySettings: center.holidaySettings && typeof center.holidaySettings === 'object'
           ? center.holidaySettings
           : { enabled: true, overrides: [], formulaBlockedPeriods: ['public', 'school_short', 'manual'] },
+        ...calendrierPourLaPage(center),
         offerAvailability: center.offerAvailability && typeof center.offerAvailability === 'object' ? center.offerAvailability : {},
         // CE QUE LE CENTRE POSSEDE, ingredients compris (table anniversaire,
         // plaine de jeux...), et pas seulement ce qu'il vend a la carte. Une
@@ -1266,6 +1276,13 @@ async function routeur(req, res) {
       : null,
   });
 };
+
+// LES FERIES ET LES CONGES D UN CENTRE HORS FEDERATION (2026-11-17, D5), calcules ici : le navigateur
+// (assets/booking-core.js) ne connait que ceux de la Federation, et ne les applique plus a un autre centre.
+// Cle ADDITIVE : un centre de la Federation n en recoit pas, sa page reste celle d avant.
+function calendrierPourLaPage(center) {
+  return center && calendrierDuCentre(center) !== CALENDRIER_PAR_DEFAUT ? { holidayCalendar: calendrierPourLeClient(center) } : {};
+}
 
 // Les N prochains jours, chacun avec son verdict (buildDayStatus) et sa
 // periode. Le libelle de periode vient du calendrier (ferie legal, conge
@@ -1327,4 +1344,4 @@ module.exports = async (req, res) => {
     if (!res.headersSent) sendError(res, 503, 'Service momentanément indisponible. Réessayez dans un instant.');
   }
 };
-module.exports.__test = { buildDayStatus, buildCalendar, calendarFromParam, formulesPubliques, activitesPubliques, gestesVitrine, heuresPleinesDuCentre };
+module.exports.__test = { buildDayStatus, buildCalendar, calendarFromParam, formulesPubliques, activitesPubliques, gestesVitrine, heuresPleinesDuCentre, calendrierPourLaPage };

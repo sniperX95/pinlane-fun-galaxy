@@ -1,0 +1,512 @@
+[
+ {
+  "startDate": "2025-07-01",
+  "endDate": "2025-08-31",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Vacances d'été"
+   }
+  ],
+  "nationwide": false,
+  "groups": [
+   {
+    "code": "BE-NL"
+   }
+  ]
+ },
+ {
+  "startDate": "2025-07-01",
+  "endDate": "2025-08-31",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Vacances d'été"
+   }
+  ],
+  "nationwide": false,
+  "groups": [
+   {
+    "code": "BE-DE"
+   }
+  ]
+ },
+ {
+  "startDate": "2025-07-05",
+  "endDate": "2025-08-24",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Vacances d'été"
+   }
+  ],
+  "nationwide": false,
+  "groups": [
+   {
+    "code": "BE-FR"
+   }
+  ]
+ },
+ {
+  "startDate": "2025-09-27",
+  "endDate": "2025-09-27",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Fête de la Communauté française"
+   }
+  ],
+  "nationwide": false,
+  "groups": [
+   {
+    "code": "BE-FR"
+   }
+  ]
+ },
+ {
+  "startDate": "2025-10-20",
+  "endDate": "2025-11-02",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Congé d'automne (Toussaint)"
+   }
+  ],
+  "nationwide": false,
+  "groups": [
+   {
+    "code": "BE-FR"
+   }
+  ]
+ },
+ {
+  "startDate": "2025-10-27",
+  "endDate": "2025-11-01",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Congé d'automne (Toussaint)"
+   }
+  ],
+  "nationwide": false,
+  "groups": [
+   {
+    "code": "BE-DE"
+   }
+  ]
+ },
+ {
+  "startDate": "2025-10-27",
+  "endDate": "2025-11-02",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Congé d'automne (Toussaint)"
+   }
+  ],
+  "nationwide": false,
+  "groups": [
+   {
+    "code": "BE-NL"
+   }
+  ]
+ },
+ {
+  "startDate": "2025-11-15",
+  "endDate": "2025-11-15",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Jour de la Communauté Germanophone"
+   }
+  ],
+  "nationwide": false,
+  "groups": [
+   {
+    "code": "BE-DE"
+   }
+  ]
+ },
+ {
+  "startDate": "2025-12-22",
+  "endDate": "2026-01-03",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Vacances d'hiver (Noël)"
+   }
+  ],
+  "nationwide": false,
+  "groups": [
+   {
+    "code": "BE-DE"
+   }
+  ]
+ },
+ {
+  "startDate": "2025-12-22",
+  "endDate": "2026-01-04",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Vacances d'hiver (Noël)"
+   }
+  ],
+  "nationwide": false,
+  "groups": [
+   {
+    "code": "BE-NL"
+   }
+  ]
+ },
+ {
+  "startDate": "2025-12-22",
+  "endDate": "2026-01-04",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Vacances d'hiver (Noël)"
+   }
+  ],
+  "nationwide": false,
+  "groups": [
+   {
+    "code": "BE-FR"
+   }
+  ]
+ },
+ {
+  "startDate": "2026-02-16",
+  "endDate": "2026-02-22",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Congé de détente (Carnaval)"
+   }
+  ],
+  "nationwide": false,
+  "groups": [
+   {
+    "code": "BE-NL"
+   }
+  ]
+ },
+ {
+  "startDate": "2026-02-16",
+  "endDate": "2026-02-21",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Congé de détente (Carnaval)"
+   }
+  ],
+  "nationwide": false,
+  "groups": [
+   {
+    "code": "BE-DE"
+   }
+  ]
+ },
+ {
+  "startDate": "2026-02-16",
+  "endDate": "2026-03-01",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Congé de détente (Carnaval)"
+   }
+  ],
+  "nationwide": false,
+  "groups": [
+   {
+    "code": "BE-FR"
+   }
+  ]
+ },
+ {
+  "startDate": "2026-04-06",
+  "endDate": "2026-04-19",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Vacances de printemps (Pâques)"
+   }
+  ],
+  "nationwide": false,
+  "groups": [
+   {
+    "code": "BE-NL"
+   }
+  ]
+ },
+ {
+  "startDate": "2026-04-06",
+  "endDate": "2026-04-18",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Vacances de printemps (Pâques)"
+   }
+  ],
+  "nationwide": false,
+  "groups": [
+   {
+    "code": "BE-DE"
+   }
+  ]
+ },
+ {
+  "startDate": "2026-04-27",
+  "endDate": "2026-05-10",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Vacances de printemps (Pâques)"
+   }
+  ],
+  "nationwide": false,
+  "groups": [
+   {
+    "code": "BE-FR"
+   }
+  ]
+ },
+ {
+  "startDate": "2026-07-01",
+  "endDate": "2026-08-31",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Vacances d'été"
+   }
+  ],
+  "nationwide": false,
+  "groups": [
+   {
+    "code": "BE-NL"
+   }
+  ]
+ },
+ {
+  "startDate": "2026-07-01",
+  "endDate": "2026-08-31",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Vacances d'été"
+   }
+  ],
+  "nationwide": false,
+  "groups": [
+   {
+    "code": "BE-DE"
+   }
+  ]
+ },
+ {
+  "startDate": "2026-07-04",
+  "endDate": "2026-08-23",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Vacances d'été"
+   }
+  ],
+  "nationwide": false,
+  "groups": [
+   {
+    "code": "BE-FR"
+   }
+  ]
+ },
+ {
+  "startDate": "2026-10-19",
+  "endDate": "2026-11-01",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Congé d'automne (Toussaint)"
+   }
+  ],
+  "nationwide": false,
+  "groups": [
+   {
+    "code": "BE-FR"
+   }
+  ]
+ },
+ {
+  "startDate": "2026-11-02",
+  "endDate": "2026-11-08",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Congé d'automne (Toussaint)"
+   }
+  ],
+  "nationwide": false,
+  "groups": [
+   {
+    "code": "BE-NL"
+   }
+  ]
+ },
+ {
+  "startDate": "2026-12-21",
+  "endDate": "2027-01-03",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Vacances d'hiver (Noël)"
+   }
+  ],
+  "nationwide": false,
+  "groups": [
+   {
+    "code": "BE-FR"
+   }
+  ]
+ },
+ {
+  "startDate": "2026-12-21",
+  "endDate": "2027-01-03",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Vacances d'hiver (Noël)"
+   }
+  ],
+  "nationwide": false,
+  "groups": [
+   {
+    "code": "BE-NL"
+   }
+  ]
+ },
+ {
+  "startDate": "2027-02-08",
+  "endDate": "2027-02-14",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Congé de détente (Carnaval)"
+   }
+  ],
+  "nationwide": false,
+  "groups": [
+   {
+    "code": "BE-NL"
+   }
+  ]
+ },
+ {
+  "startDate": "2027-02-22",
+  "endDate": "2027-03-07",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Congé de détente (Carnaval)"
+   }
+  ],
+  "nationwide": false,
+  "groups": [
+   {
+    "code": "BE-FR"
+   }
+  ]
+ },
+ {
+  "startDate": "2027-03-29",
+  "endDate": "2027-04-11",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Vacances de printemps (Pâques)"
+   }
+  ],
+  "nationwide": false,
+  "groups": [
+   {
+    "code": "BE-NL"
+   }
+  ]
+ },
+ {
+  "startDate": "2027-04-26",
+  "endDate": "2027-05-09",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Vacances de printemps (Pâques)"
+   }
+  ],
+  "nationwide": false,
+  "groups": [
+   {
+    "code": "BE-FR"
+   }
+  ]
+ },
+ {
+  "startDate": "2027-07-01",
+  "endDate": "2027-08-31",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Vacances d'été"
+   }
+  ],
+  "nationwide": false,
+  "groups": [
+   {
+    "code": "BE-NL"
+   }
+  ]
+ },
+ {
+  "startDate": "2027-07-03",
+  "endDate": "2027-07-03",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Début des vacances d'été"
+   }
+  ],
+  "nationwide": false,
+  "groups": [
+   {
+    "code": "BE-FR"
+   }
+  ]
+ }
+]

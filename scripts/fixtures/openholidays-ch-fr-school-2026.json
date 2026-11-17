@@ -1,0 +1,191 @@
+[
+ {
+  "startDate": "2025-07-04",
+  "endDate": "2025-08-27",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Été"
+   }
+  ],
+  "nationwide": false,
+  "subdivisions": [
+   {
+    "code": "CH-FR"
+   }
+  ]
+ },
+ {
+  "startDate": "2025-10-11",
+  "endDate": "2025-10-26",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Automne"
+   }
+  ],
+  "nationwide": false,
+  "subdivisions": [
+   {
+    "code": "CH-FR"
+   }
+  ]
+ },
+ {
+  "startDate": "2025-12-20",
+  "endDate": "2026-01-02",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Noël"
+   }
+  ],
+  "nationwide": false,
+  "subdivisions": [
+   {
+    "code": "CH-FR"
+   }
+  ]
+ },
+ {
+  "startDate": "2026-02-14",
+  "endDate": "2026-02-22",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Sport"
+   }
+  ],
+  "nationwide": false,
+  "subdivisions": [
+   {
+    "code": "CH-FR"
+   }
+  ],
+  "comment": [
+   {
+    "language": "FR",
+    "text": "Écoles primaires (ville), Écoles sec. II"
+   }
+  ]
+ },
+ {
+  "startDate": "2026-04-03",
+  "endDate": "2026-04-19",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Printemps"
+   }
+  ],
+  "nationwide": false,
+  "subdivisions": [
+   {
+    "code": "CH-FR"
+   }
+  ],
+  "comment": [
+   {
+    "language": "FR",
+    "text": "Écoles primaires (ville), Écoles sec. II"
+   }
+  ]
+ },
+ {
+  "startDate": "2026-07-04",
+  "endDate": "2026-08-26",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Été"
+   }
+  ],
+  "nationwide": false,
+  "subdivisions": [
+   {
+    "code": "CH-FR"
+   }
+  ],
+  "comment": [
+   {
+    "language": "FR",
+    "text": "Écoles sec. II"
+   }
+  ]
+ },
+ {
+  "startDate": "2026-07-11",
+  "endDate": "2026-08-26",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Été"
+   }
+  ],
+  "nationwide": false,
+  "subdivisions": [
+   {
+    "code": "CH-FR"
+   }
+  ],
+  "comment": [
+   {
+    "language": "FR",
+    "text": "Écoles primaires (ville)"
+   }
+  ]
+ },
+ {
+  "startDate": "2026-10-10",
+  "endDate": "2026-10-25",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Automne"
+   }
+  ],
+  "nationwide": false,
+  "subdivisions": [
+   {
+    "code": "CH-FR"
+   }
+  ],
+  "comment": [
+   {
+    "language": "FR",
+    "text": "Écoles primaires (ville), Écoles sec. II"
+   }
+  ]
+ },
+ {
+  "startDate": "2026-12-19",
+  "endDate": "2027-01-03",
+  "type": "School",
+  "name": [
+   {
+    "language": "FR",
+    "text": "Noël"
+   }
+  ],
+  "nationwide": false,
+  "subdivisions": [
+   {
+    "code": "CH-FR"
+   }
+  ],
+  "comment": [
+   {
+    "language": "FR",
+    "text": "Écoles primaires (ville), Écoles sec. II"
+   }
+  ]
+ }
+]

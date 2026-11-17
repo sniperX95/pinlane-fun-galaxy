@@ -79,7 +79,9 @@
   // SANS CENTRE, PAS DE FORMULAIRE (Ansar, 2026-11-04 : « des resa qui spawn a gembloux et pas a libra »). Sur un site a
   // plusieurs centres, une ligne qui ne nomme pas le sien rangerait ses reservations chez un autre : elle ne monte rien,
   // le formulaire du site reste en place, et l oubli se lit dans la console du navigateur.
-  if ((script.getAttribute('data-design') || '').toLowerCase() === 'fungalaxy' && !center) {
+  // Avec ou sans data-design (2026-11-17) : sans centre, l adresse generique ouvrirait la demonstration Pinlane
+  // dans le site du client.
+  if (!center) {
     try { console.error('Pinlane embed.js : data-center manquant, aucun formulaire monte.'); } catch (error) { /* console absente */ }
     return;
   }

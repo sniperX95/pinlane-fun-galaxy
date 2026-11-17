@@ -21,6 +21,10 @@
 // [C] FUN GALAXY, dans un navigateur. Avant la reponse du serveur, la page est deja la sienne (son
 //     instantane) : logo, titre, couleurs. Apres, rien n a bouge.
 // [D] UN CENTRE QUI N A RIEN DECLARE : neutre, sans logo, son nom dans l onglet, bouton lisible.
+// [E] L ADRESSE NUE N APPARTIENT A PERSONNE (D3). /reserver sans centre ouvrait Libramont depuis le 10/11 ; elle
+//     sert la demonstration Pinlane, des la premiere image, et le catalogue demande est celui de la
+//     demonstration. /fungalaxy sans centre reste Libramont. Une ligne d installation sans centre ne monte
+//     aucun formulaire, avec ou sans data-design, et le dit dans la console du navigateur.
 //
 // Tout tourne sur le banc local (scripts/dev-tunnel-server.js) : aucune base, aucun reseau sortant.
 // Les contre-preuves servent le code mute en memoire : aucun fichier n est ecrit.
@@ -54,6 +58,8 @@ const MUTATIONS = {
   'marque-du-voisin': { f: 'lib/habillage-formulaire.js', de: "    carte: marque ? `Carte ${marque}` : 'Carte de jeu',", vers: "    carte: 'Carte Fun Galaxy',", lettre: 'A' },
   'teintes-reglees-jetees': { f: 'lib/center-config.js', de: '...(formulaire ? { formulaire } : {}), ', vers: '', lettre: 'A' },
   'centre-de-l-adresse-different': { f: 'assets/fungalaxy-habillage.js', de: "return SLUG_RX.test(brut) ? brut : 'centre-inconnu';", vers: "return SLUG_RX.test(brut) ? brut : 'libramont';", lettre: 'A' },
+  'adresse-nue-au-premier-client': { f: 'assets/fungalaxy-booking.js', de: "    if (!brut) return /^\\/fungalaxy\\/?$/i.test(window.location.pathname) ? 'libramont' : 'demo';", vers: "    if (!brut) return 'libramont';", lettre: 'E' },
+  'ligne-sans-centre-montee': { f: 'embed.js', de: '  if (!center) {', vers: "  if ((script.getAttribute('data-design') || '').toLowerCase() === 'fungalaxy' && !center) {", lettre: 'E' },
 };
 const MUTATION = (process.argv.find((a) => a.startsWith('--mutation=')) || '').slice('--mutation='.length);
 if (MUTATION && !MUTATIONS[MUTATION]) { console.error(`mutation inconnue : ${MUTATION}`); process.exit(2); }
@@ -205,6 +211,7 @@ function regle() {
   const divergences = adresses.filter((a) => lire(habillageJs, a) !== lire(script, a)).map((a) => `${a} : ${lire(habillageJs, a)} / ${lire(script, a)}`);
   ok(fonction(habillageJs) && fonction(script) && !divergences.length, `les deux scripts lisent le meme centre dans ${adresses.length} adresses`, divergences.join(' ; '));
   ok(lire(script, '/reserver/%3Cscript%3E') === 'centre-inconnu' && lire(script, '/reserver/atlas-namur') === 'atlas-namur', 'une adresse qui nomme mal son centre ne designe aucun centre');
+  ok(lire(habillageJs, '/reserver') === 'demo' && lire(habillageJs, '/reserver?embed=1') === 'demo' && lire(habillageJs, '/fungalaxy') === 'libramont' && lire(habillageJs, '/fungalaxy/') === 'libramont', 'l adresse nue /reserver designe la demonstration, /fungalaxy nu reste Libramont', [lire(habillageJs, '/reserver'), lire(habillageJs, '/fungalaxy')].join(' '));
 }
 
 async function navigateur() {
@@ -213,18 +220,18 @@ async function navigateur() {
   const server = mock.createServer({ port: PORT });
   await new Promise((r) => server.listen(PORT, '127.0.0.1', r));
   const browser = await chromium.launch({ headless: true, executablePath: NAVIGATEUR });
-  const MIME = { 'fungalaxy.html': 'text/html; charset=utf-8', 'assets/fungalaxy-booking.js': 'text/javascript; charset=utf-8', 'assets/fungalaxy-habillage.js': 'text/javascript; charset=utf-8', 'assets/fungalaxy-booking.css': 'text/css; charset=utf-8' };
+  const MIME = { 'fungalaxy.html': 'text/html; charset=utf-8', 'assets/fungalaxy-booking.js': 'text/javascript; charset=utf-8', 'assets/fungalaxy-habillage.js': 'text/javascript; charset=utf-8', 'embed.js': 'text/javascript; charset=utf-8', 'assets/fungalaxy-booking.css': 'text/css; charset=utf-8' };
 
   // Une page du formulaire, servie par le banc, avec le code (mute ou non) lu en memoire. `centre` :
   // la reponse du serveur decrit ce centre-la, habille par la vraie regle. `porte` retient la reponse
   // du serveur tant qu elle n est pas ouverte : on regarde la page AVANT.
   async function ouvrir(ctx, adresse, centre) {
     const page = await ctx.newPage();
-    const vu = { requetes: [], erreurs: [] };
+    const vu = { requetes: [], erreurs: [], catalogues: [] };
     let ouvrirLaPorte;
     const porte = new Promise((r) => { ouvrirLaPorte = r; });
     page.on('pageerror', (e) => vu.erreurs.push(e.message));
-    page.on('request', (r) => vu.requetes.push(new URL(r.url()).pathname));
+    page.on('request', (r) => { const u = new URL(r.url()); vu.requetes.push(u.pathname); if (u.pathname === '/api/public-booking-meta' && r.method() === 'GET') vu.catalogues.push(u.searchParams.get('centerId') || ''); });
     await page.route('**/*', async (route) => {
       const u = new URL(route.request().url());
       const fichier = /^\/(?:reserver|fungalaxy)(?:\/[a-z0-9-]+)?\/?$/.test(u.pathname) ? 'fungalaxy.html' : u.pathname.replace(/^\//, '');
@@ -339,6 +346,36 @@ async function navigateur() {
   ok(!dApres.cadrePhoto.visible, 'un centre sans photos ne montre pas de cadre vide', JSON.stringify(dApres.cadrePhoto));
   ok(!d.vu.erreurs.length, 'aucune erreur dans la page', d.vu.erreurs.join(' | '));
   await ctxD.close();
+
+  section('[E] L ADRESSE NUE N APPARTIENT A PERSONNE');
+  const demo = H.habillageDuFormulaire(duFichier('demo'));
+  const ctxE = await browser.newContext({ viewport: { width: 1366, height: 900 }, reducedMotion: 'reduce' });
+  const nue = await ouvrir(ctxE, '/reserver', null);
+  await nue.page.waitForTimeout(700);
+  const nueAvant = await etat(nue.page);
+  ok(nueAvant.source === 'instantane' && nueAvant.titre === demo.titre && nueAvant.logo === demo.logo && nueAvant.accent === H.couleursNeutres().accent && !nueAvant.marqueFunGalaxy, '/reserver sans centre : la demonstration Pinlane des la premiere image, rien de Fun Galaxy', JSON.stringify([nueAvant.source, nueAvant.titre, nueAvant.logo, nueAvant.accent, nueAvant.marqueFunGalaxy]));
+  ok(nue.vu.catalogues.length > 0 && nue.vu.catalogues.every((c) => c === 'demo') && nue.vu.requetes.includes('/assets/habillage/demo.js') && !nue.vu.requetes.some((r) => /logo-fun-galaxy/.test(r)), 'le catalogue demande est celui de la demonstration, jamais celui de Libramont', nue.vu.catalogues.join(','));
+  await nue.page.close();
+  const nueFg = await ouvrir(ctxE, '/fungalaxy', null);
+  await nueFg.page.waitForTimeout(700);
+  const nueFgAvant = await etat(nueFg.page);
+  ok(nueFgAvant.titre === 'Réserver à Libramont · Fun Galaxy' && nueFg.vu.catalogues.every((c) => c === 'libramont') && nueFg.vu.catalogues.length > 0, '/fungalaxy sans centre reste Libramont', `${nueFgAvant.titre} ${nueFg.vu.catalogues.join(',')}`);
+  await nueFg.page.close();
+  // Une ligne d installation sans centre et sans data-design.
+  const hote = await ctxE.newPage();
+  const erreursConsole = [];
+  hote.on('console', (m) => { if (m.type() === 'error') erreursConsole.push(m.text()); });
+  await hote.route('**/*', (route) => {
+    const u = new URL(route.request().url());
+    if (u.pathname === '/hote-sans-centre') return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: '<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Site du centre</title></head><body><form id="ancien">Ancien formulaire</form><div class="pinlane-slot"></div><script src="/embed.js" data-target=".pinlane-slot"></script></body></html>' });
+    if (u.pathname === '/embed.js') return route.fulfill({ status: 200, contentType: 'text/javascript; charset=utf-8', body: lf('embed.js') });
+    return route.continue();
+  });
+  await hote.goto(`${BASE}/hote-sans-centre`, { waitUntil: 'load' });
+  await hote.waitForTimeout(1500);
+  const cadres = await hote.locator('iframe').count();
+  ok(cadres === 0 && erreursConsole.some((m) => /data-center/.test(m)), 'une ligne d installation sans centre ne monte aucun formulaire et le dit dans la console, meme sans data-design', `${cadres} cadre(s), console : ${erreursConsole.join(' | ').slice(0, 160)}`);
+  await ctxE.close();
 
   await browser.close();
   server.close();

@@ -110,15 +110,16 @@ function servir(serveur, chemin) {
     fungalaxy: centreLu(formulaire, '/fungalaxy/gembloux'),
     requete: centreLu(formulaire, '/reserver', '?embed=1&center=gembloux'),
     nu: centreLu(formulaire, '/reserver'),
+    nuFunGalaxy: centreLu(formulaire, '/fungalaxy'),
     libramont: centreLu(formulaire, '/reserver/libramont'),
     faux: centreLu(formulaire, '/reserver/Pas%20Un%20Centre'),
   };
   ok(lus.gembloux === 'gembloux' && lus.gemblouxBarre === 'gembloux' && lus.fungalaxy === 'gembloux', 'le vrai formulaire lit son centre dans /reserver/gembloux comme dans /fungalaxy/gembloux', JSON.stringify(lus));
   ok(lus.requete === 'gembloux', 'l integration par defaut (/reserver?embed=1&center=gembloux) vend bien Gembloux', lus.requete);
-  ok(lus.nu === 'libramont' && lus.libramont === 'libramont', 'l adresse nue reste celle de Libramont', JSON.stringify(lus));
+  ok(lus.nu === 'demo' && lus.nuFunGalaxy === 'libramont' && lus.libramont === 'libramont', 'l adresse nue /reserver n appartient a personne (la demonstration), /fungalaxy nu reste Libramont', JSON.stringify(lus));
   ok(lus.faux === 'centre-inconnu', 'un centre mal nomme ne vend aucun centre', lus.faux);
   const formulaireAncien = ancien(formulaire, '/^\\/(?:fungalaxy|reserver)\\/([^/]+)\\/?$/i', '/^\\/fungalaxy\\/([^/]+)\\/?$/i');
-  ok(formulaireAncien !== null && centreLu(formulaireAncien, '/reserver/gembloux') === 'libramont', 'contre-preuve : sans la lecture de /reserver/<centre>, Gembloux recevrait le formulaire de Libramont', formulaireAncien === null ? 'ancre absente' : centreLu(formulaireAncien, '/reserver/gembloux'));
+  ok(formulaireAncien !== null && centreLu(formulaireAncien, '/reserver/gembloux') === 'demo', 'contre-preuve : sans la lecture de /reserver/<centre>, Gembloux recevrait la demonstration a la place de son formulaire', formulaireAncien === null ? 'ancre absente' : centreLu(formulaireAncien, '/reserver/gembloux'));
 
   // 3. La deconnexion.
   ok(deconnexionSansAncien(app), 'la deconnexion rend la page d accueil a l adresse /, jamais l ancien tunnel');
@@ -129,7 +130,9 @@ function servir(serveur, chemin) {
 
   // 4. Le menu.
   ok(menuSansAncien(menu), 'le menu « Site de reservation public » ouvre /reserver/<centre> a cote de la console');
-  const menuAncien = ancien(menu, "      window.open(centre && centre !== 'all' ?", "      setView('client'); void (centre && centre !== 'all' ?");
+  const menuAncien = ancien(menu, "      window.open(`/reserver/${encodeURIComponent(centre)}`,", "      setView('client'); void (`/reserver/${encodeURIComponent(centre)}`,");
+  // Sans centre choisi, le menu n ouvre plus l adresse nue (elle sert la demonstration) : il le dit.
+  ok(/if \(!centre \|\| centre === 'all'\) \{ if \(typeof toast === 'function'\) toast\('Choisissez un centre[^']*'\); return; \}/.test(menu) && !/: '\/reserver', '_blank'/.test(menu), 'sans centre choisi, le menu n ouvre aucune adresse nue');
   ok(menuAncien !== null && !menuSansAncien(menuAncien), 'contre-preuve : un menu qui rouvre la vue client rougit');
 
   // 5. Le serveur local sert ce que la production sert.

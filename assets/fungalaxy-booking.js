@@ -36,9 +36,12 @@
     var brut = (m && m[1]) || params.get('center') || params.get('centerId') || '';
     try { brut = decodeURIComponent(brut); } catch (e) { /* adresse illisible : refusee plus bas */ }
     brut = String(brut).trim().toLowerCase();
-    // L adresse nue reste celle de Libramont. Une adresse qui nomme mal son centre ne vend AUCUN centre : le serveur le
-    // dit inconnu, le formulaire l annonce, et personne ne reserve ailleurs sans le savoir.
-    if (!brut) return 'libramont';
+    // L ADRESSE NUE N APPARTIENT A PERSONNE (regle du 2026-09-18, perdue le 10/11 quand /reserver est passe a ce
+    // formulaire : elle ouvrait Libramont, logo de Fun Galaxy compris). /reserver sans centre sert la demonstration
+    // Pinlane, ou rien ne s enregistre. /fungalaxy sans centre reste Libramont : c est l adresse du premier client,
+    // la sienne depuis le premier jour. Une adresse qui nomme mal son centre ne vend AUCUN centre : le serveur le dit
+    // inconnu, le formulaire l annonce, et personne ne reserve ailleurs sans le savoir.
+    if (!brut) return /^\/fungalaxy\/?$/i.test(window.location.pathname) ? 'libramont' : 'demo';
     return SLUG_RX.test(brut) ? brut : 'centre-inconnu';
   }
   var CENTER = centreDepuisAdresse();

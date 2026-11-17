@@ -1186,7 +1186,10 @@
       // L ancien tunnel n est plus une destination (2026-11-10) : le site de reservation public est le
       // vrai formulaire du centre, ouvert a cote de la console.
       const centre = typeof getActiveOpsCenterId === 'function' ? String(getActiveOpsCenterId() || '') : '';
-      window.open(centre && centre !== 'all' ? `/reserver/${encodeURIComponent(centre)}` : '/reserver', '_blank', 'noopener');
+      // Sans centre choisi (« tous les centres »), l adresse nue ouvrirait la demonstration, pas la page d un
+      // centre de l equipe : on le dit au lieu de l ouvrir.
+      if (!centre || centre === 'all') { if (typeof toast === 'function') toast('Choisissez un centre pour ouvrir sa page de réservation.'); return; }
+      window.open(`/reserver/${encodeURIComponent(centre)}`, '_blank', 'noopener');
       return;
     }
     if (action === 'users' || action === 'settings' || action === 'establishment') {

@@ -38,7 +38,7 @@
     var brut = (m && m[1]) || params.get('center') || params.get('centerId') || '';
     try { brut = decodeURIComponent(brut); } catch (e) { /* adresse illisible : refusee plus bas */ }
     brut = String(brut).trim().toLowerCase();
-    if (!brut) return 'libramont';
+    if (!brut) return /^\/fungalaxy\/?$/i.test(window.location.pathname) ? 'libramont' : 'demo';
     return SLUG_RX.test(brut) ? brut : 'centre-inconnu';
   }
   var CENTRE = centreDepuisAdresse();

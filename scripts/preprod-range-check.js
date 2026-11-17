@@ -404,6 +404,8 @@ async function main() {
       capture: (filename, csv) => exports.push({ filename, csv }),
     };
     vm.createContext(context);
+    // Les montants s ecrivent avec les aides de la monnaie de booking-core (D6), chargees avant dans la page.
+    require('./aides-monnaie-console').chargerAidesMonnaie(context, root);
     // The raw export now includes the activity detail supplied by the shared
     // admin-console helper. Load that real dependency, as the browser does.
     const adminSource = fs.readFileSync(path.join(root, 'assets/admin-console.js'), 'utf8');

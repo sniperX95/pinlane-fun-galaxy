@@ -83,6 +83,7 @@ function chargeAdminConsole() {
   bac.window = bac;
   bac.globalThis = bac;
   vm.createContext(bac);
+  require('./aides-monnaie-console').chargerAidesMonnaie(bac);
   vm.runInContext(src, bac, { filename: 'admin-console.js', timeout: 20000 });
   // Les helpers partages vivent dans app-main.js : on ne les fournit QUE s'ils
   // manquent, jamais par-dessus une vraie fonction d'admin-console.js.

@@ -72,6 +72,7 @@ ok(Object.values(subsetAnalytics.byActivity).reduce((sum, row) => sum + row.reve
   const path = require('path');
   const vm = require('vm');
   const context = vm.createContext({ document: { getElementById: () => null }, analyticsFixture: subsetAnalytics });
+  require('./aides-monnaie-console').chargerAidesMonnaie(context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'assets', 'admin-data.js'), 'utf8'), context);
   vm.runInContext('dhState.analytics = analyticsFixture; dhDownload = (name, content) => { globalThis.exportedCsv = content; };', context);
   await vm.runInContext("dhExportCsv('formules')", context);

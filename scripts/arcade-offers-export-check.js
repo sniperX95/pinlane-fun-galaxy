@@ -8,6 +8,7 @@ const admin = fs.readFileSync(path.join(root, 'assets/admin-console.js'), 'utf8'
 const data = fs.readFileSync(path.join(root, 'assets/admin-data.js'), 'utf8');
 const context = { console, Number, String, Math, Array, Object };
 vm.createContext(context);
+require('./aides-monnaie-console').chargerAidesMonnaie(context, root);
 vm.runInContext(admin.slice(admin.indexOf('function getAdminProgramExportText('), admin.indexOf('function buildAdminExcelXml(')), context);
 const row = { pax: 20, program: { items: [
   {activityId:'bowling',name:'Bowling',participants:7,duration:1,priceKnown:true,price:39},

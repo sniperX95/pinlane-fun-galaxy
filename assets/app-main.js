@@ -14888,7 +14888,7 @@ function establishmentCurrencyFieldHtml(center) {
     <select id="estab-currency" class="estab-style-select">
       ${m.choix().map(d => `<option value="${d.code}" ${d.code === code ? 'selected' : ''}>${escapeHtml(d.libelle)}</option>`).join('')}
     </select>
-    <span class="estab-brand-note">Tous les prix du centre s’écrivent dans cette monnaie : le formulaire en ligne, les mails aux clients et la console. À choisir avant d’ouvrir la réservation : les prix déjà saisis ne sont pas convertis.</span>
+    <span class="estab-brand-note">Tous les prix du centre s’écrivent dans cette monnaie, sur le formulaire en ligne, dans les mails aux clients et dans la console. Choisissez-la avant d’ouvrir la réservation, car les prix déjà saisis ne sont pas convertis.</span>
   </div>`;
 }
 
@@ -15378,7 +15378,7 @@ function ebCentreHtml(c) {
   const center = c.center;
   const ident = center.identity && typeof center.identity === 'object' ? center.identity : {};
   const tz = center.timezone || 'Europe/Brussels';
-  const fuseaux = [['Europe/Brussels', 'Belgique'], ['Europe/Paris', 'France'], ['Europe/Luxembourg', 'Luxembourg'], ['Europe/Amsterdam', 'Pays-Bas']];
+  const fuseaux = [['Europe/Brussels', 'Belgique'], ['Europe/Paris', 'France'], ['Europe/Luxembourg', 'Luxembourg'], ['Europe/Zurich', 'Suisse'], ['Europe/Amsterdam', 'Pays-Bas']];
   const info = center.publicInfo && typeof center.publicInfo === 'object' ? center.publicInfo : {};
   const fuseau = `<select id="estab-timezone" class="eb-f">${fuseaux.map(([z, n]) => `<option value="${z}" ${tz === z ? 'selected' : ''}>${n}</option>`).join('')}${fuseaux.some(([z]) => z === tz) ? '' : `<option value="${ebE(tz)}" selected>${ebE(tz)}</option>`}</select>`;
   return ebG('Nom et état', '', ebR('Nom du centre', 'Il s’affiche sur le formulaire, dans les mails et dans la console.', ebTexte('estab-name', center.name, { max: 80 }))

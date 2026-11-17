@@ -220,6 +220,7 @@
     "test:equipe-acces",
     "test:fondateur-invisible",
     "test:tour-controle",
+    "test:migrations-attendues",
     "test:garde-postes",
     "test:alertes-lisibles",
     "test:securite-passe",

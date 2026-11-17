@@ -98,6 +98,8 @@ function repondre(sql, p = []) {
     return rows([{ id: BD.journal.length }]);
   }
   if (/select result from ops_worker_runs where task_name = 'garde' and status = 'ok' order by started_at desc limit 1/.test(s)) return rows(BD.etatGarde ? [{ result: BD.etatGarde }] : []);
+  // La base de ce banc a recu toutes ses mises a jour (le constat se prouve dans migrations-attendues-check).
+  if (/from schema_migrations/.test(s)) return rows(require('../lib/migrations-attendues').MIGRATIONS_ATTENDUES.map((id) => ({ id })));
   return rows([]);
 }
 class FauxPool {
@@ -945,6 +947,59 @@ async function preuvesCaisse() {
 // ---------------------------------------------------------------------------
 // [X] Les contre-preuves : le poste casse expres doit rougir.
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// [MAJ] Les mises a jour de la base (2026-11-17, lib/migrations-attendues.js) : la vraie garde, passage
+// apres passage. Le detail du constat se prouve dans scripts/migrations-attendues-check.js.
+// ---------------------------------------------------------------------------
+async function suiteDesMisesAJour() {
+  const toutes = charger('lib/migrations-attendues.js').MIGRATIONS_ATTENDUES;
+  const uneManque = () => route(/from schema_migrations/, () => toutes.slice(0, -1).map((id) => ({ id })));
+  const dire = (p) => p.messages.filter((m) => !/^Pinlane : ce fil reçoit/.test(m.text)).map((m) => `${m.disable_notification === true ? 'silence' : 'sonne'}:${m.text.split('\n')[0]}`);
+  const f = {};
+  // Une garde qui a deja vu la base a jour : un ecart se dit sans bruit, sonne s il dure, puis « Réglé ».
+  remettre();
+  routesDeLaTour();
+  avecGroupe();
+  charger('lib/garde-alertes.js').oublierLesAlertes();
+  const sain = await passe();
+  f.vueAJour = sain.r.baseVueAJour;
+  uneManque();
+  f.premier = dire(await passe());
+  f.second = dire(await passe());
+  f.troisieme = dire(await passe());
+  BD.routes = [];
+  routesDeLaTour();
+  const regle = await passe();
+  f.regle = dire(regle);
+  f.resteVueAJour = regle.r.baseVueAJour;
+  // Un registre incomplet depuis toujours : la garde n a jamais vu la base a jour, elle ne sonne pas.
+  remettre();
+  routesDeLaTour();
+  uneManque();
+  charger('lib/garde-alertes.js').oublierLesAlertes();
+  const neuf = await passe();
+  f.neufPremier = dire(neuf);
+  f.neufVueAJour = neuf.r.baseVueAJour;
+  f.neufSecond = dire(await passe());
+  return f;
+}
+function misesAJourTiennent(f, dire = () => {}) {
+  const v = [
+    [f.vueAJour === true, '[MAJ] base a jour : la garde le retient', f.vueAJour],
+    [f.premier.length === 1 && /^silence:Pinlane : le site attend 1 mise à jour de ses données qui n’est pas faite\.$/.test(f.premier[0]), '[MAJ] une mise a jour manque : un message sans sonnerie', f.premier],
+    [f.second.length === 1 && /^sonne:Pinlane : le site attend toujours 1 mise à jour de ses données, depuis plus d’un quart d’heure\.$/.test(f.second[0]), '[MAJ] encore la au passage suivant : il sonne', f.second],
+    [f.troisieme.length === 0, '[MAJ] puis plus rien tant que rien ne change', f.troisieme],
+    [f.regle.length === 1 && /^silence:Réglé : le site attendait des mises à jour de ses données/.test(f.regle[0]) && f.resteVueAJour === true, '[MAJ] la mise a jour faite : un seul « Réglé »', f.regle],
+    [f.neufPremier.length === 1 && /^silence:/.test(f.neufPremier[0]) && f.neufVueAJour === false, '[MAJ] registre incomplet depuis toujours : dit une fois sans bruit, la base n est pas retenue « a jour »', [f.neufPremier, f.neufVueAJour]],
+    [f.neufSecond.length === 0, '[MAJ] et il ne sonne jamais', f.neufSecond],
+  ];
+  v.forEach(([c, l, d]) => dire(Boolean(c), l, d));
+  return v.every(([c]) => Boolean(c));
+}
+async function preuvesMisesAJour() {
+  misesAJourTiennent(await suiteDesMisesAJour(), ok);
+}
+
 async function contrePreuves() {
   const rouge = async (nom, edits, rejouer) => {
     mutations = edits;
@@ -1279,6 +1334,8 @@ async function contrePreuves() {
     budget.__resetForTests();
     return BD.depenses.length === 1 && /:garde$/.test(BD.depenses[0]);
   });
+  await rouge('la garde ne retient pas qu elle a vu la base a jour', [{ fichier: 'lib/tour-controle.js', de: "    baseVueAJour: precedent.baseVueAJour || !tour.problemes.some(", vers: "    baseVueAJour: false && !tour.problemes.some(" }], async () => misesAJourTiennent(await suiteDesMisesAJour()));
+  await rouge('la garde croit la base a jour alors qu une mise a jour manque', [{ fichier: 'lib/tour-controle.js', de: "    baseVueAJour: precedent.baseVueAJour || !tour.problemes.some(", vers: "    baseVueAJour: true || !tour.problemes.some(" }], async () => misesAJourTiennent(await suiteDesMisesAJour()));
 }
 
 (async () => {
@@ -1294,6 +1351,7 @@ async function contrePreuves() {
   await preuvesBruit();
   await preuvesCaisse();
   await preuvesVeilles();
+  await preuvesMisesAJour();
   await contrePreuves();
   console.log(`\ngarde-postes-check: ${echecs ? `${echecs} ECHEC(S) sur ${total}` : `ALL OK (${total})`}`);
   process.exit(echecs ? 1 : 0);

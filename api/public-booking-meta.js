@@ -949,6 +949,10 @@ async function routeur(req, res) {
         try {
           sante.derniereGarde = await garde.derniereGardeReussie(getPool());
         } catch (error) { /* champ absent : la sonde dit qu elle ne lit plus la date */ }
+        // La base a-t-elle recu les mises a jour que ce code attend ? Un booleen, aucun nom de migration.
+        try {
+          sante.baseAJour = await garde.baseAJour(getPool());
+        } catch (error) { /* champ absent : la table ne se lit pas */ }
         // La sonde seule fait l essai d ecriture et laisse sa trace : un visiteur ne coute
         // qu un select. Rien d autre que ce booleen ne sort.
         if (/^pinlane-sonde\//.test(String(req.headers['user-agent'] || ''))) {

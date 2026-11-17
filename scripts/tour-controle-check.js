@@ -136,6 +136,8 @@ function repondre(sql, p = []) {
   if (/^(begin|rollback|commit)/i.test(s)) return rows([]);
   if (BD.panneEcriture && /^insert/i.test(s)) throw Object.assign(new Error('cannot execute INSERT in a read-only transaction'), { code: '25006' });
   if (/from centers/.test(s)) return rows(BD.centres);
+  // La base de ce banc a recu toutes ses mises a jour (lib/migrations-attendues.js ; le constat se prouve dans migrations-attendues-check).
+  if (/from schema_migrations/.test(s)) return rows(require('../lib/migrations-attendues').MIGRATIONS_ATTENDUES.map((id) => ({ id })));
   if (/^insert into ops_worker_runs/.test(s)) { BD.runs.unshift({ task_name: /'sonde', 'sonde'/.test(s) ? 'sonde' : 'essai', status: 'ok', started_at: new Date(), finished_at: new Date(), result: {} }); return rows([{ id: 1 }]); }
   if (/distinct on \(task_name\)/.test(s)) return rows(groupe(BD.runs.filter((r) => p[0].includes(r.task_name)), (r) => r.task_name).map((l) => [...l].sort((a, b) => b.started_at - a.started_at)[0]));
   if (/max\(finished_at\) as dernier_ok/.test(s)) return rows(groupe(BD.runs.filter((r) => p[0].includes(r.task_name) && r.status === 'ok'), (r) => r.task_name).map((l) => ({ task_name: l[0].task_name, dernier_ok: dernier(l, 'finished_at') })));

@@ -85,6 +85,8 @@ const il = (minutes) => new Date(Date.now() - minutes * 60000);
 // Un etat ou chaque poste de la garde a quelque chose a dire.
 function routesDeLaGarde() {
   ROUTES.length = 0;
+  // Deux mises a jour manquent a la base : le constat se fabrique, et son texte se juge comme les autres.
+  route(/from schema_migrations/, () => require('../lib/migrations-attendues').MIGRATIONS_ATTENDUES.slice(0, -2).map((id) => ({ id })));
   route(/from centers/, () => [
     { id: 'libramont', name: 'Fun Galaxy Libramont', status: 'active', settings: { config: { secours: { emails: ['secours@fungalaxy.be'] }, embed: { actif: false } } } },
     { id: 'gembloux', name: 'Fun Galaxy Gembloux', status: 'active', settings: { config: {} } },

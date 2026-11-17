@@ -4,6 +4,9 @@ const { getPool } = require('../lib/database');
 
 const root = path.resolve(__dirname, '..');
 
+// UNE MIGRATION AJOUTEE ICI S AJOUTE AUSSI A lib/migrations-attendues.js, dans le meme commit : c est la
+// liste que le site en ligne compare a la base (ce fichier ne part pas en production). Le gate
+// scripts/migrations-attendues-check.js rougit si les deux listes different.
 const MIGRATIONS = [
   {
     id: '0001_core_reservations',

@@ -9,6 +9,8 @@ const { getPool } = require('../lib/database');
 const { creerContexte, PERMISSIONS_PAGE, sourcesDuCompte, voitLesClients } = require('../lib/assistant-outils');
 const { bilan, MODELES, MODELE_PAR_DEFAUT, POSTE, repondre } = require('../lib/assistant-agent');
 const memoire = require('../lib/assistant-memoire');
+// La monnaie de la reponse : celle du centre ouvert, pour la duree de CETTE requete (2026-11-17).
+const monnaie = require('../lib/monnaie');
 const pinlaneDemande = require('../lib/assistant-demande');
 
 const MESSAGES_MAX = 40;
@@ -278,7 +280,7 @@ async function agir(req, res, body, session) {
   }
 }
 
-module.exports = async (req, res) => {
+const traiterAssistant = async (req, res) => {
   setCors(res, 'POST,OPTIONS');
   if (req.method === 'OPTIONS') {
     res.statusCode = 204;
@@ -304,6 +306,7 @@ module.exports = async (req, res) => {
       sendError(res, 422, "Choisissez un centre pour parler à l'assistant.");
       return;
     }
+    monnaie.poserDevise(monnaie.deviseDuCentre(centreOuvert));
     const consigne = enDemande ? consigneDeLaDemande(body.messages) : null;
     const messages = enDemande ? (consigne && [{ role: 'user', content: consigne.consigne || pinlaneDemande.CONSIGNE_IMPLICITE }]) : messagesValides(body.messages);
     if (!messages) {
@@ -433,3 +436,6 @@ module.exports = async (req, res) => {
     }
   }
 };
+
+// La monnaie de la reponse (2026-11-17) : posee pour CETTE requete, une fois le centre ouvert connu.
+module.exports = (req, res) => monnaie.avecDevise(null, () => traiterAssistant(req, res));

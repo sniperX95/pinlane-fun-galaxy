@@ -181,7 +181,7 @@
           </div>
           <div class="fg-field fg-sm-budget">
             <label class="fg-field__label" for="smBudget">Budget indicatif <span class="fg-field__opt">(facultatif)</span></label>
-            <div class="fg-sm-unit"><input class="fg-input" id="smBudget" type="number" inputmode="numeric" min="0" max="1000" step="1" placeholder="25" autocomplete="off"><span aria-hidden="true">€ par personne</span></div>
+            <div class="fg-sm-unit"><input class="fg-input" id="smBudget" type="number" inputmode="numeric" min="0" max="1000" step="1" placeholder="25" autocomplete="off"><span aria-hidden="true" data-sm-signe>€ par personne</span></div>
           </div>
         </div>
         <div class="fg-bar fg-dock fg-rise" style="--i:5">
@@ -1206,6 +1206,9 @@
     // tant que le client ne les y a pas changes lui-meme ; le jour seulement
     // s il tombe au plus tot demain (pas le jour meme).
     function ouvrir() {
+      // Le budget se dit dans la monnaie du centre (2026-11-17) : relue a chaque ouverture, la meta a pu
+      // arriver apres le chargement de ce fichier.
+      $$('[data-sm-signe]').forEach(function (el) { el.textContent = (I.signeMonnaie ? I.signeMonnaie() : '€') + ' par personne'; });
       var panierNormal = JSON.stringify([state.onglet, state.selection, state.formuleId, state.options, state.pax, state.date]);
       if (sm.panierImporte !== panierNormal) {
         if (sm.groupeImporte !== state.pax) { sm.paxTouche = false; sm.participants = Math.max(1, state.pax); }

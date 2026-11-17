@@ -47,6 +47,8 @@ const { listSellableActivities } = require('../lib/activity-catalog');
 const { formuleAvecChoix, formuleDuCentre } = require('../lib/formula-choice');
 const { normalizeBranding, normalizeIdentity, customRequestFromPax, normalizeFormulaVisit } = require('../lib/center-config');
 const { habillageDuFormulaire } = require('../lib/habillage-formulaire');
+// La monnaie du centre (2026-11-17) : la meme liste blanche que les pages (assets/pinlane-monnaie.js).
+const monnaie = require('../lib/monnaie');
 const surMesure = require('../lib/custom-request');
 const { writeAuditLog, newRequestId } = require('../lib/audit-log');
 const { customRequestChanges, ACTEUR_FORMULAIRE_PUBLIC } = require('../lib/registre');
@@ -1188,6 +1190,10 @@ async function routeur(req, res) {
         // centre ordinaire rend `false`, jamais `undefined`, pour qu un client
         // ne prenne pas l absence d information pour une reponse.
         demonstration: center.demonstration === true,
+        // LA MONNAIE DU CENTRE (2026-11-17) : le formulaire ecrit chaque prix avec elle. Cle posee
+        // SEULEMENT hors euro : la reponse d un centre en euros reste celle d avant, et l absence de
+        // cle veut dire « euro » pour la page.
+        ...(monnaie.devise(center.currency) !== monnaie.DEFAUT ? { currency: monnaie.devise(center.currency) } : {}),
         contact: centerContact,
         // LA DEMANDE SUR MESURE : a partir de `fromPax` personnes, le groupe
         // ne se reserve plus en ligne, il envoie une demande que l equipe

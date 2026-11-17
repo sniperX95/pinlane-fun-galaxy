@@ -269,7 +269,7 @@
     if (valeur === null || valeur === undefined || valeur === '') return '';
     if (type === 'client') return A.identites[valeur] || String(valeur);
     if (typeof valeur !== 'number') return String(valeur);
-    if (type === 'euro') return `${Number.isInteger(valeur) ? nombre(valeur) : valeur.toLocaleString('fr-BE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
+    if (type === 'euro') return `${Number.isInteger(valeur) ? nombre(valeur) : valeur.toLocaleString('fr-BE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${signeMonnaie()}`;
     if (type === 'pct') return `${nombre(valeur, 1)} %`;
     if (type === 'dec') return nombre(valeur, 2);
     return nombre(valeur, 2);
@@ -1401,7 +1401,7 @@
     try { return new Date(`${iso}T12:00:00Z`).toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' }); } catch (erreur) { return String(iso || ''); }
   }
   function eurosDits(v) {
-    try { return new Intl.NumberFormat('fr-BE', { style: 'currency', currency: 'EUR', maximumFractionDigits: Number(v) % 1 ? 2 : 0 }).format(Number(v)); } catch (erreur) { return `${v} €`; }
+    try { return new Intl.NumberFormat('fr-BE', { style: 'currency', currency: deviseMonnaie(), maximumFractionDigits: Number(v) % 1 ? 2 : 0 }).format(Number(v)); } catch (erreur) { return `${v} ${signeMonnaie()}`; }
   }
   function prixConvenuDit(r, pax) {
     const joueurs = Math.trunc(Number(pax)) || 0;

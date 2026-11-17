@@ -64,6 +64,8 @@ const { adresseDePlateforme } = require('../lib/sender-domains');
 const { llmProvider, callLlm } = require('../lib/llm-client');
 const { listDailyMetrics, listMarketingInsights, setInsightStatus, buildMarketingWeek, redoInsight } = require('../lib/center-metrics');
 const { CAMPAIGN_SEGMENTS, buildCampaignAudience, personalizeCampaignText, findUnknownCampaignTokens } = require('../lib/campaigns');
+// Les libelles fixes qui portent un montant suivent la monnaie du centre (2026-11-17).
+const monnaie = require('../lib/monnaie');
 const { stampDelayFlag, clearDelayFlagOnPlan } = require('../lib/delay-flag');
 const { alerterLimiteDeTables } = require('../lib/limite-tables');
 const {
@@ -416,6 +418,7 @@ async function handleGet(req, res, options = {}) {
   const url = new URL(req.url, `https://${req.headers.host || 'localhost'}`);
   const action = getAction(req);
   const centerId = options.centerId || normalizeCenterId(url.searchParams.get('centerId') || '') || 'libramont';
+  monnaie.poserDevise(monnaie.deviseDuCentre(centerId));
   const startDate = url.searchParams.get('startDate') || url.searchParams.get('date') || '';
   const endDate = url.searchParams.get('endDate') || startDate || '';
 
@@ -872,7 +875,7 @@ async function handleGet(req, res, options = {}) {
   // disponibles, bornes, segments) pour construire l'éditeur.
   if (action === 'customSequences') {
     const sequences = await listCustomSequences(centerId);
-    sendJson(res, 200, { ok: true, centerId, sequences, limits: CUSTOM_SEQUENCE_LIMITS });
+    sendJson(res, 200, { ok: true, centerId, sequences, limits: monnaie.localiserSignes(CUSTOM_SEQUENCE_LIMITS, monnaie.deviseDuCentre(centerId)) });
     return;
   }
 
@@ -1111,7 +1114,7 @@ async function handleGet(req, res, options = {}) {
       ok: true,
       centerId,
       campaigns,
-      segments: CAMPAIGN_SEGMENTS,
+      segments: monnaie.localiserSignes(CAMPAIGN_SEGMENTS, monnaie.deviseDuCentre(centerId)),
       channel: { resendConfigured: Boolean(process.env.RESEND_API_KEY) },
     });
     return;
@@ -1424,6 +1427,7 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     return require('../lib/booking-config').pourLEquipe(() => handlePost(req, res, body, { ...options, horairesEquipe: true }));
   }
   const centerId = options.centerId || normalizeCenterId(body.centerId || body.center_id || '') || 'libramont';
+  monnaie.poserDevise(monnaie.deviseDuCentre(centerId));
   const scopedCenterId = centerScope(centerId);
   const requireConcreteCenter = (label = action) => {
     if (!scopedCenterId) {
@@ -3209,7 +3213,7 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     } catch (error) {
       throw createHttpError(safeUserMessage(error, 'Enregistrement de la séquence impossible.'), error.expose ? 400 : 503, error.expose === true);
     }
-    sendJson(res, 200, { ok: true, action, sequences, limits: CUSTOM_SEQUENCE_LIMITS });
+    sendJson(res, 200, { ok: true, action, sequences, limits: monnaie.localiserSignes(CUSTOM_SEQUENCE_LIMITS, monnaie.deviseDuCentre(concreteCenterId)) });
     return;
   }
 
@@ -4370,7 +4374,7 @@ function auditEntityFor(action, body = {}) {
   return { entityType: 'ops_action', entityId: body.id !== undefined && body.id !== null ? String(body.id) : '' };
 }
 
-module.exports = async (req, res) => {
+const traiterOps = async (req, res) => {
   // Pas d en-tetes CORS ici (passe securite du 2026-11-08) : la console appelle cette route depuis
   // sa propre origine, et aucun autre site ne doit pouvoir lire ses reponses avec le cookie.
 
@@ -4496,6 +4500,10 @@ module.exports = async (req, res) => {
     sendError(res, status, safeUserMessage(error, 'Opération impossible pour le moment. Réessayez dans un instant.'));
   }
 };
+
+// LA MONNAIE DE LA REQUETE (2026-11-17) : posee des que le centre est connu (handleGet, handlePost),
+// lue par les aides partagees qui ecrivent un montant sans recevoir le centre (lib/monnaie.js).
+module.exports = (req, res) => monnaie.avecDevise(null, () => traiterOps(req, res));
 
 // La table action -> permission est EXPOSEE pour etre auditee (gate
 // scripts/permissions-audit-check.js). Elle reste la seule autorite : le gate

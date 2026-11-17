@@ -45,12 +45,12 @@ function dhEsc(value) {
 
 function dhEuro(n) {
   if (typeof montantsMasques === 'function' && montantsMasques()) return '···';
-  return `${Number(n || 0).toLocaleString('fr-BE', { maximumFractionDigits: 0 })} €`;
+  return `${Number(n || 0).toLocaleString('fr-BE', { maximumFractionDigits: 0 })} ${signeMonnaie()}`;
 }
 
 function dhEuroFull(n) {
   if (typeof montantsMasques === 'function' && montantsMasques()) return '···';
-  return `${Number(n || 0).toLocaleString('fr-BE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
+  return `${Number(n || 0).toLocaleString('fr-BE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${signeMonnaie()}`;
 }
 
 function dhNum(n) {
@@ -589,22 +589,22 @@ async function dhExportCsv(kind) {
   if (kind === 'serie') {
     const bucket = DH_RANGES[dhState.rangeKey].bucket;
     if (bucket === 'daily') {
-      rows.push(['Date', 'Réservations', 'Joueurs', 'Chiffre (EUR)', 'Annulations']);
+      rows.push(['Date', 'Réservations', 'Joueurs', `Chiffre (${deviseMonnaie()})`, 'Annulations']);
       for (const d of a.daily) rows.push([d.date, d.count, d.pax, d.revenue, d.cancelled]);
     } else if (bucket === 'weekly') {
-      rows.push(['Semaine du', 'Réservations', 'Joueurs', 'Chiffre (EUR)', 'Annulations']);
+      rows.push(['Semaine du', 'Réservations', 'Joueurs', `Chiffre (${deviseMonnaie()})`, 'Annulations']);
       for (const w of a.weekly) rows.push([w.weekStart, w.count, w.pax, w.revenue, w.cancelled]);
     } else {
-      rows.push(['Mois', 'Réservations', 'Joueurs', 'Chiffre (EUR)', 'Annulations']);
+      rows.push(['Mois', 'Réservations', 'Joueurs', `Chiffre (${deviseMonnaie()})`, 'Annulations']);
       for (const m of a.monthly) rows.push([m.month, m.count, m.pax, m.revenue, m.cancelled]);
     }
   } else if (kind === 'clients') {
-    rows.push(['Client', 'Visites', 'Chiffre (EUR)', 'Première visite', 'Dernière visite', 'Activité préférée', 'Téléphone', 'Email', 'Nouveau sur la période']);
+    rows.push(['Client', 'Visites', `Chiffre (${deviseMonnaie()})`, 'Première visite', 'Dernière visite', 'Activité préférée', 'Téléphone', 'Email', 'Nouveau sur la période']);
     for (const c of dhState.analytics.clients.top) {
       rows.push([c.name, c.visits, c.revenue, c.firstVisit, c.lastVisit, c.favoriteLabel || DH_TYPE_META[c.favorite]?.label || c.favorite, c.phone, c.email, c.firstVisit >= a.startDate ? 'oui' : 'non']);
     }
   } else if (kind === 'formules') {
-    rows.push(['Type', 'Libellé', 'Réservations', 'Joueurs', 'Chiffre (EUR)']);
+    rows.push(['Type', 'Libellé', 'Réservations', 'Joueurs', `Chiffre (${deviseMonnaie()})`]);
     for (const row of dhActivitySplit(a)) rows.push(['Activité', row.label, row.count, row.pax, row.revenue]);
     for (const f of a.byFormule) rows.push(['Formule', f.label, f.count, f.pax, f.revenue]);
   } else if (kind === 'reservations-brutes') {
@@ -613,7 +613,7 @@ async function dhExportCsv(kind) {
         `/api/admin-range?startDate=${a.startDate}&endDate=${a.endDate}&centerId=${encodeURIComponent(dhCenterId())}`,
         apiRequest,
       );
-      rows.push(['Date', 'Heure', 'Client', 'Téléphone', 'Email', 'Type', 'Formule', 'Joueurs', 'Pistes', 'Durée (h)', 'Prix (EUR)', 'Statut', 'Canal', 'Occasion', 'Détail des activités']);
+      rows.push(['Date', 'Heure', 'Client', 'Téléphone', 'Email', 'Type', 'Formule', 'Joueurs', 'Pistes', 'Durée (h)', `Prix (${deviseMonnaie()})`, 'Statut', 'Canal', 'Occasion', 'Détail des activités']);
       for (const r of payload.reservations || []) {
         rows.push([r.date, r.startTime, r.name, r.phone, r.email, r.type, r.label, r.pax, (r.lanes || []).join(' '), r.totalDuration || r.duration, r.price, r.status, r.channel, r.occasion, getAdminProgramExportText(r)]);
       }

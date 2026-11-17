@@ -478,7 +478,47 @@ function formatPrixCourt(value) {
 // et des moyennes (tableaux de bord). Un prix entier s ecrit pareil dans les deux.
 function formatMontant(value) {
   const amount = Math.round((Number(value) || 0) * 100) / 100;
-  return `${new Intl.NumberFormat('fr-BE', { minimumFractionDigits: Number.isInteger(amount) ? 0 : 2, maximumFractionDigits: 2 }).format(amount)}\u202f€`;
+  return `${new Intl.NumberFormat('fr-BE', { minimumFractionDigits: Number.isInteger(amount) ? 0 : 2, maximumFractionDigits: 2 }).format(amount)}\u202f${signeMonnaie()}`;
+}
+
+// LA MONNAIE DU CENTRE OUVERT (2026-11-17, point D6 de la note avant-lancement du 16/11) : celle de
+// sa config (cle `currency`, absente = euro, posee par la meta publique ou la config du personnel),
+// ecrite par assets/pinlane-monnaie.js. Toute la console ecrit ses montants avec ces fonctions : un
+// centre en euros lit exactement ce qu il lisait, un centre suisse lit « CHF ». Sans le fichier de la
+// monnaie, le code du centre s affiche tel quel, jamais un « € » a sa place.
+function moduleMonnaie() {
+  const racine = typeof window !== 'undefined' ? window : (typeof globalThis !== 'undefined' ? globalThis : null);
+  return racine && racine.PinlaneMonnaie ? racine.PinlaneMonnaie : null;
+}
+function deviseMonnaie() {
+  const config = typeof getCenterScheduleConfig === 'function' ? getCenterScheduleConfig() : null;
+  const code = config && config.currency;
+  const m = moduleMonnaie();
+  return m ? m.devise(code) : String(code || 'EUR');
+}
+function signeMonnaie() {
+  const m = moduleMonnaie();
+  const code = deviseMonnaie();
+  return m ? m.signe(code) : (code === 'EUR' ? '€' : code);
+}
+// La ou la console ecrivait « 25€ » colle : l euro reste colle, un code de lettres prend son espace.
+function signeMonnaieColle() {
+  const s = signeMonnaie();
+  return s === '€' ? s : ` ${s}`;
+}
+// La monnaie en toutes lettres : « en euros », « combien d’euros ».
+function nomsMonnaie() {
+  const m = moduleMonnaie();
+  return m ? m.noms(deviseMonnaie()) : (deviseMonnaie() === 'EUR' ? 'euros' : deviseMonnaie());
+}
+// Pour lire un montant dans un texte : tous les signes connus (assets/pinlane-monnaie.js).
+function motifSignesMonnaie() {
+  const m = moduleMonnaie();
+  return m ? m.MOTIF_SIGNES : '€';
+}
+function deNomsMonnaie() {
+  const m = moduleMonnaie();
+  return m ? m.deNoms(deviseMonnaie()) : (deviseMonnaie() === 'EUR' ? 'd’euros' : `de ${deviseMonnaie()}`);
 }
 
 // Le formateur se construit une fois : en construire un a chaque appel coutait

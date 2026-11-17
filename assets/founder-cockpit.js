@@ -1130,7 +1130,7 @@
       .slice(0, 12);
     if (!series.length) return;
     try {
-      charts.barChart(host, { series, format: 'euro', motionKey: 'fck-cockpit-ca', height: 200 });
+      charts.barChart(host, { series, format: 'eurPlateforme', motionKey: 'fck-cockpit-ca', height: 200 });
     } catch (error) { /* un graphique rate ne couche pas la page */ }
   }
 

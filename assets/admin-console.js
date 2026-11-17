@@ -343,14 +343,14 @@ function getAdminProgramExportText(reservation) {
       details.push(`${item.cards || players} cartes`);
       if (offer.mode === 'time') details.push(`${offer.minutes} min par carte, jeux sans cadeaux illimités`);
       else details.push(`${offer.credits} crédits + ${offer.bonusCredits || 0} bonus par carte (${offer.totalCredits ?? (Number(offer.credits) + Number(offer.bonusCredits || 0))} crédits), tous les jeux, durée variable`);
-      details.push(`${offer.price} EUR par carte`);
+      details.push(`${offer.price} ${deviseMonnaie()} par carte`);
     } else {
       if (item.games) details.push(`${item.games} parties`);
       if (item.units) details.push(`${item.units} ${item.unitLabel || 'unités'}`);
       if (item.dayAccess) details.push('accès à la journée');
       else if (item.hours || item.duration) details.push(`${item.hours || item.duration} h${item.durationEstimated ? ' estimées' : ''}`);
     }
-    details.push(item.priceKnown === true ? `${item.price} EUR` : 'Tarif à l’accueil');
+    details.push(item.priceKnown === true ? `${item.price} ${deviseMonnaie()}` : 'Tarif à l’accueil');
     return [`${item.name || item.activityId} : ${players} joueurs`, ...details].join(' · ');
   }).join(' | ');
 }
@@ -514,7 +514,7 @@ function buildAdminExcelXml(payload) {
       <Style ss:ID="Subtle"><Font ss:FontName="Aptos" ss:Size="10" ss:Color="#666666"/><Interior ss:Color="#FAFAFA" ss:Pattern="Solid"/></Style>
       <Style ss:ID="Header"><Font ss:FontName="Aptos" ss:Size="10" ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#0A0A0A" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center" ss:Vertical="Center"/></Style>
       <Style ss:ID="Section"><Font ss:FontName="Aptos" ss:Size="11" ss:Bold="1" ss:Color="#0761D1"/><Interior ss:Color="#E8F1FD" ss:Pattern="Solid"/></Style>
-      <Style ss:ID="Money"><NumberFormat ss:Format="#,##0&quot; €&quot;"/></Style>
+      <Style ss:ID="Money"><NumberFormat ss:Format="#,##0&quot; ${signeMonnaie()}&quot;"/></Style>
     </Styles>`;
   return `<?xml version="1.0" encoding="UTF-8"?>
 <?mso-application progid="Excel.Sheet"?>

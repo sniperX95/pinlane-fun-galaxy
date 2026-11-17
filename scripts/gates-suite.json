@@ -216,6 +216,8 @@
     "test:centre-publie",
     "test:centre-nom-de-ville",
     "test:mise-en-route",
+    "test:devise-balayage",
+    "test:devise-centre",
     "test:laser-par-centre",
     "test:site-centres",
     "test:centres-dissocies",

@@ -135,7 +135,7 @@
     if (v === null || v === undefined || !Number.isFinite(Number(v))) return '-';
     const n = Number(v);
     if (format === 'euro') return formatMoney(Math.round(n));
-    if (format === 'euro2') return `${n.toFixed(2).replace('.', ',')} €`;
+    if (format === 'euro2') return `${n.toFixed(2).replace('.', ',')} ${signeMonnaie()}`;
     if (format === 'dec1') return n.toFixed(1).replace('.', ',');
     if (format === 'percent') return `${Math.round(n)}%`;
     return new Intl.NumberFormat('fr-BE', { maximumFractionDigits: 0 }).format(Math.round(n));

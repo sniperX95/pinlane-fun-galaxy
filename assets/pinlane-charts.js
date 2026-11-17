@@ -112,14 +112,21 @@
   // caractere est invisible : il s'ecrit en echappement, jamais en litteral.
   var NBSP_FINE = ' ';
 
+  // LA MONNAIE (2026-11-17) : celle du centre ouvert (signeMonnaie, assets/booking-core.js). Le format
+  // 'eurPlateforme' garde l euro des pages fondateur, ou se lisent les centres de tous les clients.
+  function signeDuFormat(format) {
+    if (format === 'eurPlateforme') return window.PinlaneMonnaie ? window.PinlaneMonnaie.signe('EUR') : '\u20ac';
+    return typeof signeMonnaie === 'function' ? signeMonnaie() : '\u20ac';
+  }
+
   function formatValue(value, format) {
     var v = Number(value);
     if (!Number.isFinite(v)) v = 0;
     // Un panier par joueur se lit au centime, une taille de groupe a la decimale.
-    if (format === 'euro2') return v.toFixed(2).replace('.', ',') + NBSP_FINE + '€';
+    if (format === 'euro2') return v.toFixed(2).replace('.', ',') + NBSP_FINE + signeDuFormat(format);
     if (format === 'dec1') return v.toFixed(1).replace('.', ',');
     v = Math.round(v);
-    if (format === 'euro') return groupInt(v) + NBSP_FINE + '€';
+    if (format === 'euro' || format === 'eurPlateforme') return groupInt(v) + NBSP_FINE + signeDuFormat(format);
     if (format === 'percent') return String(v) + '%';
     return groupInt(v);
   }
@@ -132,7 +139,7 @@
     if (Math.abs(v) >= 1000) {
       var k = v / 1000;
       var txt = Number.isInteger(k) ? String(k) : k.toFixed(1).replace('.', ',');
-      return format === 'euro' ? txt + 'k' + NBSP_FINE + '€' : txt + 'k';
+      return format === 'euro' || format === 'eurPlateforme' ? txt + 'k' + NBSP_FINE + signeDuFormat(format) : txt + 'k';
     }
     return formatValue(v, format);
   }

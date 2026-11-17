@@ -18,6 +18,10 @@
 (function (global) {
   'use strict';
 
+  // La monnaie du centre ouvert (assets/booking-core.js, 2026-11-17) ; ce module charge seul garde l euro.
+  const signeMonnaie = () => (typeof global.signeMonnaie === 'function' ? global.signeMonnaie() : (global.PinlaneMonnaie ? global.PinlaneMonnaie.signe() : '\u20ac'));
+  const nomsMonnaie = () => (typeof global.nomsMonnaie === 'function' ? global.nomsMonnaie() : (global.PinlaneMonnaie ? global.PinlaneMonnaie.noms() : 'euros'));
+
   const MAX_CATEGORIES = 30;
   const MAX_ARTICLES = 400;
   const MAX_NOM = 80;
@@ -30,7 +34,7 @@
     const n = Math.round((Number(value) || 0) * 100) / 100;
     return Number.isInteger(n) ? String(n) : n.toFixed(2).replace('.', ',');
   };
-  const prixLu = (value) => `${prixSaisi(value)} €`;
+  const prixLu = (value) => `${prixSaisi(value)} ${signeMonnaie()}`;
   const centre = () => (typeof getCurrentStaffCenterId === 'function' ? getCurrentStaffCenterId() : '');
   const peutGerer = () => typeof canUseStaffPermission !== 'function' || canUseStaffPermission('pricing.manage');
   const copie = (value) => JSON.parse(JSON.stringify(value));
@@ -114,7 +118,7 @@
     const id = centre();
     const tete = (compteur, bouton) => `<div class="pv2-section-head">
         <h3>Sur mesure</h3>${compteur ? `<span>${compteur}</span>` : ''}${bouton}
-        <span class="pv2-section-legend">Ce que l’équipe ajoute à un dossier : nourriture, boissons, gâteaux, décoration. Vos clients ne le voient jamais : ni le formulaire, ni les mails. L’équipe l’ajoute au comptoir (Réserver) ; il apparaît sur le planning et la fiche. Son prix vient de ce catalogue ; un article à 0 € se chiffre au comptoir.</span>
+        <span class="pv2-section-legend">Ce que l’équipe ajoute à un dossier : nourriture, boissons, gâteaux, décoration. Vos clients ne le voient jamais : ni le formulaire, ni les mails. L’équipe l’ajoute au comptoir (Réserver) ; il apparaît sur le planning et la fiche. Son prix vient de ce catalogue ; un article à 0 ${signeMonnaie()} se chiffre au comptoir.</span>
       </div>`;
     if (!peutGerer()) {
       return `<section class="pv2-catalog-section sm-section">${tete('', '')}<p class="sm-note">Le catalogue sur mesure se gère avec le droit Tarifs.</p></section>`;
@@ -213,7 +217,7 @@
       if (nom.length > MAX_NOM) throw faute(`Article « ${nom.slice(0, 30)}… » : ${MAX_NOM} caractères au plus.`, `${ici}:nom`);
       const brut = String(article.prix ?? '').replace(',', '.').trim();
       const prix = brut === '' ? NaN : Number(brut);
-      if (!Number.isFinite(prix) || prix < 0 || prix > PRIX_MAX) throw faute(`« ${nom} » : un prix de 0 à 100 000 €. Mettez 0 pour un prix saisi au comptoir.`, `${ici}:prix`);
+      if (!Number.isFinite(prix) || prix < 0 || prix > PRIX_MAX) throw faute(`« ${nom} » : un prix de 0 à 100 000 ${signeMonnaie()}. Mettez 0 pour un prix saisi au comptoir.`, `${ici}:prix`);
       const id = article.neuf ? idDepuisNom(nom, prisArticles, 'article') : article.id;
       if (!ID.test(id)) throw faute(`« ${nom} » : identifiant illisible, retirez la ligne et recréez-la.`, `${ici}:nom`);
       return { id, nom, categorie: idsCategories.get(article.categorie), prix: Math.round(prix * 100) / 100, unite: article.unite === 'joueur' ? 'joueur' : 'piece', heure: article.heure === true, actif: article.actif !== false };
@@ -275,7 +279,7 @@
     const nom = article.nom || 'cet article';
     return `<tr class="sm-ed-art${article.actif ? '' : ' is-masque'}" data-sm-art="${esc(article.cle)}">
       <td class="sm-ed-nom"><input type="text" class="sm-input" maxlength="${MAX_NOM}" value="${esc(article.nom)}" data-sm-cle="nom" data-sm-focus="${ici}:nom" aria-label="Nom de l’article" placeholder="Nom de l’article"></td>
-      <td class="sm-ed-prix"><span class="sm-euro"><input type="text" inputmode="decimal" class="sm-input" value="${esc(article.prix)}" data-sm-cle="prix" data-sm-focus="${ici}:prix" aria-label="Prix de ${esc(nom)} en euros" placeholder="0"><span aria-hidden="true">€</span></span></td>
+      <td class="sm-ed-prix"><span class="sm-euro"><input type="text" inputmode="decimal" class="sm-input" value="${esc(article.prix)}" data-sm-cle="prix" data-sm-focus="${ici}:prix" aria-label="Prix de ${esc(nom)} en ${nomsMonnaie()}" placeholder="0"><span aria-hidden="true">${signeMonnaie()}</span></span></td>
       <td class="sm-ed-unite"><select class="sm-input" data-sm-cle="unite" data-sm-focus="${ici}:unite" aria-label="Unité de ${esc(nom)}">
         <option value="piece"${article.unite === 'piece' ? ' selected' : ''}>À la pièce</option>
         <option value="joueur"${article.unite === 'joueur' ? ' selected' : ''}>Par joueur</option>
@@ -318,7 +322,7 @@
 
   function corpsHtml() {
     const { brouillon } = fenetre;
-    return `<p class="sm-legende">Prix : à l’unité, 0 € pour un prix saisi au comptoir. Heure : l’équipe note quand servir l’article. Proposé : visible dans Réserver et dans la fiche.</p>
+    return `<p class="sm-legende">Prix : à l’unité, 0 ${signeMonnaie()} pour un prix saisi au comptoir. Heure : l’équipe note quand servir l’article. Proposé : visible dans Réserver et dans la fiche.</p>
       ${brouillon.categories.map((categorie, i) => blocCategorie(categorie, i, brouillon.categories.length)).join('')}
       <button type="button" class="pv2-btn sm-ajouter" data-sm-action="cat-ajouter" data-sm-focus="cat-ajouter"${brouillon.categories.length >= MAX_CATEGORIES ? ' disabled' : ''}>+ Ajouter une catégorie</button>`;
   }

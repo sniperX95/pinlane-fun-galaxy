@@ -917,8 +917,8 @@ const PROPRIETES = [
       nom: 'la bibliotheque de graphiques repasse a l espace ordinaire avant l euro',
       vise: /point de code par point de code/,
       fichier: 'assets/pinlane-charts.js',
-      de: "if (format === 'euro') return groupInt(v) + NBSP_FINE + '\u20AC';",
-      vers: "if (format === 'euro') return groupInt(v) + ' \u20AC';",
+      de: "if (format === 'euro' || format === 'eurPlateforme') return groupInt(v) + NBSP_FINE + signeDuFormat(format);",
+      vers: "if (format === 'euro' || format === 'eurPlateforme') return groupInt(v) + ' ' + signeDuFormat(format);",
     },
   },
   {

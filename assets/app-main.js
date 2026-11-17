@@ -3200,13 +3200,13 @@ function formatMoneyCentimes(value) {
   if (montantsMasques()) return '···';
   const amount = Math.round((Number(value) || 0) * 100) / 100;
   const entier = Number.isInteger(amount);
-  return `${new Intl.NumberFormat('fr-BE', { minimumFractionDigits: entier ? 0 : 2, maximumFractionDigits: 2 }).format(amount)} €`;
+  return `${new Intl.NumberFormat('fr-BE', { minimumFractionDigits: entier ? 0 : 2, maximumFractionDigits: 2 }).format(amount)} ${signeMonnaie()}`;
 }
 
 function formatMoney(value) {
   if (montantsMasques()) return '···';
   const amount = Math.round(Number(value) || 0);
-  return `${new Intl.NumberFormat('fr-BE', { maximumFractionDigits: 0 }).format(amount)} €`;
+  return `${new Intl.NumberFormat('fr-BE', { maximumFractionDigits: 0 }).format(amount)} ${signeMonnaie()}`;
 }
 
 function formatAdminPercent(value) {
@@ -4459,9 +4459,9 @@ function canOpenAdminView() {
 // ouverture de la vue admin (après le garde canOpenAdminView) et, pour
 // ops-console seul, au premier besoin Ops côté staff (page Emails, dashboard,
 // réglages). Promesse partagée : une seule balise <script> par fichier.
-const ADMIN_CONSOLE_SRC = '/assets/admin-console.js?v=20261110heures';
+const ADMIN_CONSOLE_SRC = '/assets/admin-console.js?v=20261118centres';
 const OPS_CONSOLE_SRC = '/assets/ops-console.js?v=20261108retard';
-const ADMIN_DATA_SRC = '/assets/admin-data.js?v=20261108securite';
+const ADMIN_DATA_SRC = '/assets/admin-data.js?v=20261118centres';
 const ADMIN_MAIL_SRC = '/assets/admin-mail.js?v=20261107acces';
 // Les declarations inertes de l'index gardent l'ordre et les versions en un
 // seul endroit. Aucun de ces modules n'est demande pour la vue publique.
@@ -4871,7 +4871,7 @@ function renderDurations() {
     g.innerHTML = games.map(o => `
       <button type="button" class="dur-pill ${Number(state.booking.duration) === Number(o.value) ? 'active' : ''}" onclick="setDuration(${o.value})">
         ${o.label}
-        <span class="price">${formatPrixCourt(o.price)}€ / pers</span>
+        <span class="price">${formatPrixCourt(o.price)}${signeMonnaieColle()} / pers</span>
       </button>
     `).join('');
     return;
@@ -4880,7 +4880,7 @@ function renderDurations() {
   g.innerHTML = getDurationOptionsCatalog().map(o => `
     <button type="button" class="dur-pill ${state.booking.duration === o.value ? 'active' : ''}" onclick="setDuration(${o.value})">
       ${o.label}
-      <span class="price">${formatPrixCourt(o.price)}€ / piste</span>
+      <span class="price">${formatPrixCourt(o.price)}${signeMonnaieColle()} / piste</span>
     </button>
   `).join('');
 }
@@ -4893,7 +4893,7 @@ function renderLaserOptions() {
   grid.innerHTML = getLaserOptionsCatalog().map(option => `
     <button type="button" class="dur-pill laser-pill ${Number(state.booking.duration) === Number(option.value) ? 'active' : ''}" onclick="setLaserDuration(${option.value})">
       ${option.label}
-      <span class="price">${formatPrixCourt(option.price)}€ / pers</span>
+      <span class="price">${formatPrixCourt(option.price)}${signeMonnaieColle()} / pers</span>
       <small>${option.games * 20} min de jeu + briefing</small>
     </button>
   `).join('');
@@ -6075,13 +6075,13 @@ function activityPriceHint(activity, pax) {
     // par personne », jamais « des 20 EUR la piste », qui serait le tarif d un
     // autre centre. Donnee de centre, pas constante du produit.
     const games = typeof getBowlingGameOptions === 'function' ? getBowlingGameOptions(state.booking.date, { pax: Math.max(1, Number(state.booking.pax) || 1), laneCount: getRequiredLaneCount('bowling', Math.max(1, Number(state.booking.pax) || 1), '') }) : null;
-    if (games) return games.length ? `dès ${formatPrixCourt(games[0].price)}€ par personne` : 'réglé sur place';
-    return `dès ${formatPrixCourt(getDurationOptionsCatalog()[0].price)}€ la piste`;
+    if (games) return games.length ? `dès ${formatPrixCourt(games[0].price)}${signeMonnaieColle()} par personne` : 'réglé sur place';
+    return `dès ${formatPrixCourt(getDurationOptionsCatalog()[0].price)}${signeMonnaieColle()} la piste`;
   }
-  if (activity.priceType === 'grid_laser') return `dès ${formatPrixCourt(getLaserOptionsCatalog()[0].price)}€ par joueur`;
-  if (activity.priceType === 'grid_fun_run') return `dès ${formatPrixCourt(getFunRunOptionsCatalog()[0].price)}€ la session`;
+  if (activity.priceType === 'grid_laser') return `dès ${formatPrixCourt(getLaserOptionsCatalog()[0].price)}${signeMonnaieColle()} par joueur`;
+  if (activity.priceType === 'grid_fun_run') return `dès ${formatPrixCourt(getFunRunOptionsCatalog()[0].price)}${signeMonnaieColle()} la session`;
   if (activity.priceValue == null) return 'réglé sur place';
-  return `${formatPrixCourt(activity.priceValue)}€ ${activity.unitLabel || ''}`.trim();
+  return `${formatPrixCourt(activity.priceValue)}${signeMonnaieColle()} ${activity.unitLabel || ''}`.trim();
 }
 
 // La MEME information en souffle court, pour la carte compacte du telephone :
@@ -6314,14 +6314,14 @@ function renderActivityOptionsWithoutParticipants(activity, options, pax) {
       const rangee = `<div class="activity-option-row">${games.map(option => `
         <button type="button" class="dur-pill sm ${current === Number(option.value) ? 'active' : ''}" data-opt="duration" data-val="${option.value}"${attributsOptionTropLongue(option.value)}
           onclick="setBookingActivityOption('${id}','duration',${option.value})">
-          ${option.label}<span class="price">${formatPrixCourt(option.price)}€ / pers</span>
+          ${option.label}<span class="price">${formatPrixCourt(option.price)}${signeMonnaieColle()} / pers</span>
         </button>`).join('')}</div>`;
       return rangee;
     }
     const rangee = `<div class="activity-option-row">${getDurationOptionsCatalog().map(option => `
       <button type="button" class="dur-pill sm ${current === Number(option.value) ? 'active' : ''}" data-opt="duration" data-val="${option.value}"${attributsOptionTropLongue(option.value)}
         onclick="setBookingActivityOption('${id}','duration',${option.value})">
-        ${option.label}<span class="price">${formatPrixCourt(option.price)}€ / piste</span>
+        ${option.label}<span class="price">${formatPrixCourt(option.price)}${signeMonnaieColle()} / piste</span>
       </button>`).join('')}</div>`;
     return rangee;
   }
@@ -6330,7 +6330,7 @@ function renderActivityOptionsWithoutParticipants(activity, options, pax) {
     const rangee = `<div class="activity-option-row">${getLaserOptionsCatalog().map(option => `
       <button type="button" class="dur-pill sm ${current === Number(option.games) ? 'active' : ''}" data-opt="games" data-val="${option.games}"${attributsOptionTropLongue(option.value)}
         onclick="setBookingActivityOption('${id}','games',${option.games})">
-        ${option.label}<span class="price">${formatPrixCourt(option.price)}€ / pers</span>
+        ${option.label}<span class="price">${formatPrixCourt(option.price)}${signeMonnaieColle()} / pers</span>
       </button>`).join('')}</div>`;
     return rangee;
   }
@@ -6339,7 +6339,7 @@ function renderActivityOptionsWithoutParticipants(activity, options, pax) {
     const rangee = `<div class="activity-option-row">${getFunRunOptionsCatalog().map(option => `
       <button type="button" class="dur-pill sm ${current === Number(option.minutes) ? 'active' : ''}" data-opt="minutes" data-val="${option.minutes}"${attributsOptionTropLongue(Number(option.minutes) / 60)}
         onclick="setBookingActivityOption('${id}','minutes',${option.minutes})">
-        ${option.label}<span class="price">${formatPrixCourt(option.price)}€ / session</span>
+        ${option.label}<span class="price">${formatPrixCourt(option.price)}${signeMonnaieColle()} / session</span>
       </button>`).join('')}</div>`;
     return rangee;
   }
@@ -6359,7 +6359,7 @@ function renderActivityOptionsWithoutParticipants(activity, options, pax) {
         <button type="button" class="dur-pill xs ${units === value ? 'active' : ''}" data-opt="units" data-val="${value}"
           onclick="setBookingActivityOption('${id}','units',${value})">${value}</button>`).join('')}</div></div>`;
     const detail = prixHeure == null ? '' :
-      `<div class="activity-option-note">${prixHeure}€ ${escapeHtml(activity.unitLabel || '')}.</div>`;
+      `<div class="activity-option-note">${prixHeure}${signeMonnaieColle()} ${escapeHtml(activity.unitLabel || '')}.</div>`;
     return `<div class="activity-option-stack">${nombre}${duree}${detail}</div>`;
   }
   return `<div class="activity-option-note">Accès à votre arrivée, ${activity.priceValue == null ? 'réglé sur place' : 'compris dans le total'}.</div>`;
@@ -6497,7 +6497,7 @@ function renderProgramSummary() {
   const totalEl = box.querySelector('.program-total');
   const totalNote = box.querySelector('.program-total-note');
   const roundedTotal = Math.round(total * 100) / 100;
-  const nextTotal = complete || roundedTotal > 0 ? `${formatPrixCourt(roundedTotal)}€` : 'Sur place';
+  const nextTotal = complete || roundedTotal > 0 ? `${formatPrixCourt(roundedTotal)}${signeMonnaieColle()}` : 'Sur place';
   const nextValue = `${complete ? '' : 'à partir de '}${nextTotal}`;
   // Cocher une activite doit se VOIR dans le programme : la ligne qui arrive se
   // pose, celles deja la ne bougent pas d'un pixel. Sans ce filtre, chaque clic
@@ -9684,7 +9684,7 @@ function renderSlots(formule) {
     const option = getLaserOption(state.booking.duration);
     const waveCount = getLaserWaveCount(state.booking.pax);
     const splitText = waveCount > 1 ? ` · groupe réparti sur ${waveCount} sessions` : '';
-    tl.innerHTML = `<div class="info-box"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><path d="M12 7v5l3 2"/></svg><div><b>${option.label} Laser Game</b> · ${formatPrixCourt(option.price)}€ / personne${splitText} · session partagée selon l'affluence</div></div>`;
+    tl.innerHTML = `<div class="info-box"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><path d="M12 7v5l3 2"/></svg><div><b>${option.label} Laser Game</b> · ${formatPrixCourt(option.price)}${signeMonnaieColle()} / personne${splitText} · session partagée selon l'affluence</div></div>`;
   } else tl.innerHTML = '';
 
   const list = document.getElementById('slotList');
@@ -10196,11 +10196,11 @@ function renderRecap() {
     if (totalNote) totalNote.textContent = complete
       ? 'Tout se règle sur place'
       : (total > 0 ? 'Tout se règle sur place, certaines activités y sont tarifées' : 'Montant confirmé à votre arrivée');
-    if (totalAmount) totalAmount.textContent = complete || total > 0 ? `${formatPrixCourt(total)}€` : 'Sur place';
+    if (totalAmount) totalAmount.textContent = complete || total > 0 ? `${formatPrixCourt(total)}${signeMonnaieColle()}` : 'Sur place';
   } else {
     if (totalLabel) totalLabel.textContent = 'Total estimé';
     if (totalNote) totalNote.textContent = 'À régler sur place';
-    if (totalAmount) totalAmount.textContent = `${formatPrixCourt(total)}€`;
+    if (totalAmount) totalAmount.textContent = `${formatPrixCourt(total)}${signeMonnaieColle()}`;
   }
   const dateLabel = parseLocalDate(b.date).toLocaleDateString('fr-BE', { weekday:'long', day:'numeric', month:'long' });
   // UNE LIGNE DU RECAP N EXISTE QUE SI ELLE A UNE VALEUR. Sans creneau retenu
@@ -10707,7 +10707,7 @@ function signalerReservationAuSite(reservation, ops) {
     reservationId: reservation.id != null ? String(reservation.id) : '',
     center: getTunnelCenterId() || '',
     amount: Number(reservation.price) || 0,
-    currency: 'EUR',
+    currency: deviseMonnaie(),
     pax: Number(reservation.pax) || 0,
     date: String(reservation.date || ''),
     startTime: String(reservation.startTime || ''),
@@ -11508,9 +11508,9 @@ function formatMoneyShort(value) {
   if (Math.abs(amount) >= 1000) {
     const k = amount / 1000;
     const text = Number.isInteger(k) ? String(k) : k.toFixed(1).replace('.', ',');
-    return `${text}k €`;
+    return `${text}k ${signeMonnaie()}`;
   }
-  return `${amount} €`;
+  return `${amount} ${signeMonnaie()}`;
 }
 
 function openStaffDashboardSection(section) {
@@ -14296,7 +14296,7 @@ const ESTABLISHMENT_NUMBER_RULES = [
   ['estab-tableHard', 1, 120, 'Limite de tables : un nombre entier de 1 à 120.'],
   ['estab-groupMinPax', 2, 200, 'Un groupe dès : un nombre entier de 2 à 200 joueurs.'],
   ['estab-groupMinCumulative', 2, 5000, 'Joueurs cumulés : un nombre entier de 2 à 5000.'],
-  ['estab-keyClientMinSpend', 0, 100000, 'Client clé : un nombre entier d’euros, de 0 à 100000.'],
+  ['estab-keyClientMinSpend', 0, 100000, 'Client clé : un nombre entier {deNoms}, de 0 à 100000.'],
   ['estab-lateThreshold', 0, 60, 'En retard après : un nombre entier de 0 à 60 minutes.']
 ];
 
@@ -14364,7 +14364,7 @@ function validateEstablishmentForm() {
     if (!input) return;
     const value = Number(input.value);
     if (!Number.isInteger(value) || value < min || value > max) {
-      markEstablishmentFieldError(input, message);
+      markEstablishmentFieldError(input, message.replace('{deNoms}', deNomsMonnaie()));
       invalid.push(input);
     }
   });
@@ -14627,6 +14627,8 @@ async function submitCenterConfig(centerId) {
   if (branding !== undefined) config.branding = branding;
   const payment = collectEstablishmentPayment();
   if (payment !== undefined) config.payment = payment;
+  const currency = collectEstablishmentCurrency();
+  if (currency !== undefined) config.currency = currency;
   const name = establishmentInputValue('estab-name').trim();
   submitCenterConfigInFlight = true;
   const saveBtn = document.getElementById('estabSaveBtn');
@@ -14873,6 +14875,29 @@ function collectEstablishmentPayment() {
   return mode === 'onsite' ? { mode } : undefined;
 }
 
+// LA MONNAIE DES PRIX DU CENTRE (2026-11-17, point D6 de la note avant-lancement du 16/11). La liste
+// vient de assets/pinlane-monnaie.js, la seule : le serveur refuse ce qu elle ne porte pas. Elle se
+// choisit avant d ouvrir la reservation : les prix deja ecrits ne sont pas convertis. La changer
+// demande le droit Tarifs, comme un prix (lib/center-config.js prixDeLaConfig).
+function establishmentCurrencyFieldHtml(center) {
+  const m = window.PinlaneMonnaie;
+  if (!m) return '';
+  const code = m.devise(center && center.currency);
+  return `<div class="field estab-brand-field">
+    <label for="estab-currency">Monnaie des prix</label>
+    <select id="estab-currency" class="estab-style-select">
+      ${m.choix().map(d => `<option value="${d.code}" ${d.code === code ? 'selected' : ''}>${escapeHtml(d.libelle)}</option>`).join('')}
+    </select>
+    <span class="estab-brand-note">Tous les prix du centre s’écrivent dans cette monnaie : le formulaire en ligne, les mails aux clients et la console. À choisir avant d’ouvrir la réservation : les prix déjà saisis ne sont pas convertis.</span>
+  </div>`;
+}
+
+function collectEstablishmentCurrency() {
+  const select = document.getElementById('estab-currency');
+  if (!select || !window.PinlaneMonnaie) return undefined;
+  return window.PinlaneMonnaie.devise(select.value);
+}
+
 // Les deux contrôles portent LA MÊME valeur ; seul celui qui n'a pas la frappe
 // est resynchronisé, sinon le curseur sauterait à chaque caractère.
 function setEstablishmentAccent(value, source) {
@@ -15115,7 +15140,7 @@ function ebArcadesHtml(center) {
   const carte = (mode, o, i) => {
     const base = `estab-arc-${mode}-${i}`;
     const titre = mode === 'time' ? `${ebE(o.minutes)} min` : `${ebE(o.credits)} crédits`;
-    const prix = ebMet('Prix (€)', ebNum(`${base}-price`, `Prix de la carte ${mode === 'time' ? `${o.minutes} minutes` : `${o.credits} crédits`}`, { min: 0, max: 10000, value: Number(o.price), step: 1, htmlStep: '0.01' }));
+    const prix = ebMet(`Prix (${signeMonnaie()})`, ebNum(`${base}-price`, `Prix de la carte ${mode === 'time' ? `${o.minutes} minutes` : `${o.credits} crédits`}`, { min: 0, max: 10000, value: Number(o.price), step: 1, htmlStep: '0.01' }));
     const reste = mode === 'time'
       ? ebMet('Minutes', ebNum(`${base}-minutes`, 'Minutes à volonté', { min: 1, max: 1440, value: Number(o.minutes), step: 5, htmlStep: 1 }))
       : `${ebMet('Crédits', ebNum(`${base}-credits`, 'Crédits', { min: 0, max: 100000, value: Number(o.credits), step: 5 }))}${ebMet('Offerts', ebNum(`${base}-bonusCredits`, 'Crédits offerts', { min: 0, max: 100000, value: Number(o.bonusCredits), step: 5 }))}`;
@@ -15398,7 +15423,7 @@ function ebChangerPrix(type, id) {
   if (typeof window.tarifsOuvrirPrix === 'function') window.tarifsOuvrirPrix(type, id);
   else openStaffMenuPage('prices');
 }
-function ebEuros(v) { return `${typeof formatPrixCourt === 'function' ? formatPrixCourt(v) : String(v)} €`; }
+function ebEuros(v) { return `${typeof formatPrixCourt === 'function' ? formatPrixCourt(v) : String(v)} ${signeMonnaie()}`; }
 function ebPrixPuces(items) {
   return `<span class="eb-prix">${items.map(([l, p]) => `<span class="eb-prix-i"><span>${ebE(l)}</span><b>${p == null ? 'sur place' : ebEuros(p)}</b></span>`).join('')}</span>`;
 }
@@ -15506,7 +15531,7 @@ function ebFormulesHtml(c) {
     if (!groupe) { groupe = { nom, items: [] }; familles.push(groupe); }
     groupe.items.push(f);
   });
-  const prix = p => `${String(Number(p)).replace('.', ',')} €`;
+  const prix = p => `${String(Number(p)).replace('.', ',')} ${signeMonnaie()}`;
   const ligne = (f) => {
     const id = ebE(f.id);
     const on = c.center.offerAvailability?.[f.id] !== false;
@@ -15537,7 +15562,7 @@ function ebReservationsHtml(c) {
   return ebReglesEnLigneHtml(c) + ebG('Groupes et clients', 'Comment la console classe les réservations et les clients.',
       ebR('Un groupe à partir de', 'Une réservation de ce nombre de joueurs ou plus est un groupe.', ebNum('estab-groupMinPax', 'Un groupe à partir de combien de joueurs', { min: 2, max: 200, value: Number(k.groupMinPax || 10) }))
       + ebR('Ou un client qui cumule', 'Un client qui a réservé pour ce nombre de joueurs au total compte aussi comme groupe.', ebNum('estab-groupMinCumulative', 'Joueurs cumulés par un client', { min: 2, max: 5000, value: Number(k.groupMinCumulative || 18) }))
-      + ebR('Client clé à partir de', 'Le montant dépensé au total, en euros. À 0, les 20 % qui dépensent le plus.', ebNum('estab-keyClientMinSpend', 'Client clé à partir de combien d’euros', { min: 0, max: 100000, value: Number(k.keyClientMinSpend || 0), step: 50 }))
+      + ebR('Client clé à partir de', `Le montant dépensé au total, en ${nomsMonnaie()}. À 0, les 20 % qui dépensent le plus.`, ebNum('estab-keyClientMinSpend', `Client clé à partir de combien ${deNomsMonnaie()}`, { min: 0, max: 100000, value: Number(k.keyClientMinSpend || 0), step: 50 }))
       + ebCase('estab-countFormulaAsGroup', 'Une formule compte comme un groupe', { on: k.countFormulaAsGroup !== false, aide: 'Même avec moins de joueurs qu’un groupe.' })
       + ebCase('estab-birthdayFromFormula', 'Anniversaire d’après la formule', { on: k.birthdayFromFormula !== false, aide: 'Une formule marquée « Anniversaire » classe la réservation en anniversaire.' }))
     + ebG('Grands groupes', '', ebR('Demande sur mesure à partir de', 'Au-delà de ce nombre de joueurs, le client envoie une demande au lieu de réserver. Vide : jamais.', ebNum('estab-customRequestFromPax', 'Demande sur mesure dès', { min: 2, max: 240, value: Number(c.center.customRequest && c.center.customRequest.fromPax) || '', start: 30, vide: 'Jamais' })))
@@ -15558,7 +15583,7 @@ function ebFormulaireHtml(c) {
   const lien = `/reserver/${encodeURIComponent(center.id)}`;
   return ebG('Lien de réservation', 'Le lien à partager, ou à mettre sur votre site et vos réseaux.', `<div class="eb-lienresa"><a href="${lien}" target="_blank" rel="noopener">${ebE(`${location.host}${lien}`)}</a><button type="button" class="eb-b" onclick="ebCopierLien('${ebJs(lien)}')">Copier</button></div>`)
     + ebG('Apparence', 'La couleur et le style du formulaire de réservation.', `<div class="eb-g-bloc">${establishmentAccentFieldHtml(center)}</div>`)
-    + ebG('Encaissement', '', `<div class="eb-g-bloc">${establishmentPaymentFieldHtml(center)}</div>`)
+    + ebG('Encaissement', '', `<div class="eb-g-bloc">${establishmentPaymentFieldHtml(center)}${establishmentCurrencyFieldHtml(center)}</div>`)
     + ebG('Sur votre site', '', `<div class="eb-g-bloc">${establishmentEmbedFieldHtml(center)}</div>`);
 }
 
@@ -16089,7 +16114,7 @@ const EB_NOMBRES_DITS = {
   'estab-normalCap': ['joueur par piste', 'joueurs par piste'], 'estab-emergencyCap': ['joueur par piste si besoin', 'joueurs par piste si besoin'],
   'estab-launches': ['partie laser en même temps', 'parties laser en même temps'], 'estab-tableSoft': ['table conseillée', 'tables conseillées'], 'estab-tableHard': ['table au plus', 'tables au plus'],
   'estab-groupMinPax': ['joueur pour un groupe', 'joueurs pour un groupe'], 'estab-groupMinCumulative': ['joueur cumulé pour un groupe', 'joueurs cumulés pour un groupe'],
-  'estab-keyClientMinSpend': ['€ pour un client clé', '€ pour un client clé'], 'estab-lateThreshold': ['minute avant le retard', 'minutes avant le retard'],
+  'estab-keyClientMinSpend': ['{signe} pour un client clé', '{signe} pour un client clé'], 'estab-lateThreshold': ['minute avant le retard', 'minutes avant le retard'],
 };
 const EB_CASES_DITES = {
   'estab-preferAdjacent': ['Groupes sur des pistes voisines', 'Groupes plus forcément sur des pistes voisines'],
@@ -16114,10 +16139,11 @@ const EB_TEXTES_DITS = {
   'estab-book-min': 'Réservation en ligne : « au plus tard » changé', 'estab-book-horizon': 'Réservation en ligne : « au plus tôt » changé',
   'estab-timezone': 'Fuseau horaire changé', 'estab-secours-emails': 'Boîte de secours changée', 'estab-accent': 'Couleur du formulaire changée',
   'estab-payment-mode': 'Encaissement changé',
+  'estab-currency': 'Monnaie des prix changée',
 };
 const EB_ZONES_DITES = { 'w:exceptions': 'Jours à part modifiés', 'w:installations': 'Autres installations modifiées', 'w:activites-perso': 'Activités à vous modifiées', 'w:suggestions': 'Suggestions modifiées', 'w:validation': 'Validation modifiée' };
 function ebDireUnChangement(cle, v, avant) {
-  if (EB_NOMBRES_DITS[cle]) { const [un, plusieurs] = EB_NOMBRES_DITS[cle]; return `${v} ${Number(v) > 1 ? plusieurs : un} au lieu de ${avant}`; }
+  if (EB_NOMBRES_DITS[cle]) { const [un, plusieurs] = EB_NOMBRES_DITS[cle].map(mot => mot.replace('{signe}', signeMonnaie())); return `${v} ${Number(v) > 1 ? plusieurs : un} au lieu de ${avant}`; }
   if (EB_CASES_DITES[cle]) return EB_CASES_DITES[cle][v === 'true' ? 0 : 1];
   if (EB_TEXTES_DITS[cle]) return EB_TEXTES_DITS[cle];
   if (EB_ZONES_DITES[cle]) return EB_ZONES_DITES[cle];
@@ -19824,7 +19850,7 @@ function staffRequestEuro(value) {
   if (montantsMasques()) return '···';
   const v = Math.round(Number(value) * 100) / 100;
   if (!Number.isFinite(v)) return '';
-  return `${new Intl.NumberFormat('fr-BE', { minimumFractionDigits: Number.isInteger(v) ? 0 : 2, maximumFractionDigits: 2 }).format(v)} €`;
+  return `${new Intl.NumberFormat('fr-BE', { minimumFractionDigits: Number.isInteger(v) ? 0 : 2, maximumFractionDigits: 2 }).format(v)} ${signeMonnaie()}`;
 }
 
 function staffRequestDateOf(iso) {
@@ -20822,7 +20848,7 @@ function bdgCarteMail(item, carte, avantCarte, reply, { figee = false } = {}) {
 function bdgPoints(carte) {
   const r = (carte && carte.resume) || {};
   // Un montant ne se coupe pas de son unite en fin de ligne (« 453 » puis « € » seul, vu le 13/11).
-  const points = (Array.isArray(r.points) ? r.points : []).map(p => bdgPhrase(p).replace(/(\d) (?=(?:€|%|h\b))/g, '$1 ')).filter(Boolean);
+  const points = (Array.isArray(r.points) ? r.points : []).map(p => bdgPhrase(p).replace(new RegExp('(\\d) (?=(?:' + motifSignesMonnaie() + '|%|h\\b))', 'g'), '$1 ')).filter(Boolean);
   if (!points.length) return '';
   return `<div class="bdg-verif" role="note"><p class="bdg-verif-t">À vérifier avant d’envoyer</p><ul>${points.map(p => `<li>${escapeHtml(p)}</li>`).join('')}</ul></div>`;
 }
@@ -30620,7 +30646,7 @@ function renderPosCaisse(r) {
   const priceEditorHtml = r.status !== 'paid' && canEditPrice
     ? posPriceEditOpen
       ? `<div class="pos-price-edit">
-          <label>Prix total facturé <input id="posPriceInput" type="number" min="0" step="0.01" inputmode="decimal" value="${Math.round((Number(total) || 0) * 100) / 100}" aria-label="Nouveau prix total en euros"></label>
+          <label>Prix total facturé <input id="posPriceInput" type="number" min="0" step="0.01" inputmode="decimal" value="${Math.round((Number(total) || 0) * 100) / 100}" aria-label="Nouveau prix total en ${nomsMonnaie()}"></label>
           <div class="pos-price-edit-actions">
             <button type="button" class="is-primary" onclick="applyPosPrice()">Appliquer</button>
             <button type="button" onclick="togglePosPriceEdit()">Annuler</button>
@@ -31554,11 +31580,11 @@ function renderEditPrix(r) {
     <div class="fm-prix-champs">
       <div class="fm-champ">
         <label class="lbl" for="editPriceInput">Total</label>
-        <div class="fm-euro"><input id="editPriceInput" class="input" type="number" min="0" max="100000" step="0.01" inputmode="decimal" value="${escapeHtml(String(valeurChamp))}" oninput="setEditPrice(this.value)"><span aria-hidden="true">€</span></div>
+        <div class="fm-euro"><input id="editPriceInput" class="input" type="number" min="0" max="100000" step="0.01" inputmode="decimal" value="${escapeHtml(String(valeurChamp))}" oninput="setEditPrice(this.value)"><span aria-hidden="true">${signeMonnaie()}</span></div>
       </div>
       <div class="fm-champ">
         <label class="lbl" for="editPricePerPerson">Par joueur</label>
-        <div class="fm-euro"><input id="editPricePerPerson" class="input" type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(String(Math.round((valeurChamp / joueursActuels) * 100) / 100))}" oninput="setEditPricePerPerson(this.value)"><span aria-hidden="true">€</span></div>
+        <div class="fm-euro"><input id="editPricePerPerson" class="input" type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(String(Math.round((valeurChamp / joueursActuels) * 100) / 100))}" oninput="setEditPricePerPerson(this.value)"><span aria-hidden="true">${signeMonnaie()}</span></div>
       </div>
     </div>
     <p class="fm-prix-etat" id="editPrixEstime"${etat ? '' : ' hidden'}>${escapeHtml(etat)}</p>
@@ -31571,7 +31597,7 @@ function renderEditPrix(r) {
 // « Bowling 1h · 2 pistes · 78 € » explique pourquoi passer de 12 a 13
 // joueurs ajoute 39 EUR ; sans lui, le montant a l air arbitraire.
 function lignesDetailPrixHtml(estime) {
-  return estime.lignes.map(l => `<li><span>${escapeHtml(l.nom)}${l.detail ? ` <em>${escapeHtml(l.detail)}</em>` : ''}</span><b>${l.montant == null ? 'sur place' : `${Math.round((l.montant) * 100) / 100} €`}</b></li>`).join('');
+  return estime.lignes.map(l => `<li><span>${escapeHtml(l.nom)}${l.detail ? ` <em>${escapeHtml(l.detail)}</em>` : ''}</span><b>${l.montant == null ? 'sur place' : `${Math.round((l.montant) * 100) / 100} ${signeMonnaie()}`}</b></li>`).join('');
 }
 
 // NOURRITURE ET EXTRAS DANS L ONGLET MODIFIER (2026-10-27, Movsar : « faut
@@ -31671,7 +31697,7 @@ function renderEditExtras(r) {
       <div class="fm-x-arcades">
         <div class="dossier-options" role="group" aria-label="Arcades au temps ou en argent">${[['temps', 'Au temps'], ['argent', 'En argent']].map(([v, mot]) => `<button type="button" class="qb-dur-btn dossier-option${a.mode === v ? ' active' : ''}" aria-pressed="${a.mode === v}" onclick="setEditArcadesExtra('mode','${v}')">${mot}</button>`).join('')}</div>
         ${a.mode === 'temps' ? `<div class="dossier-options" role="group" aria-label="Temps d’arcades">${[15, 30, 60, 999].map((m) => `<button type="button" class="qb-dur-btn dossier-option${Number(a.minutes) === m ? ' active' : ''}" aria-pressed="${Number(a.minutes) === m}" onclick="setEditArcadesExtra('minutes',${m})">${m >= 999 ? 'À volonté' : `${m} min`}</button>`).join('')}</div>` : ''}
-        <span class="fm-euro"><input class="input fm-x-prix" type="number" min="0" step="0.5" inputmode="decimal" value="${escapeHtml(String(a.prix ?? ''))}" aria-label="${a.mode === 'temps' ? 'Prix des arcades par joueur' : 'Montant d’arcades par joueur'} en euros" oninput="setEditArcadesExtra('prix',this.value,true)"><span aria-hidden="true">€</span></span>
+        <span class="fm-euro"><input class="input fm-x-prix" type="number" min="0" step="0.5" inputmode="decimal" value="${escapeHtml(String(a.prix ?? ''))}" aria-label="${a.mode === 'temps' ? 'Prix des arcades par joueur' : 'Montant d’arcades par joueur'} en ${nomsMonnaie()}" oninput="setEditArcadesExtra('prix',this.value,true)"><span aria-hidden="true">${signeMonnaie()}</span></span>
         <span class="fm-x-par" id="fmxPar-arcades">par joueur × ${Math.max(1, Math.trunc(Number(a.joueurs) || 1))}</span>
         <b class="fm-x-somme" id="fmxSomme-arcades">${escapeHtml(sommeArcadesExtra(a))}</b>
         <button type="button" class="fm-x-retirer" aria-label="Retirer les arcades" onclick="retirerEditArcadesExtra()">×</button>
@@ -31682,7 +31708,7 @@ function renderEditExtras(r) {
       ${modele[groupe].map((l, i) => `<div class="fm-x-ligne">
         ${champ(groupe, i, 'choix', l.choix, `list="fmx-${groupe}" placeholder="${invite}" aria-label="${titre} : ${invite.toLowerCase()}"`)}
         ${l.parPersonne ? `<span class="fm-x-qte fm-x-tous" id="fmxQte-${groupe}-${i}">${qteLigneExtra(l)}</span>` : champ(groupe, i, 'qte', l.qte, 'type="number" min="1" max="999" inputmode="numeric" aria-label="Quantité"')}
-        <span class="fm-euro">${champ(groupe, i, 'prix', l.prix, 'type="number" min="0" step="0.5" inputmode="decimal" placeholder="Prix" aria-label="Prix à l’unité en euros"')}<span aria-hidden="true">€</span></span>
+        <span class="fm-euro">${champ(groupe, i, 'prix', l.prix, `type="number" min="0" step="0.5" inputmode="decimal" placeholder="Prix" aria-label="Prix à l’unité en ${nomsMonnaie()}"`)}<span aria-hidden="true">${signeMonnaie()}</span></span>
         <b class="fm-x-somme" id="fmxSomme-${groupe}-${i}">${escapeHtml(sommeLigneExtra(l))}</b>
         <button type="button" class="fm-x-retirer" aria-label="Retirer ${escapeHtml(l.choix || 'cette ligne')}" onclick="retirerEditExtra('${groupe}',${i})">×</button>
         <span class="fm-x-opts">
@@ -32292,7 +32318,7 @@ function renderPosEdit(r) {
               <label class="lbl" for="editDurationInput">${isLaserRes ? 'Parties Laser' : editNeedsLanes ? 'Durée bowling' : 'Durée'}</label>
               <select id="editDurationInput" class="input" oninput="setEditField('duration', this.value, true)" required>
                 ${isLaserRes
-                  ? getLaserOptionsCatalog().map(option => `<option value="${option.value}" ${Math.abs(Number(e.duration) - Number(option.value)) < 0.01 ? 'selected' : ''}>${escapeHtml(option.label)} (${formatPrixCourt(option.price)}€ / joueur)</option>`).join('')
+                  ? getLaserOptionsCatalog().map(option => `<option value="${option.value}" ${Math.abs(Number(e.duration) - Number(option.value)) < 0.01 ? 'selected' : ''}>${escapeHtml(option.label)} (${formatPrixCourt(option.price)}${signeMonnaieColle()} / joueur)</option>`).join('')
                   : [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4].map(h => `<option value="${h}" ${Math.abs(Number(e.duration) - h) < 0.01 ? 'selected' : ''}>${formatDurationLabel(h)}</option>`).join('')}
                 ${isLaserRes || [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4].some(h => Math.abs(Number(e.duration) - h) < 0.01) ? '' : `<option value="${e.duration}" selected>${formatDurationLabel(Number(e.duration) || 0)}</option>`}
               </select>
@@ -33889,7 +33915,7 @@ function extrasDepuisLignes(e, pax, arcadesComprises = false) {
     const unitaire = prix(e.arcades.prix);
     const quoi = e.arcades.mode === 'temps'
       ? (Number(e.arcades.minutes) >= 999 ? 'à volonté' : `${e.arcades.minutes} min`)
-      : `${unitaire.toLocaleString('fr-BE')} € de crédit`;
+      : `${unitaire.toLocaleString('fr-BE')} ${signeMonnaie()} de crédit`;
     lignes.push({ id: `arcades-${e.arcades.mode}`, name: `Arcades ${quoi} × ${joueurs} joueur${joueurs > 1 ? 's' : ''}`, price: Math.round(unitaire * joueurs * 100) / 100 });
   }
   ['nourriture', 'boissons', 'autres'].forEach((nomGroupe) => {
@@ -33940,7 +33966,7 @@ function renderQuickExtras() {
       ${e[groupe].map((l, i) => `<div class="qb-x-ligne">
         ${champ(groupe, i, 'choix', l.choix, `list="qbx-${groupe}" placeholder="${groupe === 'autres' ? 'Libellé' : 'Choix'}" aria-label="${titre} : choix"`)}
         ${champ(groupe, i, 'qte', l.qte, 'type="number" min="1" max="999" inputmode="numeric" aria-label="Quantité" placeholder="Qté"')}
-        <span class="qb-x-prix">${champ(groupe, i, 'prix', l.prix, 'type="number" min="0" step="0.5" inputmode="decimal" aria-label="Prix unitaire en euros" placeholder="Prix"')}<i>€</i></span>
+        <span class="qb-x-prix">${champ(groupe, i, 'prix', l.prix, `type="number" min="0" step="0.5" inputmode="decimal" aria-label="Prix unitaire en ${nomsMonnaie()}" placeholder="Prix"`)}<i>${signeMonnaie()}</i></span>
         <button type="button" class="qb-x-rm" aria-label="Retirer la ligne" onclick="retirerQuickExtra('${groupe}',${i})">×</button>
       </div>`).join('')}
       <button type="button" class="qb-x-add" onclick="ajouterQuickExtra('${groupe}')">+ ${groupe === 'nourriture' ? 'Ajouter un plat' : groupe === 'boissons' ? 'Ajouter des boissons' : 'Ajouter une ligne'}</button>
@@ -33954,7 +33980,7 @@ function renderQuickExtras() {
         ${[['', 'Aucune'], ['temps', 'Au temps'], ['argent', 'En argent']].map(([v, mot]) => `<button type="button" class="qb-dur-btn ${e.arcades.mode === v ? 'active' : ''}" onclick="setQuickArcades('mode','${v}')">${mot}</button>`).join('')}
       </div>
       ${e.arcades.mode === 'temps' ? `<div class="qb-x-seg">${[15, 30, 60, 999].map((m) => `<button type="button" class="qb-dur-btn ${Number(e.arcades.minutes) === m ? 'active' : ''}" onclick="setQuickArcades('minutes',${m})">${m >= 999 ? 'À volonté' : `${m} min`}</button>`).join('')}</div>` : ''}
-      ${e.arcades.mode ? `<label class="qb-x-montant">${e.arcades.mode === 'temps' ? 'Prix par joueur' : 'Montant par joueur'} <input class="qb-input" type="number" min="0" step="0.5" inputmode="decimal" value="${escapeHtml(String(e.arcades.prix ?? ''))}" placeholder="€" oninput="setQuickArcades('prix',this.value,true)"> €</label>` : ''}
+      ${e.arcades.mode ? `<label class="qb-x-montant">${e.arcades.mode === 'temps' ? 'Prix par joueur' : 'Montant par joueur'} <input class="qb-input" type="number" min="0" step="0.5" inputmode="decimal" value="${escapeHtml(String(e.arcades.prix ?? ''))}" placeholder="${signeMonnaie()}" oninput="setQuickArcades('prix',this.value,true)"> ${signeMonnaie()}</label>` : ''}
     </div>
     `}
     ${lignes('nourriture', 'Nourriture', 'quantité et prix à l’unité')}
@@ -39433,8 +39459,8 @@ function rsTotalHtml() {
   const peut = rsNiveau('prix') !== 'non';
   const prix = peut ? `<div class="rs-prix">
       <div class="rs-qui is-deux">
-        <label class="rs-champ"><span>Total</span><input id="qbCustomPrice" type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(String(rsFmActive() ? (rsFmPrix() ?? '') : (s.customPrice ?? '')))}" placeholder="${escapeHtml(String(reference))}" aria-label="Prix arrangé en euros" oninput="onQuickCustomPriceInput(this.value); rsMajTicket()"></label>
-        <label class="rs-champ"><span>Par joueur</span><input id="qbCustomPricePerPerson" type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(String(parPersonne))}" aria-label="Prix par joueur en euros" oninput="onQuickCustomPricePerPersonInput(this.value); rsMajTicket()"></label>
+        <label class="rs-champ"><span>Total</span><input id="qbCustomPrice" type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(String(rsFmActive() ? (rsFmPrix() ?? '') : (s.customPrice ?? '')))}" placeholder="${escapeHtml(String(reference))}" aria-label="Prix arrangé en ${nomsMonnaie()}" oninput="onQuickCustomPriceInput(this.value); rsMajTicket()"></label>
+        <label class="rs-champ"><span>Par joueur</span><input id="qbCustomPricePerPerson" type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(String(parPersonne))}" aria-label="Prix par joueur en ${nomsMonnaie()}" oninput="onQuickCustomPricePerPersonInput(this.value); rsMajTicket()"></label>
       </div>
       ${rsPlafondHtml()}
     </div>
@@ -39974,7 +40000,7 @@ function rsBandeHtml() {
   const service = !a || a.heure !== false ? rsRang('Servir à', heures.map((h) => rsPetite(h, ligne.heure === h, `rsServir('${h}')`, `data-service="${h}"`)).join(''), Math.max(heures.length, 5)) : '';
   // Un prix « a saisir » se tape, au niveau catalogue comme au libre : le serveur garde
   // le prix tape d un article du centre a 0. Une ligne libre n existe qu au libre.
-  const prixChamp = (a ? a.prix == null : libre) ? `<input class="rs-x-prix" id="rsXPrix" type="number" min="0" step="0.5" inputmode="decimal" placeholder="Prix" value="${escapeHtml(String(ligne.prixUnitaire ?? ''))}" aria-label="Prix à l’unité en euros" oninput="rsArticleChamp('prix',this.value)">` : '';
+  const prixChamp = (a ? a.prix == null : libre) ? `<input class="rs-x-prix" id="rsXPrix" type="number" min="0" step="0.5" inputmode="decimal" placeholder="Prix" value="${escapeHtml(String(ligne.prixUnitaire ?? ''))}" aria-label="Prix à l’unité en ${nomsMonnaie()}" oninput="rsArticleChamp('prix',this.value)">` : '';
   const parPersonne = Boolean(ligne.suit);
   const calcul = valeur == null ? 'sur place'
     : ligne.offert ? `offert, au lieu de ${rsEuros(valeur)}`
@@ -40183,7 +40209,7 @@ function rsFormuleMesureHtml() {
   const mode = `<div class="rs-seg" role="group" aria-label="Prix par joueur ou pour le groupe"><button type="button" class="${fm.mode === 'total' ? '' : 'is-on'}" id="rsFmParJoueur" aria-pressed="${fm.mode !== 'total'}" onclick="rsFmMode('personne')">Par joueur</button><button type="button" class="${fm.mode === 'total' ? 'is-on' : ''}" id="rsFmAuTotal" aria-pressed="${fm.mode === 'total'}" onclick="rsFmMode('total')">Pour le groupe</button></div>`;
   const prixHtml = rsNiveau('prix') === 'non'
     ? '<p class="rs-texte" id="rsPrixFixe">Le prix se change avec un responsable.</p>'
-    : `<div class="rs-fm-ligne">${mode}<label class="rs-champ rs-fm-montant"><input id="rsFmMontant" type="number" min="0" step="0.5" inputmode="decimal" value="${escapeHtml(String(fm.montant ?? ''))}" aria-label="${fm.mode === 'total' ? 'Prix pour le groupe' : 'Prix par joueur'} en euros" oninput="rsFmChamp('montant',this.value)"><span aria-hidden="true">€</span></label><span class="rs-fm-dit" id="rsFmCalcul">${escapeHtml(dit)}</span></div>${rsPlafondHtml()}`;
+    : `<div class="rs-fm-ligne">${mode}<label class="rs-champ rs-fm-montant"><input id="rsFmMontant" type="number" min="0" step="0.5" inputmode="decimal" value="${escapeHtml(String(fm.montant ?? ''))}" aria-label="${fm.mode === 'total' ? 'Prix pour le groupe' : 'Prix par joueur'} en ${nomsMonnaie()}" oninput="rsFmChamp('montant',this.value)"><span aria-hidden="true">${signeMonnaie()}</span></label><span class="rs-fm-dit" id="rsFmCalcul">${escapeHtml(dit)}</span></div>${rsPlafondHtml()}`;
   return `<section class="rs-fm" aria-label="Formule pour ce groupe">
     <div class="rs-rang rs-fm-rang"><span class="rs-lbl">Nom</span><div class="rs-champ"><input id="rsFmNom" maxlength="80" autocomplete="off" value="${escapeHtml(fm.nom || '')}" aria-label="Nom de la formule" oninput="rsFmChamp('nom',this.value)"></div></div>
     <div class="rs-rang rs-fm-rang"><span class="rs-lbl is-haut">Contient</span><div>${rsRecuHtml()}<p class="rs-fm-somme"><span>Prix normal</span><b id="rsFmDetail">${escapeHtml(rsEuros(reference))}</b></p></div></div>
@@ -40217,7 +40243,7 @@ function rsMesureHtml() {
   const somme = lignes.reduce((t, l) => t + (Number(l.price) || 0), 0);
   const droite = lignes.length ? `<span class="rs-note-e">${escapeHtml(`${rvPluriel(lignes.length, 'article')}, ${rsEuros(somme)}`)}</span>` : '';
   const tabs = onglets.length ? `<div class="rs-seg rs-tabs" role="group" aria-label="Catégories">${onglets.map(([id, nom]) => `<button type="button" class="${id === courante ? 'is-on' : ''}" id="rsOnglet-${escapeHtml(id)}" data-onglet="${escapeHtml(id)}" aria-pressed="${id === courante}" onclick="rsOnglet(this.dataset.onglet)">${escapeHtml(nom)}</button>`).join('')}</div>` : '';
-  const libre = niveau === 'libre' ? `<div class="rs-libre"><label class="rs-champ"><span>Ajouter ce que vous voulez</span><input id="rsLibreNom" maxlength="80" autocomplete="off" value="${escapeHtml(b.mesure.nom || '')}" placeholder="Karaoké, open bar, gâteau…" aria-label="Nom de l’article libre" oninput="rsLibreChamp('nom',this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();rsLibreAjouter();}"></label><label class="rs-champ"><span>Prix</span><input id="rsLibrePrix" type="number" min="0" step="0.5" inputmode="decimal" value="${escapeHtml(String(b.mesure.prix ?? ''))}" aria-label="Prix de l’article libre en euros" oninput="rsLibreChamp('prix',this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();rsLibreAjouter();}"></label><button type="button" class="rs-p" id="rsLibreAjouter" onclick="rsLibreAjouter()"><b>Ajouter</b></button></div>` : '';
+  const libre = niveau === 'libre' ? `<div class="rs-libre"><label class="rs-champ"><span>Ajouter ce que vous voulez</span><input id="rsLibreNom" maxlength="80" autocomplete="off" value="${escapeHtml(b.mesure.nom || '')}" placeholder="Karaoké, open bar, gâteau…" aria-label="Nom de l’article libre" oninput="rsLibreChamp('nom',this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();rsLibreAjouter();}"></label><label class="rs-champ"><span>Prix</span><input id="rsLibrePrix" type="number" min="0" step="0.5" inputmode="decimal" value="${escapeHtml(String(b.mesure.prix ?? ''))}" aria-label="Prix de l’article libre en ${nomsMonnaie()}" oninput="rsLibreChamp('prix',this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();rsLibreAjouter();}"></label><button type="button" class="rs-p" id="rsLibreAjouter" onclick="rsLibreAjouter()"><b>Ajouter</b></button></div>` : '';
   if (courante === 'arcades') return `${rsRetourHtml(droite)}${tabs}${rsMesureArcadesHtml()}${libre}`;
   if (courante === 'formule') return `${rsRetourHtml(rsFmActive() ? '<button type="button" class="rs-discret is-retirer" id="rsFmRetirer" onclick="rsFmRetirer()">Retirer la formule</button>' : droite)}${tabs}${rsFormuleMesureHtml()}`;
   if (!articles.length) {
@@ -41379,8 +41405,8 @@ function renderFormules() {
               ${f.best ? '<span class="badge-best">Best deal</span>' : ''}
             </span>
             <span class="formule-card-price">
-              ${f.oldPrice ? `<s>${escapeHtml(f.oldPrice)}€</s>` : ''}
-              <strong>${escapeHtml(f.price)}€</strong>
+              ${f.oldPrice ? `<s>${escapeHtml(f.oldPrice)}${signeMonnaieColle()}</s>` : ''}
+              <strong>${escapeHtml(f.price)}${signeMonnaieColle()}</strong>
               <small>/ ${f.type === 'per_lane' ? 'piste' : 'pers.'}</small>
             </span>
           </span>

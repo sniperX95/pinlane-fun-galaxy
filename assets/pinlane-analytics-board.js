@@ -137,7 +137,7 @@
     var v = Number(value);
     if (!Number.isFinite(v)) v = 0;
     v = Math.round(v);
-    if (format === 'euro') return groupInt(v) + ' €';
+    if (format === 'euro') return groupInt(v) + ' ' + signeMonnaie();
     if (format === 'percent') return String(v) + '%';
     return groupInt(v);
   }

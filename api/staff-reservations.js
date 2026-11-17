@@ -532,7 +532,7 @@ async function calculerLaModification({ body, current, session, requestedCenterI
   // alors sur sa reference (prixQuiSuit, plus bas).
   if (Object.prototype.hasOwnProperty.call(body, 'price') && body.price !== null && body.price !== '') {
     const prix = Number(body.price);
-    if (!Number.isFinite(prix) || prix < 0 || prix > 100000) throw createHttpError('Prix invalide : entre 0 et 100 000 €.', 422);
+    if (!Number.isFinite(prix) || prix < 0 || prix > 100000) throw createHttpError(`Prix invalide : entre 0 et 100 000 ${require('../lib/monnaie').signeDuCentre(requestedCenterId)}.`, 422);
   }
   const patch = {
     ...body,

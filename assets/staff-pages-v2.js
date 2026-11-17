@@ -13,7 +13,7 @@
 
   const esc = (value) => (typeof escapeHtml === 'function' ? escapeHtml(value ?? '') : String(value ?? ''));
   const escJs = (value) => (typeof escapeJsString === 'function' ? escapeJsString(String(value ?? '')) : String(value ?? '').replace(/['"\\]/g, ''));
-  const money = (value) => (typeof formatMoney === 'function' ? formatMoney(value) : `${Math.round(Number(value) || 0)} €`);
+  const money = (value) => (typeof formatMoney === 'function' ? formatMoney(value) : `${Math.round(Number(value) || 0)} ${signeMonnaie()}`);
   // Les notes d un dossier sans leurs marqueurs internes : le mot du client,
   // puis les notes de l equipe (app-main.js getReservationNotesEquipe).
   const crmNotesTexte = (r) => {
@@ -930,7 +930,7 @@
     if (row.nextIsBirthday) {
       return '<span class="crm-pill tone-info">Anniv. à venir</span>';
     }
-    if (ctx.vipThreshold > 0 && Number(row.spent || 0) >= ctx.vipThreshold) return `<span class="crm-pill tone-accent" title="Plus de ${Math.round(ctx.vipThreshold)} € cumulés (seuil réglable dans Établissement)">Client clé</span>`;
+    if (ctx.vipThreshold > 0 && Number(row.spent || 0) >= ctx.vipThreshold) return `<span class="crm-pill tone-accent" title="Plus de ${Math.round(ctx.vipThreshold)} ${signeMonnaie()} cumulés (seuil réglable dans Établissement)">Client clé</span>`;
     if (relance.due) return '<span class="crm-pill tone-warn">À relancer</span>';
     if (row.statusClass === 'new') return '<span class="crm-pill tone-info">Nouveau</span>';
     return '';
@@ -1336,7 +1336,7 @@
     // de 308 € » enoncent une regle differente de celle qui decide. Puisque
     // cette explication devient visible sous les chiffres, elle doit etre juste
     // aux deux endroits.
-    if (estClientCle) badges.push(`<span class="crm-pill tone-accent" title="À partir de ${Math.round(ctx.vipThreshold)} € cumulés (seuil réglable dans Établissement)">Client clé</span>`);
+    if (estClientCle) badges.push(`<span class="crm-pill tone-accent" title="À partir de ${Math.round(ctx.vipThreshold)} ${signeMonnaie()} cumulés (seuil réglable dans Établissement)">Client clé</span>`);
     if (selected.hasBirthday) badges.push('<span class="crm-pill tone-info">Anniversaire</span>');
     const kpi = (label, value) => `<div class="crm-kpi"><div class="crm-kpi-val">${value}</div><div class="crm-kpi-label">${esc(label)}</div></div>`;
     const next = selected.nextBooking;
@@ -5069,7 +5069,7 @@
         <label class="pv2-savoir-sujet"><span>Sujet</span>
           <input maxlength="300" data-pl-focus="emails.savoir.nouveau.sujet" placeholder="Ex. Tarifs des arcades" value="${esc(n.question || '')}" oninput="pv2SavoirNouveauSujet(this.value, this)">
         </label>
-        ${pv2SavoirChamp('nouveau', pv2Mail.reponsesApprises.nouveau || '', 'Ce que l’agent doit savoir', 'Ex. Une carte par personne : 15 € les 30 minutes, 25 € l’heure.')}
+        ${pv2SavoirChamp('nouveau', pv2Mail.reponsesApprises.nouveau || '', 'Ce que l’agent doit savoir', `Ex. Une carte par personne : 15 ${signeMonnaie()} les 30 minutes, 25 ${signeMonnaie()} l’heure.`)}
       </details>`;
   }
   // `options.apercu` : l Apercu ne montre que le suivi et la question du
@@ -7847,7 +7847,7 @@
     (Array.isArray(v.disponibilites) ? v.disponibilites : []).forEach((d) => {
       const heures = (Array.isArray(d.heures) ? d.heures : []).map(emHeureDite).filter(Boolean);
       const quoi = String(d.quoi || '').trim();
-      const prix = d.prix !== null && d.prix !== undefined && Number.isFinite(Number(d.prix)) ? ` · ${Number(d.prix).toLocaleString('fr-BE')} € pour le groupe` : '';
+      const prix = d.prix !== null && d.prix !== undefined && Number.isFinite(Number(d.prix)) ? ` · ${Number(d.prix).toLocaleString('fr-BE')} ${signeMonnaie()} pour le groupe` : '';
       const texte = d.possible && heures.length
         ? `${quoi ? `${quoi}, ` : ''}départs libres à ${heures.join(', ')}${prix}`
         : `${quoi ? `${quoi}, ` : ''}aucun départ libre vérifié`;
@@ -8995,7 +8995,7 @@
     if (typeof peutGeste === 'function' && !peutGeste('exporter')) { toast('Votre rôle ne permet pas de télécharger les exports.'); return; }
     try {
       const payload = await apiRequest(`/api/ops?action=campaignAudience&segment=${encodeURIComponent(segment)}&full=1&centerId=${encodeURIComponent(state.adminCenterId || 'libramont')}`);
-      const rows = [['Nom', 'Email', 'Visites', 'Chiffre (EUR)', 'Dernière visite']];
+      const rows = [['Nom', 'Email', 'Visites', `Chiffre (${deviseMonnaie()})`, 'Dernière visite']];
       for (const r of payload.recipients || []) rows.push([r.name, r.email, r.visits, String(r.revenue).replace('.', ','), r.lastDate]);
       const csv = '﻿' + rows.map((row) => row.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(';')).join('\r\n');
       pv2CampDownload(`destinataires-${segment}.csv`, csv, 'text/csv;charset=utf-8');
@@ -9580,11 +9580,11 @@
       <p class="cev-form-legend">Tarif</p>
       <div class="pev-grid2">
         <div class="field">
-          <label for="cevPrice">Prix (€)</label>
+          <label for="cevPrice">Prix (${signeMonnaie()})</label>
           <input id="cevPrice" type="number" min="0" max="1000" step="1" value="${f.priceValue == null ? '' : esc(f.priceValue)}" oninput="cevFieldNum('priceValue', this.value)">
         </div>
         <div class="field">
-          <label for="cevOldPrice">Ancien prix barré (€)</label>
+          <label for="cevOldPrice">Ancien prix barré (${signeMonnaie()})</label>
           <input id="cevOldPrice" type="number" min="0" max="1000" step="1" value="${f.priceOld == null ? '' : esc(f.priceOld)}" placeholder="aucun" oninput="cevFieldNum('priceOld', this.value)">
         </div>
       </div>
@@ -9724,7 +9724,7 @@
   function cevSaveCreate() {
     const f = catalogEditor.fields || {};
     if (!String(f.name || '').trim()) { cevFail('Donnez un nom à la formule.'); return; }
-    if (f.priceValue == null || !Number.isFinite(Number(f.priceValue))) { cevFail('Indiquez un prix entre 0 et 1000 €.'); return; }
+    if (f.priceValue == null || !Number.isFinite(Number(f.priceValue))) { cevFail(`Indiquez un prix entre 0 et 1000 ${signeMonnaie()}.`); return; }
     const createSteps = cevCollectSteps();
     if (!createSteps.length) { cevFail('Ajoutez au moins une activité (choisissez-la dans la liste).'); return; }
     const formula = cevFieldsToApi();
@@ -9749,7 +9749,7 @@
     if (!id) return;
     const f = catalogEditor.fields || {};
     if (!String(f.name || '').trim()) { cevFail('Le nom ne peut pas être vide.'); return; }
-    if (f.priceValue == null || !Number.isFinite(Number(f.priceValue))) { cevFail('Indiquez un prix entre 0 et 1000 €.'); return; }
+    if (f.priceValue == null || !Number.isFinite(Number(f.priceValue))) { cevFail(`Indiquez un prix entre 0 et 1000 ${signeMonnaie()}.`); return; }
     const api = cevFieldsToApi();
     const patch = {
       name: api.name,
@@ -10071,7 +10071,7 @@
       ${grid ? '<p class="cev-form-hint">Les paliers de cette grille (durées ou nombre de parties) restent ceux du moteur.</p>' : ''}
       <div class="pev-grid2">
         <div class="field pev-field">
-          <label for="aevPrice">Prix (EUR)</label>
+          <label for="aevPrice">Prix (${deviseMonnaie()})</label>
           <input id="aevPrice" type="number" min="0" max="1000" step="1" value="${f.priceValue == null ? '' : esc(f.priceValue)}" ${onSite ? 'disabled' : ''} placeholder="${onSite ? 'au comptoir' : 'vide = réglé sur place'}" oninput="aevSetPrice(this.value)">
         </div>
         <div class="field pev-field">
@@ -10213,7 +10213,7 @@
   // compare les deux fichiers.
   const TF_JOURS_SEM = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
   const TF_MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
-  function tfEuros(n) { n = Math.round(Number(n) * 100) / 100; if (!isFinite(n)) return ''; return `${n.toLocaleString('fr-BE', { minimumFractionDigits: Number.isInteger(n) ? 0 : 2, maximumFractionDigits: 2 })} €`; }
+  function tfEuros(n) { n = Math.round(Number(n) * 100) / 100; if (!isFinite(n)) return ''; return `${n.toLocaleString('fr-BE', { minimumFractionDigits: Number.isInteger(n) ? 0 : 2, maximumFractionDigits: 2 })} ${signeMonnaie()}`; }
   function insecable(s) { return String(s == null ? '' : s).replace(/ /g, ' '); }
   function dureeExacte(m) {
     m = Math.max(0, Math.round(Number(m) || 0));
@@ -10292,7 +10292,7 @@
   function tfEurosMail(n) {
     const v = Math.round(Number(n) * 100) / 100;
     if (!Number.isFinite(v)) return '';
-    return `${Number.isInteger(v) ? String(v) : v.toFixed(2).replace('.', ',')} €`;
+    return `${Number.isInteger(v) ? String(v) : v.toFixed(2).replace('.', ',')} ${signeMonnaie()}`;
   }
   function tfEasing() {
     try { return getComputedStyle(document.documentElement).getPropertyValue('--ease-out-strong').trim() || 'ease-out'; } catch (e) { return 'ease-out'; }
@@ -10484,7 +10484,7 @@
   // NaN = illisible ou hors des bornes du serveur (0 a 1000 €).
   function tfLireNombre(brut) {
     if (typeof brut === 'number') return Number.isFinite(brut) && brut >= PEV_PRICE_MIN && brut <= PEV_PRICE_MAX ? Math.round(brut * 100) / 100 : NaN;
-    const t = String(brut == null ? '' : brut).replace(/[\s  €]/g, '').replace(',', '.');
+    const t = String(brut == null ? '' : brut).replace(new RegExp('[\\s\u00a0\u202f]|' + motifSignesMonnaie(), 'g'), '').replace(',', '.');
     if (t === '') return null;
     if (!/^\d+(\.\d{0,2})?$/.test(t)) return NaN;
     const n = Number(t);
@@ -10793,7 +10793,7 @@
       structure: f && f.comptoir ? 'Les réservations déjà prises gardent leur prix.' : 'Le prix, le prix barré, le nom et la mise en vente de chaque centre.',
     }[champ] || '';
     let savoir = '';
-    if (champ === 'prix') savoir = 'À 0 €, la formule ne se réserve plus en ligne.';
+    if (champ === 'prix') savoir = `À 0 ${signeMonnaie()}, la formule ne se réserve plus en ligne.`;
     if (champ === 'ancien') savoir = 'La remise « -N % » ne s’affiche que sur les offres spéciales, à partir de 5 %.';
     if (champ === 'vente') {
       savoir = f && f.suspendue
@@ -11316,10 +11316,10 @@
   }
   const tfSeVoit = (lieux) => `Se voit dans : ${tfEt(lieux.map((l) => (l === 'autres' ? tfEt(tfAutresCentres()) : TF_LIEUX_NOMS[l].toLowerCase())))}.`;
   function tfTexteAide(type, champ, brut, valide) {
-    if (type === 'grille') return valide ? '' : 'Indiquez un prix de plus de 0 €, 1000 € au plus.';
-    if (type === 'activite') return valide ? 'Vide : vos clients lisent « Prix à l’accueil ».' : 'Indiquez un prix entre 0 et 1000 €, ou laissez vide.';
-    if (champ === 'prix') { if (!valide) return 'Indiquez un prix entre 0 et 1000 €.'; return tfLireNombre(brut) === 0 ? 'À 0 €, la formule ne se réserve plus en ligne.' : ''; }
-    if (champ === 'ancien') return valide ? 'vide : pas de prix barré' : 'Indiquez un prix entre 0 et 1000 €, ou laissez vide.';
+    if (type === 'grille') return valide ? '' : `Indiquez un prix de plus de 0 ${signeMonnaie()}, 1000 ${signeMonnaie()} au plus.`;
+    if (type === 'activite') return valide ? 'Vide : vos clients lisent « Prix à l’accueil ».' : `Indiquez un prix entre 0 et 1000 ${signeMonnaie()}, ou laissez vide.`;
+    if (champ === 'prix') { if (!valide) return `Indiquez un prix entre 0 et 1000 ${signeMonnaie()}.`; return tfLireNombre(brut) === 0 ? `À 0 ${signeMonnaie()}, la formule ne se réserve plus en ligne.` : ''; }
+    if (champ === 'ancien') return valide ? 'vide : pas de prix barré' : `Indiquez un prix entre 0 et 1000 ${signeMonnaie()}, ou laissez vide.`;
     if (champ === 'nom') return valide ? '' : 'Le nom ne peut pas rester vide.';
     return '';
   }
@@ -11333,7 +11333,7 @@
 
   function tfChampsFormuleHtml(f) {
     const v = f.valeur;
-    const unite = f.parPiste ? '€ la piste' : f.enfants ? '€ par enfant' : '€ par personne';
+    const unite = f.parPiste ? `${signeMonnaie()} la piste` : f.enfants ? `${signeMonnaie()} par enfant` : `${signeMonnaie()} par personne`;
     const sPrix = tfSaisie('formule', f.id, 'prix', tfSaisieNombre(v.prix));
     const sAncien = tfSaisie('formule', f.id, 'ancien', tfSaisieNombre(v.ancien));
     const sNom = tfSaisie('formule', f.id, 'nom', v.nom);
@@ -11345,7 +11345,7 @@
       tfRangee('prix', 'Prix', `${tfChampNombre('formule', f.id, 'prix', sPrix)}<span class="tf-unite">${esc(unite)}</span>`, {
         pour: 'tfChamp-prix', desc: tfSeVoit(tfLieuxDe('prix', f)), apres: tfAideHtml('formule', 'prix', sPrix),
       }),
-      tfRangee('ancien', 'Prix barré', `${tfChampNombre('formule', f.id, 'ancien', sAncien, 'aucun')}<span class="tf-unite">€</span>`, {
+      tfRangee('ancien', 'Prix barré', `${tfChampNombre('formule', f.id, 'ancien', sAncien, 'aucun')}<span class="tf-unite">${signeMonnaie()}</span>`, {
         pour: 'tfChamp-ancien', desc: tfSeVoit(tfLieuxDe('ancien', f)), apres: tfAideHtml('formule', 'ancien', sAncien),
       }),
       tfRangee('nom', 'Nom', `<input id="tfChamp-nom" class="tf-champ tf-champ-nom" type="text" maxlength="${PEV_NAME_MAX}" autocomplete="off" value="${esc(sNom.texte)}" data-tf-champ="nom" data-pl-focus="tf:nom" aria-describedby="tfD-nom tfA-nom"${sNom.invalide ? ' aria-invalid="true"' : ''}>`, {
@@ -11378,7 +11378,7 @@
       const voit = (clients, mot, code) => `<button type="button" class="tf-seg-b${Boolean(f.comptoirSeul) !== clients ? ' is-on' : ''}" aria-pressed="${Boolean(f.comptoirSeul) !== clients}" id="tfSm-${code}" data-tf-action="sm-${code}" data-tf-id="${esc(f.id)}" data-pl-focus="tf:sm-${code}">${mot}</button>`;
       const champs = tfPeutTarifs()
         ? `<div class="tf-r"><label class="tf-r-nom" for="tfSmNom">Nom</label><div class="tf-r-saisie"><input id="tfSmNom" class="tf-champ tf-champ-nom" type="text" maxlength="80" autocomplete="off" value="${esc(v.nom)}" data-pl-focus="tf:sm-nom"></div></div>
-          <div class="tf-r"><label class="tf-r-nom" for="tfSmPrix">Prix</label><div class="tf-r-saisie"><input id="tfSmPrix" class="tf-champ tf-champ-nombre" type="text" inputmode="decimal" autocomplete="off" maxlength="9" value="${esc(tfSaisieNombre(v.prix))}" data-pl-focus="tf:sm-prix"><span class="tf-unite">€ par personne</span></div></div>
+          <div class="tf-r"><label class="tf-r-nom" for="tfSmPrix">Prix</label><div class="tf-r-saisie"><input id="tfSmPrix" class="tf-champ tf-champ-nombre" type="text" inputmode="decimal" autocomplete="off" maxlength="9" value="${esc(tfSaisieNombre(v.prix))}" data-pl-focus="tf:sm-prix"><span class="tf-unite">${signeMonnaie()} par personne</span></div></div>
           <div class="tf-r"><label class="tf-r-nom" for="tfSmMin">Dès</label><div class="tf-r-saisie"><input id="tfSmMin" class="tf-champ tf-champ-nombre" type="number" min="1" max="240" inputmode="numeric" value="${esc(String(f.minPax))}" data-pl-focus="tf:sm-min"><span class="tf-unite">joueurs</span></div></div>
           <div class="tf-catalogue"><button type="button" class="pv2-btn sm" id="tfSmEnregistrer" data-tf-action="sm-enregistrer" data-tf-id="${esc(f.id)}" data-pl-focus="tf:sm-enregistrer">Enregistrer</button></div>`
         : `${ligne('Prix', v.prix == null ? 'à l’accueil' : `${tfEuros(v.prix)} ${unite}`)}${ligne('Nom', v.nom)}`;
@@ -11609,7 +11609,7 @@
         const s = tfSaisie('grille', c.grille, c.cle, tfSaisieNombre(c.prix));
         const titre = c.groupe && c.groupe !== jours ? `<p class="tf-grille-titre">${esc(c.groupe)}</p>` : '';
         jours = c.groupe || '';
-        return titre + tfRangee(c.champ, c.label, `${tfChampNombre('grille', a.id, c.champ, s)}<span class="tf-unite">€ ${esc(tfUniteCase(c))}</span>`, {
+        return titre + tfRangee(c.champ, c.label, `${tfChampNombre('grille', a.id, c.champ, s)}<span class="tf-unite">${signeMonnaie()} ${esc(tfUniteCase(c))}</span>`, {
           pour: `tfChamp-${c.champ}`, desc: tfSeVoit(tfLieuxGrille()), apres: tfAideHtml('grille', c.champ, s),
         });
       }).join('')}${note}`;
@@ -11627,7 +11627,7 @@
         <p class="tf-r-dit">Réglé par ${esc(tfQui('settings.manage'))}, pour tous vos centres.</p>`;
     }
     const s = tfSaisie('activite', a.id, 'prix', tfSaisieNombre(a.prix));
-    return tfRangee('prix', 'Prix', `${tfChampNombre('activite', a.id, 'prix', s, 'à l’accueil')}<span class="tf-unite">${esc(a.unitLabel ? `€ ${a.unitLabel}` : '€')}</span>`, {
+    return tfRangee('prix', 'Prix', `${tfChampNombre('activite', a.id, 'prix', s, 'à l’accueil')}<span class="tf-unite">${esc(a.unitLabel ? `${signeMonnaie()} ${a.unitLabel}` : signeMonnaie())}</span>`, {
       pour: 'tfChamp-prix',
       desc: tfSeVoit(tfLieuxActivite(a)),
       apres: `${tfAideHtml('activite', 'prix', s)}${a.paliers ? '<p class="tf-r-dit">C’est le prix de base : des prix par jour ou par heure le remplacent sur certains créneaux.</p>' : ''}`,
@@ -12507,7 +12507,7 @@
       const lu = (id) => (document.getElementById(id) || {}).value;
       const prix = tfLireNombre(lu('tfSmPrix'));
       if (!String(lu('tfSmNom') || '').trim()) { pevToast('Le nom ne peut pas rester vide.'); return; }
-      if (prix == null || Number.isNaN(prix)) { pevToast('Indiquez un prix entre 0 et 1000 €.'); return; }
+      if (prix == null || Number.isNaN(prix)) { pevToast(`Indiquez un prix entre 0 et 1000 ${signeMonnaie()}.`); return; }
       tfFormuleGardee('modifierFormuleSurMesure', el.getAttribute('data-tf-id'), { nom: lu('tfSmNom'), prixParPersonne: prix, minPax: Number(lu('tfSmMin')) }, 'Formule enregistrée.');
       return;
     }
@@ -12846,7 +12846,7 @@
     ['clients', 'Clients', '◉'],
     ['emails', 'Emails & relances', '✉'],
     ['campaigns', 'Campagnes', '◍'],
-    ['prices', 'Activités & tarifs', '€'],
+    ['prices', 'Activités & tarifs', '{signe}'],
     ['users', 'Équipe & accès', '⚿'],
     ['establishment', 'Établissement', '⌂'],
   ];
@@ -12859,7 +12859,7 @@
     PALETTE_PAGES.forEach(([key, label, icon]) => {
       if (typeof canUseStaffPage === 'function' && !canUseStaffPage(key)) return;
       if (q && !label.toLowerCase().includes(q)) return;
-      items.push({ section: 'Navigation', icon, label, hint: 'Aller à', run: () => openStaffMenuPage(key) });
+      items.push({ section: 'Navigation', icon: icon === '{signe}' ? signeMonnaie() : icon, label, hint: 'Aller à', run: () => openStaffMenuPage(key) });
     });
     const actions = [
       typeof peutGeste !== 'function' || peutGeste('reserver') ? ['＋', 'Nouvelle réservation', () => openQuickBook({})] : null,

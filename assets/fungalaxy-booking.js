@@ -397,7 +397,13 @@
   function jourLong(s) { var d = deIso(s); return cap(JOURS[d.getDay()] + ' ' + d.getDate() + ' ' + MOIS[d.getMonth()]); }
   function jourCourt(s) { var d = deIso(s); return cap(JOURS_COURTS[d.getDay()] + ' ' + d.getDate() + ' ' + MOIS_COURTS[d.getMonth()]); }
   function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
-  function euros(n) { n = Math.round(Number(n) * 100) / 100; if (!isFinite(n)) return ''; return n.toLocaleString('fr-BE', { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 }) + ' €'; }
+  // LA MONNAIE DU CENTRE (2026-11-17) : celle de sa meta (cle absente = euro), ecrite par
+  // assets/pinlane-monnaie.js. Sans ce fichier, le code de la meta s affiche tel quel : jamais
+  // un « € » pour un centre qui vend en francs.
+  function deviseMonnaie() { var c = meta && meta.center && meta.center.currency; return window.PinlaneMonnaie ? window.PinlaneMonnaie.devise(c) : (c || 'EUR'); }
+  function signeMonnaie() { return window.PinlaneMonnaie ? window.PinlaneMonnaie.signe(deviseMonnaie()) : (deviseMonnaie() === 'EUR' ? '€' : deviseMonnaie()); }
+  function motifSignes() { return window.PinlaneMonnaie ? window.PinlaneMonnaie.MOTIF_SIGNES : '€'; }
+  function euros(n) { n = Math.round(Number(n) * 100) / 100; if (!isFinite(n)) return ''; return n.toLocaleString('fr-BE', { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 }) + ' ' + signeMonnaie(); }
   function personnes(n) { return n + ' personne' + (n > 1 ? 's' : ''); }
   function joueurs(n) { return n + ' joueur' + (n > 1 ? 's' : ''); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -412,7 +418,7 @@
   // « / » puis « personne »). Un nombre reste avec son unite, un « · » avec
   // ce qui le precede, un « × » ou un « = » avec ce qui le suit, un prix
   // avec ce qu il paie, « sur place » d un seul tenant.
-  var UNITES = '€|min|h|heures?|pistes?|joueurs?|parties?|personnes?|groupes?|places?|ans|enfants?|tables?|cartes?|sessions?|participants?';
+  var UNITES = motifSignes() + '|min|h|heures?|pistes?|joueurs?|parties?|personnes?|groupes?|places?|ans|enfants?|tables?|cartes?|sessions?|participants?';
   var NOMBRE_UNITE = new RegExp('(\\d) (?=(?:' + UNITES + ')(?![A-Za-zÀ-ÿ]))', 'g');
   function typo(s) {
     return String(s == null ? '' : s)
@@ -844,7 +850,7 @@
   // seules des balises s ajoutent, pour mettre le prix en avant, poser les
   // conditions en tuiles et les tarifs en liste.
   var GENRES_INFO = { 'Le tarif': 'lead', 'Votre sélection': 'lead', 'Accès et participants': 'faits', 'Les offres disponibles': 'tarifs', 'Ce qui est inclus': 'inclus', 'À savoir': 'note' };
-  function montantsEnAvant(texte) { return esc(texte).replace(/\d[\d   .,]*\s?€/g, function (m) { return '<b class="fg-info-num">' + m + '</b>'; }); }
+  function montantsEnAvant(texte) { return esc(texte).replace(new RegExp('\\d[\\d\u202f\u00a0 .,]*\\s?(?:' + motifSignes() + ')', 'g'), function (m) { return '<b class="fg-info-num">' + m + '</b>'; }); }
   function ligneCoupee(l, classe) {
     var i = l.indexOf(' : '), k, sep, v;
     if (i > 0) { k = l.slice(0, i); sep = ' : '; v = l.slice(i + 3); }
@@ -7833,7 +7839,7 @@
     // La mesure de conversion pour le site hote : relue dans le dossier cree,
     // sans aucune donnee personnelle.
     poster({ type: 'pinlane:booking', detail: {
-      reservationId: r.id, center: CENTER, amount: Number(r.price) || 0, currency: 'EUR', pax: paxRes, date: dateRes,
+      reservationId: r.id, center: CENTER, amount: Number(r.price) || 0, currency: deviseMonnaie(), pax: paxRes, date: dateRes,
       startTime: heureRes, type: r.type || (state.onglet === 'formules' ? 'formule' : 'visite'), formuleId: r.formuleId || state.formuleId || '', label: r.label || '', status: confirme ? 'confirmed' : 'received',
     } });
     if (MIROIR) recopierDansLAncienFormulaire(r, { date: dateRes, heure: heureRes, pax: paxRes });
@@ -7879,7 +7885,7 @@
   // s ouvre qu une fois les deux arrives (jamais un ecran sans sa mise en
   // forme). Un fichier qui echoue se redemande au clic suivant, celui qui est
   // arrive ne se recharge pas.
-  var SM_JS = '/assets/fungalaxy-sur-mesure.js?v=20261113groupe';
+  var SM_JS = '/assets/fungalaxy-sur-mesure.js?v=20261118centres';
   var SM_CSS = '/assets/fungalaxy-sur-mesure.css?v=20261117habillage';
   var smModule = null, smFichiers = {};
   function chargerFichier(cle, balise, attributs) {
@@ -7992,7 +7998,7 @@
     var I = {
       doc: doc, $: $, $$: $$, CENTER: CENTER, EMBED: EMBED, sm: sm, state: state,
       activite: activite, activitesVendables: activitesVendables, aller: aller, appelCentre: appelCentre, champ: champ,
-      decouperTitres: decouperTitres, deIso: deIso, dire: dire, esc: esc, euros: euros,
+      decouperTitres: decouperTitres, deIso: deIso, dire: dire, esc: esc, euros: euros, signeMonnaie: signeMonnaie,
       eveiller: eveiller, finGeste: finGeste, heureRonde: heureRonde, icone: icone, iso: iso, jourInfo: jourInfo,
       jourLong: jourLong, joursLisibles: joursLisibles, libelleFamille: libelleFamille, lienContact: lienContact,
       ligneCentre: ligneCentre, minuscule: minuscule, montrer: montrer, motUnite: motUnite, ouvrirCalendrier: ouvrirCalendrier,

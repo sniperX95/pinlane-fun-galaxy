@@ -15316,7 +15316,7 @@ function ebChoixCalendrierHtml(c) {
 // Un autre calendrier se lit apres Enregistrer : le serveur relit ses conges, la page n invente rien avant.
 function ebCalendrierChoisi(select) {
   const aide = document.getElementById('ebCalendrierAide');
-  if (aide) aide.textContent = 'Enregistrez : les jours fériés et les congés de ce calendrier s’appliqueront, et l’année plus bas les montrera.';
+  if (aide) aide.textContent = 'Enregistrez pour appliquer les jours fériés et les congés de ce calendrier. L’année plus bas les montrera ensuite.';
 }
 function ebVacancesHtml(c) {
   return `${ebChoixCalendrierHtml(c)}

@@ -161,7 +161,7 @@ function jugerSansForcer(f, dire2) {
   dire2(f.force === '201 true' && /À placer : créé malgré le conflit\. Duckpin Bowling est complet/.test(f.noteForce), '[B] avec « Créer quand même » : le dossier part « À placer », avec sa raison', `${f.force} / ${f.noteForce.slice(0, 120)}`);
   dire2(!/À placer/.test(f.simule) && !/À placer/.test(f.second), '[D] sans dossier « À placer » sur l heure, le refus reste « complet » seul', `${f.simule} / ${f.second}`);
 }
-const RAISON_A_PLACER = /Duckpin Bowling est complet sur ce créneau\. Un dossier « À placer » de 12 personnes \(15:00\) y garde sa place : pour la libérer, placez-le à une autre heure ou annulez-le\./;
+const RAISON_A_PLACER = /Duckpin Bowling est complet sur ce créneau\. Un dossier « À placer » de 12 personnes \(15:00\) y garde sa place\. Pour la libérer, placez-le à une autre heure ou annulez-le\./;
 function jugerAPlacer(f, dire2) {
   dire2(f.tenant === 201 && f.attente === '201 true', 'MONTAGE un groupe tient le duckpin, un second part « À placer » a la meme heure', `${f.tenant} / ${f.attente}`);
   dire2(RAISON_A_PLACER.test(f.simule), '[D] le groupe qui tenait les pistes annule : la simulation dit qu un dossier « À placer » garde la place', f.simule);

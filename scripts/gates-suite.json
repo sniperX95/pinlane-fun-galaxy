@@ -420,6 +420,7 @@
     "test:confirmation-en-file",
     "test:suppression-version",
     "test:connexion-pretee",
+    "test:schema-simulation",
     "test:reservation-edit-clarity",
     "test:rush-status",
     "test:notes-scope",

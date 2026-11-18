@@ -28639,7 +28639,9 @@ function toggleFormulaActivity(reservationId, key, ev) {
   if (wasDone) {
     delete progress[key];
   } else {
-    progress[key] = { done: true, doneAt: new Date().toISOString(), by: state.staffAuthSession?.member?.name || 'Staff' };
+    // Le fondateur ne se lit pas dans un historique, meme le sien a l instant du geste (lib/fondateur-invisible.js).
+    const fondateur = typeof canUseStaffPermission === 'function' && canUseStaffPermission('platform.admin');
+    progress[key] = { done: true, doneAt: new Date().toISOString(), by: fondateur ? '' : (state.staffAuthSession?.member?.name || 'Staff') };
   }
   const nextReservation = { ...current, activityProgress: progress };
   const requestKey = Number(reservationId);
@@ -29789,7 +29791,9 @@ function ajouterNoteEquipe(reservationId, ev) {
     });
     return;
   }
-  const note = { t: texte, par: state.staffAuthSession?.member?.name || '', le: new Date().toISOString() };
+  // Le fondateur ne signe pas sa note, meme a l instant du geste (lib/fondateur-invisible.js) : « L’équipe ».
+  const fondateur = typeof canUseStaffPermission === 'function' && canUseStaffPermission('platform.admin');
+  const note = { t: texte, par: fondateur ? '' : (state.staffAuthSession?.member?.name || ''), le: new Date().toISOString() };
   const apres = { ...avant, notes: [String(avant.notes || '').trim(), NOTE_EQUIPE_TAG + JSON.stringify(note)].filter(Boolean).join('\n') };
   notesEquipeBrouillons.delete(id);
   notesEquipeOuvertes.delete(id);

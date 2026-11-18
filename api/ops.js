@@ -800,7 +800,8 @@ async function handleGet(req, res, options = {}) {
       kind: action === 'classeurJour' ? 'excel' : 'feuille',
       vierge: url.searchParams.get('vierge') === '1',
       sansMontants: Boolean(res.__sansMontants),
-      sansFondateur: res.__nomsDuFondateur || null,
+      // Le classeur du jour se lit comme la console : sans lui, lui compris (lib/fondateur-invisible.js).
+      sansFondateur: require('../lib/fondateur-invisible').nomsMasques(res),
     });
     res.statusCode = 200;
     res.setHeader('Content-Type', doc.type);

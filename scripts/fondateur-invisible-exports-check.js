@@ -6,9 +6,9 @@
 // par mail, jamais par sendJson : la marque des reponses ne le voit pas. Trois fichiers, par leur vrai code :
 //   [C] « Tout exporter » (GET /api/ops?action=exportComplet, lib/export-complet.js) : la base du centre ; a la
 //       Direction, ni la ligne d equipe du fondateur, ni ses lectures, ni ses gestes au journal, ni son nom
-//       sous une note ; au fondateur, tout
+//       sous une note ; au fondateur, tout (la copie brute de la base, comme le journal d audit)
 //   [J] le classeur du jour de la page Secours (GET /api/ops?action=classeurJour, lib/secours-api.js et
-//       lib/export-excel.js) : les demandes du jour sans son nom
+//       lib/export-excel.js) : les demandes du jour sans son nom, pour lui aussi (2026-11-18)
 //   [E] le classeur qui part chaque jour a l adresse de secours du centre (lib/secours-envoi.js) : pareil
 // Le classeur est remplace par un double qui note chaque ligne ecrite (lib/xlsx-writer.js) : on lit ce que le
 // fichier contiendrait, sans le dezipper. La base est en memoire ; rien ne part.
@@ -164,7 +164,7 @@ function monter(liste = []) {
       const F = require(path.join(ROOT, 'lib/fondateur-invisible.js'));
       if (res && typeof res === 'object') {
         res.__sansMontants = !auth.sessionHasPermission(s, 'payments.view');
-        res.__nomsDuFondateur = F.estFondateur(s) ? null : await F.nomsDuFondateur();
+        await F.marquerLaReponse(res, s, permission);
       }
       return { ...s, authorizedCenterId: options.centerId && options.centerId !== 'all' ? options.centerId : s.centerId };
     },
@@ -232,7 +232,9 @@ async function groupe(liste = []) {
   v(r.statut === 200 && sansLui(r.texte) && demandes.includes('Marie Dupont'), '[J1] le classeur du jour telecharge par la Direction : ni son nom ni ses traces ; Marie reste', demandes.slice(0, 300));
   etat.session = FONDATEUR();
   r = await obtenir(m.ops, `/api/ops?action=classeurJour&centerId=libramont&date=${JOUR}`);
-  v(r.statut === 200 && texteDe(feuille(r, 'Demandes sur mesure')).includes(NOM_ACTUEL), '[J2] le fondateur, lui, y lit son nom', texteDe(feuille(r, 'Demandes sur mesure')).slice(0, 200));
+  // 2026-11-18 : le classeur du jour se lit comme la console, sans lui, lui compris.
+  const sesDemandes = texteDe(feuille(r, 'Demandes sur mesure'));
+  v(r.statut === 200 && sansLui(r.texte) && sesDemandes.includes('Client exigeant sur les horaires') && sesDemandes.includes('Marie Dupont'), '[J2] le fondateur telecharge le meme classeur du jour : ni son nom ni ses traces ; Marie reste', sesDemandes.slice(0, 200));
   // [E] Le classeur envoye chaque jour a l adresse de secours du centre (8 h).
   etat.envois = [];
   const { mapReservation } = require(path.join(ROOT, 'lib/database.js'));
@@ -253,7 +255,8 @@ async function groupe(liste = []) {
 const GARDES = [
   { lettre: '[C1]', fichier: 'lib/export-complet.js', de: "const lignes = sansFondateur ? require('./fondateur-invisible').masquerFondateur(lues, sansFondateur) : lues;", vers: 'const lignes = lues;' },
   { lettre: '[C1]', fichier: 'api/ops.js', de: ", sansFondateur: res.__nomsDuFondateur || null });", vers: ' });' },
-  { lettre: '[J1]', fichier: 'api/ops.js', de: '      sansFondateur: res.__nomsDuFondateur || null,\n', vers: '' },
+  { lettre: '[J1]', fichier: 'api/ops.js', de: "      sansFondateur: require('../lib/fondateur-invisible').nomsMasques(res),\n", vers: '' },
+  { lettre: '[J2]', fichier: 'api/ops.js', de: "      sansFondateur: require('../lib/fondateur-invisible').nomsMasques(res),\n", vers: '      sansFondateur: res.__nomsDuFondateur || null,\n' },
   { lettre: '[J1]', fichier: 'lib/secours-api.js', de: 'genereLe: new Date(), sansFondateur }),', vers: 'genereLe: new Date() }),' },
   { lettre: '[J1]', fichier: 'lib/export-excel.js', de: "const sansLui = (v) => (sansFondateur ? require('./fondateur-invisible').masquerFondateur(v, sansFondateur) : v);", vers: 'const sansLui = (v) => v;' },
   { lettre: '[E1]', fichier: 'lib/secours-envoi.js', de: "const sansFondateur = await require('./fondateur-invisible').nomsDuFondateur();", vers: 'const sansFondateur = null;' },

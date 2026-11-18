@@ -375,9 +375,10 @@ const traiterAssistant = async (req, res) => {
     // Le flux ne passe pas par sendJson : en mode demande, une carte ou la demande enregistree (que la
     // preparation d un collegue peut avoir chiffree) perd ses montants pour qui ne les voit pas. Et pour une
     // session du centre, aucun evenement ne porte une trace du fondateur (lib/fondateur-invisible.js), comme
-    // sendJson pour une reponse : la demande enregistree porte son suivi.
-    const nomsAMasquer = F.estFondateur(session) ? null : await F.nomsDuFondateur();
-    const sansLeFondateur = (donnees) => (nomsAMasquer ? F.masquerFondateur(donnees, nomsAMasquer) : donnees);
+    // sendJson pour une reponse : la demande enregistree porte son suivi. La sienne lit ce suivi sans lui
+    // (2026-11-18).
+    const nomsAMasquer = await F.nomsDuFondateur();
+    const sansLeFondateur = (donnees) => F.selonLaSession(session, donnees, nomsAMasquer);
     const emettre = enDemande && !montants
       ? (type, donnees) => emettreBrut(type, ['proposition', 'fin'].includes(type) ? require('../lib/montants-role').sansMontants(sansLeFondateur(donnees)) : sansLeFondateur(donnees))
       : (type, donnees) => emettreBrut(type, sansLeFondateur(donnees));

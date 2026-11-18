@@ -27,7 +27,6 @@ const { enqueueReservationAutomation } = require('../lib/ops-jobs');
 const { afterReservationCreated, prepareReservationOps } = require('../lib/reservation-ops');
 const { alerterLimiteDeTables } = require('../lib/limite-tables');
 const { requireStaffPermission, getStaffSessionFromRequest, sessionHasPermission, requestedCenterIsSameClient } = require('../lib/staff-auth');
-const { estFondateur } = require('../lib/fondateur-invisible');
 
 // Les deux barrieres de requireStaffPermission, sans rien envoyer : une session
 // qui demande un numero d un autre centre pourrait-elle y passer ? Changer de
@@ -119,13 +118,15 @@ const CHAMPS_COPIE_SECOURS = ['date', 'startTime', 'pax', 'program', 'formuleId'
 async function rendreLeCorpsSansFondateur(body, current, session, res) {
   const F = require('../lib/fondateur-invisible');
   const cles = ['activityProgress', 'activity_progress'].filter((cle) => body[cle] && typeof body[cle] === 'object');
-  if (res.__nomsDuFondateur) {
-    if (typeof body.notes === 'string') body.notes = F.notesRendues(body.notes, String(current.notes || ''), res.__nomsDuFondateur);
-    cles.forEach((cle) => { body[cle] = F.suiviRendu(body[cle], current.activityProgress, res.__nomsDuFondateur); });
-    return;
+  // Le dossier que la console a recu sans lui (une session du centre, et la sienne depuis le 2026-11-18)
+  // revient tel qu en base : une note ou une coche masquee ne se resigne ni ne s efface.
+  const masques = F.nomsMasques(res);
+  if (masques) {
+    if (typeof body.notes === 'string') body.notes = F.notesRendues(body.notes, String(current.notes || ''), masques);
+    cles.forEach((cle) => { body[cle] = F.suiviRendu(body[cle], current.activityProgress, masques); });
   }
   if (!F.estFondateur(session) || !cles.length) return;
-  const noms = await F.nomsDuFondateur();
+  const noms = masques || await F.nomsDuFondateur();
   cles.forEach((cle) => { body[cle] = F.suiviSansSignature(body[cle], current.activityProgress, noms); });
 }
 
@@ -698,8 +699,9 @@ const traiter = async (req, res) => {
           sendError(res, 404, 'Réservation introuvable.');
           return;
         }
-        // Ce que le fondateur a fait ne se lit que par lui (lib/fondateur-invisible.js).
-        const historique = await lireHistoriqueDossier({ centerId: centre, reservationId: dossier.id, avecFondateur: estFondateur(sessionHistorique) });
+        // Ce que le fondateur a fait ne s y lit pas, lui compris (2026-11-18, lib/fondateur-invisible.js) :
+        // l historique d un dossier est celui de l equipe. Ses gestes restent au journal de la plateforme.
+        const historique = await lireHistoriqueDossier({ centerId: centre, reservationId: dossier.id });
         sendJson(res, 200, { ok: true, id: dossier.id, historique });
         return;
       }

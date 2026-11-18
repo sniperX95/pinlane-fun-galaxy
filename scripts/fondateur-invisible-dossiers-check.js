@@ -18,13 +18,14 @@
 //   [S] le suivi des activites : la coche du fondateur ne le nomme pas, celle de Marie oui
 //   [E] les departs epingles : il ne s y inscrit pas
 //   [L] la lecture : le staff-state rend ses vieilles traces sans nom a Marie (Direction) et a Zoe
-//       (Bar), entieres au fondateur
-//   [T] le chemin du retour : le dossier masque, renvoye par Marie ou par Zoe, ne resigne ni n efface rien
+//       (Bar), et au fondateur lui-meme (2026-11-18 : un historique du centre ne le nomme pas, lui compris)
+//   [T] le chemin du retour : le dossier masque, renvoye par Marie, par Zoe ou par le fondateur, ne
+//       resigne ni n efface rien
 //   Partout, le journal d audit garde l acte du fondateur, a son identifiant de membre.
 //
-// La marque que requireStaffPermission pose sur la reponse (res.__nomsDuFondateur) est posee ici par le
-// banc, avec la meme regle (estFondateur, nomsDuFondateur) : scripts/fondateur-invisible-check.js prouve
-// la vraie, sur le vrai lib/staff-auth.js.
+// La marque que requireStaffPermission pose sur la reponse est posee ici par le banc, avec la meme regle
+// (lib/fondateur-invisible.js, marquerLaReponse) : scripts/fondateur-invisible-check.js prouve la vraie,
+// sur le vrai lib/staff-auth.js.
 //
 // Contre-preuves (sauf --sans-contre-preuves) : chaque garde retiree en memoire (le disque n est jamais
 // ecrit) doit faire rougir sa lettre.
@@ -196,7 +197,6 @@ function SECOURS() {
 async function comme(m, session, handler, methode, url, corps) {
   m.changerSession(session);
   const F = require(path.join(ROOT, 'lib/fondateur-invisible.js'));
-  const marque = F.estFondateur(session) ? null : await F.nomsDuFondateur();
   const req = Readable.from(corps === undefined ? [] : [Buffer.from(JSON.stringify(corps))]);
   req.method = methode;
   req.url = url;
@@ -205,11 +205,11 @@ async function comme(m, session, handler, methode, url, corps) {
     statusCode: 200,
     entetes: {},
     corps: '',
-    __nomsDuFondateur: marque,
     setHeader(k, v) { this.entetes[k.toLowerCase()] = v; },
     getHeader(k) { return this.entetes[k.toLowerCase()]; },
     end(b) { this.corps = String(b || ''); },
   };
+  await F.marquerLaReponse(res, session, 'reservations.view');
   await handler(req, res);
   let json = null;
   try { json = JSON.parse(res.corps); } catch (error) { json = null; }
@@ -277,7 +277,8 @@ async function groupeNotes(mutations = []) {
   let x = await m.patch(FONDATEUR(), { id: SOLO, centerId: 'libramont', noteEquipe: { ajout: 'Prévenir le client du retard' } });
   let n = noteDe(enBase(SOLO).notes, 'Prévenir le client du retard');
   v(x.statut === 200 && n && n.par === '', '[N1] la note ajoutee par le fondateur est signee par personne', { statut: dire(x), n });
-  v(x.r && x.r.notes.includes(NOM_ACTUEL), '[N2] le fondateur, lui, relit ses vieilles notes a son nom', x.r && x.r.notes);
+  // 2026-11-18 : un historique du centre ne le nomme pas, lui compris ; la note reste dans la reponse.
+  v(x.r && sansLui(x.r.notes) && x.r.notes.includes('Vérifier le prix avec la direction'), '[N2] le fondateur relit ses vieilles notes sans son nom, leur texte reste', x.r && x.r.notes);
   x = await m.patch(FONDATEUR(), { id: SOLO, centerId: 'libramont', noteEquipe: { modifier: { le: LE('09:00'), baseText: 'Gâteau au frigo du bar', texte: 'Gâteau au frigo du bar, bougies 10' } } });
   n = noteDe(enBase(SOLO).notes, 'Gâteau au frigo du bar, bougies 10');
   v(x.statut === 200 && n && n.par === 'Luc Martin' && n.modifiePar === '' && Boolean(n.modifieLe), '[N3] la note de Luc reecrite par le fondateur : Luc reste l auteur, « modifiée par » ne le nomme pas', { statut: dire(x), n });
@@ -391,8 +392,19 @@ async function groupeLectureEtRetour(mutations = []) {
   v(d && d.par === '' && d.quoi[0] === 'Heure 13:30 → 14:00', '[L5] sa derniere modification se lit sans nom', d);
   const zoe = await lire(ZOE());
   v(zoe.x.statut === 200 && zoe.solo && sansLui(zoe.x.brut) && zoe.x.brut.includes('Luc Martin'), '[L6] Zoe (Bar) ne le voit pas non plus', zoe.x.brut.slice(0, 200));
+  // LUI COMPRIS (2026-11-18) : le fondateur lit son dossier comme Marie, ses vieilles traces sans nom.
   const lui = await lire(FONDATEUR());
-  v(lui.x.statut === 200 && lui.solo && JSON.stringify(lui.solo).includes(NOM_ACTUEL) && lui.solo.activityProgress.bowling.by === NOM_ACTUEL, '[L7] le fondateur, lui, voit tout', lui.solo && lui.solo.activityProgress);
+  const l = lui.solo || {};
+  const sesNotes = notesLues(l.notes);
+  v(lui.x.statut === 200 && lui.solo && sansLui(lui.x.brut) && l.activityProgress && l.activityProgress.bowling.by === '' && l.activityProgress.bowling.done === true
+    && Array.isArray(l.extras) && l.extras[0].par === '' && l.opsPlan && l.opsPlan.derniereModif.par === '' && l.opsPlan.derniereModif.quoi[0] === 'Heure 13:30 → 14:00'
+    && sesNotes.some((x) => x.t === 'Vérifier le prix avec la direction' && x.par === '') && sesNotes.some((x) => x.t === 'Gâteau au frigo du bar' && x.par === 'Luc Martin'),
+  '[L7] le fondateur, lui aussi, lit ses vieilles traces sans son nom (notes, coche, sur mesure, derniere modification) ; Luc garde Luc', { statut: lui.x.statut, extrait: lui.x.brut.slice(0, 200) });
+  // Sa journee masquee n est pas celle d avant : un poste qui garde la journee d avant le 18/11 (a son nom)
+  // ne la recoit pas en 304.
+  const revLui = String(lui.x.json.revision || '');
+  const revMarie = String(marie.x.json.revision || '');
+  v(/:st$/.test(revLui) && /:sf$/.test(revMarie) && revLui.replace(/:st$/, '') === revMarie.replace(/:sf$/, ''), '[L8] sa journee masquee a sa propre revision (:st), distincte de la sienne d avant et de celle du centre (:sf)', { revLui, revMarie });
 
   // [T] Marie renvoie le dossier tel qu elle l a lu, et change le nom.
   const notesAvant = enBase(SOLO).notes;
@@ -416,6 +428,15 @@ async function groupeLectureEtRetour(mutations = []) {
   const suivi = suiviEnBase(SOLO);
   v(x.statut === 200 && suivi.bowling.by === NOM_ACTUEL && suivi.minigolf.by === 'Luc Martin' && suivi.laser_game.by === 'Zoé Bar',
     '[T6] Zoe renvoie le suivi masque avec sa coche : la coche du fondateur garde son auteur en base', { statut: dire(x), suivi });
+  // Le fondateur renvoie le dossier tel qu il l a lu (sans son nom), et change le nom du groupe.
+  const relu = (await lire(FONDATEUR())).solo || {};
+  const notesF = enBase(SOLO).notes;
+  const suiviF = JSON.stringify(suiviEnBase(SOLO));
+  x = await m.patch(FONDATEUR(), corpsDe(relu, { name: `${relu.name} (groupe)` }));
+  const extrasF = typeof enBase(SOLO).extras === 'string' ? JSON.parse(enBase(SOLO).extras) : enBase(SOLO).extras;
+  v(x.statut === 200 && enBase(SOLO).name === `${relu.name} (groupe)` && enBase(SOLO).notes === notesF && JSON.stringify(suiviEnBase(SOLO)) === suiviF
+    && extrasF && extrasF[0].par === NOM_ACTUEL && extrasF[1].par === 'Luc Martin',
+  '[T7] le fondateur renvoie son dossier masque : ses notes, sa coche et sa ligne de sur mesure restent telles qu en base', { statut: dire(x), notes: enBase(SOLO).notes, suivi: suiviEnBase(SOLO), extras: extrasF });
   return liste;
 }
 
@@ -431,10 +452,14 @@ const GARDES = [
   { nom: 'le suivi entier du fondateur garde son nom', fichier: 'api/staff-reservations.js', de: '  cles.forEach((cle) => { body[cle] = F.suiviSansSignature(body[cle], current.activityProgress, noms); });\n', vers: '', groupe: groupeSuivi, lettre: '[S2]' },
   { nom: 'la note « À placer » nomme le fondateur', fichier: 'lib/reserver-fenetre.js', de: "  if (require('./fondateur-invisible').estFondateur(session)) return '';\n", vers: '', groupe: groupeCreation, lettre: '[C1]' },
   { nom: 'les departs epingles gardent le fondateur', fichier: 'lib/registre.js', de: "  if (!member || require('./fondateur-invisible').estFondateur(session)) return '';", vers: "  if (!member) return '';", groupe: groupeEpingles, lettre: '[E1]' },
-  { nom: 'la reponse a un centre n est plus masquee', fichier: 'lib/http.js', de: "const sansFondateur = res.__nomsDuFondateur ? require('./fondateur-invisible').masquerFondateur(payload, res.__nomsDuFondateur) : payload;", vers: 'const sansFondateur = payload;', groupe: groupeLectureEtRetour, lettre: '[L1]' },
-  { nom: 'les notes masquees reviennent comme neuves', fichier: 'api/staff-reservations.js', de: "    if (typeof body.notes === 'string') body.notes = F.notesRendues(body.notes, String(current.notes || ''), res.__nomsDuFondateur);\n", vers: '', groupe: groupeLectureEtRetour, lettre: '[T1]' },
-  { nom: 'Zoe est refusee sur les notes masquees', fichier: 'api/staff-reservations.js', de: "    if (typeof body.notes === 'string') body.notes = F.notesRendues(body.notes, String(current.notes || ''), res.__nomsDuFondateur);\n", vers: '', groupe: groupeLectureEtRetour, lettre: '[T5]' },
-  { nom: 'le suivi masque efface l auteur en base', fichier: 'api/staff-reservations.js', de: '    cles.forEach((cle) => { body[cle] = F.suiviRendu(body[cle], current.activityProgress, res.__nomsDuFondateur); });\n', vers: '', groupe: groupeLectureEtRetour, lettre: '[T6]' },
+  { nom: 'la reponse a un centre n est plus masquee', fichier: 'lib/http.js', de: "const sansFondateur = res.__nomsDuFondateur || res.__sesTraces ? require('./fondateur-invisible').pourLaReponse(res, payload) : payload;", vers: 'const sansFondateur = payload;', groupe: groupeLectureEtRetour, lettre: '[L1]' },
+  { nom: 'les notes masquees reviennent comme neuves', fichier: 'api/staff-reservations.js', de: "    if (typeof body.notes === 'string') body.notes = F.notesRendues(body.notes, String(current.notes || ''), masques);\n", vers: '', groupe: groupeLectureEtRetour, lettre: '[T1]' },
+  { nom: 'Zoe est refusee sur les notes masquees', fichier: 'api/staff-reservations.js', de: "    if (typeof body.notes === 'string') body.notes = F.notesRendues(body.notes, String(current.notes || ''), masques);\n", vers: '', groupe: groupeLectureEtRetour, lettre: '[T5]' },
+  { nom: 'le suivi masque efface l auteur en base', fichier: 'api/staff-reservations.js', de: '    cles.forEach((cle) => { body[cle] = F.suiviRendu(body[cle], current.activityProgress, masques); });\n', vers: '', groupe: groupeLectureEtRetour, lettre: '[T6]' },
+  // 2026-11-18 : sa propre session lit ses traces masquees, et les renvoie sans rien effacer.
+  { nom: 'sa propre journee rendue avec son nom', fichier: 'lib/fondateur-invisible.js', de: '  res.__sesTraces = fondateur && !pageDeFondateur ? await nomsDuFondateur() : null;', vers: '  res.__sesTraces = null;', groupe: groupeLectureEtRetour, lettre: '[L7]' },
+  { nom: 'son dossier masque efface ses traces au retour', fichier: 'lib/fondateur-invisible.js', de: '  return (res && (res.__nomsDuFondateur || res.__sesTraces)) || null;', vers: '  return (res && res.__nomsDuFondateur) || null;', groupe: groupeLectureEtRetour, lettre: '[T7]' },
+  { nom: 'sa journee masquee garde la revision d avant', fichier: 'api/staff-state.js', de: "    else if (res.__sesTraces && snapshot.revision) snapshot.revision = `${snapshot.revision}:st`;\n", vers: '', groupe: groupeLectureEtRetour, lettre: '[L8]' },
 ];
 
 async function contrePreuves() {

@@ -309,6 +309,7 @@
     "test:accueil-vivant",
     "test:pilotage",
     "test:assistant",
+    "test:conversations-plafond",
     "test:assistant-gestes",
     "test:assistant-reservation",
     "test:assistant-tout-faire",

@@ -346,6 +346,7 @@
     "test:mails-gmail",
     "test:mail-cite-non-verifie",
     "test:accuse-groupe-carte",
+    "test:remise-sans-visite",
     "test:assistant-cartes",
     "test:complet-explique",
     "test:formulaire-retours",

@@ -201,6 +201,7 @@
     "test:mails-gmail": "node scripts/mails-gmail-check.js && node scripts/mails-gmail-check.js --contre-preuves",
     "test:mail-cite-non-verifie": "node scripts/mail-cite-non-verifie-check.js && node scripts/mail-cite-non-verifie-check.js --contre-preuves",
     "test:accuse-groupe-carte": "node scripts/accuse-groupe-carte-check.js && node scripts/accuse-groupe-carte-check.js --contre-preuves",
+    "test:remise-sans-visite": "node scripts/remise-sans-visite-check.js && node scripts/remise-sans-visite-check.js --contre-preuves",
     "test:assistant-cartes": "node scripts/assistant-cartes-check.js && node scripts/assistant-cartes-check.js --contre-preuves",
     "test:complet-explique": "node scripts/complet-explique-check.js && node scripts/complet-explique-check.js --mutate",
     "test:formulaire-retours": "node scripts/formulaire-retours-check.js && node scripts/formulaire-retours-check.js --mutate",

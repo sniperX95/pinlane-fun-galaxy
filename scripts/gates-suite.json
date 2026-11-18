@@ -345,6 +345,7 @@
     "test:sequences-texte-de-depart",
     "test:mails-gmail",
     "test:mail-cite-non-verifie",
+    "test:accuse-groupe-carte",
     "test:assistant-cartes",
     "test:complet-explique",
     "test:formulaire-retours",

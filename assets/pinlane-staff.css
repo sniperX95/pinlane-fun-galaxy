@@ -19907,6 +19907,40 @@ body:is(.staff-mode, .admin-mode) .fx-modal .fm-act-heure .fz-photo { margin-top
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-heure { font-family: var(--fz-anton); font-size: 18px; font-weight: 400; line-height: 1; letter-spacing: 0.012em; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--text); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-heure.is-suite { font-family: var(--font-ui); font-size: 12.5px; font-weight: 500; letter-spacing: 0; color: var(--muted); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-heure.is-vide { font-family: var(--font-ui); font-size: 13px; font-weight: 600; letter-spacing: 0; color: var(--muted); }
+/* L heure se touche pour la changer (2026-11-18) : le meme chiffre, souligne en pointille ; la
+   nouvelle heure se lit dans la couleur du bouton Enregistrer, le champ s ouvre dans la rangee. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-heure-touche { justify-self: start; margin: -4px -5px; padding: 4px 5px; border: 0; border-radius: 6px; background: none; text-align: left; text-decoration: underline dotted; text-decoration-color: var(--faint); text-decoration-thickness: 1px; text-underline-offset: 4px; cursor: pointer; transition: background-color 150ms ease, box-shadow 150ms ease; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-heure-touche:hover,
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-heure-touche.is-ouverte { background: var(--fz-carte); box-shadow: inset 0 0 0 1px var(--line); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-heure-touche:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 1px; }
+body:is(.staff-mode, .admin-mode) .fx-modal :is(.fm-heure, .fm-heure-mot).is-changee { color: var(--console-selected); text-decoration-color: currentColor; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .fm-act-reglages .fm-heure-champ { display: grid; align-content: start; gap: 6px; width: 132px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .fm-heure-champ .input { min-height: 44px; font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+/* Les parties d un laser (les groupes d un bowling), en mots sous le nom : une seule heure a gauche. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-act-parties { flex: 1 1 auto; min-width: 0; font-size: 13px; line-height: 1.6; color: var(--muted); font-variant-numeric: tabular-nums; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-act-parties:empty { display: none; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-partie { white-space: nowrap; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-heure-mot { font: inherit; font-weight: 650; color: var(--text); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-heure-mot.fm-heure-touche { margin: -2px -4px; padding: 2px 4px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-programme.is-replan .fm-heure-mot { color: var(--faint); text-decoration: line-through; text-decoration-thickness: 1px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-programme.a-verdict.is-replan .fm-heure-mot { color: inherit; text-decoration: none; }
+/* Une heure qui ne va pas : son champ en rouge, la phrase juste dessous, les heures libres proches. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .fm-heure-champ.is-refus .input { border-color: var(--danger); box-shadow: 0 0 0 1px var(--danger); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .fm-heure-champ.is-refus .lbl { color: var(--danger); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-heure-refus { flex: 1 1 100%; display: grid; gap: 8px; min-width: 0; margin-top: -2px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-heure-refus[hidden] { display: none; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-heure-phrase { margin: 0; font-size: 13px; font-weight: 600; line-height: 1.45; color: var(--danger); overflow-wrap: anywhere; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-heure-suggestions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-heure-suggestions-titre { font-size: 12px; color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-heure-suggestion { min-height: 36px; min-width: 68px; padding: 0 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--fz-carte); color: var(--text); font-size: 14px; font-weight: 650; font-variant-numeric: tabular-nums; cursor: pointer; transition: border-color 150ms ease, color 150ms ease; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-heure-suggestion:hover { border-color: var(--console-selected); color: var(--console-selected); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-heure-suggestion:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 2px; }
+/* Au doigt (telephone, tablette) : chaque heure et chaque heure proposee se touche sans viser. */
+@media (max-width: 760px), (pointer: coarse) {
+  body:is(.staff-mode, .admin-mode) .fx-modal .fm-heure-touche { min-height: 40px; min-width: 48px; margin: -8px -6px; padding: 8px 6px; }
+  body:is(.staff-mode, .admin-mode) .fx-modal .fm-heure-mot.fm-heure-touche { min-width: 52px; min-height: 40px; margin: -8px -2px; padding: 8px 6px; }
+  body:is(.staff-mode, .admin-mode) .fx-modal .fm-heure-suggestion { min-height: 44px; min-width: 72px; }
+}
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-act-corps { display: grid; gap: 8px; min-width: 0; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-act-tete { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; min-height: 22px; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-act-tete h5 { margin: 0; font-size: 15px; font-weight: 650; line-height: 1.35; color: var(--text); }

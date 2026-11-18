@@ -456,6 +456,130 @@ async function modifierABlanc(req, res, corps) {
   }
 }
 
+// L HEURE D UNE ACTIVITE CHANGEE DANS « MODIFIER », SANS L ECRIRE (2026-11-18, Ansar : « on doit pouvoir
+// modifier l heure de chaque activite ici »). La fenetre deplace une activite par le chemin du glisser du
+// planning (PATCH activityMove), une activite apres l autre. Avant le clic, elle demande ici ce que ces
+// deplacements donneraient : memes droits que le PATCH, le dossier relu, les memes controles
+// (buildActivityMove, puis validateActivityMoveResources contre la journee relue, blocages en ligne
+// compris), rien d ecrit. La reponse rend le dossier qui serait ecrit, ou le refus, toujours en 200 avec
+// `deplacement: true` : un serveur d avant ce jour ne le dit pas, et la console se tait.
+const DEPLACEMENTS_A_BLANC_MAX = 12;
+async function deplacerABlanc(req, res, corps) {
+  if (!corps.id) throw createHttpError('Reservation manquante.', 400);
+  const current = await getReservationById(corps.id);
+  if (!current) throw createHttpError('Reservation introuvable.', 404);
+  const centre = current.centerId || 'libramont';
+  const session = await requireStaffPermission(req, res, ['planning.drag', 'reservations.edit'], { centerId: centre });
+  if (!session) return null;
+  try {
+    const deplacements = Array.isArray(corps.activityMoves) ? corps.activityMoves : [];
+    if (!deplacements.length || deplacements.length > DEPLACEMENTS_A_BLANC_MAX) throw createHttpError('Déplacement d’activité invalide.', 400);
+    if ((corps.centerId || corps.center_id || centre) !== centre) throw createHttpError('Une réservation reste dans son centre : annulez-la et recréez-la dans l autre.', 422);
+    for (const deplacement of deplacements) {
+      const activite = String((deplacement && deplacement.activityId) || '');
+      const droit = activite === 'laser_game' ? 'planning.laser' : (activite === 'bowling' ? 'planning.bowling' : '');
+      if (droit && !sessionHasPermission(session, droit)) throw createHttpError('Ce planning ne fait pas partie de votre rôle.', 403);
+    }
+    const aujourdhui = aujourdhuiABruxelles();
+    if (dateValide(current.date) && current.date < aujourdhui && !sessionHasPermission(session, 'planning.past')) throw createHttpError('Changer un jour passé ne fait pas partie de votre rôle.', 403);
+    if (!corps.baseUpdatedAt || !memeVersion(current.updatedAt, lireVersionAttendue(corps.baseUpdatedAt))) throw reservationModifieeEntreTemps(current);
+    const { buildActivityMove } = require('../lib/reservation-activity-move');
+    const { validateActivityMoveResources } = require('../lib/database');
+    const snapshot = await readStaffState(current.date, centre, { avecBlocages: true });
+    const autres = snapshot.reservations.filter(row => Number(row.id) !== Number(current.id));
+    // Les fermetures et indisponibilites du jour (une piste bloquee, une activite fermee) : la journee
+    // relue ne les porte pas, l ecriture sous verrou les lit (resolveBlocksOnClient). Le verdict les lit
+    // ici pour dire avant le clic ce que l ecriture refuserait.
+    let blocs = [];
+    try {
+      const { loadAvailabilityBlocks, resolveBlocksForDate } = require('../lib/availability-blocks');
+      blocs = resolveBlocksForDate(await loadAvailabilityBlocks(require('../lib/database').getPool(), centre), current.date);
+    } catch (error) { blocs = []; }
+    // L heure la plus tot que la fenetre accepte (l arrivee du groupe, l heure qu il est), pour les
+    // heures proposees seulement : la fenetre dit elle-meme pourquoi une heure plus tot ne va pas.
+    const auPlusTot = Number.isFinite(Number(corps.auPlusTot)) && corps.auPlusTot !== null && corps.auPlusTot !== ''
+      ? Math.max(0, Math.min(48 * 60, Math.round(Number(corps.auPlusTot)))) : null;
+    const essayer = (base, deplacement) => {
+      const essai = buildActivityMove(base, deplacement);
+      try {
+        validateActivityMoveResources(essai, deplacement, autres, snapshot.laneStatuses, blocs, current.date);
+      } catch (error) { if (!error.statusCode) error.statusCode = 409; throw error; }
+      return essai;
+    };
+    let candidat = current;
+    for (let rang = 0; rang < deplacements.length; rang += 1) {
+      const deplacement = deplacements[rang];
+      const voulue = minuteDeLaFenetre(deplacement && deplacement.startTime);
+      try {
+        if (auPlusTot !== null && Number.isFinite(voulue) && voulue < auPlusTot) {
+          const tot = new Error('Trop tôt : le groupe n’est pas encore là à cette heure.');
+          tot.statusCode = 422;
+          tot.plancher = true;
+          throw tot;
+        }
+        candidat = essayer(candidat, deplacement);
+      } catch (error) {
+        if (!error || !error.statusCode || error.statusCode >= 500 || estErreurInfra(error)) throw error;
+        if (error.code === 'reservation_modifiee') throw error;
+        error.rang = rang;
+        error.suggestions = heuresLibresProches(candidat, deplacement, auPlusTot, essayer);
+        throw error;
+      }
+    }
+    return { ok: true, dryRun: true, deplacement: true, reservation: candidat };
+  } catch (error) {
+    if (!error || !error.statusCode || error.statusCode >= 500 || estErreurInfra(error)) throw error;
+    return { ok: true, dryRun: true, deplacement: true, refus: { message: String(error.message), statut: error.statusCode, ...(error.code ? { code: error.code } : {}), ...(Number.isInteger(error.rang) ? { rang: error.rang, suggestions: error.suggestions || [] } : {}), ...(error.plancher ? { plancher: true } : {}) } };
+  }
+}
+
+function minuteDeLaFenetre(texte) {
+  const lu = /^(\d{1,2}):(\d{2})$/.exec(String(texte || ''));
+  return lu && Number(lu[2]) < 60 ? Number(lu[1]) * 60 + Number(lu[2]) : NaN;
+}
+
+// LES HEURES LIBRES LES PLUS PROCHES d une heure qui ne va pas (2026-11-18) : une avant, une apres, pour
+// la meme activite, la meme duree et la meme ressource (le bowling garde ses pistes), jugees par les
+// memes controles que le deplacement lui-meme. Le bowling cherche sur la grille des demi-heures, le
+// reste de 5 en 5 minutes, jusqu a douze heures de part et d autre ; rien avant `auPlusTot`.
+function heuresLibresProches(base, deplacement, auPlusTot, essayer) {
+  const voulue = minuteDeLaFenetre(deplacement && deplacement.startTime);
+  if (!Number.isFinite(voulue)) return [];
+  const pas = deplacement.activityId === 'bowling' ? 30 : 5;
+  const enHeure = (minutes) => `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+  // (l heure qu elle a deja ne se propose pas : ce ne serait pas un changement)
+  const actuelle = heureActuelleDuDeplacement(base, deplacement);
+  const passe = (minutes) => {
+    if (minutes < 0 || minutes >= 24 * 60 || minutes === actuelle || (auPlusTot !== null && minutes < auPlusTot)) return false;
+    try { essayer(base, { ...deplacement, startTime: enHeure(minutes) }); return true; } catch (error) {
+      if (!error || !error.statusCode || error.statusCode >= 500) throw error;
+      return false;
+    }
+  };
+  let avant = null;
+  let apres = null;
+  const premierAvant = Math.floor((voulue - 1) / pas) * pas;
+  const premierApres = Math.floor(voulue / pas) * pas + pas;
+  for (let ecart = 0; ecart <= 12 * 60 && (avant === null || apres === null); ecart += pas) {
+    if (avant === null && passe(premierAvant - ecart)) avant = premierAvant - ecart;
+    if (apres === null && passe(premierApres + ecart)) apres = premierApres + ecart;
+  }
+  return [avant, apres].filter((minutes) => minutes !== null).map(enHeure);
+}
+
+// L heure qu a aujourd hui ce que le deplacement viserait : le premier service du bowling, la partie
+// et la vague du laser, la premiere etape a heure d une autre activite.
+function heureActuelleDuDeplacement(base, deplacement) {
+  const plan = (base && base.opsPlan) || {};
+  const minute = (bloc) => minuteDeLaFenetre(String((bloc && bloc.startTime) || '').slice(0, 5));
+  const premiere = (blocs) => { const liste = blocs.map(minute).filter(Number.isFinite); return liste.length ? Math.min(...liste) : NaN; };
+  if (deplacement.activityId === 'bowling') return premiere((plan.resourceBlocks || []).filter((bloc) => bloc && bloc.resourceType === 'bowling_lane'));
+  if (deplacement.activityId === 'laser_game') {
+    return premiere((plan.resourceBlocks || []).filter((bloc) => bloc && bloc.resourceType === 'laser_arena' && `${Number(bloc.countIndex || 1)}.${Number(bloc.groupWaveIndex || 1)}` === String(deplacement.unitKey)));
+  }
+  return premiere((plan.timeline || []).filter((bloc) => bloc && bloc.activityId === deplacement.activityId && bloc.type === 'activity' && bloc.flexible !== true));
+}
+
 // LA SIMULATION (dryRun). UNE lecture de la journee, partagee par le dossier,
 // les autres dossiers du meme envoi et chaque heure de l horloge : deux
 // heures ne se comparent pas sur deux etats differents de la base.
@@ -795,6 +919,14 @@ const traiter = async (req, res) => {
         if (!(await requireAnyStaffSession(req, res))) return;
         await warmCenterKnowledge();
         const blanc = await modifierABlanc(req, res, body.modification);
+        if (blanc) sendJson(res, 200, blanc);
+        return;
+      }
+      // L heure d une activite changee dans « Modifier » (deplacerABlanc) : le droit du glisser.
+      if (body.dryRun === true && body.deplacement && typeof body.deplacement === 'object' && !Array.isArray(body.deplacement)) {
+        if (!(await requireAnyStaffSession(req, res))) return;
+        await warmCenterKnowledge();
+        const blanc = await deplacerABlanc(req, res, body.deplacement);
         if (blanc) sendJson(res, 200, blanc);
         return;
       }

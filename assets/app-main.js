@@ -2096,9 +2096,13 @@ function envoyerDeplacementActivite(avant, activityMove) {
     }
     const saved = payload?.reservation;
     const receipt = payload?.activityMove;
+    // Une autre activite (son heure changee dans Modifier, 2026-11-18) : ses etapes a elle, rien d autre.
+    const autreActivite = activityMove.activityId !== 'bowling' && activityMove.activityId !== 'laser_game';
     const cible = block => activityMove.activityId === 'bowling'
       ? block.resourceType === 'bowling_lane' || block.activityId === 'bowling'
-      : (block.resourceType === 'laser_arena' || block.activityId === 'laser_game') && laserBlockUnitKey(block) === activityMove.unitKey;
+      : autreActivite
+        ? block.activityId === activityMove.activityId && block.resourceType !== 'bowling_lane' && block.resourceType !== 'laser_arena'
+        : (block.resourceType === 'laser_arena' || block.activityId === 'laser_game') && laserBlockUnitKey(block) === activityMove.unitKey;
     const autres = plan => (plan?.resourceBlocks || []).filter(block => !cible(block));
     const invariants = ['date', 'startTime', 'duration', 'totalDuration', 'pax', 'price', 'basePrice', 'extras', 'program', 'status', 'activityProgress'];
     const ancienPlanExplicite = Boolean(base.opsPlan?.resourceBlocks?.length);
@@ -2223,6 +2227,10 @@ function reservationRenderSignature(r) {
     type: r.type || 'bowling',
     formuleId: r.formuleId || '',
     opsPlanKey: JSON.stringify((r.opsPlan?.resourceBlocks || []).map(block => [block.resourceType, block.startTime, block.endTime, block.lanes, block.players])),
+    // Les heures des autres activites (le minigolf d une formule) se dessinent aussi, sur la carte et
+    // dans la fiche : changees dans Modifier (2026-11-18), elles ne bougeaient pas tant que rien d autre
+    // ne changeait.
+    heuresKey: JSON.stringify((r.opsPlan?.timeline || []).filter(step => step && step.type === 'activity' && !step.flexible && step.activityId !== 'bowling' && step.activityId !== 'laser_game').map(step => [step.activityId, step.startTime, step.endTime])),
     guestOpsKey: JSON.stringify(r.opsPlan?.guestOps || {}),
     lanes: (r.lanes || []).map(Number),
     paymentMethod: r.paymentMethod || '',
@@ -27604,6 +27612,8 @@ function getGroupeProgramme(r) {
     const vagues = Math.max(1, Number(f.groupWaveCount) || 1);
     etapes.push({
       cle: `laser-${partie}-${Number(f.groupWaveIndex) || 1}`,
+      // La partie et sa vague, telles que le glisser du planning les deplace (unitKey).
+      unite: `${partie}.${Number(f.groupWaveIndex) || 1}`,
       activityId: 'laser_game',
       nom: 'Laser Game',
       quoi: `${Number(f.joueursReels ?? f.players) || effectifActivite('laser_game')} joueurs · ${parties > 1 ? `partie ${partie}/${parties}` : '1 partie'}`,
@@ -28768,6 +28778,7 @@ function openPos(id) {
   historiquesOuverts.clear();
   historiquesLus.clear();
   editContactOuvert = false;
+  heureOuverteEdition = '';
   const reservation = findStaffReservationById(id);
   if (!reservation) {
     toast('Réservation introuvable ou non chargée.');
@@ -28863,6 +28874,8 @@ function ficheEditionModifiee() {
   const es = state.editState;
   if (state.activeTab !== 'modifier' || !es || !state.selectedRes) return false;
   if (editProgramAChange()) return true;
+  // Une heure d activite changee et pas enregistree (2026-11-18).
+  if (Object.keys(heuresChangeesEdition()).length) return true;
   const edition = departsEdition().get(es);
   if (edition && edition.formulaire) return empreinteFormulaireEdition(es) !== edition.formulaire;
   // Apres un conflit, la reference est le dossier d origine.
@@ -31481,7 +31494,7 @@ function renderEditFormuleBloc(r, formule, lignes, controls = {}) {
   const heures = ecritVerdict ? heuresDuProgrammeEnregistre(ecritVerdict) : formuleChangee ? new Map() : heuresDuProgrammeEnregistre(r);
   const plus = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
   const ajouts = [];
-  const rangees = [...choix, ...supplement].map((choice) => {
+  const rangees = [...choix, ...supplement].map((choice, rang) => {
     const estBowling = choice.id === 'bowling';
     const estLaser = choice.id === 'laser_game';
     const actif = estBowling ? !!programme.bowling.on : estLaser ? !!programme.laser_game.on : !!(programme.others || {})[choice.id];
@@ -31507,20 +31520,28 @@ function renderEditFormuleBloc(r, formule, lignes, controls = {}) {
     // The draft stores Fun Run minutes per session; identify that unit for the display helper.
     if (detailItem && choice.id === 'fun_run' && Number(item.minutes) > 0) detailItem.sessionMinutes = Number(item.minutes);
     const detail = detailItem ? detailLigneProgrammeSansEffectif(detailItem, r) : '';
-    // L heure a gauche, comme dans Infos : la premiere en grand, les parties
-    // suivantes dessous. Une activite libre le dit ; une activite ajoutee ici
-    // n a pas encore d heure (le serveur la place a l enregistrement).
-    const heureHtml = heuresActiviteHtml(heures.get(choice.id) || []);
-    return `<section class="fm-act dossier-activity is-on" data-edit-activity="${escapeHtml(choice.id)}" aria-label="${escapeHtml(choice.label)}">
+    // L heure a gauche, comme dans Infos : une seule, la premiere ; les parties
+    // d un laser (les groupes d un bowling) se disent en mots sous le nom. Une
+    // activite libre le dit ; une activite ajoutee ici n a pas encore d heure
+    // (le serveur la place a l enregistrement).
+    const etapesHeure = heures.get(choice.id) || [];
+    const heureHtml = heuresActiviteHtml(etapesHeure, choice.id);
+    // LE PROGRAMME SE LIT DANS L ORDRE DES HEURES (2026-11-18), une heure changee
+    // comprise ; une activite sans heure vient apres, dans l ordre du catalogue.
+    const premiere = etapesHeure.find(etape => etape.start !== null && etape.start !== undefined);
+    const changee = premiere ? minutesHeureEdition(heuresChangeesEdition()[cleHeureEtape(premiere)]) : NaN;
+    const ordre = Number.isFinite(changee) ? changee : premiere ? Math.round(Number(premiere.start) * 60) : Infinity;
+    const html = `<section class="fm-act dossier-activity is-on" data-edit-activity="${escapeHtml(choice.id)}" aria-label="${escapeHtml(choice.label)}">
       <div class="fm-act-heure"><span class="visually-hidden">Heure prévue : </span><span class="fm-heures">${heureHtml}</span>${ficheVisuelActivite(r, { activityId: choice.id, nom: choice.label })}</div>
       <div class="fm-act-corps">
-        <div class="fm-act-tete"><h5>${escapeHtml(choice.label)}</h5>${detail ? `<span class="fm-act-detail">${escapeHtml(detail)}</span>` : ''}<button type="button" class="dossier-remove-activity fm-retirer" aria-label="Retirer ${escapeHtml(choice.label)} de cette visite" onclick="toggleEditActivity('${escapeJsString(choice.id)}')">Retirer</button></div>
-        <div class="fm-act-reglages">${renderActivityParticipantsControl(choice.id, 'edit', 'ecart')}${options}</div>
+        <div class="fm-act-tete"><h5>${escapeHtml(choice.label)}</h5>${detail ? `<span class="fm-act-detail">${escapeHtml(detail)}</span>` : ''}<span class="fm-act-parties" data-parties-activite="${escapeHtml(choice.id)}">${partiesActiviteHtml(etapesHeure, choice.id)}</span><button type="button" class="dossier-remove-activity fm-retirer" aria-label="Retirer ${escapeHtml(choice.label)} de cette visite" onclick="toggleEditActivity('${escapeJsString(choice.id)}')">Retirer</button></div>
+        <div class="fm-act-reglages">${champHeureEditionHtml(choice.id)}${renderActivityParticipantsControl(choice.id, 'edit', 'ecart')}${options}</div>
         ${estBowling ? controls.lanes || '' : ''}
         ${estLaser && !formuleChangee ? renderDossierLaserEditor(r) : ''}
       </div>
     </section>`;
-  }).join('');
+    return { html, ordre, rang };
+  }).filter(Boolean).sort((a, b) => a.ordre - b.ordre || a.rang - b.rang).map(rangee => rangee.html).join('');
   // Une formule sans activite a regler (« Toutes les activités illimitées »)
   // se lit par sa carte, pas par un programme vide.
   const sansActivite = lignes.length && !editProgramAChange()
@@ -31890,6 +31911,7 @@ function resumeModifsEdition() {
   const modifs = [];
   if (change('date') && e.date) modifs.push(`Jour ${jourCourt(origine.date)} → ${jourCourt(e.date)}`);
   if (change('startTime') && e.startTime) modifs.push(`Arrivée ${origine.startTime} → ${e.startTime}`);
+  modifs.push(...modifsHeuresEdition());
   if (Number(e.pax) > 0 && Number(e.pax) !== Number(origine.pax)) modifs.push(`Joueurs ${Number(origine.pax)} → ${Number(e.pax)}`);
   const accompagnants = (d) => Math.max(0, Math.trunc(Number(d.companions) || 0));
   if (accompagnants(e) !== accompagnants(origine)) modifs.push(`Accompagnants ${accompagnants(origine)} → ${accompagnants(e)}`);
@@ -32021,7 +32043,12 @@ function demanderVerdictEdition() {
   let corps = null;
   let cle = '';
   try {
-    if (resumeModifsEdition().length) {
+    // Des heures changees : le calcul a blanc des deplacements (deplacerABlanc).
+    if (Object.keys(heuresChangeesEdition()).length) {
+      envoi = preparerDeplacementsEdition();
+      corps = envoi.erreur ? null : corpsDeplacementsEdition(envoi);
+      cle = envoi.erreur ? `refus:${envoi.erreur}` : JSON.stringify(['heures', corps]);
+    } else if (resumeModifsEdition().length) {
       envoi = preparerModificationEdition({ aBlanc: true });
       corps = envoi.erreur ? null : corpsModificationEdition(envoi);
       // (les pistes cochees comptent : le corps porte deja celles que la console propose)
@@ -32032,6 +32059,7 @@ function demanderVerdictEdition() {
   oublier();
   v.pour = e;
   v.cle = cle;
+  v.heures = Boolean(envoi && envoi.heures);
   if (!cle) { peindreVerdictEdition(); return; }
   if (envoi.erreur) { v.resultat = { refus: envoi.erreur, lignes: [], ecrit: null, prixSuivi: false }; peindreVerdictEdition(); return; }
   v.enCours = true;
@@ -32039,11 +32067,20 @@ function demanderVerdictEdition() {
   peindreVerdictEdition();
   v.minuterie = setTimeout(async () => {
     let reponse = null;
+    const heures = Boolean(envoi.deplacements);
     try {
-      reponse = await apiRequest(API_ENDPOINTS.staffReservations, { method: 'POST', body: JSON.stringify({ dryRun: true, centerId: corps.centerId, modification: corps }) });
+      reponse = heures
+        ? await apiRequest(API_ENDPOINTS.staffReservations, { method: 'POST', body: JSON.stringify({ dryRun: true, centerId: corps.centerId, deplacement: corps }) })
+        : await apiRequest(API_ENDPOINTS.staffReservations, { method: 'POST', body: JSON.stringify({ dryRun: true, centerId: corps.centerId, modification: corps }) });
     } catch (erreur) { reponse = null; }
     if (jeton !== v.jeton || state.editState !== e) return;
     v.enCours = false;
+    if (heures) {
+      // (sans reponse du serveur, la fenetre dit encore ce qu elle sait seule)
+      v.resultat = lireVerdictDeplacement(reponse, envoi);
+      peindreVerdictEdition();
+      return;
+    }
     v.resultat = reponse && reponse.modification === true ? lireVerdictEdition(reponse, envoi) : null;
     // Un prix qui suit prend celui que le serveur ecrira (prixSuiviEdition).
     if (v.resultat && v.resultat.ecrit && v.resultat.prixSuivi) majEditPrixEstime();
@@ -32136,12 +32173,17 @@ function prixDuVerdictEdition() {
 }
 
 function etatVerdictEdition() {
+  // Ce que le dernier « Enregistrer » des heures a dit tient tant que rien ne change.
+  const note = noteHeuresActive();
+  if (note) return { ton: note.ton, texte: note.texte };
   const v = verdictEdition();
   const pour = Boolean(state.editState) && v.pour === state.editState;
   const resultat = pour ? v.resultat : null;
-  if (pour && v.enCours) return { ton: 'calcul', texte: 'Vérification au planning…' };
+  // (une heure changee se verifie sans bruit : rien pendant le calcul, rien quand elle va)
+  if (pour && v.enCours) return { ton: 'calcul', texte: v.heures ? '' : 'Vérification au planning…' };
   if (resultat && resultat.refus) return { ton: 'refus', texte: `Ne passera pas : ${resultat.refus}` };
   if (resultat && resultat.lignes.length) return { ton: 'attention', texte: resultat.lignes.join(' ') };
+  if (resultat && resultat.silencieux) return { ton: '', texte: '' };
   if (resultat) return { ton: 'ok', texte: 'Vérifié au planning.' };
   return { ton: '', texte: '' };
 }
@@ -32161,6 +32203,8 @@ function peindreVerdictEdition() {
     zone.textContent = texte;
     zone.hidden = !texte;
   }
+  // Le refus d une heure se lit a son activite (son champ en rouge, la phrase dessous).
+  peindreRefusHeuresEdition();
   if (ton === 'calcul') return;
   const programme = document.querySelector('#posOverlay .fm-programme');
   const r = state.selectedRes;
@@ -32168,20 +32212,493 @@ function peindreVerdictEdition() {
   const ecrit = dossierEcritDuVerdict();
   programme.classList.toggle('a-verdict', Boolean(ecrit));
   const heures = ecrit ? heuresDuProgrammeEnregistre(ecrit) : formuleChangeeEdition() ? new Map() : heuresDuProgrammeEnregistre(dossierPourFormule(r));
+  peindreColonnesHeuresEdition(heures);
+}
+
+// Les colonnes des heures et les parties en mots, en place. Les champs d heure
+// vivent dans la rangee, pas dans la colonne : ils ne sont jamais repeints ici.
+function peindreColonnesHeuresEdition(heures) {
+  const programme = document.querySelector('#posOverlay .fm-programme');
+  if (!programme) return;
   programme.querySelectorAll('.fm-act[data-edit-activity]').forEach((rangee) => {
+    const id = rangee.dataset.editActivity;
+    const etapes = heures.get(id) || [];
     const colonne = rangee.querySelector('.fm-heures');
-    if (colonne) colonne.innerHTML = heuresActiviteHtml(heures.get(rangee.dataset.editActivity) || []);
+    if (colonne) colonne.innerHTML = heuresActiviteHtml(etapes, id);
+    const parties = rangee.querySelector('.fm-act-parties');
+    if (parties) parties.innerHTML = partiesActiviteHtml(etapes, id);
+  });
+  peindreRefusHeuresEdition();
+}
+
+// L HEURE A GAUCHE D UNE ACTIVITE, comme dans Infos : une seule, la premiere.
+// Une activite libre le dit ; une activite ajoutee ici n a pas encore d heure.
+// Une heure que le comptoir peut changer se touche (2026-11-18) : la nouvelle
+// s y lit tout de suite, en couleur. Les autres parties d un laser (les groupes
+// d un bowling) se disent en mots dans la rangee (partiesActiviteHtml) : deux
+// heures nues l une sous l autre ne disaient pas laquelle etait celle du laser.
+function heuresActiviteHtml(etapes, activityId = '') {
+  const placees = etapes.filter(etape => etape.start !== null && etape.start !== undefined);
+  if (!placees.length) return `<span class="fm-heure is-vide">${etapes.some(etape => etape.libre) ? 'Libre' : '--:--'}</span>`;
+  const etape = placees[0];
+  const cle = cleHeureEtape(etape);
+  const nouvelle = cle ? heuresChangeesEdition()[cle] || '' : '';
+  const heure = nouvelle || formatClockDisplay(etape.start);
+  const classes = `fm-heure${nouvelle ? ' is-changee' : ''}`;
+  if (!cle || !peutChangerHeureEdition(state.selectedRes, activityId)) return `<span class="${classes}">${escapeHtml(heure)}</span>`;
+  return boutonHeureEditionHtml(cle, heure, classes, libellePointHeure(etape, placees), `fiche.edit.heure.${cle}`);
+}
+
+function boutonHeureEditionHtml(cle, heure, classes, quoi, focus) {
+  const ouverte = heureOuverteEdition === cle;
+  return `<button type="button" class="${classes} fm-heure-touche${ouverte ? ' is-ouverte' : ''}" data-heure-cle="${escapeHtml(cle)}" data-pl-focus="${escapeHtml(focus)}" aria-expanded="${ouverte ? 'true' : 'false'}" aria-label="${escapeHtml(`Changer l’heure de ${quoi}, ${heure}`)}" onclick="ouvrirHeureActivite('${escapeJsString(cle)}')">${escapeHtml(heure)}</button>`;
+}
+
+// « 1re partie à 15:00 · 2e partie à 15:30 » : les heures d un laser a plusieurs
+// parties, en mots, chacune se touche et ne deplace qu elle. « 1er groupe à
+// 13:00 · 2e groupe à 14:00 » pour un bowling en plusieurs services : il se
+// deplace d un bloc, par son heure a gauche.
+function partiesActiviteHtml(etapes, activityId) {
+  const placees = etapes.filter(etape => etape.start !== null && etape.start !== undefined);
+  const separe = '<span class="fm-partie-sep" aria-hidden="true"> · </span>';
+  if (activityId === 'bowling') {
+    if (placees.length < 2) return '';
+    return placees.map((etape, index) => `<span class="fm-partie">${index ? `${index + 1}e` : '1er'} groupe à <span class="fm-heure-mot">${escapeHtml(formatClockDisplay(etape.start))}</span></span>`).join(separe);
+  }
+  if (activityId !== 'laser_game' || !placees.length || partiesLaserDuDossier(placees) < 2) return '';
+  const touchable = peutChangerHeureEdition(state.selectedRes, activityId);
+  const changees = heuresChangeesEdition();
+  const vues = new Set();
+  return placees.map((etape) => {
+    const cle = cleHeureEtape(etape);
+    if (!cle || vues.has(cle)) return '';
+    vues.add(cle);
+    const nouvelle = changees[cle] || '';
+    const heure = nouvelle || formatClockDisplay(etape.start);
+    const classes = `fm-heure-mot${nouvelle ? ' is-changee' : ''}`;
+    const touche = touchable ? boutonHeureEditionHtml(cle, heure, classes, libellePointHeure(etape, placees), `fiche.edit.heure-mot.${cle}`) : `<span class="${classes}">${escapeHtml(heure)}</span>`;
+    return `<span class="fm-partie">${escapeHtml(nomPartieLaser(etape))} à ${touche}</span>`;
+  }).filter(Boolean).join(separe);
+}
+
+// ---------------------------------------------------------------------------
+// L HEURE DE CHAQUE ACTIVITE SE CHANGE ICI (2026-11-18, Ansar, sa capture de la
+// fenetre a l appui : « on doit pouvoir modifier l heure de chaque activite
+// ici », puis « super quali et super complet »). Toucher l heure ouvre son
+// champ dans la rangee ; la nouvelle heure se lit aussitot a gauche et dans la
+// barre du bas. Le serveur la juge tout de suite (deplacerABlanc) : une heure
+// qui ne va pas met son champ en rouge, la phrase juste dessous et les heures
+// libres les plus proches en boutons (un toucher remplit le champ et revérifie),
+// et la barre du bas le resume ; une heure qui va passe sans bruit. Elle part
+// avec « Enregistrer » par le chemin du glisser du planning
+// (envoyerDeplacementActivite, PATCH activityMove) : memes controles de place,
+// de version et de droits, une activite apres l autre. Le prix ne bouge pas :
+// une heure n est pas du contenu. Le laser garde ses parties : chaque partie se
+// touche (la premiere a gauche, toutes en mots dans la rangee) et ne deplace
+// qu elle ; le pli « Changer l heure des parties » reste pour placer une partie
+// a placer ou la retirer du planning. Une activite « Libre », la table
+// d anniversaire et les boissons n ont pas d heure a changer ici. Une heure
+// s enregistre seule, ou avec le nom, le telephone, l e-mail et l occasion : le
+// jour, l arrivee, les joueurs, les pistes ou le programme recalculent les
+// heures, ils partent dans un second temps.
+// ---------------------------------------------------------------------------
+let heureOuverteEdition = '';
+let heuresEnregistrementEnCours = false;
+// Ce que le dernier « Enregistrer » des heures a dit : il tient tant que rien ne
+// change (une seule fois, dans la barre du bas et a l activite ; pas de cadre ni
+// de toast en plus).
+let noteHeuresEdition = null;
+
+function heuresChangeesEdition() {
+  const e = state.editState;
+  return e && e.heuresActivites && typeof e.heuresActivites === 'object' ? e.heuresActivites : {};
+}
+
+// La cle d une heure : l activite (le bowling d un bloc), ou la partie et la
+// vague du laser.
+function cleHeureEtape(etape) {
+  if (!etape || !etape.activityId) return '';
+  if (etape.activityId === 'laser_game') return etape.unite ? `laser_game:${etape.unite}` : '';
+  return etape.activityId;
+}
+
+function partiesLaserDuDossier(etapes = []) {
+  const r = state.selectedRes;
+  const toutes = r && typeof getLaserUnitsForReservation === 'function' ? getLaserUnitsForReservation(r).length : 0;
+  return Math.max(toutes, etapes.filter(etape => etape.activityId === 'laser_game' && etape.unite).length);
+}
+
+function nomPartieLaser(etape) {
+  const [partie, vague] = String(etape.unite || '1.1').split('.');
+  return `${Number(partie) === 1 ? '1re' : `${Number(partie) || 1}e`} partie${etape.groupe ? `, groupe ${vague}` : ''}`;
+}
+
+// « Laser Game, 2e partie » quand le laser en a plusieurs, sinon le nom seul.
+function libellePointHeure(etape, etapes) {
+  if (etape.activityId !== 'laser_game' || !etape.unite) return etape.nom || 'cette activité';
+  return partiesLaserDuDossier(etapes) < 2 ? etape.nom || 'Laser Game' : `${etape.nom || 'Laser Game'}, ${nomPartieLaser(etape)}`;
+}
+
+// Les heures que le comptoir peut toucher, telles que le dossier les a.
+function pointsHeureEdition(r) {
+  const points = new Map();
+  if (!r) return points;
+  const etapes = getGroupeProgramme(r).filter(etape => etape.start !== null && etape.start !== undefined && !etape.libre && !etape.aPlacer && etape.activityId);
+  etapes.forEach((etape) => {
+    const cle = cleHeureEtape(etape);
+    if (!cle || points.has(cle)) return;
+    points.set(cle, { cle, activityId: etape.activityId, unite: etape.unite || '', start: Number(etape.start), fin: Number(etape.end), nom: libellePointHeure(etape, etapes) });
+  });
+  return points;
+}
+
+function minutesHeureEdition(valeur) {
+  const lu = /^(\d{2}):(\d{2})$/.exec(String(valeur || ''));
+  return lu && Number(lu[1]) < 24 && Number(lu[2]) < 60 ? Number(lu[1]) * 60 + Number(lu[2]) : NaN;
+}
+
+function peutChangerHeureEdition(r, activityId) {
+  if (!state.editState || !r || state.activeTab !== 'modifier' || r.status === 'cancelled' || formuleChangeeEdition()) return false;
+  // La table d anniversaire tient une salle, les boissons se servent au bar.
+  if (!activityId || activityId === 'party_table' || /^service_/.test(activityId)) return false;
+  if (typeof peutGeste === 'function' && !peutGeste('deplacer', r.date)) return false;
+  const droit = activityId === 'bowling' ? 'planning.bowling' : activityId === 'laser_game' ? 'planning.laser' : '';
+  return !droit || typeof canUseStaffPermission !== 'function' || canUseStaffPermission(droit);
+}
+
+// Les champs d heure de la rangee : celui qu on vient de toucher, et chaque
+// heure deja changee (son refus s y lit, juste dessous).
+function champHeureEditionHtml(activityId) {
+  const r = state.selectedRes;
+  if (!peutChangerHeureEdition(r, activityId)) return '';
+  const appartient = (cle) => (activityId === 'laser_game' ? cle.startsWith('laser_game:') : cle === activityId);
+  const changees = heuresChangeesEdition();
+  const cles = [...new Set([heureOuverteEdition, ...Object.keys(changees)])].filter(cle => cle && appartient(cle));
+  if (!cles.length) return '';
+  const points = pointsHeureEdition(r);
+  return ordreHeuresEdition(cles).map((cle) => {
+    const point = points.get(cle);
+    if (!point) return '';
+    const valeur = changees[cle] || formatClockDisplay(point.start);
+    const id = `editHeure-${cle.replace(/[^a-z0-9]/gi, '-')}`;
+    const libelle = activityId === 'laser_game' && point.nom.includes(', ') ? `Heure, ${point.nom.split(', ').slice(1).join(', ')}` : 'Heure';
+    const refus = refusHeureDe(cle);
+    return `<div class="fm-champ fm-heure-champ${refus ? ' is-refus' : ''}" data-heure-zone="${escapeHtml(cle)}">
+            <label class="lbl" for="${id}">${escapeHtml(libelle)}</label>
+            <input id="${id}" class="input" type="time" step="${activityId === 'bowling' ? 1800 : 300}" value="${escapeHtml(valeur)}" data-heure-champ="${escapeHtml(cle)}" data-pl-focus="fiche.edit.heure-champ.${escapeHtml(cle)}" aria-describedby="${id}-refus"${refus ? ' aria-invalid="true"' : ''} oninput="poserHeureActivite('${escapeJsString(cle)}', this.value)" onkeydown="toucheHeureActivite(event, '${escapeJsString(cle)}')">
+          </div>
+          <div class="fm-heure-refus" id="${id}-refus" data-heure-refus="${escapeHtml(cle)}" aria-live="polite"${refus ? '' : ' hidden'}>${refus ? refusHeureHtml(cle, refus) : ''}</div>`;
+  }).join('');
+}
+
+// La phrase du refus, puis les heures libres les plus proches.
+function refusHeureHtml(cle, refus) {
+  const libres = (refus.suggestions || []).filter(heure => /^\d{2}:\d{2}$/.test(heure));
+  return `<p class="fm-heure-phrase">${escapeHtml(refus.phrase)}</p>${libres.length ? `<div class="fm-heure-suggestions" role="group" aria-label="Heures libres les plus proches"><span class="fm-heure-suggestions-titre">Libre à</span>${libres.map(heure => `<button type="button" class="fm-heure-suggestion" data-suggestion="${escapeHtml(heure)}" onclick="choisirHeureActivite('${escapeJsString(cle)}', '${escapeJsString(heure)}')">${escapeHtml(heure)}</button>`).join('')}</div>` : ''}`;
+}
+
+// Le refus en cours pour une heure : celui du dernier « Enregistrer », sinon
+// celui du verdict a jour (rien pendant qu il se calcule).
+function refusHeuresCourant() {
+  const note = noteHeuresActive();
+  if (note) return note.refus || null;
+  const v = verdictEdition();
+  if (!state.editState || v.pour !== state.editState || v.enCours || !v.resultat) return null;
+  return v.resultat.heureRefusee || null;
+}
+
+function refusHeureDe(cle) {
+  const refus = refusHeuresCourant();
+  return refus && refus.cle === cle ? refus : null;
+}
+
+// Les champs et leurs refus, en place (le champ qu on tape garde le focus).
+function peindreRefusHeuresEdition() {
+  document.querySelectorAll('#posOverlay [data-heure-refus]').forEach((zone) => {
+    const cle = zone.getAttribute('data-heure-refus');
+    const refus = refusHeureDe(cle);
+    zone.innerHTML = refus ? refusHeureHtml(cle, refus) : '';
+    zone.hidden = !refus;
+    const champ = Array.from(document.querySelectorAll('#posOverlay [data-heure-zone]')).find(n => n.getAttribute('data-heure-zone') === cle);
+    if (champ) champ.classList.toggle('is-refus', Boolean(refus));
+    const saisie = champ ? champ.querySelector('[data-heure-champ]') : null;
+    if (saisie) { if (refus) saisie.setAttribute('aria-invalid', 'true'); else saisie.removeAttribute('aria-invalid'); }
   });
 }
 
-// L heure a gauche d une activite, comme dans Infos : la premiere en grand, les
-// parties suivantes dessous. Une activite libre le dit ; une activite ajoutee
-// ici n a pas encore d heure.
-function heuresActiviteHtml(etapes) {
-  const placees = etapes.filter(etape => etape.start !== null && etape.start !== undefined);
-  return placees.length
-    ? placees.slice(0, 3).map((etape, index) => `<span class="fm-heure${index ? ' is-suite' : ''}">${index === 2 && placees.length > 3 ? `+${placees.length - 2}` : escapeHtml(formatClockDisplay(etape.start))}</span>`).join('')
-    : `<span class="fm-heure is-vide">${etapes.some(etape => etape.libre) ? 'Libre' : '--:--'}</span>`;
+// Toucher une heure ouvre son champ (et le referme au second toucher).
+function ouvrirHeureActivite(cle) {
+  if (!state.editState || heuresEnregistrementEnCours) return;
+  heureOuverteEdition = heureOuverteEdition === cle ? '' : String(cle || '');
+  renderPos();
+  const champ = heureOuverteEdition ? Array.from(document.querySelectorAll('#posOverlay [data-heure-champ]')).find(n => n.getAttribute('data-heure-champ') === heureOuverteEdition) : null;
+  if (champ) champ.focus();
+}
+
+// La frappe : l heure se lit a gauche et dans la barre du bas, sans re-rendu, et
+// le serveur la revérifie.
+function poserHeureActivite(cle, valeur) {
+  const e = state.editState;
+  const r = state.selectedRes;
+  if (!e || !r) return;
+  const point = pointsHeureEdition(r).get(cle);
+  const minutes = minutesHeureEdition(valeur);
+  const changees = { ...heuresChangeesEdition() };
+  if (!point || !Number.isFinite(minutes) || minutes === Math.round(point.start * 60)) delete changees[cle];
+  else changees[cle] = String(valeur);
+  e.heuresActivites = changees;
+  noteHeuresEdition = null;
+  if (state.editError) setEditError('');
+  const ecrit = dossierEcritDuVerdict();
+  peindreColonnesHeuresEdition(ecrit ? heuresDuProgrammeEnregistre(ecrit) : heuresDuProgrammeEnregistre(dossierPourFormule(r)));
+  majModifsEdition();
+}
+
+// Une heure libre proposee : elle remplit le champ et se revérifie.
+function choisirHeureActivite(cle, heure) {
+  const champ = Array.from(document.querySelectorAll('#posOverlay [data-heure-champ]')).find(n => n.getAttribute('data-heure-champ') === cle);
+  if (champ) champ.value = heure;
+  poserHeureActivite(cle, heure);
+  if (champ) champ.focus();
+}
+
+// Echap rend l heure d avant et referme le champ ; Entree enregistre, comme
+// dans les autres champs de la fenetre.
+function toucheHeureActivite(event, cle) {
+  if (event.key !== 'Escape') return;
+  event.preventDefault();
+  event.stopPropagation();
+  const e = state.editState;
+  if (e && e.heuresActivites) {
+    const changees = { ...e.heuresActivites };
+    delete changees[cle];
+    e.heuresActivites = changees;
+  }
+  heureOuverteEdition = '';
+  noteHeuresEdition = null;
+  renderPos();
+  const bouton = Array.from(document.querySelectorAll('#posOverlay [data-heure-cle]')).find(n => n.getAttribute('data-heure-cle') === cle);
+  if (bouton) bouton.focus();
+}
+
+// « Minigolf Blacklight 15:55 → 16:30 », dans la barre du bas.
+function modifsHeuresEdition() {
+  const changees = heuresChangeesEdition();
+  const points = pointsHeureEdition(state.selectedRes);
+  return ordreHeuresEdition(Object.keys(changees)).map((cle) => {
+    const point = points.get(cle);
+    return point ? `${point.nom} ${formatClockDisplay(point.start)} → ${changees[cle]}` : '';
+  }).filter(Boolean);
+}
+
+// Le bowling et le laser d abord (ils tiennent une ressource), puis le reste.
+function ordreHeuresEdition(cles) {
+  const rang = (cle) => (cle === 'bowling' ? 0 : cle.startsWith('laser_game:') ? 1 : 2);
+  return cles.slice().sort((a, b) => rang(a) - rang(b) || a.localeCompare(b));
+}
+
+// Ce qui ne part pas avec une heure : ce qui recalcule les heures (le jour,
+// l arrivee, les joueurs, la duree, le programme, la formule), les pistes, les
+// extras et le prix.
+function modifsQuiEmpechentLesHeures() {
+  const e = state.editState;
+  const origine = e && departsEdition().get(e)?.origine;
+  if (!e || !origine) return false;
+  if (editionReplanifie() || editExtrasAChange() || e.prixFige) return true;
+  if (JSON.stringify(parseLaneInput(e.lanesStr)) !== JSON.stringify(parseLaneInput((origine.lanes || []).join(',')))) return true;
+  const prix = getEditPriceValue();
+  return prix != null && Math.round(prix * 100) !== Math.round((Number(origine.price) || 0) * 100);
+}
+
+// Une phrase du serveur, sans ce qui ne vaut que pour le glisser du planning.
+function phraseHeureRefus(message) {
+  return String(message || '').replace(/\s*(Cet horaire reste inchangé|Les autres horaires restent inchangés)\.\s*$/, '').trim();
+}
+
+// CE QUE « ENREGISTRER » ENVERRAIT pour les heures changees : un deplacement par
+// activite, chacun tel que le glisser du planning l envoie. Une heure avant
+// l arrivee du groupe, ou deja passee aujourd hui, porte sa phrase (`plancher`) ;
+// un controle qui coince tout l envoi rend { erreur }, dit dans la barre du bas.
+function preparerDeplacementsEdition() {
+  const es = state.editState;
+  const r = state.selectedRes;
+  const edition = departsEdition().get(es);
+  const origine = (edition && edition.origine) || r;
+  const versionDeBase = [edition && edition.base, origine].find(dossier => dossier && dossier.updatedAt) || r;
+  const changees = heuresChangeesEdition();
+  if (modifsQuiEmpechentLesHeures()) return { heures: true, erreur: 'Une heure d’activité s’enregistre seule, ou avec le nom, le téléphone, l’e-mail et l’occasion. Enregistrez d’abord l’heure, puis le reste.' };
+  const points = pointsHeureEdition(r);
+  // Le groupe n est pas la avant son arrivee : ni avant l heure d arrivee du
+  // dossier, ni avant sa premiere activite a heure quand elle commence plus tot.
+  const debuts = [...points.values()].map(point => Math.round(point.start * 60)).filter(Number.isFinite);
+  const arrivee = Math.min(minutesHeureEdition(String(r.startTime || '').slice(0, 5)), ...debuts);
+  // Et une heure deja passee ne se donne plus, le jour meme.
+  const maintenant = r.date === todayStr() && typeof currentTimeDecimal === 'function' ? Math.ceil(currentTimeDecimal() * 60) : null;
+  const auPlusTot = Math.max(Number.isFinite(arrivee) ? arrivee : 0, maintenant !== null ? maintenant : 0);
+  const deplacements = [];
+  for (const cle of ordreHeuresEdition(Object.keys(changees))) {
+    const point = points.get(cle);
+    const heure = String(changees[cle] || '');
+    const minutes = minutesHeureEdition(heure);
+    if (!point) return { heures: true, erreur: 'Cette activité n’a plus d’heure au planning : fermez la fiche et rouvrez-la.' };
+    if (!peutChangerHeureEdition(r, point.activityId)) return { heures: true, erreur: 'Votre rôle ne permet pas de changer cette heure.' };
+    if (!Number.isFinite(minutes)) return { heures: true, erreur: 'Saisissez une heure au format HH:MM, par exemple 16:30.' };
+    const plancher = maintenant !== null && minutes < maintenant
+      ? `${heure} est déjà passé : il est ${formatClockDisplay(maintenant / 60)}.`
+      : Number.isFinite(arrivee) && minutes < arrivee ? `Avant l’arrivée du groupe à ${formatClockDisplay(arrivee / 60)}.` : '';
+    const move = point.activityId === 'bowling'
+      ? { activityId: 'bowling', startTime: heure, lanes: [...new Set(getBowlingWindowsFromReservation(r).flatMap(fenetre => fenetre.lanes || []))].map(Number).sort((a, b) => a - b) }
+      : point.activityId === 'laser_game'
+        ? { activityId: 'laser_game', unitKey: point.unite, startTime: heure }
+        : { activityId: point.activityId, startTime: heure };
+    deplacements.push({ cle, point, heure, move, plancher });
+  }
+  return { heures: true, es, origine, versionDeBase, deplacements, auPlusTot: auPlusTot > 0 ? auPlusTot : null };
+}
+
+// Le corps du calcul a blanc des heures (deplacerABlanc).
+function corpsDeplacementsEdition(envoi) {
+  const base = envoi.versionDeBase;
+  return { id: base.id, centerId: base.centerId || base.center_id || getCurrentStaffCenterId(), baseUpdatedAt: base.updatedAt, activityMoves: envoi.deplacements.map(d => d.move), ...(envoi.auPlusTot !== null ? { auPlusTot: envoi.auPlusTot } : {}) };
+}
+
+// Le verdict des heures. Un refus va a l activite concernee (sa phrase, les
+// heures libres proches) et la barre du bas le resume ; un collegue qui a change
+// le dossier se regle a l enregistrement. Sans reponse du serveur, la fenetre dit
+// encore ce qu elle sait seule (avant l arrivee, deja passe). Une heure de bowling
+// ou de laser posee sur l heure prevue d une autre activite passe (cette heure-la
+// est une estimation, lib/reservation-activity-move) : la barre le dit.
+function lireVerdictDeplacement(reponse, envoi) {
+  const plancher = envoi.deplacements.find(d => d.plancher);
+  const refusDe = (d, phrase, suggestions) => ({ refus: `${d.point.nom} à ${d.heure}.`, lignes: [], ecrit: null, prixSuivi: false, silencieux: true, heureRefusee: { cle: d.cle, phrase, suggestions: (suggestions || []).slice(0, 2) } });
+  if (!reponse || reponse.deplacement !== true) return plancher ? refusDe(plancher, plancher.plancher, []) : null;
+  if (reponse.refus) {
+    if (reponse.refus.code === 'reservation_modifiee') return plancher ? refusDe(plancher, plancher.plancher, []) : null;
+    const d = Number.isInteger(reponse.refus.rang) ? envoi.deplacements[reponse.refus.rang] : null;
+    if (!d) return { refus: phraseHeureRefus(reponse.refus.message) || 'le serveur n’a pas donné de motif.', lignes: [], ecrit: null, prixSuivi: false, silencieux: true };
+    const phrase = reponse.refus.plancher ? d.plancher || 'Trop tôt : le groupe n’est pas encore là.' : phraseHeureRefus(reponse.refus.message) || 'Cette heure ne va pas.';
+    return refusDe(d, phrase, reponse.refus.suggestions);
+  }
+  if (plancher) return refusDe(plancher, plancher.plancher, []);
+  const ecrit = reponse.reservation;
+  if (!ecrit) return null;
+  const etapes = getGroupeProgramme(ecrit).filter(etape => etape.start !== null && etape.start !== undefined && !etape.libre);
+  const lignes = [];
+  envoi.deplacements.filter(d => d.point.activityId === 'bowling' || d.point.activityId === 'laser_game').forEach((d) => {
+    const bougee = etapes.find(etape => cleHeureEtape(etape) === d.cle);
+    if (!bougee) return;
+    etapes.filter(etape => etape.activityId !== 'bowling' && etape.activityId !== 'laser_game' && etape.end > etape.start && etape.start < bougee.end && bougee.start < etape.end && !/^service_/.test(etape.activityId) && etape.activityId !== 'arcade_credit' && etape.activityId !== 'party_table')
+      .forEach((autre) => {
+        const phrase = `${autre.nom} reste à ${formatClockDisplay(autre.start)}, pendant le ${bougee.nom} : changez aussi son heure si besoin.`;
+        if (!lignes.includes(phrase)) lignes.push(phrase);
+      });
+  });
+  return { refus: '', lignes, ecrit, prixSuivi: false, silencieux: true };
+}
+
+// La note du dernier « Enregistrer » : elle vaut pour cet etat d edition, tant
+// que ce qui partirait ne change pas.
+function cleNoteHeuresEdition() {
+  return JSON.stringify([resumeModifsEdition(), heuresChangeesEdition()]);
+}
+
+function noteHeuresActive() {
+  const note = noteHeuresEdition;
+  return note && state.editState && note.pour === state.editState && note.cle === cleNoteHeuresEdition() ? note : null;
+}
+
+function noterHeuresEdition(note) {
+  noteHeuresEdition = { ...note, pour: state.editState, cle: cleNoteHeuresEdition() };
+  peindreVerdictEdition();
+  peindreRefusHeuresEdition();
+}
+
+// Les heures libres que le dernier verdict proposait pour cette heure.
+function suggestionsConnuesEdition(cle) {
+  const v = verdictEdition();
+  const refus = v.resultat && v.resultat.heureRefusee;
+  return refus && refus.cle === cle ? refus.suggestions || [] : [];
+}
+
+// L ENREGISTREMENT DES HEURES : un deplacement apres l autre, chacun sur la
+// version que le precedent a ecrite, puis le contact s il a change. Un refus
+// laisse la saisie a l ecran, son champ en rouge avec sa phrase, et la barre du
+// bas le resume ; ce qui est deja passe le reste, et la barre le dit.
+async function enregistrerHeuresEdition() {
+  if (heuresEnregistrementEnCours) return;
+  noteHeuresEdition = null;
+  if (state.editError) setEditError('');
+  const prep = preparerDeplacementsEdition();
+  if (prep.erreur) { noterHeuresEdition({ ton: 'refus', texte: `Pas enregistré : ${prep.erreur}` }); return; }
+  const trop = prep.deplacements.find(d => d.plancher);
+  if (trop) {
+    noterHeuresEdition({ ton: 'refus', texte: `Pas enregistré : ${trop.point.nom} à ${trop.heure}.`, refus: { cle: trop.cle, phrase: trop.plancher, suggestions: suggestionsConnuesEdition(trop.cle) } });
+    return;
+  }
+  const reste = resumeModifsEdition().length > modifsHeuresEdition().length;
+  const envoi = reste ? preparerModificationEdition() : null;
+  if (envoi && envoi.erreur) { noterHeuresEdition({ ton: 'refus', texte: `Pas enregistré : ${envoi.erreur}` }); return; }
+  const { es, origine, versionDeBase, deplacements } = prep;
+  const id = versionDeBase.id;
+  heuresEnregistrementEnCours = true;
+  let derniere = null;
+  const faits = [];
+  const dit = (liste) => liste.map(d => `${d.point.nom} à ${d.heure}`).join(', ');
+  try {
+    for (const d of deplacements) {
+      const payload = await envoyerDeplacementActivite(derniere || versionDeBase, d.move);
+      const apres = pointsHeureEdition(payload.reservation).get(d.cle);
+      if (!apres || Math.round(apres.start * 60) !== minutesHeureEdition(d.heure)) throw new Error('Le serveur n’a pas confirmé cette heure. Actualisez le planning.');
+      derniere = payload.reservation;
+      faits.push(d);
+    }
+    let changeEntreTemps = '';
+    if (envoi) {
+      const payload = await envoyerModificationReservation(derniere, envoi.appliquer, { requiresLanes: envoi.requiresLanes, prixSuivi: envoi.prixSuivi, allowPastStart: true });
+      derniere = payload.reservation;
+      changeEntreTemps = payload.changeEntreTemps || '';
+    }
+    markReservationMutation(id, derniere, ['lanes', 'opsPlan']);
+    applyOptimisticReservation(derniere, { preserveEditState: true });
+    state.selectedRes = derniere;
+    heureOuverteEdition = '';
+    setEditError('');
+    save();
+    closePos();
+    // Le planning, la liste et les cartes suivent tout de suite.
+    renderStaffData();
+    const phrase = `${faits.length > 1 ? 'Heures changées' : 'Heure changée'} : ${dit(faits)}.`;
+    toast(changeEntreTemps ? `${phrase} Modifié entre-temps et conservé : ${changeEntreTemps}.` : phrase);
+  } catch (error) {
+    if (derniere) {
+      // Ce qui est passe est enregistre : la fiche repart de lui, le reste attend.
+      markReservationMutation(id, derniere, ['lanes', 'opsPlan']);
+      departsEdition().set(es, { origine: { ...derniere }, base: { ...derniere } });
+      const restantes = { ...heuresChangeesEdition() };
+      faits.forEach(d => { delete restantes[d.cle]; });
+      es.heuresActivites = restantes;
+      applyOptimisticReservation(derniere);
+      renderStaffData();
+    }
+    const deja = faits.length ? `${dit(faits)} : enregistré. ` : '';
+    if (error.conflit && error.reservation) {
+      // Un autre poste a ecrit avant : rien de ce deplacement n est parti. Sa
+      // version devient la base de la fiche, la saisie reste a l ecran.
+      departsEdition().set(es, { origine: derniere ? { ...derniere } : origine, base: error.reservation });
+      applyOptimisticReservation(error.reservation);
+      noterHeuresEdition({ ton: 'attention', texte: `${deja}Pas enregistré : la réservation a changé sur un autre poste entre-temps. L’écran est à jour et votre saisie est gardée : enregistrez à nouveau pour l’appliquer.` });
+      return;
+    }
+    const d = deplacements[faits.length];
+    const motif = phraseHeureRefus(error.message) || 'Cette heure n’a pas été enregistrée.';
+    if (d && faits.length < deplacements.length) {
+      noterHeuresEdition({ ton: 'refus', texte: `${deja}Pas enregistré : ${d.point.nom} à ${d.heure}.`, refus: { cle: d.cle, phrase: motif, suggestions: suggestionsConnuesEdition(d.cle) } });
+    } else {
+      noterHeuresEdition({ ton: 'refus', texte: `${deja}Pas enregistré : ${motif}` });
+    }
+  } finally {
+    heuresEnregistrementEnCours = false;
+  }
 }
 
 let dossierLaserSaving = false;
@@ -32190,7 +32707,7 @@ function dossierHasUnsavedChanges() {
   const e = state.editState;
   const original = e && departsEdition().get(e)?.origine;
   if (!original) return true;
-  return editProgramAChange() || editExtrasAChange() || e.prixFige || ['name', 'phone', 'email', 'occasion', 'companions', 'formuleId', 'startTime', 'duration', 'pax', 'status', 'date'].some(key => String(e[key] ?? '') !== String(original[key] ?? ''))
+  return editProgramAChange() || editExtrasAChange() || e.prixFige || Object.keys(heuresChangeesEdition()).length > 0 || ['name', 'phone', 'email', 'occasion', 'companions', 'formuleId', 'startTime', 'duration', 'pax', 'status', 'date'].some(key => String(e[key] ?? '') !== String(original[key] ?? ''))
     || JSON.stringify(parseLaneInput(e.lanesStr)) !== JSON.stringify(parseLaneInput(e.laserScheduleInitialLanes ?? (original.lanes || []).join(',')));
 }
 
@@ -32651,6 +33168,8 @@ function preparerModificationEdition(options = {}) {
 async function saveEdit(e) {
   e.preventDefault();
   if (dossierLaserSaving) return;
+  // Une heure d activite changee part par le glisser du planning (enregistrerHeuresEdition).
+  if (Object.keys(heuresChangeesEdition()).length) { await enregistrerHeuresEdition(); return; }
   const envoi = preparerModificationEdition();
   if (envoi.erreur) { failEdit(envoi.erreur); return; }
   const { es, origine, versionDeBase, appliquer, requiresLanes, lanesVoulues, jourChange, jourLong, touches, prixSuivi } = envoi;

@@ -30914,6 +30914,15 @@ function buildEditProgramFromReservation(r) {
   }
   // La formule telle que le dossier l a achetee (sa variante, booking-core).
   const formule = r && r.formuleId ? applyReservationFormulaChoice(resolveDisplayFormule(r.formuleId), r) : null;
+  // L ACCES ILLIMITE (lib/formule-comptoir.js) : toutes ses activites, telles que le serveur les a
+  // lues au catalogue du centre. Sa carte ne nomme pas chacune avec un mot que la ligne ci-dessous
+  // reconnait (golf, billard, duckpin...).
+  if (formule && formule.illimite && Array.isArray(formule.illimite.activites)) {
+    formule.illimite.activites.forEach((id) => {
+      if (id === 'bowling') { etat.bowling.on = true; etat.bowling.duration = Number(formule.bowlingDur || 1); } else if (id === 'laser_game') { etat.laser_game.on = true; etat.laser_game.games = Math.max(1, getFormulaLaserGameCount(formule)); } else if (id) etat.others[id] = true;
+    });
+    return etat;
+  }
   if (formule) {
     if (formule.hasBowling) { etat.bowling.on = true; etat.bowling.duration = Number(formule.bowlingDur || 1); }
     const parties = getFormulaLaserGameCount(formule);
@@ -35595,6 +35604,7 @@ function rvNomFormule(f) {
 // Ce que la formule contient, en mots courts et dans l ordre du plan.
 function rvResumeFormule(f) {
   if (!f) return '';
+  if (f.illimite && Number(f.illimite.minutes) > 0) return `Toutes les activités, ${rvHeuresLabel(Number(f.illimite.minutes) / 60)}`;
   const prog = buildEditProgramFromReservation({ formuleId: f.id });
   return rvIdsDeComposition(prog).map((id) => (id === 'laser_game' ? rvPluriel(Number(prog.laser_game && prog.laser_game.games) || 1, 'laser') : rvNomBref(id))).join(', ');
 }
@@ -38202,20 +38212,61 @@ function rsFormulesDuJour() {
   return { valables, autres: toutes.filter((f) => !valables.includes(f)) };
 }
 
-function rsPortesHtml() {
-  const cle = `${quickBookState.date}|${quickBookState.pax}`;
-  if (rsPortesMemo.cle !== cle) rsPortesMemo = { cle, html: rsPortesConstruire() };
+function rsPortesHtml(toutes = rsToutesHtml()) {
+  const cle = `${quickBookState.date}|${quickBookState.pax}|${toutes}`;
+  if (rsPortesMemo.cle !== cle) rsPortesMemo = { cle, html: rsPortesConstruire(toutes) };
   return rsPortesMemo.html;
 }
 
-function rsPortesConstruire() {
+function rsPortesConstruire(toutes = '') {
   const { valables } = rsFormulesDuJour();
   const prix = valables.map((f) => Number(f.price)).filter(Number.isFinite);
   const parJoueur = valables.every((f) => f.type !== 'per_lane');
   const detail = !valables.length ? 'Aucune ce jour-là'
     : `${rvPluriel(valables.length, 'formule')}${prix.length ? `, de ${rsEuros(Math.min(...prix))} à ${rsEuros(Math.max(...prix))}` : ''}${parJoueur ? ' par joueur' : ''}`;
   const mesure = rsNiveau('surmesure') === 'non' ? '' : `<button type="button" class="rs-porte" id="rsMesure" onclick="rsOuvrir('mesure')"><span class="rs-ic2">${rsIcone('')}</span><b>Sur mesure</b><span class="rs-fl" aria-hidden="true">›</span></button>`;
-  return `<button type="button" class="rs-porte" id="rsFormules" onclick="rsOuvrir('formules')"><span class="rs-ic2">${rsIcone('bowling')}</span><b>Formules</b><span class="rs-porte-l">${escapeHtml(detail)}</span><span class="rs-fl" aria-hidden="true">›</span></button>${mesure}`;
+  return `<button type="button" class="rs-porte" id="rsFormules" onclick="rsOuvrir('formules')"><span class="rs-ic2">${rsIcone('bowling')}</span><b>Formules</b><span class="rs-porte-l">${escapeHtml(detail)}</span><span class="rs-fl" aria-hidden="true">›</span></button>${toutes}${mesure}`;
+}
+
+// TOUTES LES ACTIVITES D UN TOUCHER (2026-11-18, Marius, manager de Gembloux : « si moi j ai un
+// petit team building qui vient, ils ont acces a toutes les activites [...] je suis oblige de
+// choisir chaque activite »). Le meme geste que toucher chaque tuile, une fois pour toutes : ce
+// qui manque au ticket y entre (rsPrendre), ce qui y est deja garde ses reglages. Le bowling
+// propose devient le bowling choisi, a son heure ; le laser le suit. Le serveur pose le bowling
+// et le laser a leur heure et retient pistes et arene, comme a la main ; les autres activites
+// sont en acces libre pendant la visite. Le prix est celui du programme, et chaque activite se
+// retire ensuite d un toucher. Une formule au ticket n a pas ce bouton : ses activites sont
+// celles de la formule (« Adapter » les change).
+function rsToutesLesIds() {
+  return getQuickBookActivityChoices().map((c) => c.id);
+}
+
+function rsToutesAuTicket() {
+  return rsToutesLesIds().every((id) => rsAuTicket(id));
+}
+
+function rsToutesHtml() {
+  const s = quickBookState;
+  const ids = rsToutesLesIds();
+  if (!s || s.type === 'formule' || ids.length < 2) return '';
+  if (rsToutesAuTicket()) {
+    return `<button type="button" class="rs-porte rs-toutes is-on" id="rsToutes" aria-pressed="true" disabled aria-label="${escapeHtml(`Les ${ids.length} activités du centre sont au ticket`)}"><span class="rs-ic2">${RV_I.ok}</span><b>Toutes au ticket</b></button>`;
+  }
+  return `<button type="button" class="rs-porte rs-toutes" id="rsToutes" aria-pressed="false" aria-label="${escapeHtml(`Mettre les ${ids.length} activités du centre au ticket`)}" onclick="rsToutesLesActivites()"><span class="rs-ic2">${RV_I.place}</span><b>Toutes les activités</b></button>`;
+}
+
+function rsToutesLesActivites() {
+  const s = quickBookState;
+  if (!s || !rsEtat() || s.type === 'formule') return;
+  const manquantes = rsToutesLesIds().filter((id) => !rsAuTicket(id));
+  if (!manquantes.length) return;
+  rsGeste(() => {
+    s.error = '';
+    // (le bowling propose reste : sans ce geste, le laser le remplacerait, rsPrendre)
+    s.bowlingParDefaut = false;
+    manquantes.forEach((id) => { if (!rsAuTicket(id)) rsPrendre(id); });
+    rsDemanderLesJoueurs();
+  });
 }
 
 function rsRetour() {
@@ -40878,7 +40929,10 @@ function rsPeindreActivites() {
   const petites = choix.filter((c) => !RV_ANCRABLES.includes(c.id));
   const etapes = petites.some((c) => rsAuTicket(c.id)) ? rvEtapesDuBillet() : [];
   rsPoser('rsZ-petits', `<div class="rs-petits" role="group" aria-label="Autres activités">${petites.map((c) => rsTuileHtml(c.id, etapes)).join('')}</div>${rsJoueursPetitsHtml(petites)}`);
-  rsPoser('rsZ-portes', `<div class="rs-portes${rsNiveau('surmesure') === 'non' ? ' is-seule' : ''}">${rsPortesHtml()}</div>`);
+  // Formules, Toutes les activites, Sur mesure : la grille a autant de colonnes que de portes.
+  const toutes = rsToutesHtml();
+  const portes = 1 + (toutes ? 1 : 0) + (rsNiveau('surmesure') === 'non' ? 0 : 1);
+  rsPoser('rsZ-portes', `<div class="rs-portes${portes === 1 ? ' is-seule' : portes === 3 ? ' is-trois' : ''}">${rsPortesHtml(toutes)}</div>`);
 }
 
 function rsEchap() {

@@ -230,6 +230,7 @@
     "test:joueurs-par-partie": "node scripts/joueurs-par-partie-check.js && node scripts/joueurs-par-partie-check.js --contre-preuves",
     "test:fenetre-reserver-details": "node scripts/fenetre-reserver-details-check.js && node scripts/fenetre-reserver-details-check.js --contre-preuves --tranche=1/3 && node scripts/fenetre-reserver-details-check.js --contre-preuves --tranche=2/3 && node scripts/fenetre-reserver-details-check.js --contre-preuves --tranche=3/3",
     "test:comptoir": "node scripts/comptoir-check.js && node scripts/comptoir-check.js --contre-preuves --tranche=1/2 && node scripts/comptoir-check.js --contre-preuves --tranche=2/2",
+    "test:formule-illimitee": "node scripts/formule-illimitee-check.js && node scripts/formule-illimitee-check.js --contre-preuves",
     "test:gates-eclats": "node scripts/gates-eclats-check.js && node scripts/gates-eclats-check.js --contre-preuves",
     "test:console-cibles": "node scripts/console-cibles-check.js && node scripts/console-cibles-check.js --contre-preuves",
     "test:arene-seuls-planning": "node scripts/arene-seuls-planning-check.js",

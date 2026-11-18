@@ -9715,10 +9715,123 @@
     cevSyncModal();
   };
 
+  // ── LA FORMULE ILLIMITEE (2026-11-18, Marius, manager de Gembloux) ──────────
+  // « Un petit team building qui vient, ils ont acces a toutes les activites. » Une formule de CE
+  // centre, au droit Tarifs comme les formules gardees au comptoir (garderFormuleSurMesure,
+  // lib/formule-comptoir.js) : toutes les activites du centre, que le serveur relit a son
+  // catalogue, un prix par joueur, une duree de visite. Elle se reserve au comptoir ; les clients
+  // ne la voient que si le centre le choisit. Decochee, la case laisse choisir les activites.
+  const CEV_DUREES_ILLIMITE = [60, 90, 120, 150, 180, 210, 240, 300, 360];
+  function cevActivitesDuCentre() {
+    return typeof getQuickBookActivityChoices === 'function'
+      ? getQuickBookActivityChoices().map((c) => ({ id: String(c.id), nom: String(c.label || c.id) }))
+      : [];
+  }
+  function cevDureeDite(minutes) {
+    const reste = minutes % 60;
+    return `${Math.floor(minutes / 60)} h${reste ? ` ${String(reste).padStart(2, '0')}` : ''}`;
+  }
+  function cevIllimiteHtml() {
+    const f = catalogEditor.fields || {};
+    const activites = cevActivitesDuCentre();
+    const aHeure = activites.filter((a) => a.id === 'bowling' || a.id === 'laser_game');
+    const libres = activites.filter((a) => a.id !== 'bowling' && a.id !== 'laser_game');
+    const dit = [
+      aHeure.length ? `${aHeure.map((a) => (a.id === 'bowling' ? 'Bowling 1 h' : '1 partie de laser')).join(' et ')} à l’heure réservée : pistes et arène retenues.` : '',
+      libres.length ? `À volonté pendant la visite : ${libres.map((a) => a.nom).join(', ')}.` : '',
+    ].filter(Boolean).join(' ');
+    const contenu = f.illimite
+      ? `<p class="cev-illimite-dit" id="cevIlDit">${esc(dit || 'Ce centre n’a encore aucune activité à vendre.')}</p>
+        <div class="field">
+          <label for="cevIlDuree">Durée de la visite</label>
+          <select id="cevIlDuree" onchange="cevIlChamp('dureeMinutes', this.value)">${CEV_DUREES_ILLIMITE.map((m) => `<option value="${m}"${Number(f.dureeMinutes) === m ? ' selected' : ''}>${esc(cevDureeDite(m))}</option>`).join('')}</select>
+        </div>`
+      : `<div class="cev-days" role="group" aria-label="Activités de la formule">${activites.map((a) => `<label class="cev-day"><input type="checkbox" data-cev-il-activite="${esc(a.id)}"${(f.activites || []).includes(a.id) ? ' checked' : ''} onchange="cevIlActivite(this.dataset.cevIlActivite, this.checked)"><span>${esc(a.nom)}</span></label>`).join('')}</div>`;
+    const qui = (clients, id, mot) => `<label class="cev-day"><input type="radio" name="cevIlQui" id="${id}"${Boolean(f.clients) === clients ? ' checked' : ''} onchange="cevIlChamp('clients', ${clients})"><span>${mot}</span></label>`;
+    return `<p class="cev-form-legend">Formule</p>
+      <div class="field">
+        <label for="cevIlNom">Nom de la formule</label>
+        <input id="cevIlNom" type="text" maxlength="80" value="${esc(f.name == null ? '' : f.name)}" data-autofocus oninput="cevIlChamp('name', this.value)">
+      </div>
+      <p class="cev-form-legend">Activités</p>
+      <label class="cev-inline-check"><input id="cevIlToutes" type="checkbox"${f.illimite ? ' checked' : ''} onchange="cevIlChamp('illimite', this.checked)"><span>Toutes les activités (illimité)</span></label>
+      ${contenu}
+      <p class="cev-form-legend">Tarif</p>
+      <div class="pev-grid2">
+        <div class="field">
+          <label for="cevIlPrix">Prix par joueur (${signeMonnaie()})</label>
+          <input id="cevIlPrix" type="number" min="0" max="1000" step="0.5" inputmode="decimal" value="${f.priceValue == null ? '' : esc(f.priceValue)}" oninput="cevIlChamp('priceValue', this.value)">
+        </div>
+        <div class="field">
+          <label for="cevIlMin">Joueurs minimum</label>
+          <input id="cevIlMin" type="number" min="1" max="240" step="1" inputmode="numeric" value="${esc(f.minPax == null ? 1 : f.minPax)}" oninput="cevIlChamp('minPax', this.value)">
+        </div>
+      </div>
+      <p class="cev-form-legend">Qui la voit</p>
+      <div class="cev-days" role="radiogroup" aria-label="Qui voit cette formule">${qui(false, 'cevIlComptoir', 'Au comptoir seulement')}${qui(true, 'cevIlClients', 'Aussi sur internet')}</div>`;
+  }
+  window.cevOpenIllimite = function () {
+    if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('pricing.manage')) { pevToast('Créer une formule demande le droit « Tarifs ».'); return; }
+    catalogEditor.fields = { name: 'Accès illimité', illimite: true, activites: [], dureeMinutes: 180, priceValue: null, minPax: 1, clients: false };
+    catalogEditor.steps = null;
+    catalogEditor.error = '';
+    catalogEditor.saving = false;
+    catalogEditor.modal = { mode: 'illimite', formuleId: null };
+    cevSyncModal();
+  };
+  window.cevIlChamp = function (cle, valeur) {
+    const f = catalogEditor.fields;
+    if (!f) return;
+    if (cle === 'illimite') { f.illimite = Boolean(valeur); cevRefreshBody(); return; }
+    if (cle === 'clients') { f.clients = valeur === true; return; }
+    f[cle] = valeur == null ? '' : String(valeur);
+  };
+  window.cevIlActivite = function (id, coche) {
+    const f = catalogEditor.fields;
+    if (!f) return;
+    const liste = new Set(f.activites || []);
+    if (coche) liste.add(String(id)); else liste.delete(String(id));
+    f.activites = cevActivitesDuCentre().map((a) => a.id).filter((x) => liste.has(x));
+  };
+  function cevSaveIllimite() {
+    const f = catalogEditor.fields || {};
+    const nom = String(f.name || '').trim();
+    if (!nom) { cevFail('Donnez un nom à la formule.'); return; }
+    const brut = String(f.priceValue == null ? '' : f.priceValue).trim().replace(',', '.');
+    const prix = brut === '' ? NaN : Number(brut);
+    if (!Number.isFinite(prix) || prix < 0 || prix > 1000) { cevFail(`Indiquez un prix par joueur entre 0 et 1000 ${signeMonnaie()}.`); return; }
+    const formule = { nom, prixParPersonne: prix, minPax: Math.trunc(Number(f.minPax) || 1), clients: f.clients === true };
+    if (f.illimite) {
+      formule.illimite = true;
+      formule.dureeMinutes = Number(f.dureeMinutes) || 180;
+    } else {
+      const choisies = cevActivitesDuCentre().filter((a) => (f.activites || []).includes(a.id));
+      if (!choisies.length) { cevFail('Cochez au moins une activité, ou toutes.'); return; }
+      formule.activites = choisies.map((a) => ({ id: a.id, nom: a.nom, ...(a.id === 'bowling' ? { minutes: 60 } : {}), ...(a.id === 'laser_game' ? { parties: 1 } : {}) }));
+      formule.lignes = [];
+    }
+    catalogEditor.saving = true;
+    catalogEditor.error = '';
+    cevRefreshFoot();
+    apiRequest(`${API_ENDPOINTS.ops || '/api/ops'}`, { method: 'POST', body: pevBody({ action: 'garderFormuleSurMesure', formule }) }).then(() => {
+      pevToast(formule.clients ? 'Formule ajoutée, au comptoir et sur internet.' : 'Formule ajoutée. Elle se réserve au comptoir, dans Formules.');
+      cevDismiss();
+      if (typeof oublierCatalogueSurMesure === 'function') oublierCatalogueSurMesure();
+      if (typeof chargerCatalogueSurMesure === 'function') chargerCatalogueSurMesure();
+      pevReload();
+    }).catch((error) => {
+      catalogEditor.saving = false;
+      catalogEditor.error = (error && error.message) || 'Enregistrement refusé. Réessayez.';
+      cevRefreshBody();
+      cevRefreshFoot();
+    });
+  }
+
   // ── Enregistrement ────────────────────────────────────────────────────────
   window.cevSave = function () {
     if (catalogEditor.saving || !catalogEditor.modal) return;
     const mode = catalogEditor.modal.mode;
+    if (mode === 'illimite') { cevSaveIllimite(); return; }
     if (mode === 'create') { cevSaveCreate(); return; }
     if (mode === 'steps') { cevSaveSteps(); return; }
     cevSaveFields();
@@ -9822,25 +9935,29 @@
   // ── Modale (montee dans document.body, comme pev) ─────────────────────────
   function cevModalTitle() {
     const mode = catalogEditor.modal && catalogEditor.modal.mode;
+    if (mode === 'illimite') return 'Nouvelle formule de ce centre';
     if (mode === 'create') return 'Ajouter une formule';
     const entry = pevEntry(catalogEditor.modal && catalogEditor.modal.formuleId);
     const name = entry && entry.name ? entry.name : 'Formule';
     return mode === 'steps' ? `Activités : ${name}` : `Structure : ${name}`;
   }
   function cevModalSub() {
+    if (catalogEditor.modal && catalogEditor.modal.mode === 'illimite') return 'Pour ce centre seulement. Elle se réserve au comptoir ; vos clients ne la voient que si vous le choisissez.';
     return 'Cette modification change l\'offre de TOUS VOS centres, pas seulement celui-ci. Aucun autre client ne la voit.';
   }
   function cevModalBodyHtml() {
     if (!catalogEditor.modal) return '';
     const mode = catalogEditor.modal.mode;
     const err = catalogEditor.error ? `<div class="pev-modal-error" role="alert">${esc(catalogEditor.error)}</div>` : '';
+    if (mode === 'illimite') return `${err}${cevIllimiteHtml()}`;
     if (mode === 'steps') return `${err}${cevStepsEditorHtml()}`;
     if (mode === 'fields') return `${err}${cevFieldsHtml()}`;
     return `${err}${cevFieldsHtml()}<div class="cev-sep"></div>${cevStepsEditorHtml()}`;
   }
   function cevModalFootHtml() {
     const busy = catalogEditor.saving;
-    return `<span class="pev-foot-note">Catalogue de votre entreprise. Chaque enregistrement est tracé au journal.</span>
+    const note = catalogEditor.modal && catalogEditor.modal.mode === 'illimite' ? 'Formule de ce centre. Chaque enregistrement est tracé au journal.' : 'Catalogue de votre entreprise. Chaque enregistrement est tracé au journal.';
+    return `<span class="pev-foot-note">${note}</span>
       <button type="button" class="btn btn-ghost" ${busy ? 'disabled' : ''} onclick="cevCloseModal()">Annuler</button>
       <button type="button" class="btn btn-primary" ${busy ? 'disabled' : ''} onclick="cevSave()">${busy ? 'Enregistrement...' : 'Enregistrer'}</button>`;
   }
@@ -11220,6 +11337,7 @@
         actions: `<label class="pv2-search tf-cherche">${TF_ICO.cherche}<input type="search" value="${esc(state.staffPricingQuery || '')}" placeholder="Nom, contenu, condition…" aria-label="Chercher une formule ou une activité" data-tf-cherche data-pl-focus="tf:cherche"></label>
           <button type="button" class="pv2-btn" data-tf-action="copier" data-pl-focus="tf:copier">Copier</button>
           ${typeof peutGeste !== 'function' || peutGeste('exporter') ? '<button type="button" class="pv2-btn" data-tf-action="exporter" data-pl-focus="tf:exporter">Exporter</button>' : ''}
+          ${tfPeutTarifs() ? '<button type="button" class="pv2-btn" id="tfIllimite" data-tf-action="illimite" data-pl-focus="tf:illimite" title="Une formule de ce centre avec toutes ses activités, un prix par joueur et une durée de visite">+ Formule illimitée</button>' : ''}
           ${reglages ? '<button type="button" class="pv2-btn" id="cevAddCategory" data-tf-action="categorie" data-pl-focus="tf:categorie" title="Créer une catégorie : donnez-lui un nom, elle apparaît partout">+ Catégorie</button>' : ''}`,
       })}
       <div class="tf-outils">
@@ -12496,6 +12614,7 @@
     if (action === 'copier') { if (typeof copyStaffPricingSummary === 'function') copyStaffPricingSummary(); return; }
     if (action === 'exporter') { if (typeof exportStaffPricingCsv === 'function') exportStaffPricingCsv(); return; }
     if (action === 'categorie') { cevOpenCreate(); return; }
+    if (action === 'illimite') { cevOpenIllimite(); return; }
     if (action === 'reessayer') { pevRetryCatalog(); return; }
     if (action === 'groupe-moins' || action === 'groupe-plus') { tfChangerGroupe(tarifs.groupe + (action === 'groupe-plus' ? 1 : -1)); return; }
     if (action === 'voir') { tfOuvrirTiroir(); return; }

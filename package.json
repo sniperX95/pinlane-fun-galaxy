@@ -58,6 +58,7 @@
     "test:suppression-version": "node scripts/suppression-version-check.js && node scripts/suppression-version-check.js --contre-preuves",
     "test:connexion-pretee": "node scripts/connexion-pretee-check.js && node scripts/connexion-pretee-check.js --contre-preuves",
     "test:schema-simulation": "node scripts/schema-simulation-check.js && node scripts/schema-simulation-check.js --contre-preuves",
+    "test:duree-requete": "node scripts/duree-requete-check.js && node scripts/duree-requete-check.js --contre-preuves",
     "test:notes-scope": "node scripts/staff-notes-scope-check.js",
     "test:rush-status": "node scripts/rush-status-ui-check.cjs",
     "test:reservation-edit-clarity": "node scripts/reservation-edit-clarity-check.cjs",

@@ -48,8 +48,8 @@ class FakePool {
   async connect() { return { query: this.query.bind(this), release() {} }; }
   async query(sql, p = []) {
     const q = sql.trim(); calls.push({ sql: q, p: clone(p) });
-    // `set local lock_timeout` : la limite d attente que chaque transaction pose en entrant (lib/database.js).
-    if (/^(BEGIN|COMMIT|ROLLBACK)$/i.test(q) || /^set local lock_timeout\b/i.test(q) || q.includes('pg_advisory_xact_lock')) return result([]);
+    // `set local lock_timeout` et `set local statement_timeout` : les limites que chaque transaction pose en entrant (lib/database.js).
+    if (/^(BEGIN|COMMIT|ROLLBACK)$/i.test(q) || /^set local (lock|statement)_timeout\b/i.test(q) || q.includes('pg_advisory_xact_lock')) return result([]);
     if (q.includes('insert into marketing_suppressions')) {
       const k = `${p[0]}:${p[1]}`, existed = suppressed.has(k); suppressed.add(k);
       return result(existed ? [] : [{ id: 1 }]);

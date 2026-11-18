@@ -421,6 +421,7 @@
     "test:suppression-version",
     "test:connexion-pretee",
     "test:schema-simulation",
+    "test:duree-requete",
     "test:reservation-edit-clarity",
     "test:rush-status",
     "test:notes-scope",

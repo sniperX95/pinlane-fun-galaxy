@@ -296,8 +296,8 @@ class FakePool {
   async end() {}
   async query(sql, p = []) {
     const q = String(sql || '').replace(/\s+/g, ' ').trim();
-    // `set local lock_timeout` : la limite d attente que chaque transaction pose en entrant (lib/database.js).
-    if (/^(begin|commit|rollback)\b/i.test(q) || /^set local lock_timeout\b/i.test(q) || /^(savepoint|release savepoint|rollback to savepoint)\b/i.test(q) || q.includes('pg_advisory_xact_lock')) return resultat([]);
+    // `set local lock_timeout` et `set local statement_timeout` : les limites que chaque transaction pose en entrant (lib/database.js).
+    if (/^(begin|commit|rollback)\b/i.test(q) || /^set local (lock|statement)_timeout\b/i.test(q) || /^(savepoint|release savepoint|rollback to savepoint)\b/i.test(q) || q.includes('pg_advisory_xact_lock')) return resultat([]);
     if (q.includes('/* empreintes-caches */')) return resultat([{ centres: `gate-${BASE.versionCentres}`, surcharges: null, catalogue: null, blocages: {} }]);
     if (q === 'select id, name, status, timezone, settings from centers;') return resultat([...BASE.centres.values()].map(({ id, name, status, timezone, settings }) => ({ id, name, status, timezone, settings })));
     if (q.startsWith('select status from centers where id = $1')) {

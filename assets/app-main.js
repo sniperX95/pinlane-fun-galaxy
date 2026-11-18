@@ -1284,13 +1284,10 @@ function getFreeCount(date, startTime, duration, ignoreId) {
 // Les minutes deja reservees sur chaque piste ce jour-la : les memes dossiers
 // que getOccupiedLanes (retenues en ligne comprises, « Pas venu » exclus).
 function usageDesPistesDuJour(date, ignoreId) {
-  const fenetres = [];
-  [...state.reservations, ...getBlocagesEnLigne(date)].forEach(r => {
-    if (r.id === ignoreId) return;
-    if (r.date === date && tientSesPlaces(r) && (r.lanes || []).length > 0) {
-      getBowlingWindowsFromReservation(r).forEach(w => fenetres.push({ lanes: w.lanes, minutes: Math.round(Number(w.duration || 0) * 60) }));
-    }
-  });
+  const dossiers = [...state.reservations, ...getBlocagesEnLigne(date)]
+    .filter(r => r.id !== ignoreId && r.date === date && tientSesPlaces(r) && (r.lanes || []).length > 0);
+  const fenetres = dossiers.flatMap(r => getBowlingWindowsFromReservation(r)
+    .map(w => ({ lanes: w.lanes, minutes: Math.round(Number(w.duration || 0) * 60) })));
   return window.PinlanePistes.usageDesPistes(fenetres);
 }
 

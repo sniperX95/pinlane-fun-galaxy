@@ -374,7 +374,6 @@ button.gf-bloc__in:focus-visible { outline: 2px solid var(--console-focus); outl
 .gf-i { display: grid; grid-template-columns: 62px minmax(0, 1fr); column-gap: 6px; margin-top: 2px; font-size: 13px; line-height: 17px; }
 .gf-i > span { font-size: 12px; color: var(--muted); white-space: nowrap; }
 .gf-i > p { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; min-width: 0; margin: 0; overflow: hidden; overflow-wrap: anywhere; color: var(--text); }
-.gf-i__par { color: var(--muted); }
 .gf-i__a { color: var(--gf-rouge); font-weight: 700; }
 .gf-i--prix > p { color: var(--warning); font-weight: 550; }
 /* LES NOTES SE VOIENT ET DISENT QUI LES A ECRITES (2026-11-06, Ansar : « la note c un

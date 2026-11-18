@@ -816,7 +816,11 @@ async function dossier(browser) {
     ok(l.ordre.join() === 'Note du client,Note de l’équipe,Fiche,Table,Sur mesure,Prix', '[I] chaque rubrique a son libelle en toutes lettres, dans l ordre', l.ordre);
     const rub = l.rub;
     ok(/^Allergie Un enfant allergique aux arachides\.$/.test((rub['Note du client'] || {}).texte || ''), '[I] Note du client : le mot du client, l allergie en tete', rub['Note du client']);
-    ok(/Bougies au bar à 17:00/.test((rub['Note de l’équipe'] || {}).texte || '') && /Julie/.test((rub['Note de l’équipe'] || {}).texte || '') && !/252/.test((rub['Note de l’équipe'] || {}).texte || ''), '[I] Équipe : la note et son auteur, sans la note de prix', rub['Équipe']);
+    // (2026-11-18, Marius, manager de Gembloux : « enlève le truc juste après, staff bar
+    // gembloux ») : la note se lit seule ; qui l a ecrite et quand, dans sa bulle.
+    const equipeI = rub['Note de l’équipe'] || {};
+    ok(equipeI.texte === 'Bougies au bar à 17:00' && !/252/.test(equipeI.bulle || ''), '[I] Équipe : la note se lit seule, aucun nom colle apres, sans la note de prix', equipeI);
+    ok(equipeI.bulle === 'Bougies au bar à 17:00\nÉcrite par Julie le 15/01 à 17:05', '[I] Équipe : la bulle redit la note, puis qui l a ecrite et quand', equipeI);
     ok(((rub.Fiche || {}).texte || '') === 'Client fidèle, 3e anniversaire chez nous', '[I] Fiche : la note permanente du client, a part', rub.Fiche);
     ok(/^\d\d:\d\d à \d\d:\d\d(, .+ à \d\d:\d\d)?$/.test((rub.Table || {}).texte || ''), '[I] Table : de quand a quand, et les boissons', rub.Table);
     ok(((rub['Sur mesure'] || {}).texte || '') === '13 × Pizza margherita, Gâteau d’anniversaire', '[I] Sur mesure : quantite et nom lisibles', rub['Sur mesure']);
@@ -1575,7 +1579,7 @@ async function cartes(browser) {
     ok(Boolean(mClara) && mClara.vu && mClara.dedans && mClara.nom === 'Sur mesure : 7 × Hot-dog à 17:00' && mClara.bulle === mClara.nom, '[R] bowling : le sur mesure se voit sur la carte, son infobulle dit quoi et a quelle heure', clara);
     const gerard = carte('Famille Gérard');
     const mGerard = marque(gerard, 'equipe');
-    ok(Boolean(mGerard) && mGerard.vu && mGerard.dedans && mGerard.bulle === 'Équipe : Arrivent en deux voitures (Julie)', '[R] bowling : la note de l equipe a son marqueur, son infobulle dit la note et son auteur', gerard);
+    ok(Boolean(mGerard) && mGerard.vu && mGerard.dedans && mGerard.nom === 'Équipe : Arrivent en deux voitures' && mGerard.bulle === 'Équipe : Arrivent en deux voitures\nÉcrite par Julie le 15/01 à 16:10', '[R] bowling : la note de l equipe a son marqueur, son nom dit la note seule, son infobulle qui l a ecrite et quand', gerard);
     ok(Boolean(mGerard) && !/→|fidèle|fidélité|€/.test(mGerard.bulle) && !marque(gerard, 'note'), '[R] bowling : une note de prix n est ni une note d equipe ni une bulle du client', gerard);
     const mModif = marque(gerard, 'modif');
     ok(Boolean(mModif) && mModif.vu && mModif.dedans && mModif.bulle === 'Modifié 15:05, Rachel : 4 → 6 joueurs' && mModif.nom === mModif.bulle, '[R] bowling : la derniere modification a son crayon, quand, qui et quoi au survol', gerard);
@@ -1621,7 +1625,7 @@ async function cartes(browser) {
     const lm = (cle) => (l || []).find((m) => m.cle === cle);
     ok(Array.isArray(l) && l.map((m) => m.cle).join() === 'note,mesure,equipe,modif,prix' && l.every((m) => m.taille === '13x13' && m.dedans), '[R] laser : la carte porte la note, le sur mesure, l equipe, la modification et le prix, dans cet ordre, sur la ligne du nom', l);
     ok(Boolean(lm('note')) && rouge(lm('note').couleur) && lm('note').bulle === 'Allergie · Client : Sans gluten pour deux enfants.', '[R] laser : l allergie en rouge, son survol dit tout', lm('note'));
-    ok(Boolean(lm('equipe')) && lm('equipe').bulle === 'Équipe : Table près de l’arène (Seb)' && Boolean(lm('mesure')) && lm('mesure').bulle === 'Sur mesure : 6 × Pizza à 16:30' && Boolean(lm('modif')) && lm('modif').bulle === 'Modifié 15:05, Rachel : Pizza × 6 ajoutée · 17:30 → 15:30', '[R] laser : l equipe, le sur mesure et la modification disent tout au survol', l);
+    ok(Boolean(lm('equipe')) && lm('equipe').nom === 'Équipe : Table près de l’arène' && lm('equipe').bulle === 'Équipe : Table près de l’arène\nÉcrite par Seb le 15/01 à 15:00' && Boolean(lm('mesure')) && lm('mesure').bulle === 'Sur mesure : 6 × Pizza à 16:30' && Boolean(lm('modif')) && lm('modif').bulle === 'Modifié 15:05, Rachel : Pizza × 6 ajoutée · 17:30 → 15:30', '[R] laser : l equipe, le sur mesure et la modification disent tout au survol', l);
     ok(Boolean(lm('prix')) && /^Prix ajusté [\d ,]+ €, référence [\d ,]+ €, anniversaire offert$/.test(lm('prix').bulle) && /^Prix ajusté/.test(lm('prix').nom), '[R] laser : le prix revu dit le prix d avant et la raison au survol', lm('prix'));
     // Dans une rangee serree (deux groupes au depart), les pictos cedent : le coin replie
     // dit la note, rouge avec une allergie, et l infobulle de la carte la dit en entier.
@@ -1655,7 +1659,7 @@ async function cartes(browser) {
         el.querySelectorAll('.terrain-rub').forEach((p) => {
           const mot = p.querySelector('.terrain-rub__mot');
           const tx = p.querySelector('.terrain-rub__t');
-          rub[mot.textContent] = { texte: tx.textContent.replace(/\s+/g, ' ').trim(), taille: Math.min(parseFloat(getComputedStyle(mot).fontSize), parseFloat(getComputedStyle(tx).fontSize)), couleur: getComputedStyle(tx).color, coupe: p.scrollWidth > p.clientWidth + 1, dedans: p.getBoundingClientRect().right <= el.getBoundingClientRect().right + 0.5 };
+          rub[mot.textContent] = { texte: tx.textContent.replace(/\s+/g, ' ').trim(), bulle: p.getAttribute('title') || '', taille: Math.min(parseFloat(getComputedStyle(mot).fontSize), parseFloat(getComputedStyle(tx).fontSize)), couleur: getComputedStyle(tx).color, coupe: p.scrollWidth > p.clientWidth + 1, dedans: p.getBoundingClientRect().right <= el.getBoundingClientRect().right + 0.5 };
         });
         const client = el.querySelector('.res-special-request');
         const a = el.querySelector('.terrain-allergie');
@@ -1664,12 +1668,12 @@ async function cartes(browser) {
       return o;
     });
     const tg = t['Famille Gérard'];
-    ok(Boolean(tg) && (tg.rub['Équipe'] || {}).texte === 'Arrivent en deux voitures Julie' && (tg.rub.Prix || {}).texte === '59 € au lieu de 69 €, carte de fidélité pleine', '[R] Terrain : la derniere note de l equipe avec son auteur, et le prix revu avec sa raison', tg);
+    ok(Boolean(tg) && (tg.rub['Équipe'] || {}).texte === 'Arrivent en deux voitures' && (tg.rub['Équipe'] || {}).bulle === 'Écrite par Julie le 15/01 à 16:10' && (tg.rub.Prix || {}).texte === '59 € au lieu de 69 €, carte de fidélité pleine', '[R] Terrain : la derniere note de l equipe seule, qui l a ecrite dans sa bulle, et le prix revu avec sa raison', tg);
     ok(Boolean(tg) && (tg.rub.Prix || {}).couleur === couleurPrixComplet && couleurPrixComplet !== '', '[R] Terrain : le prix revu a la couleur du prix du Complet', { terrain: tg && (tg.rub.Prix || {}).couleur, complet: couleurPrixComplet });
     ok(Boolean(t['Amis de Clara']) && (t['Amis de Clara'].rub['Sur mesure'] || {}).texte === '7 × Hot-dog à 17:00', '[R] Terrain : le sur mesure avec ses heures', t['Amis de Clara']);
     ok(Boolean(t['Famille Henrard']) && Object.keys(t['Famille Henrard'].rub).length === 0, '[R] Terrain : une note de prix passee se tait', t['Famille Henrard']);
     const tc = t['Anniversaire Camille'];
-    ok(Boolean(tc) && tc.ordre.join() === 'Client,Équipe,Sur mesure,Prix' && (tc.rub['Équipe'] || {}).texte === 'Bougies au bar à 17:00 Julie' && (tc.rub['Sur mesure'] || {}).texte === 'formule adaptée, 13 × Pizza margherita, Gâteau d’anniversaire' && (tc.rub.Prix || {}).texte === '252 € au lieu de 280 €, geste commercial', '[R] Terrain : le mot du client, puis l equipe, le sur mesure et le prix, dans l ordre', tc);
+    ok(Boolean(tc) && tc.ordre.join() === 'Client,Équipe,Sur mesure,Prix' && (tc.rub['Équipe'] || {}).texte === 'Bougies au bar à 17:00' && (tc.rub['Sur mesure'] || {}).texte === 'formule adaptée, 13 × Pizza margherita, Gâteau d’anniversaire' && (tc.rub.Prix || {}).texte === '252 € au lieu de 280 €, geste commercial', '[R] Terrain : le mot du client, puis l equipe, le sur mesure et le prix, dans l ordre', tc);
     ok(Boolean(tc && tc.allergie) && tc.allergie.mot === 'Allergie' && rouge(tc.allergie.couleur) && tc.allergie.poids >= 600 && /^Allergie Un enfant allergique/.test(tc.client), '[R] Terrain : l allergie du client en rouge, devant son mot', tc && { allergie: tc.allergie, client: tc.client });
     ok(Object.values(t).filter(Boolean).every((x) => Object.values(x.rub).every((r) => r.taille >= 12 && !r.coupe && r.dedans)), '[R] Terrain : rien sous 12 px, rien de coupe ni hors de sa carte', t);
     // La liste du jour (page Reservations) : une ligne de rubriques, comme le Complet. Le
@@ -1690,14 +1694,14 @@ async function cartes(browser) {
         const rub = {};
         item.querySelectorAll('.res-rub').forEach((s) => {
           const b = s.querySelector('b');
-          rub[b.textContent] = { texte: s.textContent.slice(b.textContent.length).trim(), taille: Math.min(parseFloat(getComputedStyle(s).fontSize), parseFloat(getComputedStyle(b).fontSize)), couleur: getComputedStyle(s).color, dedans: s.getBoundingClientRect().right <= item.getBoundingClientRect().right + 0.5 };
+          rub[b.textContent] = { texte: s.textContent.slice(b.textContent.length).trim(), bulle: s.getAttribute('title') || '', taille: Math.min(parseFloat(getComputedStyle(s).fontSize), parseFloat(getComputedStyle(b).fontSize)), couleur: getComputedStyle(s).color, dedans: s.getBoundingClientRect().right <= item.getBoundingClientRect().right + 0.5 };
         });
         o[n] = rub;
       });
       return o;
     });
     const jg = jour['Famille Gérard'];
-    ok(Boolean(jg) && (jg['Équipe'] || {}).texte === 'Arrivent en deux voitures (Julie)' && (jg.Prix || {}).texte === '59 € au lieu de 69 €, carte de fidélité pleine' && (jg.Prix || {}).couleur === couleurPrixComplet, '[R] liste du jour : l equipe et le prix revu, sa raison dans la couleur du prix du Complet', jg);
+    ok(Boolean(jg) && (jg['Équipe'] || {}).texte === 'Arrivent en deux voitures' && (jg['Équipe'] || {}).bulle === 'Équipe : Arrivent en deux voitures\nÉcrite par Julie le 15/01 à 16:10' && (jg.Prix || {}).texte === '59 € au lieu de 69 €, carte de fidélité pleine' && (jg.Prix || {}).couleur === couleurPrixComplet, '[R] liste du jour : l equipe et le prix revu, sa raison dans la couleur du prix du Complet', jg);
     ok(Boolean(jour['Amis de Clara']) && (jour['Amis de Clara']['Sur mesure'] || {}).texte === '7 × Hot-dog à 17:00' && Boolean(jour['Famille Henrard']) && Object.keys(jour['Famille Henrard']).length === 0, '[R] liste du jour : le sur mesure avec ses heures ; une note de prix passee se tait', jour);
     ok(Object.values(jour).filter(Boolean).every((x) => Object.values(x).every((r) => r.taille >= 12 && r.dedans)), '[R] liste du jour : rien sous 12 px, rien hors de sa ligne', jour);
     // LA LISTE SOUS LE PLANNING (#resList) DIT LE MEME DOSSIER (2026-11-03) : ses cartes de
@@ -1727,7 +1731,7 @@ async function cartes(browser) {
     const encadre = (liste, t) => (liste || []).find((e) => e.ton === t) || {};
     const lg = groupes.groupes['Famille Gérard'];
     ok(groupes.cartes > 0 && Boolean(lg), '[R] liste sous le planning : les cartes de groupe sont montees', groupes.cartes);
-    ok(encadre(lg, 'equipe').titre === 'Note équipe' && /Arrivent en deux voitures/.test(encadre(lg, 'equipe').texte || '') && !/→|fidél/.test(encadre(lg, 'equipe').texte || ''), '[R] liste sous le planning : la note de l equipe, sans les notes de prix ni leur nombre', lg);
+    ok(encadre(lg, 'equipe').titre === 'Note équipe' && /Arrivent en deux voitures/.test(encadre(lg, 'equipe').texte || '') && !/→|fidél|Julie/.test(encadre(lg, 'equipe').texte || '') && /\nÉcrite par Julie le 15\/01 à 16:10$/.test(encadre(lg, 'equipe').bulle || ''), '[R] liste sous le planning : la note de l equipe seule, qui l a ecrite dans sa bulle, sans les notes de prix ni leur nombre', lg);
     ok(/carte de fidélité pleine/.test(encadre(lg, 'price').texte || '') && /carte de fidélité pleine/.test(encadre(lg, 'price').bulle || '') && /Rachel/.test(encadre(lg, 'modif').texte || ''), '[R] liste sous le planning : la raison du prix, aussi dans sa bulle, et qui a modifie', lg);
     ok(['Famille Gérard', 'Amis de Clara'].every((n) => (groupes.groupes[n] || []).every((e) => !e.deborde)), '[R] liste sous le planning : aucun encadre ne sort de sa carte', groupes.groupes);
     ok(/7 × Hot-dog à 17:00/.test(encadre(groupes.groupes['Amis de Clara'], 'mesure').texte || ''), '[R] liste sous le planning : le sur mesure et son heure', groupes.groupes['Amis de Clara']);
@@ -1810,7 +1814,9 @@ const MUTATIONS = [
   // [I] le dossier qui a tout
   { nom: 'une-seule-ligne', lettre: 'I', scenarios: ['dossier'], editions: SEUL(PGC, '.gf-i > p { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;', '.gf-i > p { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1;') },
   { nom: 'note-permanente-absente', lettre: 'I', scenarios: ['dossier'], editions: SEUL(PG, "    if (fiche) liste.push(gfRubrique('fiche', 'Fiche', gpEsc(fiche), fiche, gfAllergie(fiche)));\n", '') },
-  { nom: 'note-sans-auteur', lettre: 'I', scenarios: ['dossier'], editions: SEUL(PG, " + (n.par ? ' <span class=\"gf-i__par\">' + gpEsc(n.par) + '</span>' : '')", '') },
+  // (2026-11-18, Marius : la note se lit seule, son auteur dans la bulle)
+  { nom: 'note-sans-auteur', lettre: 'I', scenarios: ['dossier'], editions: SEUL(PG, ', gfAllergie(texteEquipe), gfBulleNotes(equipe)));', ', gfAllergie(texteEquipe)));') },
+  { nom: 'nom-colle-apres-la-note', lettre: 'I', scenarios: ['dossier'], editions: SEUL(PG, "      var texteEquipe = equipe.map(function (n) { return n.t; }).join(' · ');", "      var texteEquipe = equipe.map(function (n) { return n.t + (n.par ? ' ' + n.par : ''); }).join(' · ');") },
   { nom: 'note-de-prix-dans-equipe', lettre: 'I', scenarios: ['dossier'], editions: SEUL(PG, '      if (p) { if (!notePrix || p.a != null) notePrix = p; return; }\n', '') },
   { nom: 'premiere-note-de-prix-gardee', lettre: 'I', scenarios: ['dossier'], editions: SEUL(PG, '      if (p) { if (!notePrix || p.a != null) notePrix = p; return; }\n', '      if (p) { if (!notePrix) notePrix = p; return; }\n') },
   { nom: 'note-du-serveur-illisible', lettre: 'I', scenarios: ['dossier'], editions: SEUL(PG, "    if (n && n.type === 'prix' && n.prix) {", '    if (false) {') },
@@ -1907,6 +1913,11 @@ const MUTATIONS = [
   { nom: 'liste-du-jour-sans-rubriques', lettre: 'R', scenarios: ['cartes'], editions: SEUL('assets/staff-pages-v2.js', "    return `<span class=\"pv2-flow-marks\">${prix}${note}${rubriques}</span>`;", "    return `<span class=\"pv2-flow-marks\">${prix}${note}</span>`;") },
   { nom: 'liste-du-jour-prix-gris', lettre: 'R', scenarios: ['cartes'], editions: SEUL(STAFF, '.pv2-flow-marks .res-rub--prix { color: var(--warning); font-weight: 600; }\n', '') },
   { nom: 'terrain-sans-equipe', lettre: 'R', scenarios: ['cartes'], editions: SEUL(APP, "  if (e.derniere) lignes.push(rubrique('equipe',", "  if (false) lignes.push(rubrique('equipe',") },
+  // (2026-11-18, Marius : aucun nom colle apres une note ; qui et quand restent dans sa bulle)
+  { nom: 'carte-equipe-nom-colle', lettre: 'R', scenarios: ['cartes'], editions: SEUL(PG, "    e.notes = lues.equipe.map(function (n) { return n.t; }).join(' · ');", "    e.notes = lues.equipe.map(function (n) { return n.t + (n.par ? ' (' + n.par + ')' : ''); }).join(' · ');") },
+  { nom: 'carte-equipe-bulle-sans-auteur', lettre: 'R', scenarios: ['cartes'], editions: SEUL(PG, '    e.notesBulle = gfBulleNotes(lues.equipe);\n', '') },
+  { nom: 'terrain-nom-colle', lettre: 'R', scenarios: ['cartes'], editions: SEUL(APP, '${escapeHtml(e.derniere.t)}`, bulleAuteurNote(e.derniere)));', '${escapeHtml(e.derniere.t)} ${escapeHtml(e.derniere.par)}`));') },
+  { nom: 'liste-du-jour-nom-colle', lettre: 'R', scenarios: ['cartes'], editions: SEUL(APP, "morceaux.push(['equipe', 'Équipe', e.derniere.t, bulleAuteurNote(e.derniere)]);", "morceaux.push(['equipe', 'Équipe', `${e.derniere.t} (${e.derniere.par})`]);") },
   { nom: 'terrain-sans-sur-mesure', lettre: 'R', scenarios: ['cartes'], editions: SEUL(APP, "  if (e.mesure || e.adaptee) lignes.push(rubrique('mesure',", "  if (false) lignes.push(rubrique('mesure',") },
   { nom: 'terrain-sans-prix', lettre: 'R', scenarios: ['cartes'], editions: SEUL(APP, "  if (e.prix) lignes.push(rubrique('prix', 'Prix', escapeHtml(e.prix)));\n", '') },
   { nom: 'terrain-allergie-muette', lettre: 'R', scenarios: ['cartes'], editions: SEUL(APP, "  const allergie = (oui) => (oui ? '<b class=\"terrain-allergie\">Allergie</b> ' : '');", "  const allergie = () => '';") },

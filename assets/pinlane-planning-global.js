@@ -774,7 +774,7 @@
   // rubriques ecrites en toutes lettres. Une rubrique vide ne prend aucune place ; deux
   // lignes au plus par rubrique, le texte entier dans la bulle et la fiche.
   // Trois sources de note, trois rubriques : le mot du client (Client), les notes de
-  // l equipe avec leur auteur (Équipe), la note permanente du client (Fiche).
+  // l equipe, leur auteur dans la bulle (Équipe), la note permanente du client (Fiche).
   var GF_NOTE_PRIX = /^(.+?) : (.+?) au lieu de (.+?)\. (.+)$/;
   // Deux ecritures de la raison d un prix. L ancienne, une phrase de la fenetre Réserver
   // dans une note d equipe (« Formule 4 (adaptée) : 252 € au lieu de 280 €. Geste
@@ -815,9 +815,11 @@
   // sous l etiquette, la note tient dans ses deux lignes. Les autres rubriques gardent
   // leur libelle gris dans sa colonne.
   var GF_NOTES = { client: true, equipe: true };
-  function gfRubrique(cle, mot, html, texte, allergie) {
+  // `bulle` : ce que dit la bulle quand ce n est pas le texte seul (les notes de l equipe,
+  // chacune suivie de qui l a ecrite et quand, gfBulleNotes).
+  function gfRubrique(cle, mot, html, texte, allergie, bulle) {
     var a = allergie ? '<b class="gf-i__a">Allergie</b> ' : '';
-    if (GF_NOTES[cle]) return { cle: cle, mot: mot, texte: texte, allergie: Boolean(allergie), html: '<div class="gf-i gf-i--note gf-i--' + cle + '"><p title="' + gpEsc(texte) + '"><span class="gf-i__mot">' + gpEsc(mot) + '</span> ' + a + html + '</p></div>' };
+    if (GF_NOTES[cle]) return { cle: cle, mot: mot, texte: texte, allergie: Boolean(allergie), html: '<div class="gf-i gf-i--note gf-i--' + cle + '"><p title="' + gpEsc(bulle || texte) + '"><span class="gf-i__mot">' + gpEsc(mot) + '</span> ' + a + html + '</p></div>' };
     return { cle: cle, mot: mot, texte: texte, allergie: Boolean(allergie), html: '<div class="gf-i gf-i--' + cle + '"><span>' + gpEsc(mot) + '</span><p title="' + gpEsc(texte) + '">' + a + html + '</p></div>' };
   }
   function gfPrixTexte(r, notePrix, sortie) {
@@ -846,7 +848,8 @@
     return g.boissons ? texte + ', ' + g.boissons.nom + ' à ' + gpHeure(g.boissons.start) : texte;
   }
   // LES NOTES DE L EQUIPE D UN DOSSIER, dans l ordre ou elles ont ete ecrites : la derniere
-  // est la plus recente. La ligne du Complet les lit toutes, le Terrain la derniere.
+  // est la plus recente. La ligne du Complet les lit toutes, le Terrain la derniere. Chacune
+  // garde qui l a ecrite et quand, pour sa bulle seulement (bulleAuteurNote, app-main.js).
   function gfNotesEquipe(r) {
     var notePrix = null;
     var equipe = [];
@@ -856,9 +859,19 @@
       // prix du moment, l historique du dossier garde les autres.
       var p = gfPrixDeNote(n);
       if (p) { if (!notePrix || p.a != null) notePrix = p; return; }
-      equipe.push({ t: gfUneLigne(n.t), par: gfUneLigne(n.par) });
+      equipe.push({ t: gfUneLigne(n.t), par: gfUneLigne(n.par), le: n.le, modifieLe: n.modifieLe, modifiePar: gfUneLigne(n.modifiePar) });
     });
     return { notePrix: notePrix, equipe: equipe };
+  }
+  // LA BULLE DES NOTES DE L EQUIPE (2026-11-18, Marius, manager de Gembloux : « enlève le
+  // truc juste après, staff bar gembloux [...] on ne voit pas bien ce qui est marqué en
+  // plus »). Le texte d une note se lit seul ; la bulle redit chaque note, puis, a la ligne,
+  // qui l a ecrite et quand. Une trace du moteur (retard, decalage) n a pas d auteur.
+  function gfBulleNotes(notes) {
+    return notes.map(function (n) {
+      var auteur = !n.trace && typeof bulleAuteurNote === 'function' ? bulleAuteurNote(n) : '';
+      return auteur ? n.t + '\n' + auteur : n.t;
+    }).join('\n');
   }
   function gfRubriques(g) {
     var r = g.r;
@@ -871,10 +884,10 @@
     var lues = g.lues || gfNotesEquipe(r);
     var notePrix = lues.notePrix;
     var equipe = lues.equipe.slice();
-    (parts.suivi || []).forEach(function (s) { equipe.push({ t: gfUneLigne(s), par: '' }); });
+    (parts.suivi || []).forEach(function (s) { equipe.push({ t: gfUneLigne(s), trace: true }); });
     if (equipe.length) {
-      var texteEquipe = equipe.map(function (n) { return n.t + (n.par ? ' ' + n.par : ''); }).join(' · ');
-      liste.push(gfRubrique('equipe', 'Note de l’équipe', equipe.map(function (n) { return gpEsc(n.t) + (n.par ? ' <span class="gf-i__par">' + gpEsc(n.par) + '</span>' : ''); }).join(' · '), texteEquipe, gfAllergie(texteEquipe)));
+      var texteEquipe = equipe.map(function (n) { return n.t; }).join(' · ');
+      liste.push(gfRubrique('equipe', 'Note de l’équipe', gpEsc(texteEquipe), texteEquipe, gfAllergie(texteEquipe), gfBulleNotes(equipe)));
     }
     var fiche = gfUneLigne(window.PinlaneStaffNotes && typeof window.PinlaneStaffNotes.text === 'function' ? window.PinlaneStaffNotes.text(r) : '');
     if (fiche) liste.push(gfRubrique('fiche', 'Fiche', gpEsc(fiche), fiche, gfAllergie(fiche)));
@@ -915,11 +928,12 @@
       e[x.cle] = x.texte;
       if (x.allergie) e.allergies[x.cle] = true;
     });
-    e.notes = lues.equipe.map(function (n) { return n.t + (n.par ? ' (' + n.par + ')' : ''); }).join(' · ');
+    e.notes = lues.equipe.map(function (n) { return n.t; }).join(' · ');
+    e.notesBulle = gfBulleNotes(lues.equipe);
     if (e.notes && gfAllergie(e.notes)) e.allergies.notes = true;
     e.raison = e.prix ? sortie.raison || '' : '';
     var d = lues.equipe[lues.equipe.length - 1];
-    if (d) e.derniere = { t: d.t, par: d.par, allergie: gfAllergie(d.t) };
+    if (d) e.derniere = { t: d.t, par: d.par, le: d.le, modifieLe: d.modifieLe, modifiePar: d.modifiePar, allergie: gfAllergie(d.t) };
     var f = gpFormule(r);
     e.adaptee = Boolean(f && f.adaptee);
     return e;

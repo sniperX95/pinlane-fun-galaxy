@@ -11,9 +11,12 @@
 //   [A] le serveur et la console lisent la MEME ligne d equipe (meme marqueur,
 //       meme forme) ;
 //   [B] le mot du client ne contient jamais une note d equipe ni une trace du
-//       moteur, et chaque note d equipe est rendue avec son auteur ;
+//       moteur ;
 //   [C] la fiche montre le mot du client en grand, les notes de l equipe, et
-//       le champ pour en ajouter une ; la carte porte la plus recente ;
+//       le champ pour en ajouter une ; la carte porte la plus recente. Le texte
+//       d une note se lit seul, aucun nom colle apres ; qui l a ecrite et quand
+//       se lisent dans sa bulle (2026-11-18, Marius, manager de Gembloux :
+//       « enlève le truc juste après, staff bar gembloux ») ;
 //   [D] le serveur prend l auteur dans la SESSION, jamais dans le corps, et
 //       la note s ecrit sous verrou (select ... for update) ;
 //   [E] le nom Bowling / Laser Game de la fiche mene au planning de la
@@ -68,7 +71,7 @@ function verifier(sources) {
       'const notesEquipeBrouillons = new Map();',
       'const notesEquipeOuvertes = new Set();',
       ...['lireNoteEquipeLigne', 'getReservationNotesEquipe', 'getReservationNoteText', 'getReservationNoteParts',
-        'hasReservationNote', 'getReservationDelayFlag', 'getReservationNoteTitre', 'formatNoteEquipeQuand', 'ficheDroitsNotes', 'renderNoteEquipeBouton', 'renderGroupeNotes', 'getReservationValidationTexte', 'nomDeLaFormuleAchetee', 'getGroupeEncadres',
+        'hasReservationNote', 'getReservationDelayFlag', 'getReservationNoteTitre', 'formatNoteEquipeQuand', 'quandNoteEnPhrase', 'bulleAuteurNote', 'ficheDroitsNotes', 'renderNoteEquipeBouton', 'renderGroupeNotes', 'getReservationValidationTexte', 'nomDeLaFormuleAchetee', 'getGroupeEncadres', 'renderGroupeEncadres',
         // La carte lit les notes ecrites par l equipe et la derniere modification
         // (2026-11-03) ; sans le planning, la regle de repli de notesEquipeEcrites.
         'notesEquipeEcrites', 'essentielDuDossier', 'texteDerniereModif', 'quandDerniereModif'].map((n) => extraire(sources.app, n)),
@@ -91,7 +94,7 @@ function verifier(sources) {
     };
     vm.createContext(bac);
     bacCote = bac;
-    vm.runInContext(`${code}\nthis.api = { NOTE_EQUIPE_TAG, lireNoteEquipeLigne, getReservationNotesEquipe, getReservationNoteText, getReservationNoteParts, hasReservationNote, renderGroupeNotes, renderNoteEquipeBouton, getGroupeEncadres };`, bac);
+    vm.runInContext(`${code}\nthis.api = { NOTE_EQUIPE_TAG, lireNoteEquipeLigne, getReservationNotesEquipe, getReservationNoteText, getReservationNoteParts, hasReservationNote, renderGroupeNotes, renderNoteEquipeBouton, getGroupeEncadres, renderGroupeEncadres };`, bac);
     cote = bac.api;
   } catch (e) {
     c(false, '[0] les fonctions des notes se chargent', e.message);
@@ -132,10 +135,18 @@ function verifier(sources) {
   // [C] LA FICHE ET LA CARTE
   const fiche = cote.renderGroupeNotes(dossier);
   c(/class="gc-note-client"[\s\S]*Mot du client[\s\S]*Gâteau à mettre au frais/.test(fiche), '[C] la fiche montre le mot du client sous son titre');
-  c((fiche.match(/class="gc-note-equipe"/g) || []).length === 2 && /Léa · /.test(fiche) && /Sam · /.test(fiche), '[C] chaque note d equipe porte son auteur et son heure');
-  // Le fondateur ne signe rien chez un centre (2026-11-13, lib/fondateur-invisible.js) : sa note dit « L’équipe ».
+  // LE TEXTE D UNE NOTE SE LIT SEUL (2026-11-18, Marius : « on ne voit pas bien ce qui est
+  // marqué en plus ») : chaque note de la fiche, son paragraphe et sa bulle.
+  const notesDe = (html) => Array.from(html.matchAll(/<li class="gc-note-equipe">\s*<p(?: title="([^"]*)")?>([\s\S]*?)<\/p>/g)).map((m) => ({ bulle: m[1] || '', texte: m[2] }));
+  const lues = notesDe(fiche);
+  c(lues.length === 2 && lues[0].texte === 'Client fidèle, offrir une boisson' && lues[1].texte === 'Table près de la fenêtre', '[C] le texte de chaque note d equipe se lit seul, aucun nom colle apres', JSON.stringify(lues));
+  c(lues.length === 2 && lues[0].bulle === 'Écrite par Léa le 01/10 à 21:00' && lues[1].bulle === 'Écrite par Sam le 01/10 à 21:05', '[C] la bulle de chaque note dit qui l a ecrite et quand, en une phrase', JSON.stringify(lues));
+  const reecrite = notesDe(cote.renderGroupeNotes({ id: 15, channel: 'staff', status: 'confirmed', notes: '[equipe] {"t":"Table près de la fenêtre","par":"Sam","le":"2026-10-01T19:05:00.000Z","modifieLe":"2026-10-01T19:20:00.000Z","modifiePar":"Léa"}' }));
+  c(reecrite.length === 1 && reecrite[0].texte === 'Table près de la fenêtre' && reecrite[0].bulle === 'Écrite par Sam le 01/10 à 21:05, modifiée le 01/10 à 21:20 par Léa', '[C] une note reecrite : sa bulle dit aussi quand et par qui', JSON.stringify(reecrite));
+  // Le fondateur ne signe rien chez un centre (2026-11-13, lib/fondateur-invisible.js) : sa note dit « l’équipe ».
   const sansSignature = cote.renderGroupeNotes({ id: 14, channel: 'staff', status: 'confirmed', notes: '[equipe] {"t":"Prévenir le client","par":"","le":"2026-10-01T19:10:00.000Z"}' });
-  c(/Prévenir le client <span class="gc-note-meta">L’équipe · /.test(sansSignature), '[C] une note signee par personne dit « L’équipe »', sansSignature.slice(0, 240));
+  const anonyme = notesDe(sansSignature);
+  c(anonyme.length === 1 && anonyme[0].texte === 'Prévenir le client' && anonyme[0].bulle === 'Écrite par l’équipe le 01/10 à 21:10', '[C] une note signee par personne dit « l’équipe » dans sa bulle', sansSignature.slice(0, 240));
   // Le bouton est dans les gestes de l en-tete (2026-11-15) : les notes
   // repliees ne portent ni champ ni bouton. Son libelle est coupe par un
   // span.fz-long cache selon la largeur, on lit donc son texte.
@@ -158,7 +169,9 @@ function verifier(sources) {
   c(/class="gc-note-titre">Note<\/b>/.test(comptoir) && !/Mot du client/.test(comptoir), '[C] un dossier pris au comptoir ne dit pas « Mot du client »');
   const encadres = cote.getGroupeEncadres(dossier);
   const equipe = encadres.find((e) => e.ton === 'equipe');
-  c(equipe && equipe.titre === 'Note équipe · 2' && /Table près de la fenêtre \(Sam\)/.test(equipe.texte), '[C] la carte porte la note la plus recente et le nombre de notes', JSON.stringify(equipe));
+  c(equipe && equipe.titre === 'Note équipe · 2' && equipe.texte === 'Table près de la fenêtre' && equipe.bulle === 'Écrite par Sam le 01/10 à 21:05', '[C] la carte porte la note la plus recente, seule, et le nombre de notes ; qui l a ecrite dans sa bulle', JSON.stringify(equipe));
+  const carteHtml = cote.renderGroupeEncadres(dossier);
+  c(/<div class="gc-flag tone-equipe" title="Note équipe · 2 : Table près de la fenêtre\nÉcrite par Sam le 01\/10 à 21:05">/.test(carteHtml) && /<span>Table près de la fenêtre<\/span>/.test(carteHtml), '[C] sur la carte, la note se lit seule et sa bulle dit qui l a ecrite', carteHtml.slice(0, 400));
   c(encadres.some((e) => e.ton === 'note' && e.titre === 'Mot du client' && e.texte === 'Gâteau à mettre au frais'), '[C] la carte porte le mot du client, titre compris');
   // LES TRACES DU SERVEUR NE SONT PAS DES NOTES (2026-11-03) : la raison d un prix revu et
   // le compte a l arrivee s ecrivent en note d equipe, mais la carte et « Avec note » ne
@@ -167,7 +180,7 @@ function verifier(sources) {
   const traceCompte = '[equipe] {"t":"Compte à l’arrivée : 10 → 12","par":"Julie","le":"2026-10-01T19:11:00.000Z","compte":{"de":10,"a":12}}';
   const avecTraces = { id: 11, channel: 'staff', status: 'confirmed', notes: [ligne, tracePrix, traceCompte].join('\n') };
   const equipeTraces = cote.getGroupeEncadres(avecTraces).find((e) => e.ton === 'equipe');
-  c(equipeTraces && equipeTraces.titre === 'Note équipe' && /Client fidèle, offrir une boisson \(Léa\)/.test(equipeTraces.texte), '[C] la carte ne compte ni la raison d un prix ni le compte a l arrivee', JSON.stringify(equipeTraces));
+  c(equipeTraces && equipeTraces.titre === 'Note équipe' && equipeTraces.texte === 'Client fidèle, offrir une boisson' && /^Écrite par Léa /.test(equipeTraces.bulle || ''), '[C] la carte ne compte ni la raison d un prix ni le compte a l arrivee', JSON.stringify(equipeTraces));
   const seulementPrix = { id: 12, channel: 'staff', status: 'confirmed', notes: tracePrix };
   c(!cote.hasReservationNote(seulementPrix) && !cote.getGroupeEncadres(seulementPrix).some((e) => e.ton === 'equipe'), '[C] un dossier qui n a qu une raison de prix n est pas « Avec note »');
   const modifie = { id: 13, channel: 'staff', status: 'confirmed', notes: '', opsPlan: { derniereModif: { le: '2026-10-01T13:10:00.000Z', par: 'Rachel', quoi: ['4 → 6 joueurs'] } } };
@@ -207,8 +220,12 @@ const MUTATIONS = [
   { nom: 'les traces du moteur restent dans le mot du client', cible: 'app', de: "mot: lignes.filter(ligne => !/^\\s*\\[ops:/.test(ligne))", vers: 'mot: lignes.filter(ligne => true)' },
   { nom: 'le serveur prend l auteur dans le corps', cible: 'api', de: 'par: nomDeSession(session),', vers: "par: geste.par || 'Équipe'," },
   { nom: 'la note s ecrit sans verrou', cible: 'db', de: "select * from reservations where id = $1 and center_id = $2 for update;", vers: 'select * from reservations where id = $1 and center_id = $2;' },
-  { nom: 'une note signee par personne ne dit plus l equipe', cible: 'app', de: "[n.par || 'L’équipe', formatNoteEquipeQuand(n.le)", vers: '[n.par, formatNoteEquipeQuand(n.le)' },
-  { nom: 'la fiche ne montre plus l auteur', cible: 'app', de: "[n.par || 'L’équipe', formatNoteEquipeQuand(n.le), n.modifieLe", vers: "['', formatNoteEquipeQuand(n.le), n.modifieLe" },
+  { nom: 'une note signee par personne ne dit plus l equipe', cible: 'app', de: "${verbe} par ${n.par || 'l’équipe'}", vers: '${verbe} par ${n.par}' },
+  { nom: 'la bulle de la note perd son auteur', cible: 'app', de: '<p title="${escapeHtml(bulleAuteurNote(n))}">${escapeHtml(n.t)}</p>', vers: '<p>${escapeHtml(n.t)}</p>' },
+  { nom: 'le nom revient apres le texte de la note', cible: 'app', de: '<p title="${escapeHtml(bulleAuteurNote(n))}">${escapeHtml(n.t)}</p>', vers: '<p title="${escapeHtml(bulleAuteurNote(n))}">${escapeHtml(n.t)} <span class="gc-note-meta">${escapeHtml(n.par || \'L’équipe\')}</span></p>' },
+  { nom: 'la bulle oublie la modification', cible: 'app', de: "${modifiee ? `, ${modifiee}` : ''}", vers: '' },
+  { nom: 'la carte recolle le nom apres la note', cible: 'app', de: '      texte: derniere.t,\n', vers: '      texte: `${derniere.t} (${derniere.par})`,\n' },
+  { nom: 'la bulle de la carte perd son auteur', cible: 'app', de: '      bulle: bulleAuteurNote(derniere),\n', vers: '' },
   { nom: 'le lien du planning coche aussi la ligne', cible: 'app', de: "function voirAuPlanning(reservationId, ressource, ev) {\n  if (ev) ev.stopPropagation();", vers: 'function voirAuPlanning(reservationId, ressource, ev) {' },
   { nom: 'le serveur change de marqueur', cible: 'db', de: "const NOTE_EQUIPE_TAG = '[equipe] ';", vers: "const NOTE_EQUIPE_TAG = '[staff] ';" },
   { nom: 'retirer une note montre sans le droit', cible: 'app', de: "    peutReecrire: peutNoter && (typeof canUseStaffPermission !== 'function' || canUseStaffPermission('reservations.edit')),", vers: '    peutReecrire: peutNoter,' },

@@ -782,7 +782,7 @@ const MUTATIONS = [
   { lettre: 'O', scenario: 'cartes', fichier: CSS, nom: 'l encadre reprend son fond',
     de: '#staffTableBox .gc-flag { flex-direction: row; flex-wrap: nowrap; align-items: baseline; gap: 8px; min-width: 0; padding: 1px 0; border: 0; border-radius: 0; background: none; line-height: 1.4; }', vers: '#staffTableBox .gc-flag { flex-direction: row; flex-wrap: nowrap; align-items: baseline; gap: 8px; min-width: 0; padding: 1px 0; line-height: 1.4; }' },
   { lettre: 'O', scenario: 'cartes', fichier: JS, nom: 'le texte coupe perd son title',
-    de: '${e.texte ? ` title="${escapeHtml(`${e.titre} : ${e.texte}`)}"` : \'\'}', vers: '' },
+    de: '${e.texte ? ` title="${escapeHtml(`${e.titre} : ${e.texte}${e.bulle ? `\\n${e.bulle}` : \'\'}`)}"` : \'\'}', vers: '' },
   { lettre: 'O', scenario: 'cartes', fichier: CSS, nom: 'les etapes reprennent leur marge',
     de: '#staffTableBox .gc-step { padding: 5px 6px; margin: 0 -6px; gap: 8px; }', vers: '' },
   { lettre: 'O', scenario: 'cartes', fichier: CSS, nom: 'le prix ajuste repasse au bleu',

@@ -13169,9 +13169,10 @@ const STAFF_TERRAIN_NOTE_ICON = '<svg width="14" height="14" viewBox="0 0 24 24"
 const STAFF_TERRAIN_PHONE_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>';
 
 // LE TERRAIN DIT LE DOSSIER, PAS SEULEMENT LE MOT DU CLIENT (2026-11-03). Sous le mot du
-// client (l allergie devant, en rouge), la derniere note de l equipe avec son auteur, le
-// sur mesure avec ses heures et le prix revu avec sa raison : les rubriques de la ligne du
-// Complet (pgEssentiel), une ligne chacune, aucune quand elle est vide.
+// client (l allergie devant, en rouge), la derniere note de l equipe (son auteur dans sa
+// bulle, bulleAuteurNote), le sur mesure avec ses heures et le prix revu avec sa raison :
+// les rubriques de la ligne du Complet (pgEssentiel), une ligne chacune, aucune quand elle
+// est vide.
 function renderStaffTerrainNote(reservation) {
   const e = essentielDuDossier(reservation);
   const mot = getReservationNoteText(reservation);
@@ -13179,8 +13180,8 @@ function renderStaffTerrainNote(reservation) {
   const lignes = [];
   if (e ? mot : hasReservationNote(reservation)) lignes.push(`<p class="res-special-request">${STAFF_TERRAIN_NOTE_ICON}${allergie(e && e.allergies.client)}${escapeHtml(mot)}</p>`);
   if (!e) return lignes.join('');
-  const rubrique = (cle, nom, html) => `<p class="terrain-rub terrain-rub--${cle}"><span class="terrain-rub__mot">${nom}</span><span class="terrain-rub__t">${html}</span></p>`;
-  if (e.derniere) lignes.push(rubrique('equipe', 'Équipe', `${allergie(e.derniere.allergie)}${escapeHtml(e.derniere.t)}${e.derniere.par ? ` <span class="terrain-rub__par">${escapeHtml(e.derniere.par)}</span>` : ''}`));
+  const rubrique = (cle, nom, html, bulle = '') => `<p class="terrain-rub terrain-rub--${cle}"${bulle ? ` title="${escapeHtml(bulle)}"` : ''}><span class="terrain-rub__mot">${nom}</span><span class="terrain-rub__t">${html}</span></p>`;
+  if (e.derniere) lignes.push(rubrique('equipe', 'Équipe', `${allergie(e.derniere.allergie)}${escapeHtml(e.derniere.t)}`, bulleAuteurNote(e.derniere)));
   if (e.mesure || e.adaptee) lignes.push(rubrique('mesure', 'Sur mesure', escapeHtml([e.adaptee ? 'formule adaptée' : '', e.mesure].filter(Boolean).join(', '))));
   if (e.prix) lignes.push(rubrique('prix', 'Prix', escapeHtml(e.prix)));
   return lignes.join('');
@@ -24743,6 +24744,28 @@ function formatNoteEquipeQuand(le) {
   return `${d.toLocaleDateString('fr-BE', { day: 'numeric', month: 'short', timeZone: 'Europe/Brussels' })} · ${heure}`;
 }
 
+// QUI A ECRIT UNE NOTE SE LIT DANS SA BULLE, JAMAIS APRES SON TEXTE (2026-11-18, Marius,
+// manager de Gembloux : « enlève le truc juste après, staff bar gembloux [...] on ne voit
+// pas bien ce qui est marqué en plus »). Le texte d une note se lit seul, sur chaque ecran ;
+// sa bulle (title) dit qui et quand, en une phrase : « Écrite par Julie le 18/11 à 17:37 »,
+// « Écrite par l’équipe » quand personne ne signe (le fondateur ne signe rien,
+// lib/fondateur-invisible.js), « modifiée le … par … » si elle l a ete. L Historique de la
+// reservation garde les deux. `verbe` : la note permanente du client se complete a
+// plusieurs, sa bulle dit « Mise à jour par ».
+function quandNoteEnPhrase(le) {
+  const d = new Date(le);
+  if (!le || Number.isNaN(d.getTime())) return '';
+  const jour = d.toLocaleDateString('fr-BE', { day: '2-digit', month: '2-digit', timeZone: 'Europe/Brussels' });
+  const heure = d.toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Brussels' });
+  return `le ${jour} à ${heure}`;
+}
+function bulleAuteurNote(note, verbe = 'Écrite') {
+  const n = note || {};
+  const quand = quandNoteEnPhrase(n.le);
+  const modifiee = n.modifieLe ? ['modifiée', quandNoteEnPhrase(n.modifieLe), n.modifiePar ? `par ${n.modifiePar}` : ''].filter(Boolean).join(' ') : '';
+  return `${verbe} par ${n.par || 'l’équipe'}${quand ? ` ${quand}` : ''}${modifiee ? `, ${modifiee}` : ''}`;
+}
+
 // ---- LA DERNIERE MODIFICATION D UN DOSSIER, EN UNE LIGNE (2026-11-03) ------
 // « Modifié 14:20, Julie : 12 → 14 joueurs ». Le serveur l ecrit avec le dossier
 // au moment ou ce qui se vend change (opsPlan.derniereModif,
@@ -25000,19 +25023,19 @@ function renderPosNoteBlock(reservation) {
 
 // LES RUBRIQUES DU DOSSIER EN UNE LIGNE, POUR LES LISTES (2026-11-03) : ce que la ligne
 // du Complet ecrit (pgEssentiel), sauf le mot du client que la ligne de note dit deja :
-// le sur mesure avec ses heures, la derniere note de l equipe et son auteur, le prix
-// revu et sa raison. Rien quand le dossier n en a pas.
+// le sur mesure avec ses heures, la derniere note de l equipe (son auteur dans sa bulle),
+// le prix revu et sa raison. Rien quand le dossier n en a pas.
 function renderLigneRubriquesDossier(reservation) {
   const e = essentielDuDossier(reservation);
   if (!e) return '';
   const morceaux = [];
   (typeof window !== 'undefined' && typeof window.pgMarques === 'function' ? window.pgMarques(reservation) : []).forEach((m) => morceaux.push([m.cle, m.mot, m.detail || '']));
   if (e.mesure || e.adaptee) morceaux.push(['mesure', 'Sur mesure', [e.adaptee ? 'formule adaptée' : '', e.mesure].filter(Boolean).join(', ')]);
-  if (e.derniere) morceaux.push(['equipe', 'Équipe', `${e.derniere.t}${e.derniere.par ? ` (${e.derniere.par})` : ''}`]);
+  if (e.derniere) morceaux.push(['equipe', 'Équipe', e.derniere.t, bulleAuteurNote(e.derniere)]);
   if (e.prix) morceaux.push(['prix', 'Prix', e.prix]);
   if (!morceaux.length) return '';
   const texte = morceaux.map(([, mot, t]) => (t ? `${mot} : ${t}` : mot)).join(' · ');
-  return `<span class="res-rub-line" title="${escapeHtml(texte)}">${morceaux.map(([cle, mot, t]) => `<span class="res-rub res-rub--${cle}"><b>${mot}</b> ${escapeHtml(t)}</span>`).join('')}</span>`;
+  return `<span class="res-rub-line" title="${escapeHtml(texte)}">${morceaux.map(([cle, mot, t, bulle]) => `<span class="res-rub res-rub--${cle}"${bulle ? ` title="${escapeHtml(`${mot} : ${t}\n${bulle}`)}"` : ''}><b>${mot}</b> ${escapeHtml(t)}</span>`).join('')}</span>`;
 }
 
 function renderReservationNoteLine(reservation) {
@@ -25106,12 +25129,14 @@ function renderCardFlags(reservation, options = {}) {
   // texte de la fiche) : un crayon sur la carte, « Modifié 15:10, Rachel : 4 → 6 joueurs »
   // en entier au survol et dans son nom.
   const modif = options.modif !== undefined ? options.modif : texteDerniereModif(reservation, { max: 4 });
-  // La note de l equipe : un bloc-notes, pas la bulle du client. Son nom dit tout.
+  // La note de l equipe : un bloc-notes, pas la bulle du client. Son nom dit les notes,
+  // sa bulle les redit avec qui les a ecrites et quand (pgEssentiel, notesBulle).
   if (e && e.notes) {
     const allergie = Boolean(e.allergies.notes);
     marques.push({
       cls: 'flag-equipe' + (allergie ? ' is-allergie' : ''),
       label: escapeHtml(`${allergie ? 'Allergie · ' : ''}Équipe : ${e.notes}`),
+      titre: escapeHtml(`${allergie ? 'Allergie · ' : ''}Équipe : ${e.notesBulle || e.notes}`),
       path: '<rect x="5.5" y="4" width="13" height="17" rx="2"/><path d="M9 4V2.8h6V4M8.8 10h6.4M8.8 14h4.2"/>',
     });
   }
@@ -27944,7 +27969,8 @@ function getGroupeEncadres(r) {
     encadres.push({
       ton: 'equipe',
       titre: notesEquipe.length > 1 ? `Note équipe · ${notesEquipe.length}` : 'Note équipe',
-      texte: `${derniere.t}${derniere.par ? ` (${derniere.par})` : ''}`,
+      texte: derniere.t,
+      bulle: bulleAuteurNote(derniere),
     });
   }
   // Qui a change quoi en dernier, comme les cartes Bowling et Laser (texteDerniereModif).
@@ -27961,7 +27987,7 @@ function renderGroupeEncadres(r, options = {}) {
   const encadres = getGroupeEncadres(r).filter(e => !(options.sansValidation && e.ton === 'review')
     && !(options.sansNotes && ['note', 'equipe', 'suivi'].includes(e.ton)));
   if (!encadres.length) return '';
-  return `<div class="gc-flags${options.large ? ' is-large' : ''}">${encadres.map(e => `<div class="gc-flag tone-${e.ton}"${e.texte ? ` title="${escapeHtml(`${e.titre} : ${e.texte}`)}"` : ''}>
+  return `<div class="gc-flags${options.large ? ' is-large' : ''}">${encadres.map(e => `<div class="gc-flag tone-${e.ton}"${e.texte ? ` title="${escapeHtml(`${e.titre} : ${e.texte}${e.bulle ? `\n${e.bulle}` : ''}`)}"` : ''}>
     <b>${escapeHtml(e.titre)}</b>${e.html ? e.html : e.texte ? `<span>${escapeHtml(e.texte)}</span>` : ''}
   </div>`).join('')}</div>`;
 }
@@ -29695,7 +29721,8 @@ function renderGroupeHistorique(r) {
 }
 
 // LE BLOC NOTES DE LA FICHE : le mot ecrit avec la reservation, en grand,
-// puis les notes de l equipe (qui, quand), et de quoi en ajouter une. Le
+// puis les notes de l equipe (qui et quand dans leur bulle, bulleAuteurNote),
+// et de quoi en ajouter une. Le
 // client ne voit jamais une note d equipe : elle ne part dans aucun message.
 const notesEquipeBrouillons = new Map();
 // Le champ s ouvre a la demande : une fiche sans note ne porte qu un bouton.
@@ -29736,7 +29763,7 @@ function renderGroupeNotes(r) {
       return parts.suivi.length ? `<ul class="gc-note-suivi">${parts.suivi.map(t => `<li>${escapeHtml(t)}</li>`).join('')}</ul>` : '';
     })()}
     ${notes.length ? `<ul class="gc-notes-equipe">${notes.map(n => `<li class="gc-note-equipe">
-      <p>${escapeHtml(n.t)} <span class="gc-note-meta">${escapeHtml([n.par || 'L’équipe', formatNoteEquipeQuand(n.le), n.modifieLe ? `modifiée ${formatNoteEquipeQuand(n.modifieLe)}${n.modifiePar ? ` par ${n.modifiePar}` : ''}` : ''].filter(Boolean).join(' · '))}</span></p>
+      <p title="${escapeHtml(bulleAuteurNote(n))}">${escapeHtml(n.t)}</p>
       ${peutReecrire ? `<div class="staff-note-actions"><button type="button" class="gc-note-retirer" aria-label="Modifier la note : ${escapeHtml(n.t.slice(0, 60))}" onclick="PinlaneStaffNotes.editReservation(${id}, '${escapeJsString(n.le)}', event)">Modifier</button><button type="button" class="gc-note-retirer" data-pl-focus="fiche.note.retirer.${id}.${escapeHtml(n.le)}" aria-label="Retirer la note : ${escapeHtml(n.t.slice(0, 60))}" onclick="retirerNoteEquipe(${id}, '${escapeJsString(n.le)}', event)">Retirer</button></div>` : ''}
     </li>`).join('')}</ul>` : ''}
     ${ouvert ? `<div class="gc-note-ajout">

@@ -393,6 +393,7 @@
     "test:fiche-gestes": "node scripts/fiche-gestes-check.js",
     "test:fiche-simple": "node scripts/fiche-simple-check.js && node scripts/fiche-simple-check.js --contre-preuves",
     "test:fiche-modifier": "node scripts/fiche-modifier-check.js && node scripts/fiche-modifier-check.js --contre-preuves",
+    "test:resa-lisible": "node scripts/resa-lisible-check.js && node scripts/resa-lisible-check.js --contre-preuves",
     "test:modifier-verdict": "node scripts/modifier-verdict-check.js && node scripts/modifier-verdict-check.js --contre-preuves",
     "test:heure-activite-dossier": "node scripts/heure-activite-dossier-check.js && node scripts/heure-activite-dossier-check.js --contre-preuves",
     "test:compte-arrivee": "node scripts/compte-arrivee-check.js && node scripts/compte-arrivee-check.js --contre-preuves",

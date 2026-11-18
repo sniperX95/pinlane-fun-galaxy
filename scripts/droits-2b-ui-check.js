@@ -8,7 +8,8 @@
 //   [S] Tarifs & formules, onglet « Sur mesure » : la carte du centre, la
 //       fenetre qui la gere (un seul bouton plein, le focus dedans), une seance
 //       de gerant enregistree pour de vrai, Echap qui previent avant de perdre.
-//   [M] l en-tete de la fiche : « Modifié 15:10, Rachel : 4 → 6 joueurs »,
+//   [M] l en-tete de la fiche : « Modifié 15:10, Rachel », le detail
+//       (« : 4 → 6 joueurs ») dans son infobulle (2026-11-18),
 //       ecrit par le serveur, lu sans rien demander.
 //   [H] l historique : ferme par defaut, lu a l ouverture, qui et quoi.
 //   [C] Enregistrer avec le curseur encore dans un prix : le clic part, le
@@ -236,8 +237,10 @@ async function scenario(browser) {
     await page.evaluate((id) => openPos(id), NOEL);
     await page.waitForSelector('#posOverlay .fx-modal', { timeout: 10000 });
     await FX_repos(page);
-    const modif = await page.evaluate(() => { const el = document.querySelector('#posOverlay [data-fx-modif]'); if (!el) return null; const b = el.getBoundingClientRect(); const s = getComputedStyle(el); return { t: el.textContent.trim(), haut: Math.round(b.top), nums: s.fontVariantNumeric, faits: Boolean(el.previousElementSibling && el.previousElementSibling.classList.contains('dossier-facts')) }; });
-    ok(modif && modif.t === 'Modifié 15:10, Rachel : 4 → 6 joueurs', '[M] l en-tete dit « Modifié 15:10, Rachel : 4 → 6 joueurs »', modif);
+    // (2026-11-18, Ansar : « ya plein de texte on comprend rien » : l en-tete dit
+    // l heure et qui, ce qui a change est dans son infobulle et dans l historique)
+    const modif = await page.evaluate(() => { const el = document.querySelector('#posOverlay [data-fx-modif]'); if (!el) return null; const b = el.getBoundingClientRect(); const s = getComputedStyle(el); const ligne = el.closest('.fx-contexte'); return { t: el.textContent.trim(), bulle: el.getAttribute('title') || '', haut: Math.round(b.top), nums: s.fontVariantNumeric, faits: Boolean(ligne && ligne.previousElementSibling && ligne.previousElementSibling.classList.contains('dossier-facts')) }; });
+    ok(modif && modif.t === 'Modifié 15:10, Rachel' && modif.bulle === 'Modifié 15:10, Rachel : 4 → 6 joueurs', '[M] l en-tete dit « Modifié 15:10, Rachel », son infobulle « Modifié 15:10, Rachel : 4 → 6 joueurs »', modif);
     ok(modif && modif.faits && modif.haut < 300 && /tabular-nums/.test(modif.nums), '[M] sous les faits du dossier, en haut de la fiche, chiffres tabulaires', modif);
     regles('M', 'la ligne de modification', await page.evaluate(mesurer, '#posOverlay [data-fx-modif]'), { pleinsMax: 0 });
     await photo(page, 'fiche-derniere-modif');
@@ -372,7 +375,8 @@ async function scenario(browser) {
 // LES CONTRE-PREUVES : une regle retiree au texte servi, sa lettre rougit.
 // ---------------------------------------------------------------------------
 const MUTATIONS = [
-  { nom: 'en-tete-muet', lettre: 'M', editions: [{ fichier: JS, de: "    ${derniereModif ? `<p class=\"fx-modif\" data-fx-modif>${escapeHtml(derniereModif)}</p>` : ''}\n", vers: '' }] },
+  { nom: 'en-tete-muet', lettre: 'M', editions: [{ fichier: JS, de: '  if (derniereModif) contexte.push(`<span class="fx-modif" data-fx-modif title="${escapeHtml(derniereModif)}">${escapeHtml(derniereModifCourte)}</span>`);\n', vers: '' }] },
+  { nom: 'en-tete-bavard', lettre: 'M', editions: [{ fichier: JS, de: '${escapeHtml(derniereModifCourte)}</span>`);', vers: '${escapeHtml(derniereModif)}</span>`);' }] },
   { nom: 'en-tete-11px', lettre: 'M', editions: [{ fichier: CSS, de: 'body:is(.staff-mode, .admin-mode) .fx-modal .fz-ligne :is(.dossier-facts, .dossier-facts .dossier-fact strong, .fx-etiquette, .fx-etiquette small, .fx-modif) { font-size: 15.5px;', vers: 'body:is(.staff-mode, .admin-mode) .fx-modal .fz-ligne :is(.dossier-facts, .dossier-facts .dossier-fact strong, .fx-etiquette, .fx-etiquette small, .fx-modif) { font-size: 11px;' }] },
   { nom: 'historique-absent', lettre: 'H', editions: [{ fichier: JS, de: '        ${renderGroupeHistorique(r)}\n', vers: '' }] },
   { nom: 'historique-lu-d-avance', lettre: 'H', editions: [{ fichier: JS, de: '  const ouvert = historiquesOuverts.has(id);', vers: '  const ouvert = historiquesOuverts.has(id);\n  if (!historiquesLus.has(id)) chargerHistoriqueDossier(r);' }] },

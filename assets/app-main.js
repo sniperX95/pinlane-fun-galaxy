@@ -24619,8 +24619,18 @@ function renderCardStats(pax, durationLabel, options = {}) {
   const grp = getGroupSizeClass(paxNum);
   const durClass = special ? 'bk-dur dur-special' : 'bk-dur';
   const durTitle = options.durationTitle || durationLabel;
+  // LES PISTES CHARGEES, A COTE DU NOMBRE ET PAS DEDANS (2026-11-18, Ansar, sur un
+  // Family Day de 108 joueurs pose sur six pistes : « les 108 joueurs s affiche moche »).
+  // Un glyphe ⚠ etait soude au chiffre dans la pastille, sans rien dire de plus a la
+  // synthese vocale que « Capacité de secours ». La pastille dit le nombre seul ; un
+  // triangle de marqueur, separe d elle, dit pourquoi au survol et a la synthese vocale
+  // (« 18 joueurs par piste, 6 d’habitude ») ; le toucher ouvre la fiche, dont le
+  // programme le dit en entier. Sur une piste trop etroite il part avant la duree, et
+  // jamais ne reste sans le nombre qu il qualifie (feuille de style).
+  const charge = bowlingCapacityMessage(options.bowlingCapacity);
   return `<span class="booking-stats">`
-    + `<span class="bk-pax ${grp}" title="${escapeHtml(`${paxNum} joueur${paxNum > 1 ? 's' : ''}${bowlingCapacityMessage(options.bowlingCapacity) ? ' · ' + bowlingCapacityMessage(options.bowlingCapacity) : ''}`)}">${paxNum}${options.bowlingCapacity?.emergency ? '<span aria-label="Capacité de secours">⚠</span>' : ''}<span class="u"><span class="u-short">j</span><span class="u-long">&nbsp;joueurs</span></span></span>`
+    + `<span class="bk-pax ${grp}" title="${escapeHtml(`${paxNum} joueur${paxNum > 1 ? 's' : ''}${charge ? ' · ' + charge : ''}`)}">${paxNum}<span class="u"><span class="u-short">j</span><span class="u-long">&nbsp;joueurs</span></span></span>`
+    + (charge ? `<span class="bk-pax-alerte" role="img" aria-label="${escapeHtml(charge)}" title="${escapeHtml(charge)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 4.2 2.6 17.6a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0z"/><path d="M12 9.5v4.2M12 17.2h.01"/></svg></span>` : '')
     + `<span class="bk-sep" aria-hidden="true">·</span>`
     + `<span class="${durClass}" title="Durée ${escapeHtml(durTitle)}">${escapeHtml(durationLabel)}</span>`
     + `</span>`;
@@ -24751,7 +24761,12 @@ function quandDerniereModif(le) {
   return `${d.toLocaleDateString('fr-BE', { day: 'numeric', month: 'short', timeZone: 'Europe/Brussels' })} ${heure}`;
 }
 
-function texteDerniereModif(r, { max = 2 } = {}) {
+// `court` : « Modifié 17:39, Julie », l en-tete de la fiche (2026-11-18, Ansar : « ya
+// plein de texte on comprend rien », la ligne y listait trois retraits et « +3 ») ; le
+// detail reste dans son infobulle et dans l historique. Une phrase deja ecrite en base
+// qui redit son etiquette (« Formule sur mesure : Formule sur mesure ») se dit une fois
+// (pgSansRedite, la regle du Complet).
+function texteDerniereModif(r, { max = 2, court = false } = {}) {
   const d = r && r.opsPlan && typeof r.opsPlan === 'object' ? r.opsPlan.derniereModif : null;
   const quoi = d && Array.isArray(d.quoi) ? d.quoi.filter(t => typeof t === 'string' && t.trim()) : [];
   if (!quoi.length) return '';
@@ -24759,7 +24774,10 @@ function texteDerniereModif(r, { max = 2 } = {}) {
   const reste = quoi.length - dits.length;
   const quand = quandDerniereModif(d.le);
   const qui = typeof d.par === 'string' ? d.par.trim() : '';
-  return `Modifié${quand ? ` ${quand}` : ''}${qui ? `, ${qui}` : ''} : ${dits.join(' · ')}${reste > 0 ? ` · +${reste}` : ''}`;
+  const tete = `Modifié${quand ? ` ${quand}` : ''}${qui ? `, ${qui}` : ''}`;
+  if (court) return tete;
+  const sansRedite = typeof window !== 'undefined' && typeof window.pgSansRedite === 'function' ? window.pgSansRedite : (t) => t;
+  return `${tete} : ${dits.map(sansRedite).join(' · ')}${reste > 0 ? ` · +${reste}` : ''}`;
 }
 
 // ---- LE PRIX AJUSTE : UNE SEULE REGLE, LUE PAR TOUS LES ECRANS ------------
@@ -34741,10 +34759,17 @@ function getQuickBookLaneNeed(time = quickBookState && quickBookState.startTime)
   return { needsLanes: true, ...plan };
 }
 
+// PLUS DE JOUEURS PAR PISTE QUE D HABITUDE, DIT EN MOTS DE COMPTOIR (2026-11-18,
+// Ansar : la carte d un Family Day de 108 joueurs sur six pistes disait « Capacité de
+// secours : 18 + 18 + 18 + 18 + 18 + 18 joueurs par piste »). Une repartition egale se
+// dit une fois ; ce que la piste prend d habitude suit, pour que le chiffre parle.
 function bowlingCapacityMessage(capacity) {
   if (!capacity?.emergency) return '';
-  const partition = (capacity.lanePlayers || []).join(' + ');
-  return `Capacité de secours : ${partition} joueurs par piste · environ ${capacity.estimatedMinutes} min à 10 min par joueur.${capacity.speedWarning ? ' Sur la durée choisie, un rythme soutenu est nécessaire ; terminer la partie n’est pas garanti.' : ''}`;
+  const parPiste = (capacity.lanePlayers || []).map(Number).filter(n => n > 0);
+  const plusieurs = parPiste.length > 1;
+  const partition = plusieurs && parPiste.every(n => n === parPiste[0]) ? String(parPiste[0]) : parPiste.join(' + ');
+  const habitude = Number(capacity.normalCapacityPerLane) > 0 ? `, ${Number(capacity.normalCapacityPerLane)} d’habitude` : '';
+  return `${plusieurs ? 'Pistes chargées' : 'Piste chargée'} : ${partition} joueurs ${plusieurs ? 'par piste' : 'sur la piste'}${habitude}. Comptez environ ${capacity.estimatedMinutes} min de jeu, à 10 min par joueur.${capacity.speedWarning ? ' Sur la durée choisie, un rythme soutenu est nécessaire ; terminer la partie n’est pas garanti.' : ''}`;
 }
 
 function getEditBowlingCapacityNeed(reservation, edition) {
@@ -39888,9 +39913,14 @@ function rsRetirerExtra(id) {
 
 // LE PRIX. Une raison pour tout prix ajuste, un plafond annonce avant le refus : le
 // niveau du membre (rsNiveau) decide de ce qui se touche. Le serveur ecrit la note.
+// La formule s y dit une fois (2026-11-18, Ansar : « pourquoi deux fois dire formule sur
+// mesure ») : sans nom, elle s appelle deja « Formule sur mesure » (rsFmNom), et un nom
+// qui le dit deja ne le redit pas.
 function rsRaisonPrix() {
   const s = quickBookState;
-  return [rsFmActive(s) ? `Formule sur mesure : ${rsFmNom(s)}` : '', s.prixRaison, String(s.prixRaisonLibre || '').trim()].filter(Boolean).join(' · ').slice(0, 200);
+  const nom = rsFmActive(s) ? rsFmNom(s) : '';
+  const formule = !nom ? '' : /^formule sur mesure\b/i.test(nom) ? nom : `Formule sur mesure : ${nom}`;
+  return [formule, s.prixRaison, String(s.prixRaisonLibre || '').trim()].filter(Boolean).join(' · ').slice(0, 200);
 }
 
 // Ajuste au sens du serveur et de la fiche : plus de 50 centimes d ecart
@@ -42216,8 +42246,11 @@ function renderPosInner() {
     .filter(e => e.ton === 'occasion' || (e.ton === 'suivi' && e.titre === 'À surveiller'))
     .map(e => (e.ton === 'occasion' && nomFormule ? { ...e, titre: String(e.titre || '').split(' · ').filter(p => p !== nomFormule).join(' · ') } : e))
     .filter(e => e.titre);
-  // Qui a change quoi en dernier, sans ouvrir l historique (texteDerniereModif).
-  const derniereModif = texteDerniereModif(r, { max: 3 });
+  // Qui a change en dernier, sans ouvrir l historique (texteDerniereModif) : l heure et
+  // qui sur la ligne, ce qui a change dans son infobulle (les six changements que le
+  // serveur garde) et dans l historique de la fiche.
+  const derniereModif = texteDerniereModif(r, { max: 6 });
+  const derniereModifCourte = texteDerniereModif(r, { court: true });
   // LA FICHE NE S OUVRE QU UNE FOIS. Son animation d entree (.fade-in) vivait
   // sur un conteneur reconstruit a CHAQUE rendu : cocher une activite, un poll,
   // un changement d etat la faisaient re-apparaitre en fondu sous les yeux du
@@ -42241,12 +42274,22 @@ function renderPosInner() {
   // chiffres en grands gras et le texte qui l introduit en petit [...] toute
   // l endroit de A a Z »). L heure, les joueurs et la formule en gras, puis le
   // jour, le lieu, le numero et l occasion en gris ; aucune taille ne change.
+  // LA VISITE, PUIS CE QUI L ENTOURE (2026-11-18, Ansar : « ya plein de texte on
+  // comprend rien »). La ligne coulait d un bloc : la visite, « Modifié » et ses
+  // retraits, puis les etiquettes COLLEES (« EntrepriseHors horaires ») : elles
+  // n avaient aucun separateur dans le texte, seulement un `gap` de flex que la ligne
+  // qui coule (`display: inline`) ecrasait. La visite garde sa ligne ; dessous, a la
+  // meme taille, les etiquettes puis « Modifié 17:39, Julie », separees par un point
+  // median ecrit dans le texte (copie, synthese vocale, aucune regle de style a perdre).
+  // Le detail d une etiquette suit une virgule : un point median y ferait une etiquette
+  // de plus.
+  const contexte = etiquettes.map(e => (e.ton === 'suivi'
+    ? `<span class="fx-etiquette is-suivi"><b>${escapeHtml(e.titre)}</b>${e.texte ? ` ${escapeHtml(e.texte)}` : ''}</span>`
+    : `<span class="fx-etiquette">${escapeHtml(e.titre)}${e.texte ? `, ${escapeHtml(e.texte)}` : ''}</span>`));
+  if (derniereModif) contexte.push(`<span class="fx-modif" data-fx-modif title="${escapeHtml(derniereModif)}">${escapeHtml(derniereModifCourte)}</span>`);
   const faitsEnTete = `<div class="fz-faits">
     <p class="dossier-facts">${facts}</p>
-    ${derniereModif ? `<p class="fx-modif" data-fx-modif>${escapeHtml(derniereModif)}</p>` : ''}
-    ${etiquettes.length ? `<p class="fx-etiquettes">${etiquettes.map(e => e.ton === 'suivi'
-      ? `<span class="fx-etiquette is-suivi"><b>${escapeHtml(e.titre)}</b>${e.texte ? ` ${escapeHtml(e.texte)}` : ''}</span>`
-      : `<span class="fx-etiquette">${escapeHtml(e.titre)}${e.texte ? ` · ${escapeHtml(e.texte)}` : ''}</span>`).join('')}</p>` : ''}
+    ${contexte.length ? `<p class="fx-contexte">${contexte.join(' <span class="fx-sep" aria-hidden="true">·</span> ')}</p>` : ''}
     </div>`;
   overlay.innerHTML = `
     <div class="edit-modal fx-modal fz${isEdit ? ' is-edition' : ''}" role="dialog" aria-modal="true" aria-labelledby="posTitle" tabindex="-1">

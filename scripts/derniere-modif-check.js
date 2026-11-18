@@ -23,7 +23,8 @@
 //   [L] la lecture : le staff-state la porte, sans une requete de plus et sans
 //       jamais lire le journal, qu un dossier ou quatre aient change.
 //   [C] la console : la phrase (heure, hier, date, qui, combien), la fiche se
-//       redessine quand elle change.
+//       redessine quand elle change ; son en-tete dit l heure et qui, le detail
+//       dans son infobulle (2026-11-18, Ansar : « ya plein de texte »).
 //
 // --contre-preuves : chaque garde retiree en memoire (le disque n est jamais
 // touche), la ligne qui la prouve doit rougir.
@@ -283,14 +284,18 @@ async function groupeConsole(mutations = []) {
   v(texteDerniereModif(avec({ le: FX.instant('2026-12-24', '09:30').toISOString() })) === 'Modifié 24 déc. 09:30, Julie : 12 → 14 joueurs', '[C] plus tot : la date et l heure', texteDerniereModif(avec({ le: FX.instant('2026-12-24', '09:30').toISOString() })));
   const cinq = avec({ quoi: ['5 → 6 joueurs', 'Heure 14:00 → 14:30', 'Ajout : Pizza × 6, 84 €', 'Prix 39 € → 30 €, geste', 'Nom A → B'] });
   v(texteDerniereModif(cinq) === 'Modifié 14:20, Julie : 5 → 6 joueurs · Heure 14:00 → 14:30 · +3', '[C] deux changements dits, le reste compte', texteDerniereModif(cinq));
-  v(texteDerniereModif(cinq, { max: 3 }) === 'Modifié 14:20, Julie : 5 → 6 joueurs · Heure 14:00 → 14:30 · Ajout : Pizza × 6, 84 € · +2', '[C] la fiche en dit trois', texteDerniereModif(cinq, { max: 3 }));
+  v(texteDerniereModif(cinq, { max: 3 }) === 'Modifié 14:20, Julie : 5 → 6 joueurs · Heure 14:00 → 14:30 · Ajout : Pizza × 6, 84 € · +2', '[C] la liste sous le planning en dit trois', texteDerniereModif(cinq, { max: 3 }));
+  // L en-tete de la fiche dit l heure et qui ; le detail est dans son infobulle
+  // (2026-11-18, Ansar : « ya plein de texte on comprend rien »).
+  v(texteDerniereModif(cinq, { court: true }) === 'Modifié 14:20, Julie' && texteDerniereModif(cinq, { max: 6 }) === 'Modifié 14:20, Julie : 5 → 6 joueurs · Heure 14:00 → 14:30 · Ajout : Pizza × 6, 84 € · Prix 39 € → 30 €, geste · Nom A → B',
+    '[C] l en-tete de la fiche dit « Modifié 14:20, Julie », son infobulle les cinq changements', { court: texteDerniereModif(cinq, { court: true }), bulle: texteDerniereModif(cinq, { max: 6 }) });
   v(texteDerniereModif({}) === '' && texteDerniereModif({ opsPlan: null }) === '' && texteDerniereModif(avec({ quoi: [] })) === '' && texteDerniereModif(avec({ quoi: 'texte' })) === '' && texteDerniereModif(avec({ quoi: ['  ', 3] })) === '',
     '[C] jamais modifie, ou un resume illisible : rien a dire');
   v(texteDerniereModif(avec({ par: '' })) === 'Modifié 14:20 : 12 → 14 joueurs' && texteDerniereModif(avec({ le: 'pas une date' })) === 'Modifié, Julie : 12 → 14 joueurs', '[C] sans auteur ou sans heure lisible : la phrase tient');
   const avant = getFicheFaitsSignature();
   r.opsPlan.derniereModif = { ...r.opsPlan.derniereModif, par: 'Rachel', quoi: ['Heure 14:00 → 14:30'] };
   v(getFicheFaitsSignature() !== avant, '[C] une modification faite sur un autre poste redessine l en-tete de la fiche, meme si rien d autre ne bouge');
-  const ligne = (/\$\{derniereModif \? `<p class="fx-modif" data-fx-modif>\$\{escapeHtml\(derniereModif\)\}<\/p>` : ''\}/.exec(src) || [])[0];
+  const ligne = (/if \(derniereModif\) contexte\.push\(`<span class="fx-modif" data-fx-modif title="\$\{escapeHtml\(derniereModif\)\}">\$\{escapeHtml\(derniereModifCourte\)\}<\/span>`\);/.exec(src) || [])[0];
   v(Boolean(ligne), '[C] la fiche peint la phrase echappee, sous ses faits', ligne);
   return liste;
 }
@@ -319,11 +324,12 @@ const CONTRE_PREUVES = [
   // Le choix inverse : la derniere modification lue dans le journal a chaque releve.
   { nom: 'le resume relu dans le journal a chaque releve', groupe: 'groupeLecture', attendu: /aucune par dossier/, fichier: 'api/staff-state.js', de: '    const snapshot = await readStaffState(date, centerId, { blocagesAPart: true, avecAbsents: true });\n', vers: "    const snapshot = await readStaffState(date, centerId, { blocagesAPart: true, avecAbsents: true });\n    for (const r of snapshot.reservations || []) if (r.opsPlan && r.opsPlan.derniereModif) await getPool().query('select changes from audit_log where entity_id = $1 order by occurred_at desc limit 1;', [String(r.id)]);\n" },
   { nom: 'la phrase sans compte du reste', groupe: 'groupeConsole', attendu: /deux changements dits, le reste compte/, fichier: JS, de: "${reste > 0 ? ` · +${reste}` : ''}", vers: '' },
-  { nom: 'la fiche en dit deux', groupe: 'groupeConsole', attendu: /la fiche en dit trois/, fichier: JS, de: 'const dits = quoi.slice(0, Math.max(1, Number(max) || 1));', vers: 'const dits = quoi.slice(0, 2);' },
+  { nom: 'la liste en dit deux', groupe: 'groupeConsole', attendu: /la liste sous le planning en dit trois/, fichier: JS, de: 'const dits = quoi.slice(0, Math.max(1, Number(max) || 1));', vers: 'const dits = quoi.slice(0, 2);' },
   { nom: 'hier dit comme une date', groupe: 'groupeConsole', attendu: /la veille/, fichier: JS, de: '  if (jourDe(d) === jourDe(new Date(maintenant.getTime() - 86400000))) return `hier ${heure}`;\n', vers: '' },
   { nom: 'un resume illisible affiche', groupe: 'groupeConsole', attendu: /un resume illisible : rien a dire/, fichier: JS, de: "d.quoi.filter(t => typeof t === 'string' && t.trim())", vers: 'd.quoi' },
   { nom: 'la fiche ne se redessine pas', groupe: 'groupeConsole', attendu: /redessine l en-tete de la fiche/, fichier: JS, de: 'getStaffDashboardStatusMeta(r).label, texteDerniereModif(r, { max: 3 })])', vers: 'getStaffDashboardStatusMeta(r).label])' },
-  { nom: 'la phrase peinte sans echappement', groupe: 'groupeConsole', attendu: /la fiche peint la phrase echappee/, fichier: JS, de: '<p class="fx-modif" data-fx-modif>${escapeHtml(derniereModif)}</p>', vers: '<p class="fx-modif" data-fx-modif>${derniereModif}</p>' },
+  { nom: 'la phrase peinte sans echappement', groupe: 'groupeConsole', attendu: /la fiche peint la phrase echappee/, fichier: JS, de: '${escapeHtml(derniereModifCourte)}</span>`);', vers: '${derniereModifCourte}</span>`);' },
+  { nom: 'l en-tete redit tous les changements', groupe: 'groupeConsole', attendu: /l en-tete de la fiche dit « Modifié 14:20, Julie »/, fichier: JS, de: '  if (court) return tete;\n', vers: '' },
 ];
 
 process.on('beforeExit', () => {

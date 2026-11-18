@@ -262,6 +262,7 @@
     "test:fiche-simple",
     "test:fiche-modifier",
     "test:heure-activite-dossier",
+    "test:resa-lisible",
     "test:compte-arrivee",
     "test:planning-recherche",
     "test:heures-du-dossier",

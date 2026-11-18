@@ -2474,7 +2474,9 @@ async function handlePost(req, res, providedBody = null, options = {}) {
       else if (action === 'afficherFormuleSurMesure') out = await catalogStore.updateFormula(getPool(), { id, humanValidation: body.clients === true ? null : MODE_COMPTOIR, ownerClientId });
       else if (action === 'modifierFormuleSurMesure') out = await catalogStore.updateFormula(getPool(), { id, ...champsDeFormule(body), ownerClientId });
       else {
-        const { steps, ...champs } = formuleDepuisLeComptoir(body.formule || {});
+        // L acces illimite prend le catalogue vendable de CE centre (lib/formule-comptoir.js).
+        const activitesDuCentre = body.formule && body.formule.illimite === true ? require('../lib/activity-catalog').listCenterActivities(targetCenter) : [];
+        const { steps, ...champs } = formuleDepuisLeComptoir(body.formule || {}, { activitesDuCentre });
         if (id) {
           await catalogStore.updateFormula(getPool(), { id, ...champs, ownerClientId });
           out = await catalogStore.setFormulaSteps(getPool(), { id, steps, ownerClientId });

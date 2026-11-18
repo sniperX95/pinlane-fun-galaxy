@@ -169,6 +169,7 @@
     "test:comptoir-reserver",
     "test:reserver-seances",
     "test:comptoir",
+    "test:formule-illimitee",
     "test:gates-eclats",
     "test:console-cibles",
     "test:arene-seuls-planning",

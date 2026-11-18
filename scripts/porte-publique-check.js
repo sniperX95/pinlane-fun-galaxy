@@ -1,4 +1,4 @@
-// LA PORTE PUBLIQUE : CE QU UN INCONNU NE PEUT PLUS FAIRE (2026-11-18, avant-lancement B2 a B4).
+// LA PORTE PUBLIQUE : CE QU UN INCONNU NE PEUT PLUS FAIRE (2026-11-18, avant-lancement B2 a B5).
 //
 // [M] LA COPIE RATEE (B2). Les numeros de reservation se suivent : n importe qui faisait sonner « copie ratee »,
 //     URGENT, sur les vraies reservations de l heure. Le signal ne sonne plus que s il porte ce que seul le client a
@@ -10,6 +10,8 @@
 // [P] UN CENTRE PREVU OU FERME (B4). Sa lecture publique rendait tout : nom, adresse, horaires, formules et prix. Le
 //     visiteur recoit son statut et la phrase qui ferme le formulaire ; son personnel le lit toujours en entier ; un
 //     centre actif (le socle, la demonstration, un centre ne dans la console) rend EXACTEMENT la reponse d avant.
+// [C] LE CADRE (B5). La console s affichait dans un cadre de pinlane.be. Elle ne s affiche plus que chez elle ; le
+//     formulaire, la demonstration, la carte et le script d installation gardent la liste des sites des centres.
 //
 // Zero reseau, zero base : 'pg' est remplace avant tout require du depot, les alertes sont gardees en memoire.
 // Les contre-preuves chargent le code mute en memoire : aucun fichier n est ecrit.
@@ -44,6 +46,8 @@ const MUTATIONS = {
   'prevu-servi-en-entier': { f: 'api/public-booking-meta.js', de: 'if (await fermeAuVisiteur(req, center)) {', vers: 'if (false) {', lettre: 'P' },
   'prevu-a-tout-le-personnel': { f: 'api/public-booking-meta.js', de: "try { return !(await require('../lib/staff-auth').sessionAuCentre(session, center.id)); } catch (error) { return true; }", vers: 'return false;', lettre: 'P' },
   'actif-ferme-aussi': { f: 'api/public-booking-meta.js', de: "  if (!/^(planned|closed)$/.test(String(center.status || ''))) return false;\n", vers: '', lettre: 'P' },
+  'cadre-console-ouvert': { f: 'middleware.ts', de: 'if (!pageAEmbarquer(new URL(request.url).pathname)) {', vers: 'if (false) {', lettre: 'C' },
+  'cadre-formulaire-ferme': { f: 'middleware.ts', de: "    || pathname === '/fungalaxy' || pathname === '/fungalaxy.html' || pathname.startsWith('/fungalaxy/')\n", vers: '', lettre: 'C' },
 };
 const MUTATION = (process.argv.find((a) => a.startsWith('--mutation=')) || '').slice('--mutation='.length);
 if (MUTATION && !MUTATIONS[MUTATION]) { console.error(`mutation inconnue : ${MUTATION}`); process.exit(2); }
@@ -277,6 +281,45 @@ async function lire(handler, query, headers = {}) {
     ok(fondateur.status === 200 && (fondateur.json.center || {}).name === 'Gate Prevu Secret', 'la plateforme aussi', fondateur.brut.slice(0, 120));
     const voisin = await lire(handler, 'centerId=gate-prevu', { 'x-staff-session': 'actif' });
     ok(ferme(voisin, /pas encore/), 'le personnel d un autre centre le lit comme un visiteur', voisin.brut.slice(0, 160));
+  }
+
+  // =========================================================================
+  section('[C] LE CADRE (B5) : la console chez elle seulement, le formulaire chez les centres');
+  // =========================================================================
+  {
+    const esbuild = require('esbuild');
+    const { createRequire } = require('module');
+    const fichier = path.join(ROOT, 'middleware.ts');
+    const source = muter(fichier, fs.readFileSync(fichier, 'utf8'));
+    const env = { EMBED_ORIGINS: 'https://bowling-client.test', SITE_USERNAME: 'gate-equipe', SITE_PASSWORD: 'gate-mot-de-passe', DIRECTOR_USERNAME: 'gate-direction', DIRECTOR_PASSWORD: 'gate-direction-mdp' };
+    const bac = { module: { exports: {} }, exports: {}, process: { env }, URL, Request, Response, Headers, TextEncoder, crypto: globalThis.crypto, atob,
+      require: (n) => (n === '@vercel/functions' ? require('@vercel/functions/middleware') : n === './vercel.json' ? JSON.parse(fs.readFileSync(path.join(ROOT, 'vercel.json'), 'utf8')) : createRequire(fichier)(n)) };
+    vm.runInNewContext(esbuild.transformSync(source, { loader: 'ts', format: 'cjs', target: 'es2022' }).code, bac, { filename: fichier });
+    const garde = bac.module.exports.default;
+    const base = JSON.parse(fs.readFileSync(path.join(ROOT, 'vercel.json'), 'utf8')).headers.flatMap((r) => r.headers).find((h) => h.key === 'Content-Security-Policy').value;
+    const historiques = ((source.match(/const DEFAULT_EMBED_ORIGINS = \[([^\]]*)\]/) || [])[1] || '').match(/https:\/\/[a-z0-9.-]+/g) || [];
+    const basic = (u, p) => `Basic ${Buffer.from(`${u}:${p}`).toString('base64')}`;
+    const cadre = async (route, auth) => {
+      const r = await garde(new Request(`https://app.pinlane.test${route}`, { headers: auth ? { authorization: auth } : {} }));
+      const csp = r.headers.get('Content-Security-Policy') || '';
+      const directives = csp.split(';').map((x) => x.trim()).filter(Boolean);
+      return { status: r.status, csp, ancetres: directives.filter((x) => x.startsWith('frame-ancestors')), complete: base.split(';').map((x) => x.trim()).filter(Boolean).every((x) => directives.includes(x)) };
+    };
+    ok(historiques.length >= 6 && historiques.includes('https://pinlane.be'), 'la liste des sites des centres est lue dans le middleware', historiques.join(' '));
+    const console_ = [['/'], ['/index.html'], ['/pro.html'], ['/direction.html'], ['/direction.html', basic(env.DIRECTOR_USERNAME, env.DIRECTOR_PASSWORD)], ['/page-privee', basic(env.SITE_USERNAME, env.SITE_PASSWORD)], ['/fungalaxyx']];
+    const ouvertes = [];
+    for (const [route, auth] of console_) {
+      const c = await cadre(route, auth);
+      if (!(c.ancetres.length === 1 && c.ancetres[0] === "frame-ancestors 'self'" && c.complete)) ouvertes.push(`${route} ${c.status} ${c.ancetres.join(' ')}`);
+    }
+    ok(!ouvertes.length, 'la console et les autres pages ne s affichent que dans Pinlane (frame-ancestors self, le reste de la politique intact)', ouvertes.join(' ; '));
+    const fermees = [];
+    for (const route of ['/reserver', '/reserver/libramont', '/reserver/gembloux', '/fungalaxy', '/fungalaxy.html', '/fungalaxy/libramont', '/demo', '/demo/demo.js', '/menu', '/menu/gembloux/', '/embed.js', '/public-form.html', '/assets/fungalaxy-booking.js']) {
+      const c = await cadre(route);
+      const liste = (c.ancetres[0] || '').split(' ');
+      if (!(c.status === 200 && c.ancetres.length === 1 && c.complete && liste.includes("'self'") && liste.includes('https://bowling-client.test') && historiques.every((o) => liste.includes(o)))) fermees.push(`${route} ${c.status} ${c.ancetres.join(' ').slice(0, 80)}`);
+    }
+    ok(!fermees.length, 'le formulaire, la demonstration, la carte et le script d installation restent affichables dans le site de chaque centre', fermees.join(' ; '));
   }
 
   console.info = infos;

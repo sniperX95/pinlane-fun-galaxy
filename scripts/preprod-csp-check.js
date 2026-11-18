@@ -75,9 +75,16 @@ async function cspCheck() {
     check(`DEP01 route ${scenario.route} -> ${scenario.status}, CSP complete`, result.status === scenario.status && complete(policy));
     if (!scenario.noConfig) {
       const ancestors = directives(policy).find(d => d.startsWith('frame-ancestors')) || '';
-      assert(historical.split(' ').every(origin => ancestors.split(' ').includes(origin)), 'une installation historique a disparu');
-      assert.equal(ancestors.split(' ').filter(origin => origin === 'https://customer.example.test').length, 1);
-      assert(!ancestors.includes('/path'));
+      // Seules les pages faites pour le site d un centre gardent la liste ; la console et les autres pages ne
+      // s affichent que dans Pinlane (2026-11-18, avant-lancement B5, scripts/porte-publique-check.js [C]).
+      const embarquable = /^\/(reserver|fungalaxy|demo|menu)(\/|\.html|$)|^\/(embed\.js|public-form\.html)$|^\/assets\//.test(scenario.route);
+      if (embarquable) {
+        assert(historical.split(' ').every(origin => ancestors.split(' ').includes(origin)), 'une installation historique a disparu');
+        assert.equal(ancestors.split(' ').filter(origin => origin === 'https://customer.example.test').length, 1);
+        assert(!ancestors.includes('/path'));
+      } else {
+        assert.equal(ancestors, "frame-ancestors 'self'", `${scenario.route} s affiche dans le cadre d un autre site`);
+      }
     }
   }
   // Compile le vrai middleware avec son JSON, en memoire. Le runtime Vercel

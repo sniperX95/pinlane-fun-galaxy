@@ -63,6 +63,21 @@ function contentSecurityPolicy(): string {
   return `${BASE_CONTENT_SECURITY_POLICY}; ${embedAncestors()}`;
 }
 
+/* LA CONSOLE NE S AFFICHE DANS LE CADRE D AUCUN AUTRE SITE (2026-11-18, avant-lancement B5).
+   La liste ci-dessus valait pour toutes les pages, la console comprise : pinlane.be, la vitrine, pouvait l afficher
+   dans un cadre. Une vitrine compromise aurait pose la console d un employe connecte sous une page piegee et lui
+   aurait fait cliquer ses boutons sans qu il le voie. Seules les pages faites pour vivre dans le site d un centre
+   gardent la liste : le formulaire (/reserver, /fungalaxy), la demonstration de la vitrine (/demo), la carte (/menu),
+   l ancien formulaire public, le script d installation et les fichiers de ces pages. Toute autre page, la console
+   d abord, ne s affiche que dans Pinlane lui-meme (le middleware, plus bas, remplace alors l en-tete). */
+function pageAEmbarquer(pathname: string): boolean {
+  return pathname === '/reserver' || pathname.startsWith('/reserver/')
+    || pathname === '/fungalaxy' || pathname === '/fungalaxy.html' || pathname.startsWith('/fungalaxy/')
+    || pathname === '/demo' || pathname.startsWith('/demo/')
+    || pathname === '/menu' || pathname.startsWith('/menu/')
+    || pathname === '/public-form.html' || pathname === '/embed.js' || pathname.startsWith('/assets/');
+}
+
 function unauthorized() {
   return new Response('Acces restreint.', {
     status: 401,
@@ -138,6 +153,14 @@ async function credentialsMatch(request: Request, username?: string, password?: 
 }
 
 export default async function middleware(request: Request) {
+  const reponse = await porte(request);
+  if (!pageAEmbarquer(new URL(request.url).pathname)) {
+    reponse.headers.set('Content-Security-Policy', `${BASE_CONTENT_SECURITY_POLICY}; frame-ancestors 'self'`);
+  }
+  return reponse;
+}
+
+async function porte(request: Request) {
   const { pathname } = new URL(request.url);
   const cronSecret = process.env.CRON_SECRET;
 

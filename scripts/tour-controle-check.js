@@ -659,7 +659,9 @@ async function preuvesFormulaire(browser) {
   await p.waitForTimeout(600);
   ok(signaux.length === 1 && /plantage de banc/.test(signaux[0].message) && signaux[0].centerId === 'gembloux', '[F] un plantage part au serveur, avec son centre', signaux);
   ok(!/jean\.essai/.test(BD.erreurs.map((e) => e.message).join(' ')), '[F] une adresse glissee dans le message est expurgee avant d entrer en base', BD.erreurs);
-  const groupeErreur = BD.erreurs.find((e) => e.member_id === 'public:gembloux');
+  // Le membre est l appareil du visiteur, sous le prefixe du centre (2026-11-18, avant-lancement B3).
+  const duFormulaireDeGembloux = (e) => /^public:gembloux:[0-9a-f]{16}$/.test(String(e.member_id || ''));
+  const groupeErreur = BD.erreurs.find(duFormulaireDeGembloux);
   ok(Boolean(groupeErreur), '[F] il entre en base, compte du formulaire de Gembloux', BD.erreurs);
   ok(TELEGRAM.length === 1 && /^Gembloux : le formulaire en ligne a eu une erreur chez un client/.test(TELEGRAM[0]) && !/plantage de banc/.test(TELEGRAM[0]), '[F] Ansar a un message, qui ne recopie rien de ce que le navigateur a envoye', TELEGRAM);
   const { problemes } = await require('../lib/tour-controle').lireProblemes(database.getPool());
@@ -669,7 +671,7 @@ async function preuvesFormulaire(browser) {
   await p.addScriptTag({ url: `${BASE}/assets/banc-plantage-2.js` }).catch(() => {});
   await p.waitForTimeout(400);
   ok(TELEGRAM.length === 2 && /^Gembloux : le formulaire en ligne a eu une erreur chez un client/.test(TELEGRAM[1]) && !/encore un/.test(TELEGRAM[1]), '[F] un autre plantage dans l heure : un second message, qui ne recopie rien non plus', TELEGRAM);
-  const empreintesPubliques = [...new Set(BD.erreurs.filter((e) => e.member_id === 'public:gembloux').map((e) => e.stack_hash))];
+  const empreintesPubliques = [...new Set(BD.erreurs.filter(duFormulaireDeGembloux).map((e) => e.stack_hash))];
   ok(empreintesPubliques.length === 2 && !/\b[0-9a-f]{6,}\b/.test(TELEGRAM.join(' ')), '[F] les deux plantages se distinguent en base par leur empreinte, que le message ne cite plus', { empreintesPubliques, TELEGRAM });
   const { alerter: alerterBanc } = require('../lib/garde-alertes');
   const empreinte = String(empreintesPubliques[0] || '').slice(0, 6);

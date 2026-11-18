@@ -7558,6 +7558,8 @@
     erreurEnvoi('');
     confirmBtn.classList.add('is-busy'); confirmBtn.setAttribute('aria-busy', 'true');
     envoiEnCours(true);
+    // Ce que seul ce client a envoye avec sa reservation : le signal de la copie dans l ancien formulaire le rend.
+    var jetonsDuMiroir = [];
     // Apres un blocage encore en route (un ajout au recapitulatif), jamais en
     // meme temps : la file les passe l un apres l autre. Le jeton fait du
     // blocage la reservation ; une confirmation renvoyee (reponse perdue)
@@ -7567,13 +7569,14 @@
       if (blocage.jeton) corps.holdToken = blocage.jeton;
       var cle = cleDeConfirmation();
       if (cle) corps.cleConfirmation = cle;
+      jetonsDuMiroir = [corps.holdToken, corps.cleConfirmation].filter(Boolean);
       return fetch('/api/public-reservations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corps), credentials: 'omit' });
     })
       .then(function (r) { return r.json().then(function (j) { return { status: r.status, json: j || {} }; }); })
       .then(function (res) {
         confirmBtn.classList.remove('is-busy'); confirmBtn.removeAttribute('aria-busy');
         envoiEnCours(false);
-        if ((res.status === 201 || (res.status === 200 && res.json.replay === true)) && res.json.ok !== false && res.json.reservation) { finirBlocage(); reussite(res.json); return; }
+        if ((res.status === 201 || (res.status === 200 && res.json.replay === true)) && res.json.ok !== false && res.json.reservation) { finirBlocage(); reussite(res.json, jetonsDuMiroir); return; }
         // 409 : le serveur refuse de confirmer en ligne ce creneau. Ses
         // alternatives sont dites, sans le creneau refuse ni les doublons.
         // Les heures seront redemandees (dispo vide) ; le creneau refuse reste
@@ -7767,7 +7770,7 @@
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(messageInvites).then(fait, selectionner);
     else selectionner();
   });
-  function reussite(reponse) {
+  function reussite(reponse, jetons) {
     var r = reponse.reservation || {};
     state.reservation = r;
     // Le dossier rendu par le serveur fait foi (il a pu deplacer l heure de
@@ -7842,7 +7845,7 @@
       reservationId: r.id, center: CENTER, amount: Number(r.price) || 0, currency: deviseMonnaie(), pax: paxRes, date: dateRes,
       startTime: heureRes, type: r.type || (state.onglet === 'formules' ? 'formule' : 'visite'), formuleId: r.formuleId || state.formuleId || '', label: r.label || '', status: confirme ? 'confirmed' : 'received',
     } });
-    if (MIROIR) recopierDansLAncienFormulaire(r, { date: dateRes, heure: heureRes, pax: paxRes });
+    if (MIROIR) recopierDansLAncienFormulaire(r, { date: dateRes, heure: heureRes, pax: paxRes }, jetons);
   }
 
   /* --- La demande sur mesure ------------------------------------------------------ */
@@ -7885,7 +7888,7 @@
   // s ouvre qu une fois les deux arrives (jamais un ecran sans sa mise en
   // forme). Un fichier qui echoue se redemande au clic suivant, celui qui est
   // arrive ne se recharge pas.
-  var SM_JS = '/assets/fungalaxy-sur-mesure.js?v=20261118centres';
+  var SM_JS = '/assets/fungalaxy-sur-mesure.js?v=20261118porte';
   var SM_CSS = '/assets/fungalaxy-sur-mesure.css?v=20261117habillage';
   var smModule = null, smFichiers = {};
   function chargerFichier(cle, balise, attributs) {
@@ -7918,7 +7921,7 @@
   // LA COPIE DANS L ANCIEN FORMULAIRE DU SITE (2026-11-13) vit dans assets/fungalaxy-miroir.js, chargee des
   // l ouverture mais seulement quand embed.js la demande (miroir=1) : le parcours de tous les autres n en paie rien.
   // Un module qui ne vient pas se signale (Tour de controle) : la copie ratee se sait au lieu de se perdre.
-  function chargerMiroir() { return chargerFichier('miroir', 'script', { src: '/assets/fungalaxy-miroir.js?v=20261113groupe', async: true }); }
+  function chargerMiroir() { return chargerFichier('miroir', 'script', { src: '/assets/fungalaxy-miroir.js?v=20261118porte', async: true }); }
   var miroirModule = null;
   // quoi : ce qui n a pas pu partir si le module ne vient pas (« réservation 1866 », « demande de groupe 77 »).
   function miroir(quoi, appel) {
@@ -7927,7 +7930,7 @@
       appel(miroirModule);
     }).catch(function () { signaler({ message: 'Copie dans l’ancien formulaire non chargée, ' + quoi, source: 'miroir' }); });
   }
-  function recopierDansLAncienFormulaire(r, quand) { miroir('réservation ' + r.id, function (m) { m.recopier(r, quand); }); }
+  function recopierDansLAncienFormulaire(r, quand, jetons) { miroir('réservation ' + r.id, function (m) { m.recopier(r, quand, jetons); }); }
   if (MIROIR) chargerMiroir().catch(function () {});
 
   // L OUVERTURE. Sur un reseau lent, le bouton touche dit qu il travaille ; un

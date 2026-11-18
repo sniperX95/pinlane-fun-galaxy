@@ -18,7 +18,8 @@ const {
   calendrierDuCentre,
   calendrierPourLeClient,
 } = require('../lib/booking-config');
-const { getPool, checkDatabaseHealth, createCustomRequest } = require('../lib/database');
+const crypto = require('crypto');
+const { getPool, checkDatabaseHealth, createCustomRequest, empreinteJetonBlocage } = require('../lib/database');
 const { readJson, sendError, sendJson, setCors } = require('../lib/http');
 const { cleDeLAdresse, enforceRateLimit, getClientIp } = require('../lib/rate-limit');
 const { sessionDuPersonnel } = require('../lib/session-du-personnel');
@@ -35,7 +36,7 @@ function visiteursDuPlantage(cle, adresse, maintenant = Date.now()) {
   plantagesVus.set(cle, vu);
   return vu.adresses.size;
 }
-const { getActivity, getCenter, getFormula, refreshCenterOverrides, refreshCatalog, coupureEnLigne, CODE_COUPURE } = require('../lib/ops-knowledge');
+const { getActivity, getCenter, getFormula, refreshCenterOverrides, refreshCatalog, coupureEnLigne, CODE_COUPURE, publicBookingBlockReason } = require('../lib/ops-knowledge');
 const { sendCustomRequestAck } = require('../lib/ops-communications');
 const { simulationSqlExclusion } = require('../lib/simulation-filter');
 const {
@@ -116,7 +117,19 @@ function gestesVitrine(body) {
 // UNE ERREUR CHEZ LE CLIENT SE SAIT (2026-11-05). Le formulaire public ne remontait rien :
 // un plantage au milieu du parcours ne se voyait que si le client appelait. Meme table et
 // memes gardes que la console (lib/client-errors : plafonds, expurgation, 20 lignes par
-// heure et par centre). Le message Telegram ne recopie rien de ce que le navigateur envoie.
+// heure et par appareil). Le message Telegram ne recopie rien de ce que le navigateur envoie.
+//
+// UN APPAREIL, UN COMPTEUR (2026-11-18, avant-lancement B3). Toutes les erreurs du formulaire d un centre portaient le
+// meme membre, public:<centre>. Le plafond de 20 lignes par heure et par membre (lib/client-errors) etait donc commun
+// a tous les visiteurs, et 20 fausses erreurs d un seul envoyeur faisaient taire les vrais plantages des autres. Le
+// membre nomme maintenant l appareil : le bloc de son adresse (lib/adresse-reseau) et son navigateur, en empreinte
+// poivree par le secret du serveur, jamais l adresse elle-meme. Il commence toujours par public:<centre>, le prefixe
+// que lisent la Tour de controle, le bilan et lib/client-errors.
+function membreDuFormulaire(req, centre) {
+  const appareil = `${cleDeLAdresse(getClientIp(req))}|${String((req.headers && req.headers['user-agent']) || '').slice(0, 200)}`;
+  const empreinte = crypto.createHmac('sha256', `pinlane-erreurs:${process.env.STAFF_AUTH_SECRET || ''}`).update(appareil).digest('hex').slice(0, 16);
+  return `public:${centre}:${empreinte}`;
+}
 async function handleErreurFormulaire(req, res, body) {
   if (enforceRateLimit(req, res, { scope: 'erreur-formulaire', limit: 10, windowMs: 600_000 })) return;
   const centre = String(body.centerId || '').trim().toLowerCase();
@@ -135,7 +148,7 @@ async function handleErreurFormulaire(req, res, body) {
     lineno: body.lineno,
     colno: body.colno,
     stack: body.stack,
-    memberId: `public:${centre}`,
+    memberId: membreDuFormulaire(req, centre),
     userAgent: req.headers['user-agent'],
   });
   // Une erreur qu Ansar a vue sur son ecran (sa session, la salle d essai) s enregistre, sans alerte.
@@ -190,6 +203,24 @@ const RAISONS_MIROIR = {
   'rien-a-copier': 'la réservation n’avait rien à recopier',
   'jeton-absent': 'leur formulaire demande un code anti-robot que la page ne donne plus, donc rien n’est parti',
 };
+// SEUL CELUI QUI A RESERVE FAIT SONNER (2026-11-18, avant-lancement B2). Les numeros se suivent : n importe qui
+// faisait sonner « copie ratee », URGENT, sur les vraies reservations de l heure, et noyait les vraies alertes. Le
+// signal porte maintenant ce que seul le client a recu. Pour une reservation, le jeton de sa retenue ou la cle de sa
+// confirmation, dont la base garde l empreinte avec la reservation (lib/database, convertirBlocage et
+// noterConfirmationSansBlocage). Pour une demande de groupe, la preuve rendue avec son numero (preuveDeLaDemande).
+// Sans elle, le signal est ignore sans bruit.
+function preuveDeLaDemande(centre, numero) {
+  return crypto.createHmac('sha256', `pinlane-miroir:${process.env.STAFF_AUTH_SECRET || ''}`).update(`${centre}:d${numero}`).digest('hex').slice(0, 32);
+}
+function demandeProuvee(centre, numero, preuve) {
+  const attendue = Buffer.from(preuveDeLaDemande(centre, numero));
+  const recue = Buffer.from(String(preuve || '').slice(0, 64));
+  return recue.length === attendue.length && crypto.timingSafeEqual(recue, attendue);
+}
+// Deux jetons au plus (la retenue, la cle de confirmation) ; un morceau mal forme n a pas d empreinte.
+function empreintesDuMiroir(jetons) {
+  return [...new Set((Array.isArray(jetons) ? jetons.slice(0, 2) : []).map((j) => empreinteJetonBlocage(j)).filter(Boolean))];
+}
 // Une raison est un mot de la liste, eventuellement suivi d un code HTTP (http-500) ou de numeros de champs
 // (refuse:17,38) : tout autre morceau est ignore, meme s il commence comme une raison (« http://... »).
 function raisonsDuMiroir(texte) {
@@ -216,10 +247,12 @@ async function handleMiroir(req, res, body) {
   }
   const pool = getPool();
   if (!pool || !Number.isSafeInteger(numero) || numero < 1) { sendJson(res, 202, { ok: true }); return; }
+  const empreintes = estDemande ? [] : empreintesDuMiroir(body.jetons);
+  if (estDemande ? !demandeProuvee(centre, numero, body.preuve) : !empreintes.length) { sendJson(res, 202, { ok: true }); return; }
   try {
     const r = await pool.query(estDemande
       ? "select id from custom_requests where center_id = $1 and id = $2 and created_at > now() - interval '1 hour' limit 1"
-      : `select id from reservations where center_id = $1 and id = $2 and created_at > now() - interval '1 hour' and ${simulationSqlExclusion()} limit 1`, [centre, numero]);
+      : `select id from reservations where center_id = $1 and id = $2 and created_at > now() - interval '1 hour' and ${simulationSqlExclusion()} and exists (select 1 from slot_holds h where h.reservation_id = reservations.id and h.release_reason = 'converted' and h.token_hash = any($3::text[])) limit 1`, estDemande ? [centre, numero] : [centre, numero, empreintes]);
     if (!r.rowCount) { sendJson(res, 202, { ok: true }); return; }
     const lignes = borne(body.lignes, 8);
     const envoyees = borne(body.envoyees, 8);
@@ -544,6 +577,8 @@ async function handleCustomRequest(req, res, body) {
     id: lead.id,
     acknowledgementSent: Boolean(ack && ack.ok),
     acknowledgement: ack || null,
+    // La preuve que le signal de la copie dans l ancien formulaire renverra (handleMiroir).
+    preuveMiroir: preuveDeLaDemande(centerId, lead.id),
   });
 }
 
@@ -1089,6 +1124,24 @@ async function routeur(req, res) {
     return;
   }
 
+  // UN CENTRE QUI N EST PAS OUVERT NE SE LIT PAS EN ENTIER (2026-11-18, avant-lancement B4). Un centre prevu ou ferme
+  // rendait tout son catalogue a n importe qui : nom, adresse, horaires, formules et prix. Un concurrent voyait qui
+  // s installe, et a quels prix, avant l ouverture. Le visiteur recoit le statut et la phrase que le serveur oppose
+  // deja a une reservation (le formulaire se ferme sur elle, comme sur une coupure), rien d autre. Le personnel de ce
+  // centre, qui prepare l ouverture dans la console, le lit toujours en entier. Un centre actif ne passe pas ici.
+  if (await fermeAuVisiteur(req, center)) {
+    sendJson(res, 200, {
+      ok: true,
+      coupure: publicBookingBlockReason(center.id),
+      today: todayStr(),
+      bookingHorizonDays: BOOKING_HORIZON_DAYS,
+      formules: [],
+      activities: [],
+      center: { id: center.id, status: center.status, demonstration: false },
+    });
+    return;
+  }
+
   // Config bookable per-center (pistes, capacités, tarifs, options laser) : le
   // front la consomme quand elle est présente, ses constantes locales restent
   // le fallback (mêmes valeurs sans override).
@@ -1283,6 +1336,15 @@ async function routeur(req, res) {
   });
 };
 
+// Prevu ou ferme, et pas lu par une personne qui entre dans ce centre (la meme regle que les gardes du personnel,
+// lib/staff-auth sessionAuCentre). Une requete sans trace de session n interroge pas la base.
+async function fermeAuVisiteur(req, center) {
+  if (!/^(planned|closed)$/.test(String(center.status || ''))) return false;
+  const session = await sessionDuPersonnel(req);
+  if (!session) return true;
+  try { return !(await require('../lib/staff-auth').sessionAuCentre(session, center.id)); } catch (error) { return true; }
+}
+
 // LES FERIES ET LES CONGES D UN CENTRE HORS FEDERATION (2026-11-17, D5), calcules ici : le navigateur
 // (assets/booking-core.js) ne connait que ceux de la Federation, et ne les applique plus a un autre centre.
 // Cle ADDITIVE : un centre de la Federation n en recoit pas, sa page reste celle d avant.
@@ -1350,4 +1412,4 @@ module.exports = async (req, res) => {
     if (!res.headersSent) sendError(res, 503, 'Service momentanément indisponible. Réessayez dans un instant.');
   }
 };
-module.exports.__test = { buildDayStatus, buildCalendar, calendarFromParam, formulesPubliques, activitesPubliques, gestesVitrine, heuresPleinesDuCentre, calendrierPourLaPage };
+module.exports.__test = { buildDayStatus, buildCalendar, calendarFromParam, formulesPubliques, activitesPubliques, gestesVitrine, heuresPleinesDuCentre, calendrierPourLaPage, preuveDeLaDemande };

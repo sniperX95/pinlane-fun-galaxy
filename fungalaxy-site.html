@@ -135,7 +135,8 @@
   .pinlane-slot { width: 100%; }
   .pinlane-slot iframe { background: #050505; display: block; width: 100%; border: 0; }
   /* Le repli : visible seulement si le formulaire n est pas monte (script
-     coupe, ou interrupteur du centre eteint par l equipe). */
+     coupe ou bloque). Interrupteur du centre eteint, le cadre reste et le
+     formulaire y dit la coupure (embed.js, data-page). */
   .fgs-repli { max-width: 640px; margin: 24px auto; padding: 0 20px; font-size: 16px; line-height: 1.6; text-align: center; color: #fff; }
   .fgs-repli a { color: #8fd6c9; font-weight: 700; }
   @media (max-width: 1180px) {
@@ -183,17 +184,19 @@
 <main>
   <section id="booking" aria-label="Réservation en ligne">
     <div class="container"><div class="pinlane-slot"></div>
-      <p class="fgs-repli" id="reservationRepli" hidden>Le formulaire de réservation ne s’est pas chargé. <a href="/reserver?center=libramont">Réserver en ligne chez Fun Galaxy Libramont</a></p>
+      <p class="fgs-repli" id="reservationRepli" hidden>Le formulaire de réservation ne s’est pas chargé. Rechargez la page, ou ouvrez <a href="/reserver?center=libramont">la page de réservation de Fun Galaxy Libramont</a>.</p>
     </div>
   </section>
 </main>
 
-<script src="/embed.js" data-center="libramont" data-design="fungalaxy" data-target=".pinlane-slot" data-height="720" data-scroll-margin="32" data-track="datalayer"></script>
-<!-- embed.js retire son cadre quand l equipe eteint le formulaire du centre
-     (l interrupteur prevu pour LEUR site, qui garde alors son ancien
-     formulaire). Ici, il n y a pas d ancien formulaire : sans ce repli, la
-     page resterait vide sous l en-tete. Le parcours classique du centre
-     prend le relais. -->
+<script src="/embed.js?v=20261118apercu" data-center="libramont" data-design="fungalaxy" data-target=".pinlane-slot" data-height="720" data-scroll-margin="32" data-track="datalayer" data-page="pinlane"></script>
+<!-- Sur LEUR site, embed.js retire son cadre quand l equipe eteint le
+     formulaire du centre (le site garde alors son ancien formulaire). Ici,
+     il n y a pas d ancien formulaire : data-page="pinlane" garde le cadre, et
+     le formulaire y dit la coupure, ou montre l apercu a l equipe connectee
+     (2026-11-18). Le repli ne sert plus que si embed.js ne se charge pas : il
+     renvoie a la page de reservation du centre, qui dit elle-meme si elle
+     est ouverte. -->
 <script>
   (function () {
     var slot = document.querySelector('.pinlane-slot');

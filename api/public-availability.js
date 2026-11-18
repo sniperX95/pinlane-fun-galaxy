@@ -281,6 +281,7 @@ function sendJson(res, statut, corps) {
 }
 // La session du personnel se lit dans lib/session-du-personnel, comme a la page de reservation (public-booking-meta).
 const { sessionDuPersonnel } = require('../lib/session-du-personnel');
+const { apercuDeLEquipe, apercuDemande, reponsePrivee } = require('../lib/apercu-equipe');
 
 module.exports = async (req, res) => {
   setCors(res, 'GET,OPTIONS');
@@ -297,6 +298,9 @@ module.exports = async (req, res) => {
   }
 
   res.__visiteurAnonyme = !(await sessionDuPersonnel(req));
+  // L apercu de l equipe (lib/apercu-equipe.js) se lit comme le client le verrait : les regles du centre, sans les
+  // champs internes. Sa reponse est privee.
+  if (apercuDemande(req)) { res.__visiteurAnonyme = true; reponsePrivee(res); }
 
   if (enforceRateLimit(req, res, { scope: 'public-availability', limit: 60, windowMs: 60_000 })) {
     return;
@@ -381,9 +385,10 @@ module.exports = async (req, res) => {
       sendJson(res, 200, { ok: true, date, slots: [], message: centerBlock });
       return;
     }
-    // Coupe depuis la Tour de controle (2026-11-14) : aucune heure, et la phrase qui dit ou reserver.
+    // Coupe depuis la Tour de controle (2026-11-14) : aucune heure, et la phrase qui dit ou reserver. Sauf dans
+    // l apercu de l equipe de ce centre (2026-11-18), qui voit les heures comme un client les verrait.
     const coupure = coupureEnLigne(centerId);
-    if (coupure) {
+    if (coupure && !(await apercuDeLEquipe(req, res, centerDoc))) {
       sendJson(res, 200, { ok: true, date, slots: [], message: coupure, code: CODE_COUPURE });
       return;
     }

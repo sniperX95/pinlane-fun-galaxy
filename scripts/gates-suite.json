@@ -208,6 +208,8 @@
     "test:establishment-tabs",
     "test:coordonnees-centre",
     "test:availability-blocks-ui",
+    "test:privatisation",
+    "test:privatisation-ui",
     "test:console-contrast",
     "test:tunnel-mobile-matrix",
     "test:tunnel-mobile-v2",

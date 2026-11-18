@@ -334,6 +334,8 @@
     "test:heure-relachee": "node scripts/heure-relachee-check.js && node scripts/heure-relachee-check.js --mutate",
     "test:catalog-editor-ui": "node scripts/catalog-editor-ui-check.js",
     "test:availability-blocks-ui": "node scripts/availability-blocks-ui-check.js",
+    "test:privatisation": "node scripts/privatisation-check.js && node scripts/privatisation-check.js --contre-preuves",
+    "test:privatisation-ui": "node scripts/privatisation-ui-check.js && node scripts/privatisation-ui-check.js --contre-preuves",
     "test:availability-day-ui": "node scripts/availability-day-ui-check.js",
     "test:staff-team-crud": "node scripts/staff-team-crud-check.js",
     "test:login-center": "node scripts/login-center-resolution-check.js",

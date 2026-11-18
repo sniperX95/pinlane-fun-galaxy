@@ -21,7 +21,7 @@
 <link rel="preload" href="/assets/fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/assets/fonts/geist-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/assets/pinlane.css?v=20261110focus">
-<link rel="stylesheet" href="/assets/pinlane-staff.css?v=20261118heures">
+<link rel="stylesheet" href="/assets/pinlane-staff.css?v=20261118prive">
 <link rel="stylesheet" href="/assets/pinlane-planning-global.css?v=20261110focus">
 <link rel="stylesheet" href="/assets/pinlane-charts.css?v=20261110focus">
 <link rel="stylesheet" href="/assets/pinlane-daterange.css?v=20260721a">
@@ -68,7 +68,7 @@
      renderGlobalPlanning, que la console appelle a chaque rendu de l onglet.
      Charge avant app-main, le premier rendu le trouve deja la. -->
 <script defer src="/assets/pinlane-planning-global.js?v=20261109fenetre"></script>
-<script defer src="/assets/app-main.js?v=20261118heurespistes"></script>
+<script defer src="/assets/app-main.js?v=20261118prive"></script>
 <!-- OPS-07 : declarations inertes, chargees dans cet ordre par le loader C14.
      Les src restent lisibles par le detecteur de mise a jour. -->
 <script type="text/plain" data-staff-console src="/assets/ops-progress.js?v=20260925f"></script>
@@ -756,6 +756,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
           <button type="button" class="pb-ic pb-ic--plus" id="planningPlus" aria-label="Plus d’options" aria-haspopup="menu" title="Plus d’options" onclick="togglePlanningActionsMenu(event)">⋯</button>
         </div>
         <div class="pb-bande" id="planningBande" role="group" aria-label="Ce qui compte maintenant"></div>
+        <!-- LES PRIVATISATIONS DU JOUR (2026-11-18), sur les trois plannings : renderBandeauPrivatisations. -->
+        <div class="pb-privatisations" id="planningPrivatisations" role="status" aria-label="Privatisations du jour" hidden></div>
       </section>
 
       <div class="planning-box" id="planningBox">

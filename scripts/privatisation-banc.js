@@ -63,8 +63,9 @@ pg.Client.prototype.query = async function (sql, params = []) {
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 // Une ecriture hors API : le cache des blocages la voit, son empreinte a change (le cache garde
 // sa lecture 25 ms, d ou la pause).
+// (une ligne sans numero en recoit un, comme en base : deux blocages sans id seraient le meme)
 async function poserBlocs(lignes) {
-  table.lignes.push(...lignes.map((l) => ({ kind: 'closure', reservation_id: null, recurrence: 'once', day_of_week: null, date_from: null, date_until: null, created_by: 'banc', center_id: 'libramont', ...l })));
+  table.lignes.push(...lignes.map((l) => ({ kind: 'closure', reservation_id: null, recurrence: 'once', day_of_week: null, date_from: null, date_until: null, created_by: 'banc', center_id: 'libramont', ...l, id: l.id === undefined || l.id === null ? (table.seq += 1) : l.id })));
   table.version += 1;
   await pause(40);
 }

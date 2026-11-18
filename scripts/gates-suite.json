@@ -3,6 +3,7 @@
   "suite": [
     "test:ancres",
     "test:gates-parties",
+    "test:base-de-test-ci",
     "test:gates-horloge",
     "test:suite-github-bilan",
     "test:no-em-dash",

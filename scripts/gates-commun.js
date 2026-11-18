@@ -180,6 +180,10 @@ function outilsExternes(fichier, racine = ROOT) {
     const source = sansCommentaires(lireSource(path.join(racine, f)));
     if (/\{[^}]*\bwebkit\b[^}]*\}\s*=\s*require\(|\bwebkit\.launch\(/.test(source)) outils.add('webkit');
     if (/\bpdftoppm\b/.test(source)) outils.add('poppler');
+    // Une base Postgres de test (2026-11-18, C9) : la part la prepare (quality-gates.yml), le
+    // lanceur en donne une copie neuve a chaque unite (gates-lancer.js, baseDeLUnite).
+    // (process.env : le lanceur, qui cite le nom de la variable, n en fait pas un gate a base)
+    if (/\bprocess\.env\.PINLANE_TEST_DATABASE_URL\b/.test(source)) outils.add('postgres');
   }
   return [...outils].sort();
 }

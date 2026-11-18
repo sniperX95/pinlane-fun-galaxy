@@ -47,10 +47,18 @@ const PHRASE = 'une phrase secrete de test assez longue';
 const nomSource = source.pathname.replace(/^\//, '');
 const nomCible = `${nomSource}_restauration_gate`;
 const pgArgs = ['-h', hote, '-p', source.port || '5432', '-U', source.username || 'postgres'];
+// Le mot de passe de l adresse, pour dropdb, createdb, pg_dump et psql : le lanceur des gates retire
+// toute variable PG* de l environnement d un gate (2026-11-18, la base de test de la CI en a un).
+const envPg = { ...process.env, ...(source.password ? { PGPASSWORD: decodeURIComponent(source.password) } : {}) };
 const urlCible = (() => { const u = new URL(process.env.PINLANE_TEST_DATABASE_URL); u.pathname = `/${nomCible}`; return u.toString(); })();
 
 (async () => {
   const pool = new Pool({ connectionString: process.env.PINLANE_TEST_DATABASE_URL, ssl: false });
+  // Une base neuve (la copie de la base modele de la CI, 2026-11-18) n a aucune reservation :
+  // le gate pose la sienne, au nom invente, pour avoir quelque chose a sauvegarder.
+  if (!Number((await pool.query('select count(*) from reservations')).rows[0].count)) {
+    await pool.query("insert into reservations (center_id, name, phone, date, start_time, duration, total_duration, pax) values ('libramont', 'Client de la sauvegarde', '+32470000999', '2026-10-04', '14:00', 1, 1, 4)");
+  }
   // Une valeur que reservations_donnees recalculerait a l insertion : sur la prod,
   // lower() suit le reglage de langue de la base, et client_key relie le client
   // a ses notes. La restauration doit la rendre telle qu elle a ete sauvegardee.
@@ -92,10 +100,10 @@ const urlCible = (() => { const u = new URL(process.env.PINLANE_TEST_DATABASE_UR
     ok(pj.contenu && !Buffer.from(pj.contenu).includes(Buffer.from(unNom)), '[C] la piece jointe ne contient aucun nom de client en clair');
 
     console.log('[D] restauration complete');
-    execFileSync('dropdb', [...pgArgs, '--if-exists', nomCible]);
-    execFileSync('createdb', [...pgArgs, nomCible]);
-    const schema = execFileSync('pg_dump', [...pgArgs, '--schema-only', '--no-owner', nomSource]);
-    execFileSync('psql', [...pgArgs, '-q', '-v', 'ON_ERROR_STOP=1', nomCible], { input: schema });
+    execFileSync('dropdb', [...pgArgs, '--if-exists', nomCible], { env: envPg });
+    execFileSync('createdb', [...pgArgs, nomCible], { env: envPg });
+    const schema = execFileSync('pg_dump', [...pgArgs, '--schema-only', '--no-owner', nomSource], { env: envPg });
+    execFileSync('psql', [...pgArgs, '-q', '-v', 'ON_ERROR_STOP=1', nomCible], { input: schema, env: envPg });
     const chemin = path.join(os.tmpdir(), `gate-${process.pid}.pinlane`);
     fs.writeFileSync(chemin, fichier);
     const lancer = () => execFileSync(process.execPath, [path.join(ROOT, 'scripts/sauvegarde-restaurer.js'), chemin, '--vers', urlCible, '--phrase', PHRASE], { encoding: 'utf8' });
@@ -120,7 +128,7 @@ const urlCible = (() => { const u = new URL(process.env.PINLANE_TEST_DATABASE_UR
       if (failures) console.log(sortie);
     } finally {
       await cible.end();
-      execFileSync('dropdb', [...pgArgs, '--if-exists', nomCible]);
+      execFileSync('dropdb', [...pgArgs, '--if-exists', nomCible], { env: envPg });
     }
 
     console.log('[E] lecture sans base');

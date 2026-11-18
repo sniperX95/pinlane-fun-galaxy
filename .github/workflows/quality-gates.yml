@@ -212,6 +212,34 @@ jobs:
             }
             if (-not (Get-Command pdftoppm -ErrorAction SilentlyContinue)) { exit 1 }
           }
+          # LA BASE DE TEST (2026-11-18, point C9 de la note avant-lancement du 16/11). Sept gates
+          # lisent PINLANE_TEST_DATABASE_URL et se sautaient partout faute de base. La machine
+          # Windows porte un Postgres arrete : il demarre, une base modele recoit toutes les
+          # migrations du depot, et le lanceur en donne une copie neuve a chaque unite
+          # (gates-lancer.js, baseDeLUnite). Base jetable, mot de passe par defaut de l image.
+          if ($outils -contains 'postgres') {
+            $service = Get-Service -Name 'postgresql*' | Select-Object -First 1
+            if (-not $service) { 'postgres : aucun service sur la machine'; exit 1 }
+            Set-Service -InputObject $service -StartupType Manual
+            Start-Service -InputObject $service
+            $bin = if ($env:PGBIN) { $env:PGBIN } else { Split-Path (Get-Command psql -ErrorAction Stop).Source }
+            $env:PATH = "$bin;$env:PATH"
+            $bin | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+            foreach ($essai in 1..30) { & pg_isready -h localhost -p 5432 | Out-Null; if ($LASTEXITCODE -eq 0) { break }; Start-Sleep -Seconds 1 }
+            if ($LASTEXITCODE) { 'postgres : le serveur ne repond pas'; exit 1 }
+            $utilisateur = if ($env:PGUSER) { $env:PGUSER } else { 'postgres' }
+            $motDePasse = if ($env:PGPASSWORD) { $env:PGPASSWORD } else { 'root' }
+            $serveur = "postgres://${utilisateur}:${motDePasse}@localhost:5432"
+            & psql "$serveur/postgres" -v ON_ERROR_STOP=1 -q -c 'create database pin_modele'
+            if ($LASTEXITCODE) { exit 1 }
+            $env:DATABASE_URL = "$serveur/pin_modele"
+            $env:DATABASE_SSL = 'disable'
+            node scripts/run-db-migrations.js
+            if ($LASTEXITCODE) { 'postgres : les migrations du modele ont echoue'; exit 1 }
+            Remove-Item Env:DATABASE_URL, Env:DATABASE_SSL
+            "PINLANE_TEST_DATABASE_URL_MODELE=$serveur/pin_modele" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+            & psql --version
+          }
           "outils : $(if ($outils) { $outils -join ', ' } else { 'aucun' })"
       # Une unite a 15 min au plus (40 sur le poste) : la plus longue en prend
       # 11 ici, et un gate bloque tenait sa place 40 min puis son second tour,

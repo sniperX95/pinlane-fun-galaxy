@@ -463,6 +463,7 @@
     "test:staff-perf": "node scripts/staff-console-perf-check.js && node scripts/staff-console-perf-check.js --contre-preuves",
     "test:ancres": "node scripts/ancres-check.js && node scripts/ancres-check.js --contre-preuves",
     "test:gates-parties": "node scripts/gates-parties-check.js && node scripts/gates-parties-check.js --contre-preuves",
+    "test:base-de-test-ci": "node scripts/base-de-test-ci-check.js && node scripts/base-de-test-ci-check.js --contre-preuves",
     "test:gates-horloge": "node scripts/gates-horloge-check.js",
     "test:suite-github-bilan": "node scripts/suite-github-bilan-check.js",
     "suite:github": "node scripts/suite-github.js",

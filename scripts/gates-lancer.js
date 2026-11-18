@@ -297,6 +297,42 @@ function environnement(place, u, gitDir, contexte = {}) {
   return env;
 }
 
+// LA BASE DE TEST D UNE UNITE (2026-11-18, point C9 de la note avant-lancement du 16/11). Sur la
+// machine GitHub, la part qui joue un gate a base (PINLANE_TEST_DATABASE_URL) prepare une base
+// modele migree et la donne par PINLANE_TEST_DATABASE_URL_MODELE (quality-gates.yml, « Les outils
+// de la part »). Chaque unite en recoit une copie neuve a son nom, refaite a chaque essai : trois
+// gates joues en meme temps sur la meme machine ne se marchent jamais dessus. Sans modele (le
+// poste), la variable du poste passe telle quelle, comme avant.
+const BASES_UTILISEES = new Map();
+function utiliseLaBase(u) {
+  if (!BASES_UTILISEES.has(u.fichier)) BASES_UTILISEES.set(u.fichier, commun.outilsExternes(u.fichier, SOURCE).includes('postgres'));
+  return BASES_UTILISEES.get(u.fichier);
+}
+function nomDeLaBase(u) {
+  return `pin_${String(u.script).replace(/^test:/, '').toLowerCase().replace(/[^a-z0-9]+/g, '_')}_${u.rang}`.slice(0, 60);
+}
+function baseDeLUnite(modele, u) {
+  const url = new URL(modele);
+  const gabarit = decodeURIComponent(url.pathname.replace(/^\//, ''));
+  const nom = nomDeLaBase(u);
+  const serveur = new URL(modele);
+  serveur.pathname = '/postgres';
+  const psql = (sql) => spawnSync('psql', [serveur.toString(), '-v', 'ON_ERROR_STOP=1', '-q', '-c', sql], { encoding: 'utf8', windowsHide: true });
+  let dernier = '';
+  for (let essai = 1; essai <= 5; essai += 1) {
+    psql(`drop database if exists "${nom}" with (force)`);
+    const copie = psql(`create database "${nom}" template "${gabarit}"`);
+    if (copie.status === 0) {
+      url.pathname = `/${nom}`;
+      return url.toString();
+    }
+    // Deux copies du meme modele au meme instant : la seconde attend son tour.
+    dernier = String(copie.stderr || copie.error || '').trim();
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500 * essai);
+  }
+  throw new Error(`copie du modele ${gabarit} vers ${nom} impossible : ${dernier.slice(0, 300)}`);
+}
+
 function tuerArbre(pid) {
   if (!pid) return;
   if (WINDOWS) spawnSync('taskkill', ['/T', '/F', '/PID', String(pid)], { stdio: 'ignore', windowsHide: true });
@@ -309,9 +345,20 @@ function jouerUnite(place, u, contexte) {
     const journal = path.join(contexte.dossierRun, 'logs', `${u.script.replace(/:/g, '~').replace(/[^\w.~-]+/g, '_')}__${u.rang}.log`);
     const sortie = fs.openSync(journal, 'w');
     const debut = Date.now();
+    const env = environnement(place, u, contexte.gitDir, contexte);
+    const modele = process.env.PINLANE_TEST_DATABASE_URL_MODELE;
+    if (modele && utiliseLaBase(u)) {
+      try {
+        env.PINLANE_TEST_DATABASE_URL = baseDeLUnite(modele, u);
+      } catch (error) {
+        // Jamais un saut silencieux : sans sa copie, le gate se joue sur une adresse morte et rougit.
+        fs.writeSync(sortie, `gates-lancer : base de test de l unite introuvable (${error.message})\n`);
+        env.PINLANE_TEST_DATABASE_URL = 'postgres://localhost:1/copie-de-la-base-impossible';
+      }
+    }
     const enfant = spawn(process.execPath, [path.join(place.depot, u.fichier), ...u.args], {
       cwd: place.depot,
-      env: environnement(place, u, contexte.gitDir, contexte),
+      env,
       stdio: ['ignore', sortie, sortie],
       windowsHide: true,
       detached: !WINDOWS,

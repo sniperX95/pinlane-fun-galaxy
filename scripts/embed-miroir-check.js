@@ -44,7 +44,10 @@
 //       formulaire avec ce que le client a tape, et Pinlane apprend que la copie est passee, sans rien de personnel.
 //   [N] Sur un autre site que celui de la fiche du centre, le cadre ne donne rien de personnel a la page.
 //   [O] Le serveur : une copie ratee d une vraie reservation sonne, en mots simples, sans recopier ce que le
-//       navigateur a ecrit ; une copie reussie, une reservation inconnue ou un centre inconnu ne sonnent pas.
+//       navigateur a ecrit ; une copie reussie, une reservation inconnue ou un centre inconnu ne sonnent pas. Un
+//       signal sans ce que seul le client a recu (un jeton de sa reservation, la preuve de sa demande) ne sonne pas
+//       non plus (2026-11-18, avant-lancement B2 ; le detail : scripts/porte-publique-check.js [M]). [M] et [R]
+//       verifient que le vrai formulaire renvoie bien cette preuve.
 //
 // --contre-preuves : chaque mutation, servie en memoire, doit faire rougir au moins une propriete.
 //
@@ -598,7 +601,7 @@ async function demanderUnGroupe(h) {
   const rep = await attente;
   const json = await rep.json().catch(() => ({}));
   const fin = await attendre(f, SCENE_ACTIVE, 10000, 'fin');
-  return { pax, statut: rep.status(), id: json && json.id, fin };
+  return { pax, statut: rep.status(), id: json && json.id, preuve: json && json.preuveMiroir, fin };
 }
 async function proprietesBoutEnBout(browser) {
   section('[M] de bout en bout, le vrai formulaire Pinlane');
@@ -623,6 +626,9 @@ async function proprietesBoutEnBout(browser) {
   ok(BALISES.length === 1 && balise.corps.ok === true && balise.corps.reservationId === Number(numero) && balise.corps.centerId === 'libramont' && balise.corps.envoyees === 1,
     '[M] Pinlane apprend que la copie de CETTE reservation est passee', JSON.stringify(balise && balise.corps));
   ok(Boolean(balise) && ['Test Copie', 'copie@example.com', '0491301667', corps.phone].every((x) => x && balise.brut.indexOf(x) < 0), '[M] et ce signal ne porte rien de personnel');
+  const envoyes = [corps.holdToken, corps.cleConfirmation].filter(Boolean);
+  const jetonsBalise = balise && Array.isArray(balise.corps.jetons) ? balise.corps.jetons : [];
+  ok(envoyes.length > 0 && jetonsBalise.length > 0 && jetonsBalise.every((j) => envoyes.includes(j)), '[M] il porte les jetons que le client a envoyes en reservant, la preuve que c est lui', JSON.stringify(jetonsBalise));
   ok(messages.filter((m) => m.type === 'pinlane:miroir').length === 1, '[M] la page a recu la reservation une seule fois', messages.map((m) => m.type).join(','));
   ok(h.erreurs.length === 0, '[M] aucune erreur JavaScript sur la page du site', h.erreurs.slice(0, 2).join(' | '));
   await h.ctx.close();
@@ -655,6 +661,7 @@ async function proprietesBoutEnBout(browser) {
   ok(BALISES.length === 1 && baliseR.corps.ok === true && baliseR.corps.demandeId === Number(groupe.id) && baliseR.corps.reservationId === 0 && baliseR.corps.envoyees === 1,
     '[R] Pinlane apprend que la copie de CETTE demande est passee (son numero de demande, pas de reservation)', JSON.stringify(baliseR && baliseR.corps));
   ok(Boolean(baliseR) && ['Camille', 'groupe@example.com', '0471123456', 'École du gate', 'Pique-nique'].every((x) => baliseR.brut.indexOf(x) < 0), '[R] et ce signal ne porte rien de personnel');
+  ok(Boolean(baliseR) && /^[0-9a-f]{32}$/.test(String(groupe.preuve || '')) && baliseR.corps.preuve === groupe.preuve, '[R] il porte la preuve que le serveur a rendue avec la demande', `${baliseR && baliseR.corps.preuve} / ${groupe.preuve}`);
   ok(h.erreurs.length === 0, '[R] aucune erreur JavaScript sur la page du site', h.erreurs.slice(0, 2).join(' | '));
   await h.ctx.close();
 }
@@ -670,10 +677,14 @@ async function proprietesServeur() {
   const avant = { getPool: database.getPool, enforceRateLimit: rateLimit.enforceRateLimit, alerter: gardeAlertes.alerter };
   const requetes = [];
   const alertes = [];
-  // La reservation 4301 et la demande de groupe 77 existent, chacune dans sa table.
+  // La reservation 4301 et la demande de groupe 77 existent, chacune dans sa table. 4301 a ete confirmee avec la cle
+  // JETON_CLIENT : la base en garde l empreinte, et la rend seulement a qui la donne (la clause slot_holds, jouee ici).
+  const JETON_CLIENT = 'jetonDuClientDeLaReservation4301abcdefgh';
+  const empreinteClient = require('crypto').createHash('sha256').update(JETON_CLIENT).digest('hex');
   database.getPool = () => ({ query: async (sql, params) => {
     requetes.push(params);
-    const existe = params[0] === 'libramont' && ((/from reservations/.test(sql) && Number(params[1]) === 4301) || (/from custom_requests/.test(sql) && Number(params[1]) === 77));
+    const prouvee = !/slot_holds/.test(sql) || (Array.isArray(params[2]) && params[2].includes(empreinteClient));
+    const existe = params[0] === 'libramont' && ((/from reservations/.test(sql) && Number(params[1]) === 4301 && prouvee) || (/from custom_requests/.test(sql) && Number(params[1]) === 77));
     return { rowCount: existe ? 1 : 0, rows: [] };
   } });
   rateLimit.enforceRateLimit = () => false;
@@ -695,21 +706,26 @@ async function proprietesServeur() {
       await handler(req, res);
       return res;
     };
-    const reussie = await appeler({ kind: 'miroir', centerId: 'libramont', reservationId: 4301, ok: true, raison: '', lignes: 2, envoyees: 2 });
+    const preuveDe = (centre, numero) => handler.__test.preuveDeLaDemande(centre, numero);
+    const jetons = [JETON_CLIENT];
+    await appeler({ kind: 'miroir', centerId: 'libramont', reservationId: 4301, ok: false, raison: 'refuse:17', lignes: 2, envoyees: 1 });
+    await appeler({ kind: 'miroir', centerId: 'libramont', reservationId: 0, demandeId: 77, ok: false, raison: 'refuse:17', lignes: 1, envoyees: 0 });
+    ok(alertes.length === 0, '[O] sans ce que seul le client a recu (jeton de la reservation, preuve de la demande), une vraie copie ratee ne sonne pas', `${alertes.length} alertes`);
+    const reussie = await appeler({ kind: 'miroir', centerId: 'libramont', reservationId: 4301, ok: true, raison: '', lignes: 2, envoyees: 2, jetons });
     ok(reussie.statusCode === 202 && alertes.length === 0 && requetes.some((p) => p[0] === 'libramont' && Number(p[1]) === 4301), '[O] une copie reussie d une vraie reservation : lue, 202, aucune alerte', `${reussie.statusCode} ${alertes.length}`);
-    const ratee = await appeler({ kind: 'miroir', centerId: 'libramont', reservationId: 4301, ok: false, raison: 'refuse:17;<b>pirate</b> http://x.test', lignes: 2, envoyees: 1 });
+    const ratee = await appeler({ kind: 'miroir', centerId: 'libramont', reservationId: 4301, ok: false, raison: 'refuse:17;<b>pirate</b> http://x.test', lignes: 2, envoyees: 1, jetons });
     const texte = (alertes[0] || {}).texte || '';
     ok(ratee.statusCode === 202 && alertes.length === 1 && /réservation n°\s4301/.test(texte) && /a refusé l’envoi/.test(texte) && /1 entrée recopiée sur 2/.test(texte) && (alertes[0].options || {}).urgent === true, '[O] une copie ratee sonne : le numero, ce qui s est passe en mots simples, combien d entrees', `${texte} urgent=${(alertes[0] || {}).options && alertes[0].options.urgent}`);
     ok(!/pirate|<b>|http:\/\/x|r\u00e9pondu une erreur/.test(texte) && !/[\u2013\u2014]/.test(texte), '[O] sans rien recopier de ce que le navigateur a ecrit (une adresse glissee ne se lit pas comme une raison), sans tiret long', texte);
-    await appeler({ kind: 'miroir', centerId: 'libramont', reservationId: 4999, ok: false, raison: 'refuse:17', lignes: 1, envoyees: 0 });
-    await appeler({ kind: 'miroir', centerId: 'centre-inconnu', reservationId: 4301, ok: false, raison: 'reseau', lignes: 1, envoyees: 0 });
+    await appeler({ kind: 'miroir', centerId: 'libramont', reservationId: 4999, ok: false, raison: 'refuse:17', lignes: 1, envoyees: 0, jetons });
+    await appeler({ kind: 'miroir', centerId: 'centre-inconnu', reservationId: 4301, ok: false, raison: 'reseau', lignes: 1, envoyees: 0, jetons });
     ok(alertes.length === 1, '[O] une reservation inconnue ou un centre inconnu ne sonnent pas', `${alertes.length} alertes`);
-    await appeler({ kind: 'miroir', centerId: 'libramont', reservationId: 4301, ok: false, raison: 'jeton-absent', lignes: 3, envoyees: 0 });
+    await appeler({ kind: 'miroir', centerId: 'libramont', reservationId: 4301, ok: false, raison: 'jeton-absent', lignes: 3, envoyees: 0, jetons });
     const texteJeton = (alertes[1] || {}).texte || '';
     ok(alertes.length === 2 && /code anti-robot/.test(texteJeton) && /0 entrée recopiée sur 3/.test(texteJeton), '[O] une page qui ne donne plus le jeton se dit en mots simples', texteJeton);
-    await appeler({ kind: 'miroir', centerId: 'libramont', reservationId: 0, demandeId: 4301, ok: false, raison: 'refuse:17', lignes: 1, envoyees: 0 });
+    await appeler({ kind: 'miroir', centerId: 'libramont', reservationId: 0, demandeId: 4301, ok: false, raison: 'refuse:17', lignes: 1, envoyees: 0, preuve: preuveDe('libramont', 4301) });
     ok(alertes.length === 2, '[O] une demande de groupe se relit dans SA table : un numero de reservation donne pour une demande ne sonne pas', `${alertes.length} alertes`);
-    await appeler({ kind: 'miroir', centerId: 'libramont', reservationId: 0, demandeId: 77, ok: false, raison: 'refuse:17', lignes: 1, envoyees: 0 });
+    await appeler({ kind: 'miroir', centerId: 'libramont', reservationId: 0, demandeId: 77, ok: false, raison: 'refuse:17', lignes: 1, envoyees: 0, preuve: preuveDe('libramont', 77) });
     const alerteDemande = alertes[2] || {};
     ok(alertes.length === 3 && /la demande de groupe n°\s77 /.test(alerteDemande.texte || '') && alerteDemande.cle === 'miroir:libramont:d77' && (alerteDemande.options || {}).urgent === true, '[O] une demande de groupe ratee sonne sous son nom et son numero', `${alerteDemande.cle} ${alerteDemande.texte}`);
   } finally {
@@ -740,8 +756,12 @@ const MUTATIONS = [
   { nom: 'sans-temps', partie: 'site', fichier: 'embed.js', de: "donnees.append('gform_submission_speeds', JSON.stringify({ pages: vitesses }));", vers: '' },
   { nom: 'jeton-absent-envoye', partie: 'site', fichier: 'embed.js', de: "if (!jeton && form.querySelector('.gfield--type-honeypot, .gform_validation_container')) {", vers: 'if (false) {' },
   { nom: 'jeton-toujours-exige', partie: 'site', fichier: 'embed.js', de: "if (!jeton && form.querySelector('.gfield--type-honeypot, .gform_validation_container')) {", vers: 'if (!jeton) {' },
-  { nom: 'autre-site-servi', partie: 'cadre', fichier: 'assets/fungalaxy-miroir.js', de: "if (!siteDuCentre(parentOrigin)) { signaler({ id: id, ok: false, raison: 'autre-site' }); return; }", vers: '' },
-  { nom: 'jamais-appelee', partie: 'cadre', fichier: 'assets/fungalaxy-booking.js', de: 'if (MIROIR) recopierDansLAncienFormulaire(r, { date: dateRes, heure: heureRes, pax: paxRes });', vers: '' },
+  { nom: 'autre-site-servi', partie: 'cadre', fichier: 'assets/fungalaxy-miroir.js', de: "if (!siteDuCentre(parentOrigin)) { signaler({ id: id, ok: false, raison: 'autre-site' }, preuve); return; }", vers: '' },
+  { nom: 'jamais-appelee', partie: 'cadre', fichier: 'assets/fungalaxy-booking.js', de: 'if (MIROIR) recopierDansLAncienFormulaire(r, { date: dateRes, heure: heureRes, pax: paxRes }, jetons);', vers: '' },
+  { nom: 'jetons-oublies', partie: 'cadre', fichier: 'assets/fungalaxy-booking.js', de: 'm.recopier(r, quand, jetons);', vers: 'm.recopier(r, quand);' },
+  { nom: 'jetons-perdus-au-retour', partie: 'cadre', fichier: 'assets/fungalaxy-miroir.js', de: 'signaler(d, preuve);', vers: 'signaler(d);' },
+  { nom: 'preuve-de-groupe-oubliee', partie: 'cadre', fichier: 'assets/fungalaxy-sur-mesure.js', de: 'ligneDuMiroirSm(), reponse.preuveMiroir);', vers: 'ligneDuMiroirSm());' },
+  { nom: 'signal-sans-preuve', partie: 'serveur', fichier: 'api/public-booking-meta.js', de: 'if (estDemande ? !demandeProuvee(centre, numero, body.preuve) : !empreintes.length) { sendJson(res, 202, { ok: true }); return; }', vers: '' },
   { nom: 'resultat-perdu', partie: 'cadre', fichier: 'assets/fungalaxy-miroir.js', de: "if (d.type !== 'pinlane:miroir-fait' || !attendu || String(d.id) !== attendu.id) return;", vers: 'return;' },
   { nom: 'reservation-non-verifiee', partie: 'serveur', fichier: 'api/public-booking-meta.js', de: 'if (!r.rowCount) { sendJson(res, 202, { ok: true }); return; }', vers: '' },
   { nom: 'raison-recopiee', partie: 'serveur', fichier: 'api/public-booking-meta.js', de: "const pourquoi = (raisons.length ? raisons : ['reponse-inconnue']).map((cle) => RAISONS_MIROIR[cle]).join(' ; ');", vers: "const pourquoi = String(body.raison || '');" },

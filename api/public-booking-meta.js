@@ -18,7 +18,8 @@ const {
   calendrierDuCentre,
   calendrierPourLeClient,
 } = require('../lib/booking-config');
-const { getPool, checkDatabaseHealth, createCustomRequest } = require('../lib/database');
+const crypto = require('crypto');
+const { getPool, checkDatabaseHealth, createCustomRequest, empreinteJetonBlocage } = require('../lib/database');
 const { readJson, sendError, sendJson, setCors } = require('../lib/http');
 const { cleDeLAdresse, enforceRateLimit, getClientIp } = require('../lib/rate-limit');
 const { sessionDuPersonnel } = require('../lib/session-du-personnel');
@@ -190,6 +191,24 @@ const RAISONS_MIROIR = {
   'rien-a-copier': 'la réservation n’avait rien à recopier',
   'jeton-absent': 'leur formulaire demande un code anti-robot que la page ne donne plus, donc rien n’est parti',
 };
+// SEUL CELUI QUI A RESERVE FAIT SONNER (2026-11-18, avant-lancement B2). Les numeros se suivent : n importe qui
+// faisait sonner « copie ratee », URGENT, sur les vraies reservations de l heure, et noyait les vraies alertes. Le
+// signal porte maintenant ce que seul le client a recu. Pour une reservation, le jeton de sa retenue ou la cle de sa
+// confirmation, dont la base garde l empreinte avec la reservation (lib/database, convertirBlocage et
+// noterConfirmationSansBlocage). Pour une demande de groupe, la preuve rendue avec son numero (preuveDeLaDemande).
+// Sans elle, le signal est ignore sans bruit.
+function preuveDeLaDemande(centre, numero) {
+  return crypto.createHmac('sha256', `pinlane-miroir:${process.env.STAFF_AUTH_SECRET || ''}`).update(`${centre}:d${numero}`).digest('hex').slice(0, 32);
+}
+function demandeProuvee(centre, numero, preuve) {
+  const attendue = Buffer.from(preuveDeLaDemande(centre, numero));
+  const recue = Buffer.from(String(preuve || '').slice(0, 64));
+  return recue.length === attendue.length && crypto.timingSafeEqual(recue, attendue);
+}
+// Deux jetons au plus (la retenue, la cle de confirmation) ; un morceau mal forme n a pas d empreinte.
+function empreintesDuMiroir(jetons) {
+  return [...new Set((Array.isArray(jetons) ? jetons.slice(0, 2) : []).map((j) => empreinteJetonBlocage(j)).filter(Boolean))];
+}
 // Une raison est un mot de la liste, eventuellement suivi d un code HTTP (http-500) ou de numeros de champs
 // (refuse:17,38) : tout autre morceau est ignore, meme s il commence comme une raison (« http://... »).
 function raisonsDuMiroir(texte) {
@@ -216,10 +235,12 @@ async function handleMiroir(req, res, body) {
   }
   const pool = getPool();
   if (!pool || !Number.isSafeInteger(numero) || numero < 1) { sendJson(res, 202, { ok: true }); return; }
+  const empreintes = estDemande ? [] : empreintesDuMiroir(body.jetons);
+  if (estDemande ? !demandeProuvee(centre, numero, body.preuve) : !empreintes.length) { sendJson(res, 202, { ok: true }); return; }
   try {
     const r = await pool.query(estDemande
       ? "select id from custom_requests where center_id = $1 and id = $2 and created_at > now() - interval '1 hour' limit 1"
-      : `select id from reservations where center_id = $1 and id = $2 and created_at > now() - interval '1 hour' and ${simulationSqlExclusion()} limit 1`, [centre, numero]);
+      : `select id from reservations where center_id = $1 and id = $2 and created_at > now() - interval '1 hour' and ${simulationSqlExclusion()} and exists (select 1 from slot_holds h where h.reservation_id = reservations.id and h.release_reason = 'converted' and h.token_hash = any($3::text[])) limit 1`, estDemande ? [centre, numero] : [centre, numero, empreintes]);
     if (!r.rowCount) { sendJson(res, 202, { ok: true }); return; }
     const lignes = borne(body.lignes, 8);
     const envoyees = borne(body.envoyees, 8);
@@ -544,6 +565,8 @@ async function handleCustomRequest(req, res, body) {
     id: lead.id,
     acknowledgementSent: Boolean(ack && ack.ok),
     acknowledgement: ack || null,
+    // La preuve que le signal de la copie dans l ancien formulaire renverra (handleMiroir).
+    preuveMiroir: preuveDeLaDemande(centerId, lead.id),
   });
 }
 
@@ -1350,4 +1373,4 @@ module.exports = async (req, res) => {
     if (!res.headersSent) sendError(res, 503, 'Service momentanément indisponible. Réessayez dans un instant.');
   }
 };
-module.exports.__test = { buildDayStatus, buildCalendar, calendarFromParam, formulesPubliques, activitesPubliques, gestesVitrine, heuresPleinesDuCentre, calendrierPourLaPage };
+module.exports.__test = { buildDayStatus, buildCalendar, calendarFromParam, formulesPubliques, activitesPubliques, gestesVitrine, heuresPleinesDuCentre, calendrierPourLaPage, preuveDeLaDemande };

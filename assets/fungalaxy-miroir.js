@@ -13,7 +13,7 @@
  * sans rien de personnel (kind « miroir ») : une copie ratee sonne au lieu de se perdre.
  *
  * `window.FGMiroir(I)` : I porte l etat et les outils du formulaire (interne() dans fungalaxy-booking.js). La
- * fabrique ecoute la reponse de la page et rend { recopier(reservation, quand), recopierDemande(numero, ligne) }.
+ * fabrique ecoute la reponse de la page et rend { recopier(reservation, quand, jetons), recopierDemande(numero, ligne, preuve) }.
  */
 (function () {
   'use strict';
@@ -66,14 +66,19 @@
         }, commun);
       }).sort(function (x, y) { return x.heure < y.heure ? -1 : x.heure > y.heure ? 1 : 0; });
     }
-    function signaler(resultat) {
+    // preuve : ce que seul ce client a recu (2026-11-18). Les jetons de sa reservation (sa retenue, la cle de sa
+    // confirmation), ou la preuve rendue avec le numero de sa demande. Sans elle, le serveur ignore le signal. Elle reste
+    // dans le cadre : la page du site ne la recoit jamais.
+    function signaler(resultat, preuve) {
       try {
         // « d77 » : la demande de groupe n°77 (ses numeros ne sont pas ceux des reservations).
         var demande = /^d\d+$/.test(String(resultat.id));
+        preuve = preuve || {};
         var corps = JSON.stringify({
           kind: 'miroir', centerId: I.CENTER, reservationId: demande ? 0 : Number(resultat.id) || 0,
           demandeId: demande ? Number(String(resultat.id).slice(1)) : 0, ok: resultat.ok === true,
           raison: String(resultat.raison || '').slice(0, 200), lignes: Number(resultat.lignes) || 0, envoyees: Number(resultat.envoyees) || 0,
+          jetons: Array.isArray(preuve.jetons) ? preuve.jetons.slice(0, 2) : [], preuve: String(preuve.preuve || ''),
         });
         if (navigator.sendBeacon && navigator.sendBeacon('/api/public-booking-meta', new Blob([corps], { type: 'application/json' }))) return;
         fetch('/api/public-booking-meta', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: corps, keepalive: true, credentials: 'omit' }).catch(function () {});
@@ -86,33 +91,36 @@
       var d = event.data || {};
       if (d.type !== 'pinlane:miroir-fait' || !attendu || String(d.id) !== attendu.id) return;
       clearTimeout(attendu.minuteur);
+      var preuve = attendu.preuve;
       attendu = null;
-      signaler(d);
+      signaler(d, preuve);
     });
 
     // faireLignes ne se lit qu une fois la page reconnue : ce sont des donnees personnelles.
-    function envoyer(id, faireLignes) {
+    function envoyer(id, faireLignes, preuve) {
       if (!id || !parentOrigin) return;
       // Une page qui n est pas le site de la fiche ne recoit rien ; que la copie n ait pas eu lieu se sait quand meme.
-      if (!siteDuCentre(parentOrigin)) { signaler({ id: id, ok: false, raison: 'autre-site' }); return; }
+      if (!siteDuCentre(parentOrigin)) { signaler({ id: id, ok: false, raison: 'autre-site' }, preuve); return; }
       var lignes = faireLignes();
-      if (!lignes.length) { signaler({ id: id, ok: false, raison: 'rien-a-copier' }); return; }
+      if (!lignes.length) { signaler({ id: id, ok: false, raison: 'rien-a-copier' }, preuve); return; }
       if (attendu) clearTimeout(attendu.minuteur);
-      attendu = { id: id, minuteur: setTimeout(function () {
+      attendu = { id: id, preuve: preuve, minuteur: setTimeout(function () {
         if (!attendu || attendu.id !== id) return;
         attendu = null;
-        signaler({ id: id, ok: false, raison: 'sans-reponse', lignes: lignes.length });
+        signaler({ id: id, ok: false, raison: 'sans-reponse', lignes: lignes.length }, preuve);
       }, 60000) };
       I.poster({ type: 'pinlane:miroir', id: id, lignes: lignes });
     }
-    function recopier(r, quand) {
+    // jetons : la retenue et la cle de confirmation envoyees avec la reservation.
+    function recopier(r, quand, jetons) {
       var id = /^\d{1,12}$/.test(String(r.id || '')) ? String(r.id) : '';
-      envoyer(id, function () { return lignesDuMiroir(r, quand); });
+      envoyer(id, function () { return lignesDuMiroir(r, quand); }, { jetons: jetons || [] });
     }
-    // Une demande de groupe : une seule entree, que le module de la demande compose (ligneDuMiroirSm).
-    function recopierDemande(numero, ligne) {
+    // Une demande de groupe : une seule entree, que le module de la demande compose (ligneDuMiroirSm). preuve : celle
+    // que le serveur a rendue avec son numero.
+    function recopierDemande(numero, ligne, preuve) {
       var n = /^\d{1,12}$/.test(String(numero == null ? '' : numero)) ? String(numero) : '';
-      envoyer(n ? 'd' + n : '', function () { return ligne ? [ligne] : []; });
+      envoyer(n ? 'd' + n : '', function () { return ligne ? [ligne] : []; }, { preuve: preuve || '' });
     }
 
     return { recopier: recopier, recopierDemande: recopierDemande };

@@ -1179,7 +1179,7 @@
         pax: Number(sm.participants) || 0, date: sm.flexible ? '' : (sm.date || ''), status: 'received',
       } });
       // Pendant l essai sur le site du centre, la demande part aussi par son ancien formulaire (fungalaxy-miroir.js).
-      if (I.miroir && reponse && reponse.id != null) I.miroir('demande de groupe ' + reponse.id, function (m) { m.recopierDemande(reponse.id, ligneDuMiroirSm()); });
+      if (I.miroir && reponse && reponse.id != null) I.miroir('demande de groupe ' + reponse.id, function (m) { m.recopierDemande(reponse.id, ligneDuMiroirSm(), reponse.preuveMiroir); });
     }
     // La demande dans leur ancien formulaire, en une entree : la premiere envie dans leur liste, le reste lisible dans
     // le seul champ libre (le jour), qui commence par « Demande de groupe » : l equipe ne la prend pas pour une

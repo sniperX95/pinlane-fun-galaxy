@@ -587,7 +587,8 @@ async function simulerPourLaFenetre(body, session) {
   const lectures = new Map();
   const readState = (jour, centre) => {
     const cle = `${centre}|${jour}`;
-    if (!lectures.has(cle)) lectures.set(cle, readStaffState(jour, centre, { avecBlocages: true }));
+    // (les fermetures et privatisations du jour aussi : la fenetre les dit avant « Créer »)
+    if (!lectures.has(cle)) lectures.set(cle, readStaffState(jour, centre, { avecBlocages: true, avecFermetures: true }));
     return lectures.get(cle);
   };
   const corps = { ...body };
@@ -1195,7 +1196,9 @@ const traiter = async (req, res) => {
         const { buildActivityMove } = require('../lib/reservation-activity-move');
         const { readStaffState, validateActivityMoveResources } = require('../lib/database');
         const candidate = buildActivityMove(current, body.activityMove);
-        const snapshot = await readStaffState(current.date, requestedCenterId, { avecBlocages: true });
+        // (les fermetures et privatisations du jour : `snapshot.blocks` etait toujours vide, seule
+        // l ecriture sous verrou les jugeait ; la meme phrase, maintenant des ce controle)
+        const snapshot = await readStaffState(current.date, requestedCenterId, { avecBlocages: true, avecFermetures: true });
         try {
           validateActivityMoveResources(candidate, body.activityMove, snapshot.reservations.filter(row => Number(row.id) !== Number(current.id)), snapshot.laneStatuses, snapshot.blocks || [], current.date);
         } catch (error) { if (!error.statusCode) error.statusCode = 409; throw error; }

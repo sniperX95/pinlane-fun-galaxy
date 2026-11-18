@@ -63,7 +63,11 @@ const traiter = async (req, res) => {
     // (migration 0049) arrivent A PART (`holds`) : le planning les montre en
     // attente, ils ne se melangent ni aux listes ni aux chiffres du jour.
     // (les groupes « Pas venu » aussi : la console les montre barres, leurs places rendues)
-    const snapshot = await readStaffState(date, centerId, { blocagesAPart: true, avecAbsents: true });
+    // Les fermetures et privatisations du jour aussi (2026-11-18) : le planning les montre a chaque
+    // poste, droit de regler le centre ou pas, et elles entrent dans la revision.
+    const snapshot = await readStaffState(date, centerId, { blocagesAPart: true, avecAbsents: true, avecFermetures: true });
+    // (qui a pose le blocage reste au journal : le planning n en a pas besoin)
+    if (Array.isArray(snapshot.blocks)) snapshot.blocks = snapshot.blocks.map(({ createdBy, centerId: centre, ...bloc }) => bloc);
     // Une reponse sans montants n est pas la meme reponse (passe securite du 2026-11-08), et
     // la revision du jour recopie chaque dossier, prix et moyen de paiement compris : sans
     // « Voir les montants », elle part en EMPREINTE (elle change quand le jour change, elle

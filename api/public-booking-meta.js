@@ -36,7 +36,7 @@ function visiteursDuPlantage(cle, adresse, maintenant = Date.now()) {
   plantagesVus.set(cle, vu);
   return vu.adresses.size;
 }
-const { getActivity, getCenter, getFormula, refreshCenterOverrides, refreshCatalog, coupureEnLigne, CODE_COUPURE } = require('../lib/ops-knowledge');
+const { getActivity, getCenter, getFormula, refreshCenterOverrides, refreshCatalog, coupureEnLigne, CODE_COUPURE, publicBookingBlockReason } = require('../lib/ops-knowledge');
 const { sendCustomRequestAck } = require('../lib/ops-communications');
 const { simulationSqlExclusion } = require('../lib/simulation-filter');
 const {
@@ -1124,6 +1124,24 @@ async function routeur(req, res) {
     return;
   }
 
+  // UN CENTRE QUI N EST PAS OUVERT NE SE LIT PAS EN ENTIER (2026-11-18, avant-lancement B4). Un centre prevu ou ferme
+  // rendait tout son catalogue a n importe qui : nom, adresse, horaires, formules et prix. Un concurrent voyait qui
+  // s installe, et a quels prix, avant l ouverture. Le visiteur recoit le statut et la phrase que le serveur oppose
+  // deja a une reservation (le formulaire se ferme sur elle, comme sur une coupure), rien d autre. Le personnel de ce
+  // centre, qui prepare l ouverture dans la console, le lit toujours en entier. Un centre actif ne passe pas ici.
+  if (await fermeAuVisiteur(req, center)) {
+    sendJson(res, 200, {
+      ok: true,
+      coupure: publicBookingBlockReason(center.id),
+      today: todayStr(),
+      bookingHorizonDays: BOOKING_HORIZON_DAYS,
+      formules: [],
+      activities: [],
+      center: { id: center.id, status: center.status, demonstration: false },
+    });
+    return;
+  }
+
   // Config bookable per-center (pistes, capacités, tarifs, options laser) : le
   // front la consomme quand elle est présente, ses constantes locales restent
   // le fallback (mêmes valeurs sans override).
@@ -1317,6 +1335,15 @@ async function routeur(req, res) {
       : null,
   });
 };
+
+// Prevu ou ferme, et pas lu par une personne qui entre dans ce centre (la meme regle que les gardes du personnel,
+// lib/staff-auth sessionAuCentre). Une requete sans trace de session n interroge pas la base.
+async function fermeAuVisiteur(req, center) {
+  if (!/^(planned|closed)$/.test(String(center.status || ''))) return false;
+  const session = await sessionDuPersonnel(req);
+  if (!session) return true;
+  try { return !(await require('../lib/staff-auth').sessionAuCentre(session, center.id)); } catch (error) { return true; }
+}
 
 // LES FERIES ET LES CONGES D UN CENTRE HORS FEDERATION (2026-11-17, D5), calcules ici : le navigateur
 // (assets/booking-core.js) ne connait que ceux de la Federation, et ne les applique plus a un autre centre.

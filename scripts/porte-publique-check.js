@@ -1,4 +1,4 @@
-// LA PORTE PUBLIQUE : CE QU UN INCONNU NE PEUT PLUS FAIRE (2026-11-18, avant-lancement B2 et B3).
+// LA PORTE PUBLIQUE : CE QU UN INCONNU NE PEUT PLUS FAIRE (2026-11-18, avant-lancement B2 a B4).
 //
 // [M] LA COPIE RATEE (B2). Les numeros de reservation se suivent : n importe qui faisait sonner « copie ratee »,
 //     URGENT, sur les vraies reservations de l heure. Le signal ne sonne plus que s il porte ce que seul le client a
@@ -7,6 +7,9 @@
 // [E] LES ERREURS DU FORMULAIRE (B3). Toutes portaient le meme membre (public:<centre>) : 20 fausses erreurs d un seul
 //     envoyeur remplissaient le plafond de l heure et faisaient taire les vrais plantages de tous. Le membre est
 //     maintenant l appareil (bloc d adresse et navigateur, en empreinte) : l envoyeur ne remplit que le sien.
+// [P] UN CENTRE PREVU OU FERME (B4). Sa lecture publique rendait tout : nom, adresse, horaires, formules et prix. Le
+//     visiteur recoit son statut et la phrase qui ferme le formulaire ; son personnel le lit toujours en entier ; un
+//     centre actif (le socle, la demonstration, un centre ne dans la console) rend EXACTEMENT la reponse d avant.
 //
 // Zero reseau, zero base : 'pg' est remplace avant tout require du depot, les alertes sont gardees en memoire.
 // Les contre-preuves chargent le code mute en memoire : aucun fichier n est ecrit.
@@ -38,6 +41,9 @@ const MUTATIONS = {
   'miroir-preuve-sans-centre': { f: 'api/public-booking-meta.js', de: 'update(`${centre}:d${numero}`)', vers: 'update(`d${numero}`)', lettre: 'M' },
   'erreurs-un-seul-compteur': { f: 'api/public-booking-meta.js', de: '    memberId: membreDuFormulaire(req, centre),\n', vers: '    memberId: `public:${centre}`,\n', lettre: 'E' },
   'erreurs-adresse-entiere': { f: 'api/public-booking-meta.js', de: '`${cleDeLAdresse(getClientIp(req))}|', vers: '`${getClientIp(req)}|', lettre: 'E' },
+  'prevu-servi-en-entier': { f: 'api/public-booking-meta.js', de: 'if (await fermeAuVisiteur(req, center)) {', vers: 'if (false) {', lettre: 'P' },
+  'prevu-a-tout-le-personnel': { f: 'api/public-booking-meta.js', de: "try { return !(await require('../lib/staff-auth').sessionAuCentre(session, center.id)); } catch (error) { return true; }", vers: 'return false;', lettre: 'P' },
+  'actif-ferme-aussi': { f: 'api/public-booking-meta.js', de: "  if (!/^(planned|closed)$/.test(String(center.status || ''))) return false;\n", vers: '', lettre: 'P' },
 };
 const MUTATION = (process.argv.find((a) => a.startsWith('--mutation=')) || '').slice('--mutation='.length);
 if (MUTATION && !MUTATIONS[MUTATION]) { console.error(`mutation inconnue : ${MUTATION}`); process.exit(2); }
@@ -227,6 +233,50 @@ async function lire(handler, query, headers = {}) {
     const membre = (m) => (ERREURS.find((e) => e.message === m) || {}).member_id;
     ok(Boolean(membre('ipv6 un')) && membre('ipv6 un') === membre('ipv6 deux'), 'deux adresses du meme bloc /64 sont le meme appareil (changer d adresse ne rend pas un plafond neuf)', `${membre('ipv6 un')} / ${membre('ipv6 deux')}`);
     ok(Boolean(membre('ipv6 trois')) && membre('ipv6 trois') !== membre('ipv6 un'), 'un autre navigateur derriere la meme adresse a son propre compteur', `${membre('ipv6 trois')}`);
+  }
+
+  // =========================================================================
+  section('[P] UN CENTRE PREVU OU FERME (B4) : le visiteur ne lit que son statut');
+  // =========================================================================
+  {
+    // La reponse d avant : le meme fichier, sans la branche du centre ferme au visiteur (et avec la mutation jouee).
+    const ancre = 'if (await fermeAuVisiteur(req, center)) {';
+    const texte = muter(META, fs.readFileSync(META, 'utf8'));
+    const avant = new Module(META, module);
+    avant.filename = META;
+    avant.paths = Module._nodeModulePaths(path.dirname(META));
+    compiler.call(avant, texte.split(ancre).join('if (false) {'), META);
+    const ancien = avant.exports;
+
+    const [y, m, d] = require(path.join(ROOT, 'lib', 'booking-config')).todayStr().split('-').map(Number);
+    const bientot = new Date(Date.UTC(y, m - 1, d + 9)).toISOString().slice(0, 10);
+    const ecarts = [];
+    for (const q of ['centerId=libramont', '', 'centerId=gembloux', 'centerId=demo', 'centerId=gate-actif', 'center=gembloux&calendar=10', `centerId=libramont&date=${bientot}`, `centerId=gate-actif&calendar=5&date=${bientot}`]) {
+      const maintenant = await lire(handler, q);
+      const hier = await lire(ancien, q);
+      if (maintenant.status !== 200 || maintenant.brut !== hier.brut) ecarts.push(`${q || '(sans centre)'} ${maintenant.status}`);
+    }
+    ok(!ecarts.length, 'un centre actif (Libramont, Gembloux, la demonstration, un centre ne dans la console) rend octet pour octet la reponse d avant', ecarts.join(' ; '));
+
+    const ferme = (r, phrase) => {
+      const j = r.json || {};
+      const cles = Object.keys(j).sort().join(',');
+      return r.status === 200 && phrase.test(String(j.coupure || '')) && cles === 'activities,bookingHorizonDays,center,coupure,formules,ok,today'
+        && !j.formules.length && !j.activities.length && JSON.stringify(j.center) === JSON.stringify({ id: j.center.id, status: j.center.status, demonstration: false });
+    };
+    const ciney = await lire(handler, 'centerId=ciney&calendar=45');
+    ok(ferme(ciney, /pas encore/) && !/Fun Galaxy Ciney|formules":\[\{|bowlingPrices|defaultSchedule|address/.test(ciney.brut), 'ciney (prevu, socle fichier) : le statut et la phrase « pas encore », ni nom, ni adresse, ni horaires, ni formules, ni prix', ciney.brut.slice(0, 200));
+    const prevu = await lire(handler, `centerId=gate-prevu&date=${bientot}`);
+    ok(ferme(prevu, /pas encore/) && !/Gate Prevu Secret|"day"/.test(prevu.brut), 'un centre prevu ne dans la console : pareil, meme avec une date demandee', prevu.brut.slice(0, 200));
+    const clos = await lire(handler, 'centerId=gate-ferme');
+    ok(ferme(clos, /ne prend plus/) && clos.json.center.status === 'closed' && !/Gate Ferme Secret/.test(clos.brut), 'un centre ferme : son statut et « ne prend plus », rien d autre', clos.brut.slice(0, 200));
+
+    const sienne = await lire(handler, 'centerId=gate-prevu', { 'x-staff-session': 'prevu' });
+    ok(sienne.status === 200 && (sienne.json.center || {}).name === 'Gate Prevu Secret' && !sienne.json.coupure && /bowlingPrices/.test(sienne.brut), 'son personnel, qui prepare l ouverture dans la console, le lit en entier', sienne.brut.slice(0, 160));
+    const fondateur = await lire(handler, 'centerId=gate-prevu', { 'x-staff-session': 'fondateur' });
+    ok(fondateur.status === 200 && (fondateur.json.center || {}).name === 'Gate Prevu Secret', 'la plateforme aussi', fondateur.brut.slice(0, 120));
+    const voisin = await lire(handler, 'centerId=gate-prevu', { 'x-staff-session': 'actif' });
+    ok(ferme(voisin, /pas encore/), 'le personnel d un autre centre le lit comme un visiteur', voisin.brut.slice(0, 160));
   }
 
   console.info = infos;

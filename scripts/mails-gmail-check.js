@@ -279,11 +279,12 @@ async function verifierConsole(editions, ok) {
     const client = e906.find((m) => m.id === '61');
     const boite = e906.find((m) => m.id === 'boite-62');
     ok(e906.length === 3 && e906.every((m) => m.lettre && m.nom && m.heure && !transparent(m.fond)) && client && client.adresse === '<paul.exemple@exemple.be>'
-      && boite && boite.nous && client.fond !== boite.fond,
+      && boite && !boite.nous,
     '[D] chaque mail a son en-tete : pastille, nom, adresse, heure', JSON.stringify(e906.map(({ corps, trace, ...m }) => m)));
-    ok(e906.map((m) => m.id).join(',') === '61,boite-62,62' && boite.voie === 'Envoyé depuis votre boîte mail' && boite.nom === 'Fun Galaxy Libramont'
+    // La voie et la pastille d une reponse citee (non verifiee) se prouvent dans scripts/mail-cite-non-verifie-check.js.
+    ok(e906.map((m) => m.id).join(',') === '61,boite-62,62' && boite.voie === 'Cité par le client, non vérifié' && boite.nom === 'Fun Galaxy Libramont'
       && boite.adresse === '<libramont@fungalaxy.be>' && /Oui, la salle anniversaire est libre samedi à 15 h/.test(boite.corps) && !/est-elle libre/.test(boite.corps)
-      && /retrouvé dans la réponse de Paul Exemple/.test(boite.trace) && /Répondu depuis votre boîte mail/.test(client.trace),
+      && /Retrouvé dans la réponse de Paul Exemple/.test(boite.trace) && /Réponse citée par le client, non vérifiée/.test(client.trace),
     '[D] la reponse partie de la boite du centre apparait a sa place', JSON.stringify(e906.map((m) => ({ id: m.id, voie: m.voie, corps: m.corps.slice(0, 90), trace: m.trace.slice(0, 120) }))));
 
     await ouvrirFil(page, '907');

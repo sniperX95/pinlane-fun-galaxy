@@ -102,7 +102,7 @@ async function notes(browser) {
           const n = s.nextSibling && s.nextSibling.nodeType === 3 && s.nextSibling.textContent.trim() ? s.nextSibling : (s.nextElementSibling || s.nextSibling);
           apres.selectNodeContents(n);
           const ra = apres.getClientRects()[0] || { top: -99, left: -99 };
-          return { mot: s.textContent, texte: p.textContent.slice(p.textContent.indexOf(s.textContent) + s.textContent.length).trim(), fond: cs.backgroundColor, encre: cs.color, haut: Math.round(s.getBoundingClientRect().top), hautTexte: Math.round(ra.top), droite: Math.round(s.getBoundingClientRect().right), gauche: Math.round(ra.left), lignesP: Math.round(p.clientHeight / parseFloat(getComputedStyle(p).lineHeight)) };
+          return { mot: s.textContent, texte: p.textContent.slice(p.textContent.indexOf(s.textContent) + s.textContent.length).trim(), bulle: p.getAttribute('title') || '', fond: cs.backgroundColor, encre: cs.color, haut: Math.round(s.getBoundingClientRect().top), hautTexte: Math.round(ra.top), droite: Math.round(s.getBoundingClientRect().right), gauche: Math.round(ra.left), lignesP: Math.round(p.clientHeight / parseFloat(getComputedStyle(p).lineHeight)) };
         };
         return { client: lire('client'), equipe: lire('equipe'), fondLigne: getComputedStyle(tr.querySelector('td.gf-nom')).backgroundColor, page: getComputedStyle(document.body).backgroundColor };
       })()`);
@@ -110,7 +110,9 @@ async function notes(browser) {
       ok(Boolean(c && e), `[A] le montage (${theme}) : l Equipe de basket a un mot du client et une note de l equipe`, n);
       if (!c || !e) return;
       ok(c.mot === 'Note du client' && /plus tard/.test(c.texte) && !/Note du client/.test(c.texte), `[A] « Note du client » en toutes lettres, le texte a part (${theme})`, c);
-      ok(e.mot === 'Note de l’équipe' && /Acompte/.test(e.texte) && /Sarah/.test(e.texte), `[A] « Note de l’équipe » en toutes lettres, avec son auteur (${theme})`, e);
+      // Depuis le 18/11 (Marius, Gembloux : « enlève le truc juste après, staff bar gembloux »), la note se lit
+      // seule : son auteur et son heure passent dans sa bulle.
+      ok(e.mot === 'Note de l’équipe' && /Acompte/.test(e.texte) && !/Sarah/.test(e.texte) && /Écrite par Sarah/.test(e.bulle || ''), `[A] « Note de l’équipe » en toutes lettres, le texte seul, son auteur dans la bulle (${theme})`, e);
       const fond = transparent(n.fondLigne) ? n.page : n.fondLigne;
       ok(!transparent(c.fond) && !transparent(e.fond) && c.fond !== e.fond && c.fond !== fond && e.fond !== fond, `[A] deux etiquettes pleines, deux teintes, aucune couleur du fond (${theme})`, { client: c.fond, equipe: e.fond, fond });
       ok(contraste(c.encre, c.fond) >= 4.5 && contraste(e.encre, e.fond) >= 4.5, `[A] les etiquettes se lisent, 4,5:1 au moins (${theme})`, { client: contraste(c.encre, c.fond).toFixed(2), equipe: contraste(e.encre, e.fond).toFixed(2) });

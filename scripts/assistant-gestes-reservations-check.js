@@ -485,8 +485,8 @@ async function verifier(editions = []) {
     const suppr = await carte('supprimer_reservation', { reservation: 101, raison: 'doublon' }, ['Supprime ce doublon']);
     const supprSansMots = await carte('supprimer_reservation', { reservation: 101 }, ['Qu’est-ce que tu en penses ?']);
     const clicSuppr = await clic('supprimer_reservation', { reservation: 101, raison: 'doublon' });
-    ok(suppr.p && suppr.p.risque === true && suppr.p.vue.danger === true && /registre des suppressions/.test(suppr.p.resume.alerte) && supprSansMots.e && supprSansMots.e.statusCode === 403 && clicSuppr.r && clicSuppr.r.methode === 'DELETE' && JSON.stringify(clicSuppr.r.corps) === JSON.stringify({ id: 101, reason: 'doublon' }),
-      '[G] supprimer est dangereux, demande les mots de la personne et part en DELETE', JSON.stringify([vu(suppr), vu(clicSuppr)]));
+    ok(suppr.p && suppr.p.risque === true && suppr.p.vue.danger === true && /registre des suppressions/.test(suppr.p.resume.alerte) && supprSansMots.e && supprSansMots.e.statusCode === 403 && clicSuppr.r && clicSuppr.r.methode === 'DELETE' && JSON.stringify(clicSuppr.r.corps) === JSON.stringify({ id: 101, baseUpdatedAt: b.reservations.find((r) => Number(r.id) === 101).updatedAt, reason: 'doublon' }),
+      '[G] supprimer est dangereux, demande les mots de la personne et part en DELETE avec la version relue au clic', JSON.stringify([vu(suppr), vu(clicSuppr)]));
     const restaure = await carte('restaurer_reservation_supprimee', { reservation: 150 }, ['Restaure la réservation supprimée de Dupont']);
     const restaureAilleurs = await carte('restaurer_reservation_supprimee', { reservation: 151 }, ['Restaure-la']);
     ok(restaure.p && JSON.stringify((await clic('restaurer_reservation_supprimee', { reservation: 150 })).r.corps) === JSON.stringify({ archiveId: 61, force: false }) && /Groupe Dupont/.test(ligne(restaure, 'Réservation').valeur) && restaureAilleurs.e && restaureAilleurs.e.statusCode === 404,
@@ -846,8 +846,8 @@ async function verifier(editions = []) {
       ok(journal.audits.some((a) => a && a.action === 'assistantGeste' && JSON.stringify(a).includes('statut_reservation') && JSON.stringify(a).includes('staff-reservations')), '[S] le journal d audit dit le geste et l adresse', JSON.stringify(journal.audits.map((a) => [a.action, a.changes])).slice(0, 300));
       journal.fiche.length = 0;
       const suppr = await cliquer('supprimer_reservation', { reservation: 101, raison: 'doublon' });
-      ok(suppr.statut === 200 && journal.fiche.length === 1 && journal.fiche[0].methode === 'DELETE' && JSON.stringify(journal.fiche[0].corps) === JSON.stringify({ id: 101, reason: 'doublon', centerId: 'libramont' }) && journal.fiche[0].auth === 'Bearer jeton-du-poste',
-        '[S] la suppression part en DELETE a la fiche, avec sa raison', JSON.stringify(journal.fiche).slice(0, 300));
+      ok(suppr.statut === 200 && journal.fiche.length === 1 && journal.fiche[0].methode === 'DELETE' && JSON.stringify(journal.fiche[0].corps) === JSON.stringify({ id: 101, baseUpdatedAt: '2026-11-10T10:00:00.000Z', reason: 'doublon', centerId: 'libramont' }) && journal.fiche[0].auth === 'Bearer jeton-du-poste',
+        '[S] la suppression part en DELETE a la fiche, avec sa version et sa raison', JSON.stringify(journal.fiche).slice(0, 300));
       const piste = await cliquer('piste_en_maintenance', { piste: 3, etat: 'maintenance', motif: 'pin-setter' });
       ok(piste.statut === 200 && journal.pistes.length === 1 && journal.pistes[0].methode === 'PATCH' && journal.pistes[0].url === '/api/staff-lanes'
         && JSON.stringify(journal.pistes[0].corps) === JSON.stringify({ lane: 3, status: 'maintenance', maintenanceFrom: '', maintenanceUntil: '', note: 'pin-setter', centerId: 'libramont' }),

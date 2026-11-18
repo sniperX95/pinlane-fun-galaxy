@@ -28731,14 +28731,21 @@ async function deleteRes(id, ev) {
   // une réservation supprimée.
   if (state.selectedRes && state.selectedRes.id === id) closePos();
   try {
-    await apiRequest(API_ENDPOINTS.staffReservations, {
-      method: 'DELETE',
-      body: JSON.stringify({ id })
+    // LA VERSION LUE PART AVEC LA SUPPRESSION (point C5) : un dossier change sur un autre poste
+    // depuis ne se supprime pas (409, le serveur rend la version actuelle). Derriere une ecriture
+    // de ce poste sur le meme dossier, c est la version qu elle a rendue qui part.
+    await enchainerEcritureReservation(id, (derniere) => {
+      const version = (derniere && String(derniere.id) === String(id) ? derniere : current).updatedAt;
+      return apiRequest(API_ENDPOINTS.staffReservations, {
+        method: 'DELETE',
+        body: JSON.stringify({ id, ...(version ? { baseUpdatedAt: version } : {}) })
+      });
     });
     toast('Réservation supprimée');
   } catch (error) {
-    applyOptimisticReservation(current, { preserveEditState: true });
-    toast(error.message || 'Impossible de supprimer la réservation.');
+    const courante = error && error.status === 409 && error.payload ? error.payload.reservation : null;
+    applyOptimisticReservation(courante || current, { preserveEditState: true });
+    toast(courante ? 'Cette réservation a changé sur un autre poste. Elle n’est pas supprimée, vérifiez-la d’abord.' : (error.message || 'Impossible de supprimer la réservation.'));
   }
 }
 

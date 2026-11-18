@@ -382,9 +382,10 @@ function exigerLeTelephone(corps) {
 
 // Les erreurs d infrastructure (Postgres, Neon, reseau) ne s affichent jamais :
 // elles se journalisent, et le staff lit une phrase qui dit de reessayer.
+// ECONNRESET (point C6) : une connexion coupee en pleine transaction.
 function estErreurInfra(error) {
   const raw = String((error && error.message) || '');
-  return !raw || /tuple concurrently|timeout exceeded|data transfer quota|ECONNREFUSED|ETIMEDOUT|terminating connection|too many clients|Connection terminated|relation .* does not exist|column .* does not exist|SQLSTATE|deadlock|current transaction is aborted/i.test(raw);
+  return !raw || /tuple concurrently|timeout exceeded|data transfer quota|ECONNREFUSED|ECONNRESET|ETIMEDOUT|terminating connection|too many clients|Connection terminated|relation .* does not exist|column .* does not exist|SQLSTATE|deadlock|current transaction is aborted/i.test(raw);
 }
 const MESSAGE_INFRA = 'Opération réservation impossible pour le moment. Réessayez.';
 
@@ -1157,16 +1158,31 @@ const traiter = async (req, res) => {
         const sessionPasse = await requireStaffPermission(req, res, 'planning.past', { centerId: current.centerId || 'libramont' });
         if (!sessionPasse) return;
       }
+      // LA VERSION DE LA SUPPRESSION (point C5, lib/database deleteReservation) : un dossier change depuis
+      // que ce poste l a lu ne se supprime pas, et ses mails en attente ne sont pas annules pour rien.
+      // deleteReservation refait ce controle sous verrou : c est lui qui fait foi.
+      const versionSupprimee = lireVersionAttendue(body.baseUpdatedAt);
+      if (versionSupprimee !== null && !memeVersion(current.updatedAt, versionSupprimee)) throw reservationModifieeEntreTemps(current);
       const automation = await cancelPendingAutomation(current, 'reservation_deleted');
       // LE REGISTRE (migration 0052) : la ligne entiere est copiee dans
       // reservation_archive AVANT le DELETE, dans la meme transaction. Si la
       // copie echoue, deleteReservation jette (503, message clair) et rien n est
       // supprime : la copie est OBLIGATOIRE, contrairement au journal d audit
       // ci-dessous qui reste non bloquant.
-      const suppression = await deleteReservation(body.id, {
-        archivedBy: libelleMembre(session),
-        reason: String((body && body.reason) || 'suppression depuis la console').slice(0, 500),
-      });
+      let suppression;
+      try {
+        suppression = await deleteReservation(body.id, {
+          archivedBy: libelleMembre(session),
+          reason: String((body && body.reason) || 'suppression depuis la console').slice(0, 500),
+          baseUpdatedAt: body.baseUpdatedAt,
+        });
+      } catch (error) {
+        // Ecrit entre la lecture d ici et le verrou : le dossier reste, ses mails et travaux reviennent.
+        if (error && error.code === 'reservation_modifiee' && error.reservation) {
+          await refreshReservationAutomation(current, error.reservation, { reason: 'suppression_refusee' }).catch(() => null);
+        }
+        throw error;
+      }
       await createOpsEvent({
         centerId: current.centerId || 'libramont',
         reservationId: null,

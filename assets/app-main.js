@@ -6679,7 +6679,9 @@ function getBookingActivityParticipants(activity, options = {}, pax = state.book
 
 function renderActivityOptions(activity, options = {}, pax = state.booking.pax) {
   if (!activity) return '';
-  const id = escapeHtml(activity.id);
+  // L identifiant ne sert qu aux gestionnaires inline ci-dessous : echappe pour JavaScript, comme
+  // renderActivityOptionsWithoutParticipants (escapeHtml seul rendait l apostrophe au script).
+  const id = escapeJsString(activity.id);
   const bounds = activityParticipantsBounds(activity.id, pax);
   const current = getBookingActivityParticipants(activity, options, pax);
   const children = activityCountsChildren(activity);
@@ -16381,7 +16383,7 @@ function ebDessinerJour() {
         <div class="eb-jl eb-force"><button type="button" class="eb-b" onclick="ebForcerJour('${iso}','${s.vacances ? 'normal' : 'holiday'}')">${s.vacances ? 'Mettre les horaires normaux ce jour' : 'Mettre les horaires de vacances ce jour'}</button></div>`;
     }
   }
-  const prives = s.privatisations.map(p => `<div data-privatisation="${ebE(p.ids.join(','))}"><span>${ebE(`${privatisationPhrase(p)}, ${privatisationPortee(p).toLowerCase()}`)}</span>${iso >= ebIso(new Date()) && peutGeste('privatiser') ? `<button type="button" onclick="retirerPrivatisationUi('${ebE(p.ids.join(','))}')">Retirer</button>` : ''}</div>`).join('');
+  const prives = s.privatisations.map(p => `<div data-privatisation="${ebE(p.ids.join(','))}"><span>${ebE(`${privatisationPhrase(p)}, ${privatisationPortee(p).toLowerCase()}`)}</span>${iso >= ebIso(new Date()) && peutGeste('privatiser') ? `<button type="button" onclick="retirerPrivatisationUi('${escapeJsString(p.ids.join(','))}')">Retirer</button>` : ''}</div>`).join('');
   const deja = s.blocs.length || prives ? `<div class="eb-deja">${s.blocs.map(b => `<div><span>${ebE(ebBlocPhrase(b))}${b.reason ? `, ${ebE(b.reason)}` : ''}</span>${peutChanger ? `<button type="button" onclick="deleteAvailabilityBlockUi(${Number(b.id)})">Retirer</button>` : ''}</div>`).join('')}${prives}</div>` : '';
   const html = `<button type="button" class="eb-jour-x" aria-label="Refermer le jour" onclick="ebFermerFicheJour()">×</button><h3 class="eb-jt">${ebE(titre)}</h3><p class="eb-jd">${ebE(dit)}</p><div class="eb-jh${s.totale || s.ferme ? ' is-ferme' : ''}">${ebE(heures)}</div>${deja}${geste}`;
   // Le panneau suit chaque changement de la page : le meme contenu ne se reecrit pas, une heure en cours de saisie y reste.
@@ -18632,7 +18634,7 @@ function renderAvailabilityBlocksList() {
   if (!blocks.length && !privatisations.length) {
     return '<div class="availability-empty">Aucune fermeture décidée. Le centre suit ses horaires.</div>';
   }
-  const lignesPrivees = privatisations.map(p => `<li class="availability-item is-prive" data-privatisation="${escapeHtml(p.ids.join(','))}"><span class="availability-item-body"><span class="availability-item-label">${escapeHtml(`Privatisé : ${p.nom || 'groupe privé'}, ${availabilityQuandLisible(p.bloc)}`)}</span><span class="availability-item-reason">${escapeHtml(privatisationPortee(p))}</span></span><button type="button" class="availability-del" onclick="retirerPrivatisationUi('${escapeHtml(p.ids.join(','))}')">Retirer</button></li>`).join('');
+  const lignesPrivees = privatisations.map(p => `<li class="availability-item is-prive" data-privatisation="${escapeHtml(p.ids.join(','))}"><span class="availability-item-body"><span class="availability-item-label">${escapeHtml(`Privatisé : ${p.nom || 'groupe privé'}, ${availabilityQuandLisible(p.bloc)}`)}</span><span class="availability-item-reason">${escapeHtml(privatisationPortee(p))}</span></span><button type="button" class="availability-del" onclick="retirerPrivatisationUi('${escapeJsString(p.ids.join(','))}')">Retirer</button></li>`).join('');
   return `<ul class="availability-list">${blocks.map(block => `<li class="availability-item" data-block-id="${escapeHtml(String(block.id))}"><span class="availability-item-body"><span class="availability-item-label">${escapeHtml(`${availabilityScopeText(block)} ${availabilityQuandLisible(block)}`)}</span>${block.reason ? `<span class="availability-item-reason">${escapeHtml(block.reason)}</span>` : ''}</span><button type="button" class="availability-del" onclick="deleteAvailabilityBlockUi(${Number(block.id)})">Retirer</button></li>`).join('')}${lignesPrivees}</ul>`;
 }
 
@@ -18782,7 +18784,7 @@ function renderBandeauPrivatisations() {
     const groupe = p.reservationId ? todaysReservations().find(r => Number(r.id) === Number(p.reservationId)) : null;
     const detail = [privatisationPortee(p), groupe ? `dossier ${groupe.name || `n° ${groupe.id}`}` : ''].filter(Boolean).join(' · ');
     const ids = escapeHtml(p.ids.join(','));
-    return `<div class="pb-prive" data-privatisation="${ids}"><span class="pb-prive__t"><b>${escapeHtml(privatisationPhrase(p))}</b><span>${escapeHtml(detail)}</span></span>${peut ? `<button type="button" class="pb-prive__x" onclick="retirerPrivatisationUi('${ids}')">Retirer</button>` : ''}</div>`;
+    return `<div class="pb-prive" data-privatisation="${ids}"><span class="pb-prive__t"><b>${escapeHtml(privatisationPhrase(p))}</b><span>${escapeHtml(detail)}</span></span>${peut ? `<button type="button" class="pb-prive__x" onclick="retirerPrivatisationUi('${escapeJsString(p.ids.join(','))}')">Retirer</button>` : ''}</div>`;
   }).join('');
   if (zone.__rendu === html) return;
   zone.__rendu = html;

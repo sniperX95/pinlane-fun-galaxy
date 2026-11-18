@@ -418,6 +418,7 @@
     "test:comptoir-dotation",
     "test:attente-verrou",
     "test:confirmation-en-file",
+    "test:suppression-version",
     "test:reservation-edit-clarity",
     "test:rush-status",
     "test:notes-scope",

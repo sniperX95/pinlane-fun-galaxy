@@ -53,6 +53,7 @@
     "test:marketing-agents",
     "test:llm-client",
     "test:llm-budget",
+    "test:caisse-mails-par-centre",
     "test:content-studio",
     "test:marketing-ask",
     "test:social-honesty",

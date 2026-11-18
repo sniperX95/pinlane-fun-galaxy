@@ -354,6 +354,7 @@
     "test:marketing-patterns": "node scripts/marketing-patterns-check.js",
     "test:competitor-intel": "node scripts/competitor-intel-check.js",
     "test:llm-budget": "node scripts/llm-budget-check.js",
+    "test:caisse-mails-par-centre": "node scripts/caisse-mails-par-centre-check.js && node scripts/caisse-mails-par-centre-check.js --contre-preuves",
     "test:marketing-bandit": "node scripts/marketing-bandit-check.js",
     "test:marketing-dna": "node scripts/marketing-dna-check.js",
     "test:marketing-strategist": "node scripts/marketing-strategist-check.js",

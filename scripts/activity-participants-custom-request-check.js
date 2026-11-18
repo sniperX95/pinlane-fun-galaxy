@@ -120,7 +120,7 @@ async function main() {
   assert.match(manual.dates[0].visite.raison, /manuellement/);
   assert.match(bureau.etudeEnTexte(manual), /Montant calculé/);
   const ack = require('../lib/ops-communications').buildCustomRequestAck({ contactName: 'Local', pax: 80, demande: full.demande });
-  assert.match(ack.details.find(([key]) => key === 'Activités')[1], /Billards \(12 joueurs, 2 tables, 2 h\)/);
+  assert.match(ack.details.find((d) => d.label === 'Activités').value, /Billards \(12 joueurs, 2 tables, 2 h\)/);
   const { buildProgramFormula } = require('../lib/visit-program');
   const plan = require('../lib/ops-engine').evaluateAnchoredCombination({ center: getCenter('libramont'),
     formula: buildProgramFormula(normalizeProgram(choices.slice(0, 2).map((a) => ({ ...a, activityId: a.id })), { centerId: 'libramont', pax: 80, bowlingConfig, dateStr: date })),

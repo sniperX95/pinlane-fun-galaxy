@@ -7353,7 +7353,7 @@
     const reponse = messages.slice(index + 1).find((x) => x.direction !== 'inbound');
     if (reponse) {
       const par = reponse.sentBy && reponse.sentBy.memberName ? reponse.sentBy.memberName : (reponse.origine === 'auto' ? 'la séquence' : 'l\'équipe');
-      items.push(`<span class="is-done">${reponse.origine === 'boite' ? 'Répondu depuis votre boîte mail' : `Répondu par ${esc(par)}`} <time>${esc(pv2Quand(reponse.sentAt || reponse.createdAt))}</time></span>`);
+      items.push(`<span class="${reponse.origine === 'boite' ? 'is-off' : 'is-done'}">${reponse.origine === 'boite' ? 'Réponse citée par le client, non vérifiée' : `Répondu par ${esc(par)}`} <time>${esc(pv2Quand(reponse.sentAt || reponse.createdAt))}</time></span>`);
     } else if (fil && fil.status === 'closed') {
       items.push('<span class="is-off">Terminé sans réponse</span>');
     } else {
@@ -7612,7 +7612,10 @@
 
   // Les reponses parties de la boite du centre, retrouvees par le serveur
   // dans la citation du client (lib/email-threads.js reponsesCiteesHorsPinlane),
-  // prennent leur place juste avant le mail qui les cite.
+  // prennent leur place juste avant le mail qui les cite. Leur texte vient du
+  // mail du client, que n importe qui peut ecrire (2026-11-18, avant-lancement
+  // C1). Elles se lisent donc citees par le client, non verifiees, jamais
+  // comme un mail parti du centre.
   function pv2AvecReponsesDeLaBoite(messages, contact, fil) {
     const client = String((contact && contact.name) || (fil && fil.contactName) || (contact && contact.email) || (fil && fil.contactEmail) || '');
     const out = [];
@@ -7646,7 +7649,7 @@
     const quand = pv2QuandDuMail(inbound ? (m.receivedAt || m.createdAt) : (m.sentAt || m.createdAt));
     const voie = inbound
       ? 'Reçu'
-      : (boite ? 'Envoyé depuis votre boîte mail' : (m.origine === 'auto' ? `Envoyé · ${m.sequenceLabel || 'automatique'}` : `Envoyé · ${PV2_ORIGINE_LABELS[m.origine] || 'manuel'}`));
+      : (boite ? 'Cité par le client, non vérifié' : (m.origine === 'auto' ? `Envoyé · ${m.sequenceLabel || 'automatique'}` : `Envoyé · ${PV2_ORIGINE_LABELS[m.origine] || 'manuel'}`));
     // Un mail du formulaire du site montre le client (2026-09-17) ; l adresse
     // technique du site reste au survol.
     const destinataire = !inbound ? String(m.recipient && m.recipient !== contactEmail ? m.recipient : nomContact) : '';
@@ -7677,10 +7680,10 @@
       corps = '<div class="pv2-mail-corps"><p class="pv2-mail-vide">Ce message n’a pas de contenu.</p></div>';
     }
     const lettre = pv2InitialeDe(nom, adresse);
-    const pastille = inbound
+    const pastille = inbound || boite
       ? `<div class="pv2-mail-pastille" data-teinte="${pv2TeinteDe(adresse || nom)}" aria-hidden="true">${esc(lettre)}</div>`
       : `<div class="pv2-mail-pastille is-nous" aria-hidden="true">${esc(lettre)}</div>`;
-    return `<article class="em-msg pl-timeline-msg${inbound ? ' is-inbound' : ' is-outbound'}${boite ? ' is-boite' : ''}" data-message-id="${esc(String(m.id))}">
+    return `<article class="em-msg pl-timeline-msg${inbound ? ' is-inbound' : (boite ? '' : ' is-outbound')}${boite ? ' is-boite' : ''}" data-message-id="${esc(String(m.id))}">
       <div class="pv2-mail-entete">
         ${pastille}
         <div class="pv2-mail-identite">
@@ -7700,7 +7703,7 @@
       ${!inbound && !boite && m.body && (m.textBody || m.message) ? `<button type="button" class="pv2-link-btn" onclick="pv2ThreadVoirMail('${escJs(String(m.id))}')">Voir le mail tel qu'envoyé</button>` : ''}
       <div class="pl-timeline-trace" aria-label="Parcours du message">
         ${trace.join('')}
-        ${boite ? `<span class="is-off">Envoyé hors de Pinlane, retrouvé dans la réponse de ${esc(m.citePar || 'votre client')}</span>` : ''}
+        ${boite ? `<span class="is-off">Retrouvé dans la réponse de ${esc(m.citePar || 'votre client')}. Pinlane n’a aucune trace de cet envoi.</span>` : ''}
         ${question ? `<p class="pv2-thread-question"><b>L'agent ne sait pas.</b> <span>${esc(question.question)}</span> <button type="button" class="pv2-btn sm" onclick="pv2EmailsGo('agent')">${typeof canUseStaffPermission !== 'function' || canUseStaffPermission('emails.send') ? 'Lui répondre' : 'Voir dans L’agent'}</button></p>` : ''}
         ${pv2EvenementsHtml(m)}
       </div>

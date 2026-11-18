@@ -528,7 +528,9 @@ function normaliserLigne(row) {
     ok(!/reservation_archive|client_note_versions/.test(tableau), 'aucune des deux tables n est purgee par le worker');
     const pkg = JSON.parse(lire('package.json'));
     ok(pkg.scripts['test:registre'] === 'node scripts/registre-check.js', 'npm run test:registre existe');
-    ok(/npm run test:registre/.test(pkg.scripts['test:ops:all'] || ''), 'test:registre est dans test:ops:all');
+    // La suite vit dans scripts/gates-suite.json depuis le lanceur en parts (2026-10-30) ; test:ops:all
+    // la joue toute entiere (gates-lancer.js --tout) et ne cite plus aucun gate.
+    ok(JSON.parse(lire('scripts/gates-suite.json')).suite.includes('test:registre'), 'test:registre est dans la suite (scripts/gates-suite.json)');
     const dbSource = lire('lib/database.js');
     const idxDelete = dbSource.indexOf('async function deleteReservation');
     const corps = dbSource.slice(idxDelete, dbSource.indexOf('\n}\n', idxDelete));

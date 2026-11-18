@@ -124,8 +124,21 @@ async function reserver(o) {
   };
 }
 
-// Des samedis de test, hors conges scolaires wallons, loin dans le futur proche.
-const JOURS = ['2026-11-07', '2026-11-14', '2026-11-21', '2026-11-28'];
+// Des samedis de test, hors conges scolaires et jours feries de la Federation, a partir de dans deux
+// semaines. Ils se calculent (2026-11-18) : les samedis ecrits en dur, 7 et 14 novembre, etaient
+// passes le jour ou la CI a donne une base a ce gate, et il ne trouvait plus aucune heure.
+const JOURS = (() => {
+  const cfg = require(path.join(ROOT, 'lib/booking-config.js'));
+  const jours = [];
+  const d = new Date(`${cfg.todayStr()}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 14);
+  while (jours.length < 4) {
+    const iso = d.toISOString().slice(0, 10);
+    if (d.getUTCDay() === 6 && !cfg.getSchoolHolidayFor('BE-FR', iso) && !cfg.getPublicHolidayFor('BE-FR', iso)) jours.push(iso);
+    d.setUTCDate(d.getUTCDate() + 1);
+  }
+  return jours;
+})();
 const CENTRE = 'libramont';
 const AUTRE = 'gembloux';
 async function nettoyer() {

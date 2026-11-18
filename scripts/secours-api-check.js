@@ -26,7 +26,9 @@ const u = new URL(process.env.DATABASE_URL);
 if (!(['localhost', '127.0.0.1', ''].includes(u.hostname) || /host=\//.test(process.env.DATABASE_URL))) { console.error('secours-api-check: REFUSE, base non locale'); process.exit(1); }
 process.env.DATABASE_SSL = 'disable';
 const staffAuth = require(path.join(ROOT, 'lib/staff-auth'));
-const session = { member: { id: 'gate', name: 'Gate' }, centerId: 'libramont', authorizedCenterId: 'libramont', permissions: ['*'], role: { id: 'direction' } };
+const session = { member: { id: 'gate', name: 'Gate' }, centerId: 'libramont', authorizedCenterId: 'libramont', permissions: ['*'], role: { id: 'direction', locked: true } };
+// (role.locked : une vraie session Direction, qui a tous les droits du centre ; « * » n est pas un
+// joker pour sessionHasPermission, et l export complet demande « Voir les montants » depuis le 08/11.)
 staffAuth.requireStaffPermission = async () => session;
 staffAuth.getStaffSessionFromRequest = async () => session;
 const ops = require(path.join(ROOT, 'api/ops.js'));
@@ -60,15 +62,17 @@ function get(url) {
   const t0 = Date.now();
   const tout = await get('/api/ops?action=exportComplet&centerId=libramont');
   const duree = Date.now() - t0;
-  ok(tout.status === 200 && tout.corps.slice(0, 2).toString() === 'PK' && /pinlane-export-complet-libramont-/.test(tout.h['content-disposition'] || ''), '[E] tout exporter : un classeur Excel du centre', `${duree} ms`);
+  const estUnZip = tout.corps.slice(0, 2).toString() === 'PK';
+  ok(tout.status === 200 && estUnZip && /pinlane-export-complet-libramont-/.test(tout.h['content-disposition'] || ''), '[E] tout exporter : un classeur Excel du centre', estUnZip ? `${duree} ms` : `${tout.status} ${tout.corps.toString().slice(0, 160)}`);
   ok(duree < 2000, '[E] en moins de 2 secondes', `${duree} ms`);
   const { lireZip } = require(path.join(ROOT, 'lib/xlsx-writer.js'));
-  const fichiers = lireZip(tout.corps);
+  const fichiers = estUnZip ? lireZip(tout.corps) : [];
   const xmlTout = fichiers.map((e) => Buffer.from(e.donnees).toString('utf8')).join(' ');
-  ok(!/access_code|code_hash|code_enc|token_hash/.test(xmlTout), '[E] aucun code d acces ni jeton dans l export');
+  ok(fichiers.length > 0 && !/access_code|code_hash|code_enc|token_hash/.test(xmlTout), '[E] aucun code d acces ni jeton dans l export');
   const source = fs.readFileSync(path.join(ROOT, 'api/ops.js'), 'utf8');
   ok(/action === 'secoursEtat' \|\| action === 'feuilleSecours' \|\| action === 'classeurJour'\) return 'reservations\.view';/.test(source), '[D] permission reservations.view');
-  ok(/action === 'exportComplet'\) return \['exports\.download', 'settings\.manage', 'direction\.view'\];/.test(source), '[D] tout exporter : direction ou export seulement');
+  // La passe securite du 08/11 : le droit d exporter seul, et « Voir les montants » dans le handler.
+  ok(/action === 'exportComplet'\) return 'exports\.download';/.test(source) && /sessionHasPermission\(options\.session, 'payments\.view'\)/.test(source), '[D] tout exporter : le droit d exporter, et voir les montants');
   await pool.end().catch(() => {});
   console.log('');
   console.log(failures ? `secours-api-check: ${failures} FAIL` : 'secours-api-check: ALL OK (etat reel, feuille, vierge, Excel, permission)');

@@ -94,6 +94,15 @@
   // quelle tant que Pinlane n a pas repondu « en ligne » : coupe, sans reponse en 3,5 s ou en panne, rien n est monte,
   // rien n est masque, le formulaire Pinlane n est meme pas charge, et l ancien formulaire reste seul. Un visiteur qui a
   // deja commence l ancien formulaire le garde : on ne change pas de formulaire sous ses doigts.
+  //
+  // UNE PAGE DE PINLANE MEME (/reserver/libramont, fungalaxy-site.html, data-page="pinlane", 2026-11-18). Elle n a pas
+  // d ancien formulaire a rendre : coupee, elle restait vide sous l en-tete, puis disait « Le formulaire de reservation
+  // ne s est pas charge » avec un lien « Réserver en ligne » (Ansar : « ça dit que le formulaire est en ligne [...] alors
+  // que pas du tout »). Le cadre s y monte toujours, et c est le formulaire qui dit la coupure, avec la phrase de son
+  // adresse directe, ou qui montre l apercu a l equipe connectee. Seulement sur le domaine de Pinlane : posee sur le
+  // site d un centre, la balise ne change rien.
+  var pageDePinlane = script.getAttribute('data-page') === 'pinlane' && window.location.origin === origin;
+  if (pageDePinlane) { monterPinlane(); return; }
   var DELAI_INTERRUPTEUR_MS = 3500;
   var selecteurAncien = script.getAttribute('data-fallback') || '';
   if (/[{}@<]/.test(selecteurAncien)) selecteurAncien = '';
@@ -319,6 +328,8 @@
   // Le cadre se retire de lui-meme quand il lit la coupure avec son catalogue (pinlane:coupe, plus bas) : une coupure
   // decidee pendant que la page etait ouverte, ou une reponse « en ligne » encore en cache (60 s).
   function rendreLAncienFormulaire() {
+    // Une page de Pinlane n a pas d ancien formulaire : le cadre reste, et la phrase de coupure s y lit.
+    if (pageDePinlane) return;
     try {
       if (frame && frame.parentNode) frame.parentNode.removeChild(frame);
       if (fallback && fallback.parentNode) fallback.parentNode.removeChild(fallback);

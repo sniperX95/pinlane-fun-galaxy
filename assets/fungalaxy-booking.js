@@ -8103,12 +8103,29 @@
 
   // COUPE depuis la Tour de controle (2026-11-14) : le formulaire se retire, dit ou reserver, et demande au site
   // de rendre son ancien formulaire (embed.js). Le serveur refuse de toute facon.
+  // LE SITE ET LE TELEPHONE SONT DES LIENS (2026-11-18, Ansar lisait « le formulaire du site du centre » comme « le
+  // formulaire est en ligne sur le site »). La phrase du serveur reste du texte et les nomme ; ici, ces deux mots
+  // seulement deviennent des liens, vers le site et le numero de la fiche du centre.
+  function lierLaCoupure(p, texte) {
+    var c = (meta && meta.center) || {}, liens = {}, tel = String((c.contact && c.contact.phone) || '').trim();
+    try { var site = new URL(c.habillage.site); if (site.protocol === 'https:') liens[site.hostname.replace(/^www\./, '')] = site.href; } catch (e) { /* aucun site */ }
+    if (tel.replace(/\D/g, '').length >= 8) liens[tel] = 'tel:' + tel.replace(/[^\d+]/g, '');
+    var mots = Object.keys(liens).filter(function (m) { return texte.indexOf(m) >= 0; });
+    if (!mots.length) return;
+    p.textContent = '';
+    texte.split(new RegExp('(' + mots.map(function (m) { return m.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&'); }).join('|') + ')')).forEach(function (morceau) {
+      var a = liens[morceau] ? doc.createElement('a') : null;
+      if (a) { a.href = liens[morceau]; a.textContent = morceau; if (/^https:/.test(liens[morceau])) a.target = '_top'; }
+      p.appendChild(a || doc.createTextNode(morceau));
+    });
+  }
   function fermerPourCoupure(texte) {
     var bloc = doc.createElement('section');
     bloc.className = 'fg-coupe';
     bloc.setAttribute('role', 'status');
     var p = doc.createElement('p');
     p.textContent = texte;
+    lierLaCoupure(p, texte);
     bloc.appendChild(p);
     body.insertBefore(bloc, body.firstChild);
     body.classList.add('is-coupe', 'is-ready');

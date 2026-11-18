@@ -364,8 +364,8 @@
 // CONTRE-PREUVES DE /reserver/libramont : hotelarge (le bloc prend toute la
 // largeur de l ecran : PAGE servie cassee), embedbrut (la balise perd
 // data-design : c est l ancien tunnel qui se monte), ordre (la regle du
-// centre passe APRES la regle generique : lu dans vercel.json), repli (le
-// formulaire eteint par l equipe laisse la page vide), cadrefige (le cadre
+// centre passe APRES la regle generique : lu dans vercel.json), repli (embed.js
+// bloque laisse la page vide), cadrefige (le cadre
 // garde ses 720 px quoi que dise le formulaire), menutaille (le menu de
 // l en-tete a 23 px : ses mots ne tombent plus sur les leurs).
 //
@@ -744,6 +744,8 @@ const FICHIERS = ['assets/fungalaxy-booking.js', 'assets/fungalaxy-booking.css',
 // revoir [...] le formulaire ») : 393,77 Ko servis et 113,84 Ko transferes, contre 392,83 et 113,40 sur c3a3157
 // (memes fichiers passes par le build, fins de ligne Windows) : +0,94 et +0,44 Ko. La base tenait a 0,17 Ko du
 // plafond. Poids mort cherche avant : les 544 fonctions nommees sont toutes citees. Plafonds 395 et 115 Ko.
+// Le meme jour, la phrase de coupure dont le site et le telephone deviennent des liens : 394,63 et 114,15 Ko
+// mesures (+0,86 et +0,31), les liens ecrits au plus court, memes plafonds.
 const BUDGET_SERVI = 395 * 1024;
 const BUDGET_TRANSFERE = 115 * 1024;
 
@@ -4648,16 +4650,44 @@ async function main() {
     ok(lisEntete.length >= 6 && lisEntete.every((x) => x.ratio >= x.seuil), '[M] chaque texte de l en-tete garde son seuil', lisEntete.filter((x) => x.ratio < x.seuil).map((x) => `« ${x.texte} » ${x.ratio}:1`).join(' ; ') || `${lisEntete.length} textes`);
     ok(erreursM.length === 0 && await pm.evaluate(() => document.querySelector('#reservationRepli').hidden), '[M] aucune erreur de script dans la page, et le repli reste cache tant que le formulaire est monte', erreursM.slice(0, 2).join(' | '));
     await ctxM.close();
-    // L interrupteur du centre eteint (reponse d embed-state forcee) : embed.js
-    // retire son cadre ; la page ne reste pas vide sous l en-tete.
-    const ctxR = await browser.newContext({ viewport: { width: 1440, height: 900 } });
-    await ctxR.route((u) => u.pathname === '/api/public-booking-meta' && u.searchParams.get('embedState') === '1',
+    // L interrupteur du centre eteint (reponses forcees : embed-state coupe, le
+    // catalogue porte la coupure). Depuis le 2026-11-18, le cadre reste (embed.js,
+    // data-page="pinlane") et le formulaire y dit la phrase de coupure : plus de
+    // « ne s est pas charge », plus de lien « Réserver en ligne » (Ansar : « ça dit
+    // que le formulaire est en ligne [...] alors que pas du tout »).
+    const PHRASE_COUPURE = 'Les réservations en ligne de Fun Galaxy Libramont ne se prennent pas ici pour le moment. Réservez sur fungalaxy.be ou appelez le 0491/30.16.67.';
+    const ctxCoupe = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    await ctxCoupe.route((u) => u.pathname === '/api/public-booking-meta' && u.searchParams.get('embedState') === '1',
       (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, center: 'libramont', actif: false }) }));
+    await ctxCoupe.route((u) => u.pathname === '/api/public-booking-meta' && !u.searchParams.get('embedState'), async (route) => {
+      if (route.request().method() !== 'GET') { await route.continue(); return; }
+      const r = await route.fetch();
+      const j = await r.json();
+      await route.fulfill({ response: r, json: Object.assign(j, { coupure: PHRASE_COUPURE }) });
+    });
+    const pCoupe = await ctxCoupe.newPage();
+    await pCoupe.goto(`${BASE_URL}/reserver/libramont`, { waitUntil: 'domcontentloaded', timeout: 45000 });
+    let fCoupe = null;
+    for (let k = 0; k < 100 && !fCoupe; k += 1) { fCoupe = pCoupe.frames().find((x) => /\/fungalaxy\/libramont\?embed=1/.test(x.url())); if (!fCoupe) await dormir(100); }
+    const coupeVu = Boolean(fCoupe) && await attendre(fCoupe, () => document.body.classList.contains('is-coupe'), 15000);
+    await dormir(400);
+    const pageCoupee = await pCoupe.evaluate(() => {
+      const vu = (el) => Boolean(el) && el.getClientRects().length > 0 && getComputedStyle(el).display !== 'none';
+      return { cadre: vu(document.querySelector('.pinlane-slot iframe')), repli: vu(document.querySelector('#reservationRepli')), liens: Array.from(document.querySelectorAll('a')).filter(vu).map((a) => [a.textContent.trim(), a.getAttribute('href')]) };
+    });
+    const phraseCadre = coupeVu ? await fCoupe.evaluate(() => document.querySelector('.fg-coupe').textContent.trim()) : '';
+    ok(coupeVu && pageCoupee.cadre && !pageCoupee.repli && phraseCadre === PHRASE_COUPURE && !pageCoupee.liens.some(([t, h]) => /r[ée]server en ligne/i.test(t) || /\/reserver\?/.test(String(h))),
+      '[M] formulaire eteint par l equipe : le cadre reste et dit la phrase de coupure, sans « ne s est pas charge » ni lien qui pretend reserver en ligne', JSON.stringify({ coupeVu, pageCoupee, phraseCadre }));
+    await ctxCoupe.close();
+    // embed.js qui ne se charge pas (script bloque) : la page ne reste pas vide
+    // sous l en-tete, elle renvoie a la page de reservation du centre.
+    const ctxR = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    await ctxR.route((u) => u.pathname === '/embed.js', (route) => route.abort());
     const pr = await ctxR.newPage();
     await pr.goto(`${BASE_URL}/reserver/libramont`, { waitUntil: 'networkidle', timeout: 45000 });
     const repliVu = await attendre(pr, () => !document.querySelector('.pinlane-slot iframe') && !document.querySelector('#reservationRepli').hidden, 8000);
     const lienRepli = await pr.evaluate(() => { const a = document.querySelector('#reservationRepli a'); return a ? a.getAttribute('href') : ''; });
-    ok(repliVu && lienRepli === '/reserver?center=libramont', '[M] formulaire eteint par l equipe : la page ne reste pas vide, elle renvoie au parcours classique du centre', lienRepli || 'aucun lien');
+    ok(repliVu && lienRepli === '/reserver?center=libramont', '[M] embed.js bloque : la page ne reste pas vide, elle renvoie a la page de reservation du centre', lienRepli || 'aucun lien');
     // Le lien MENE au tunnel de Libramont : le tunnel qui s ouvre demande le
     // catalogue de CE centre (sans centre, /reserver sert la demonstration).
     let tunnelCentre = '';

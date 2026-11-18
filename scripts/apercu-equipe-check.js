@@ -18,10 +18,13 @@
 //   [C] rien ne passe en apercu : reservation, retenue des heures, demande sur mesure refusees par le serveur, session
 //       ou pas, et rien ne s ecrit ni ne part. Dans le navigateur, aucun envoi, aucune statistique, et le formulaire
 //       dit que c est un apercu.
-//   [E] l apercu dans le navigateur : le bandeau, le formulaire, les heures, jusqu au recapitulatif ; pour le
-//       fondateur ; jamais pour un membre d un autre centre.
-//   [F] sur le site d un autre domaine, rien ne change : le cadre n y demande pas l apercu, et le cookie de la console
-//       n y part pas.
+//   [D] les ecrans de coupure disent vrai : la phrase nomme le site du centre et son telephone, deux liens ;
+//       /reserver/libramont dit la meme phrase dans son cadre, sans « ne s est pas charge » ni lien qui pretend
+//       reserver en ligne.
+//   [E] l apercu dans le navigateur : le bandeau, le formulaire, les heures, jusqu au recapitulatif ; dans la page de
+//       Libramont aussi ; pour le fondateur ; jamais pour un membre d un autre centre.
+//   [F] sur le site d un autre domaine, rien ne change : le cadre n y demande pas l apercu, le cookie de la console n y
+//       part pas, et la balise data-page="pinlane" n y fait rien.
 //
 // Les contre-preuves servent le code mute en memoire : aucun fichier n est ecrit.
 // Lancement : node scripts/apercu-equipe-check.js [--contre-preuves] [--captures=<dossier>]
@@ -62,10 +65,16 @@ const MUTATIONS = {
   'heures-retenues-en-apercu': { f: 'assets/fungalaxy-booking.js', de: '    if (APERCU) { versLeContact(); return; }\n', vers: '', lettre: 'C' },
   'sur-mesure-envoyee-en-apercu': { f: 'assets/fungalaxy-sur-mesure.js', de: "      if (apercu) { smErreur('<b>' + esc(apercu.envoi || '') + '</b>'); return; }\n", vers: '', lettre: 'C' },
   'statistiques-en-apercu': { f: 'assets/fungalaxy-booking.js', de: "        VISITE = '';\n", vers: '', lettre: 'C' },
+  'phrase-floue': { f: 'lib/ops-knowledge.js', de: "  const ou = site ? `Réservez sur ${site}${tel ? ` ou appelez le ${tel}` : ''}.` : tel ? `Appelez le ${tel} pour réserver.` : '';", vers: "  const ou = `Réservez par le formulaire du site du centre${tel ? `, ou appelez le ${tel}` : ''}.`;", lettre: 'D' },
+  'coupure-sans-liens': { f: 'assets/fungalaxy-booking.js', de: '    lierLaCoupure(p, texte);\n', vers: '', lettre: 'D' },
+  'page-libramont-sans-cadre': { f: 'embed.js', de: '  if (pageDePinlane) { monterPinlane(); return; }\n', vers: '', lettre: 'D' },
+  'page-libramont-retire-le-cadre': { f: 'embed.js', de: '    if (pageDePinlane) return;\n', vers: '', lettre: 'D' },
+  'balise-page-oubliee': { f: 'fungalaxy-site.html', de: ' data-page="pinlane"', vers: '', lettre: 'D' },
   'apercu-jamais-demande': { f: 'assets/fungalaxy-booking.js', de: '        return j.coupure ? demanderApercu(q, j) : j;\n', vers: '        return j;\n', lettre: 'E' },
   'bandeau-absent': { f: 'assets/fungalaxy-booking.js', de: '        if (APERCU) montrerApercu();\n', vers: '', lettre: 'E' },
   'lecture-sans-session': { f: 'assets/fungalaxy-booking.js', de: "credentials: apercu ? 'same-origin' : 'omit'", vers: "credentials: 'omit'", lettre: 'E' },
   'cadre-tiers-demande-apercu': { f: 'assets/fungalaxy-booking.js', de: '    if (!surUnePageDePinlane()) return coupe;\n', vers: '', lettre: 'F' },
+  'balise-honoree-ailleurs': { f: 'embed.js', de: "script.getAttribute('data-page') === 'pinlane' && window.location.origin === origin;", vers: "script.getAttribute('data-page') === 'pinlane';", lettre: 'F' },
 };
 const MUTATION = (process.argv.find((a) => a.startsWith('--mutation=')) || '').slice('--mutation='.length);
 if (MUTATION && !MUTATIONS[MUTATION]) { console.error(`mutation inconnue : ${MUTATION}`); process.exit(2); }
@@ -249,6 +258,7 @@ async function serveur(m) {
   poserCentres({ libramont: true, gembloux: true });
   await m.ops.refreshCenterOverrides(m.database.getPool());
   const { BANDEAU, ENVOI } = m.textes;
+  const telDe = (id) => ((CENTRES_FICHIER.find((c) => c.id === id) || {}).publicInfo || {}).phone || '';
   const cat = (centre, { jeton = '', apercu = true } = {}) => appeler(m.meta, { url: `/api/public-booking-meta?centerId=${centre}&calendar=45${apercu ? '&apercu=1' : ''}`, jeton });
   const samediL = jourOuvert(m, 'libramont');
   const heures = (centre, { jeton = '', apercu = true } = {}) => appeler(m.heures, { url: `/api/public-availability?centerId=${centre}&date=${samediL}&pax=4&type=bowling&duration=1${apercu ? '&apercu=1' : ''}`, jeton });
@@ -324,6 +334,29 @@ async function serveur(m) {
     ok(Boolean(refusDeLaReservation) && refusDeLaReservation.r.json && refusDeLaReservation.r.json.message === m.ops.coupureEnLigne('libramont') && !/[<>]/.test(refusDeLaReservation.r.json.message), 'le refus du serveur dit la phrase de coupure, en texte, sans HTML', refusDeLaReservation && refusDeLaReservation.r.corps.slice(0, 200));
   }
 
+  if (joue('D')) {
+    section('[D] LA PHRASE DE COUPURE NOMME LE SITE DU CENTRE ET SON TELEPHONE (le serveur)');
+    const ecriture = require(path.join(ROOT, 'lib/client-writing'));
+    for (const id of ['gembloux', 'libramont']) {
+      const phrase = m.ops.coupureEnLigne(id);
+      const attendue = `Les réservations en ligne de ${nomDuFichier(id)} ne se prennent pas ici pour le moment. Réservez sur fungalaxy.be ou appelez le ${telDe(id)}.`;
+      ok(phrase === attendue, `${id} : « ${attendue} »`, phrase);
+      ok(!/formulaire du site|<|>|[\u2013\u2014]/.test(phrase) && ecriture.verifierEcritureClient(phrase, { etat: 'sans-promesse' }).length === 0, `${id} : une phrase en texte, sans « formulaire du site », sans tiret long, conforme a lib/client-writing`, JSON.stringify(ecriture.verifierEcritureClient(phrase, { etat: 'sans-promesse' })));
+    }
+    // Sans site, le telephone seul ; ni l un ni l autre, la premiere phrase seule.
+    const fiche = (plus) => ({ id: 'gate-coupe', name: 'Salle Essai', status: 'active', timezone: 'Europe/Brussels', config: { embed: { actif: false }, ...plus } });
+    m.ops.applyCenterRecords([fiche({ publicInfo: { phone: '081/00.00.00' } })]);
+    const sansSite = m.ops.coupureEnLigne('gate-coupe');
+    m.ops.applyCenterRecords([fiche({})]);
+    const sansRien = m.ops.coupureEnLigne('gate-coupe');
+    m.ops.applyCenterRecords([fiche({ identity: { siteUrl: 'https://www.salle-essai.example/reserver' } })]);
+    const sitePlein = m.ops.coupureEnLigne('gate-coupe');
+    ok(sansRien === 'Les réservations en ligne de Salle Essai ne se prennent pas ici pour le moment.', 'sans site ni telephone : la premiere phrase seule, aucun renvoi invente', sansRien);
+    ok(/^Les réservations en ligne de Salle Essai ne se prennent pas ici pour le moment\. (Appelez le 081\/00\.00\.00 pour réserver\.)?$/.test(sansSite) && !/site/.test(sansSite), 'sans site : jamais « le site », le telephone seul quand la fiche en a un', sansSite);
+    ok(/Réservez sur salle-essai\.example\.$/.test(sitePlein), 'le site se dit par son adresse, sans www ni chemin', sitePlein);
+    poserCentres({ libramont: true, gembloux: true });
+    await m.ops.refreshCenterOverrides(m.database.getPool());
+  }
 }
 function slots0(r) { return Boolean(r.json && Array.isArray(r.json.slots) && r.json.slots.length > 0); }
 
@@ -457,6 +490,42 @@ async function navigateur(m) {
     return null;
   };
   try {
+    if (joue('D')) {
+      section('[D] LES ECRANS DE COUPURE DISENT VRAI (le navigateur)');
+      const ctx = await contexte('');
+      const page = await ctx.newPage();
+      preparer();
+      await page.goto(`${BASE_URL}/reserver/gembloux`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await attendre(page, () => document.body.classList.contains('is-coupe'), 15000);
+      const g = await page.evaluate(LIRE_FORMULAIRE);
+      await capturer(page, 'gembloux-coupe');
+      if (CAPTURES) { await page.setViewportSize({ width: 390, height: 844 }); await capturer(page, 'gembloux-coupe-telephone'); await page.setViewportSize({ width: 1280, height: 900 }); }
+      ok(g.coupe && g.phrase === m.ops.coupureEnLigne('gembloux') && g.autresVisibles.length === 0 && g.deborde <= 1, '/reserver/gembloux : la phrase du serveur, rien d autre a l ecran, et la page ne defile pas', JSON.stringify(g));
+      ok(lienSite(g) && lienTel(g, telG) && g.liens.length === 2, '/reserver/gembloux : « fungalaxy.be » mene au site du centre (toute la fenetre), le numero appelle le centre', JSON.stringify(g.liens));
+      preparer();
+      await page.goto(`${BASE_URL}/reserver/libramont`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      const cadre = await cadreDe(page, /\/fungalaxy\/libramont\?embed=1/);
+      if (cadre) await attendre(cadre, () => document.body.classList.contains('is-coupe'), 15000);
+      await page.waitForTimeout(600);
+      const l = cadre ? await cadre.evaluate(LIRE_FORMULAIRE) : null;
+      const site = await page.evaluate(() => {
+        const vu = (el) => Boolean(el) && el.getClientRects().length > 0 && getComputedStyle(el).display !== 'none';
+        const iframe = document.querySelector('.pinlane-slot iframe');
+        return {
+          cadre: vu(iframe), hauteur: iframe ? Math.round(iframe.getBoundingClientRect().height) : 0,
+          repli: vu(document.querySelector('#reservationRepli')),
+          texte: document.body.innerText,
+          liens: [...document.querySelectorAll('a')].filter(vu).map((a) => ({ href: a.getAttribute('href'), texte: a.textContent.trim() })),
+        };
+      });
+      await capturer(page, 'libramont-coupe');
+      ok(Boolean(l) && site.cadre && l.coupe && l.phrase === m.ops.coupureEnLigne('libramont') && lienSite(l) && lienTel(l, telL), '/reserver/libramont : le cadre reste et dit la phrase de coupure de Libramont, avec ses deux liens', JSON.stringify({ l, cadre: site.cadre }));
+      ok(!site.repli && !/ne s.est pas charg/i.test(site.texte), '/reserver/libramont : plus de « Le formulaire de réservation ne s’est pas chargé »', site.texte.slice(0, 200));
+      ok(!site.liens.some((x) => /r[ée]server en ligne/i.test(x.texte) || /\/reserver\?/.test(String(x.href))), '/reserver/libramont : aucun lien qui pretend reserver en ligne', JSON.stringify(site.liens));
+      ok(site.hauteur > 0 && site.hauteur < 400 && Boolean(l) && l.deborde <= 1, '/reserver/libramont : le cadre prend la hauteur de la phrase, sans defiler ni laisser un grand vide sous l en-tete', `${site.hauteur} px, deborde de ${l && l.deborde} px`);
+      await ctx.close();
+    }
+
     if (joue('C', 'E')) {
       section('[E] L APERCU DANS LE NAVIGATEUR : le bandeau, le formulaire, les heures, le recapitulatif');
       const ctx = await contexte('jeton-gembloux');
@@ -534,9 +603,17 @@ async function navigateur(m) {
     }
 
     if (joue('E')) {
-      section('[E] L APERCU AILLEURS : le fondateur, un autre centre');
+      section('[E] L APERCU AILLEURS : la page de Libramont, le fondateur, un autre centre');
       const ctxL = await contexte('jeton-libramont');
       const pl = await ctxL.newPage();
+      preparer();
+      await pl.goto(`${BASE_URL}/reserver/libramont`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      const cadre = await cadreDe(pl, /\/fungalaxy\/libramont\?embed=1/);
+      if (cadre) await attendre(cadre, () => document.body.classList.contains('is-ready'), 15000);
+      await pl.waitForTimeout(800);
+      const l = cadre ? await cadre.evaluate(LIRE_FORMULAIRE) : null;
+      await capturer(pl, 'apercu-libramont');
+      ok(Boolean(l) && !l.coupe && l.formulaire && l.bandeau === BANDEAU, '/reserver/libramont, equipe de Libramont connectee : le formulaire dans la page du site, sous le bandeau', JSON.stringify(l));
       preparer();
       await pl.goto(`${BASE_URL}/fungalaxy/gembloux`, { waitUntil: 'domcontentloaded', timeout: 30000 });
       await attendre(pl, () => document.body.classList.contains('is-ready'), 15000);
@@ -571,6 +648,12 @@ async function navigateur(m) {
       ok(monte && !e1.cadre && e1.ancien, 'MONTAGE : le cadre pose sur l autre site lit la coupure et se retire, l ancien formulaire reste', JSON.stringify(e1));
       ok(demandes.length > 0 && !demandes.some((r) => r.apercu), 'le formulaire dans le cadre d un autre site ne demande jamais l apercu', JSON.stringify(demandes));
       ok(!NAV.requetes.some((r) => r.cookie), 'le cookie de la console ne part d aucune lecture du cadre pose sur un autre site', JSON.stringify(NAV.requetes));
+      // La balise de la page de Pinlane, recopiee sur un autre site : coupe, rien ne se monte.
+      preparer('coupe', 'balise');
+      await page.goto(`${TIERS}/site-tiers`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await page.waitForTimeout(2500);
+      const e2 = await page.evaluate(() => ({ cadre: Boolean(document.querySelector('iframe')), ancien: getComputedStyle(document.querySelector('#ancien')).display !== 'none' }));
+      ok(!e2.cadre && e2.ancien && !NAV.requetes.some((r) => /fungalaxy/.test(r.chemin)), 'data-page="pinlane" sur un autre domaine ne change rien : coupe, aucun cadre, l ancien formulaire reste', JSON.stringify({ e2, requetes: NAV.requetes }));
       await ctx.close();
     }
   } finally {
@@ -582,7 +665,7 @@ async function navigateur(m) {
 (async () => {
   const m = monter();
   await serveur(m);
-  if (joue('C', 'E', 'F')) await navigateur(m);
+  if (joue('C', 'D', 'E', 'F')) await navigateur(m);
   purger();
   console.log(`\napercu-equipe-check: ${rouges ? `${rouges} ROUGE(S)` : 'ALL OK'}`);
   process.exit(rouges ? 1 : 0);

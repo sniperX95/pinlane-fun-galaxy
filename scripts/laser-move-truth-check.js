@@ -366,7 +366,7 @@ async function declencheursDeProduction(planF1) {
   bench.semer([moteur(), ligne(7204, { start_time: '18:00', lanes: [3, 4], pax: 4 })]);
   const piste = await patchHttp(7201, { activityId: 'bowling', startTime: '18:00', lanes: [3, 4] });
   check(ecrituresSql === ecrituresAvantRefus, 'refus serveur : aucun UPDATE SQL');
-  check(piste.status === 409 && /^Piste 3, 4 déjà prise de 18:00-19:00\.$/.test(piste.message || ''), `piste prise : refus 409 nomme la piste et l heure (${piste.message})`);
+  check(piste.status === 409 && /^Piste 3, 4 déjà prise de 18:00 à 19:00\.$/.test(piste.message || ''), `piste prise : refus 409 nomme la piste et l heure (${piste.message})`);
   const voisinIntact = await db.getReservationById(7201);
   check(voisinIntact.opsPlan.resourceBlocks.find((b) => b.resourceType === 'bowling_lane').startTime === '15:00', 'piste prise : la base est inchangee');
   bench.semer([moteur(), ligne(7204, { start_time: '18:00', lanes: [5, 6], pax: 4 })]);
@@ -387,7 +387,7 @@ async function declencheursDeProduction(planF1) {
   const laserAvantGroupe = JSON.stringify(await laserBase(7201, '1.1'));
   const surSoi = await patchHttp(7201, { activityId: 'laser_game', unitKey: '1.1', startTime: autrePartie.startTime });
   // Refus de buildActivityMove (lib/reservation-activity-move.js), 422.
-  check(surSoi.status === 422 && /^Ce déplacement chevauche le Laser Game à \d\d:\d\d\. Cet horaire reste inchangé\.$/.test(surSoi.message || ''), `meme groupe : refus 422 en une ligne (${surSoi.message})`);
+  check(surSoi.status === 422 && /^Ce déplacement chevauche le Laser Game du groupe, de \d\d:\d\d à \d\d:\d\d\. Cet horaire reste inchangé\.$/.test(surSoi.message || ''), `meme groupe : refus 422 en une ligne (${surSoi.message})`);
   check(ecrituresSql === ecrituresAvantGroupe && JSON.stringify(await laserBase(7201, '1.1')) === laserAvantGroupe, 'meme groupe : aucun UPDATE, la base est inchangee');
 }
 

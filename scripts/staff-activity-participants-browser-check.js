@@ -122,10 +122,13 @@ const checks = `
   await pg.evaluate(()=>{const button=[...document.querySelectorAll('#posOverlay button')].find(b=>b.textContent.trim()==='Modifier');if(button)button.click();});
   await pg.waitForTimeout(250);
   // The direct Laser editor is a separate control above the eight-activity list.
-  const edit=await pg.locator('#posOverlay .qb-visit-compteur .qb-step-valeur:not(.dossier-laser-editor .qb-step-valeur)').allTextContents();
+  // Le compteur de chaque activite, lu dans SA rangee (data-edit-activity) : depuis le 18/11 le programme
+  // de Modifier se lit dans l ordre des heures, l ordre de la page n est plus celui du formulaire.
+  const edit=await pg.evaluate(()=>{const o={};document.querySelectorAll('#posOverlay section.fm-act[data-edit-activity]').forEach(s=>{const v=[...s.querySelectorAll('.qb-visit-compteur .qb-step-valeur')].find(el=>!el.closest('.dossier-laser-editor'));if(v)o[s.dataset.editActivity]=parseInt(v.textContent,10);});return o;});
+  const trie=o=>JSON.stringify(Object.keys(o).sort().map(k=>[k,o[k]]));
   // (depuis la fiche refaite du 2026-10-10, le compteur de Modifier dit « 4 »
   // et non plus « 4 / 18 » : la regle est le nombre de chaque activite)
-  ok(JSON.stringify(edit.map(t=>parseInt(t,10)))===JSON.stringify([4,3,8,5,2,6,4,6]),'live edit all8 counters roundtrip unchanged: '+JSON.stringify(edit));
+  ok(trie(edit)===trie({bowling:6,laser_game:4,minigolf_blacklight:3,billards:8,arcade_time:5,playground:2,duckpin_bowling:6,fun_run:4}),'live edit all8 counters roundtrip unchanged: '+JSON.stringify(edit));
   const transfer=await pg.evaluate(()=>{
     closePos();
     const demande={date:state.currentDate,participants:18,formulas:[],activities:[{id:'bowling',name:'Bowling',participants:6,duration:1.5},{id:'laser_game',name:'Laser Game',participants:4,games:3},{id:'minigolf_blacklight',name:'Minigolf Blacklight',participants:3},{id:'billards',name:'Billard',participants:8,units:2,hours:2},{id:'arcade_time',name:'Arcades',participants:5},{id:'playground',name:'Playground',participants:2},{id:'duckpin_bowling',name:'Duckpin Bowling',participants:6,duration:0.5},{id:'fun_run',name:'Fun Run',participants:6,minutes:30}]};

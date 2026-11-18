@@ -2269,7 +2269,7 @@ module.exports = async (req, res) => {
         if (isActivityBlockedAt(blocks, date, 'bowling', startMin, endMin)) continue;
         const allocation = requiresLanes ? require('../lib/bowling-allocation').allocateBowlingCapacity({ players: pax, config: centerBowlingConfig,
           requiredLanes: laneCount, durationMinutes: Math.round(duration * 60),
-          allocate: (count) => allocateLanes(count, snapshot.reservations, snapshot.laneStatuses, startTime, duration, centerLaneCount, blocks, date) }) : null;
+          allocate: (count) => allocateLanes(count, snapshot.reservations, snapshot.laneStatuses, startTime, duration, centerLaneCount, blocks, date, centerBowlingConfig?.preferAdjacentLanes !== false) }) : null;
         const lanes = requiresLanes
           ? allocation?.lanes || null
           : [];

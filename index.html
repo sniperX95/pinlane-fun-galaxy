@@ -33,6 +33,9 @@
 <script defer src="/assets/api-client.js?v=20260912a"></script>
 <script defer src="/assets/pinlane-monnaie.js?v=20261118centres"></script>
 <script defer src="/assets/booking-core.js?v=20261118centres"></script>
+<!-- La regle qui choisit les pistes quand Pinlane choisit, la meme que le
+     serveur (lib/ops-engine.js, lib/database.js) : charge avant app-main. -->
+<script defer src="/assets/pinlane-pistes.js?v=20261118pistes"></script>
 <!-- La marque d'un centre a partir d'UNE couleur (derivation + mesure de
      contraste WCAG). Charge avant app-main et founder-clients-platform : les
      deux ecrans de saisie (Etablissement, Nouveau client) l'interrogent. -->
@@ -65,7 +68,7 @@
      renderGlobalPlanning, que la console appelle a chaque rendu de l onglet.
      Charge avant app-main, le premier rendu le trouve deja la. -->
 <script defer src="/assets/pinlane-planning-global.js?v=20261109fenetre"></script>
-<script defer src="/assets/app-main.js?v=20261118invisible"></script>
+<script defer src="/assets/app-main.js?v=20261118pistes"></script>
 <!-- OPS-07 : declarations inertes, chargees dans cet ordre par le loader C14.
      Les src restent lisibles par le detecteur de mise a jour. -->
 <script type="text/plain" data-staff-console src="/assets/ops-progress.js?v=20260925f"></script>

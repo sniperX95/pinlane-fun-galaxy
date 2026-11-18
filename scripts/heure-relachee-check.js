@@ -2,7 +2,7 @@
 // UNE HEURE PROPOSEE QUI LAISSERAIT UNE VRAIE ATTENTE N EST PLUS RETENUE (2026-11-06, chasse du soir sur le banc ;
 // Ansar : « des propositions pas logiques sur les horaires »).
 //
-// Le cas : Gembloux, mercredi 18/11 (12:00-22:00), 25 personnes, Bowling + Laser Game. Le client pose le bowling a
+// Le cas : Gembloux, un mercredi (12:00-22:00), 25 personnes, Bowling + Laser Game. Le client pose le bowling a
 // 20:30 puis a 21:00. Avant, le laser propose pour le bowling de 20:30 (19:30 et 20:00) restait la, un trou admis
 // jusqu a 60 min : les 25 attendaient 35 min, et la page le disait (« 35 min d’attente avant le bowling »).
 //   [A] bowling 20:30 : le laser juste avant, moins d une demi-heure de trou, aucun conseil d attente.
@@ -20,8 +20,20 @@ const path = require('path');
 const ROOT = path.resolve(__dirname, '..');
 const { chargerReglages, creerServeur } = require('./banc/banc-complet');
 const { lancer, ouvrir, etat, poser } = require('./banc/banc');
+const { isHolidayScheduleDate } = require('../lib/booking-config');
 const MUTER = process.argv.includes('--mutate');
 const PORT = Number(process.env.PORT_HEURE_RELACHEE || 4467);
+// Le mercredi du cas se calcule : au moins une semaine devant, hors vacances (les heures du mercredi changent en
+// vacances). Il etait ecrit en dur, le 18/11 ; ce jour-la au soir, les heures de 19:30 a 21:00 passaient et la
+// suite rougissait sur [A] et [C] sans que le produit ait bouge (2026-11-18, 19 h 17).
+function mercrediFutur() {
+  const [y, m, d] = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels', year: 'numeric', month: '2-digit', day: '2-digit' })
+    .format(new Date()).split('-').map(Number);
+  const jour = new Date(Date.UTC(y, m - 1, d + 7));
+  while (jour.getUTCDay() !== 3 || isHolidayScheduleDate(jour.toISOString().slice(0, 10))) jour.setUTCDate(jour.getUTCDate() + 1);
+  return jour.toISOString().slice(0, 10);
+}
+const MERCREDI = mercrediFutur();
 const JS = 'assets/fungalaxy-booking.js';
 const MUTATIONS = [
   { nom: 'ancien seuil de 60 min', fichier: JS, de: '  var ECART_RETENU = 30;', vers: '  var ECART_RETENU = 60;', mord: '[B]' },
@@ -52,7 +64,7 @@ function trouAvantBowling(s) {
   return { trou: min(bowling.startTime) - Math.max(...lasers.map((x) => min(x.endTime))), bowling: bowling.startTime, lasers: lasers.map((x) => x.startTime) };
 }
 async function cas(b, activities, poses) {
-  const { page } = await ouvrir(b, { base: `http://127.0.0.1:${PORT}`, centre: 'gembloux', date: '2026-11-18', pax: 25, activities, w: 390, h: 844 });
+  const { page } = await ouvrir(b, { base: `http://127.0.0.1:${PORT}`, centre: 'gembloux', date: MERCREDI, pax: 25, activities, w: 390, h: 844 });
   const lire = suivre(page);
   const vus = [];
   for (const h of poses) {

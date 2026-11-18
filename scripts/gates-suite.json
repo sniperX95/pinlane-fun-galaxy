@@ -419,6 +419,7 @@
     "test:attente-verrou",
     "test:confirmation-en-file",
     "test:suppression-version",
+    "test:connexion-pretee",
     "test:reservation-edit-clarity",
     "test:rush-status",
     "test:notes-scope",

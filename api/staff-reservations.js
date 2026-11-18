@@ -382,9 +382,10 @@ function exigerLeTelephone(corps) {
 
 // Les erreurs d infrastructure (Postgres, Neon, reseau) ne s affichent jamais :
 // elles se journalisent, et le staff lit une phrase qui dit de reessayer.
+// ECONNRESET (point C6) : une connexion coupee en pleine transaction.
 function estErreurInfra(error) {
   const raw = String((error && error.message) || '');
-  return !raw || /tuple concurrently|timeout exceeded|data transfer quota|ECONNREFUSED|ETIMEDOUT|terminating connection|too many clients|Connection terminated|relation .* does not exist|column .* does not exist|SQLSTATE|deadlock|current transaction is aborted/i.test(raw);
+  return !raw || /tuple concurrently|timeout exceeded|data transfer quota|ECONNREFUSED|ECONNRESET|ETIMEDOUT|terminating connection|too many clients|Connection terminated|relation .* does not exist|column .* does not exist|SQLSTATE|deadlock|current transaction is aborted/i.test(raw);
 }
 const MESSAGE_INFRA = 'Opération réservation impossible pour le moment. Réessayez.';
 

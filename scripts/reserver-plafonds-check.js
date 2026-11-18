@@ -90,6 +90,10 @@ async function sortie(M, canal, corps) {
 
 // [5] Le tunnel, releve sur 14388e3 (sonde executee le 2026-10-08 sur
 // l arbre `git archive 14388e3`, memes demandes, journee vide).
+// LES PISTES SE REPARTISSENT (2026-11-18, assets/pinlane-pistes.js) : sur une
+// journee vide, le premier groupe prend la piste par laquelle le tour du jour
+// commence, et non plus toujours la 1. Le releve garde tout le reste a l octet.
+const PISTE_DU_JOUR = require('../assets/pinlane-pistes.js').premierePisteDuJour(JOUR, 8);
 const TUNNEL_AVANT = [
   ['visite laser 4 parties', { ...BASE, type: 'visite', program: [{ activityId: 'laser_game', games: 4, participants: 4 }], preference: { preferredTimes: { laser_game: '15:00' }, laserGameTimes: [], laserPlacement: 'scheduled' } },
     'ERREUR 422 Nombre de parties indisponible. Choisissez une option proposée.'],
@@ -100,7 +104,7 @@ const TUNNEL_AVANT = [
   ['visite bowling 1 h 45', { ...BASE, type: 'visite', program: [{ activityId: 'bowling', duration: 1.75, participants: 4 }] },
     'ERREUR 422 Durée indisponible pour cette activité. Choisissez une durée proposée.'],
   ['visite bowling 1 h', { ...BASE, type: 'visite', program: [{ activityId: 'bowling', duration: 1, participants: 4 }], preference: { preferredTimes: { bowling: '15:00' } } },
-    'ok type=bowling prix=39 base=39 duree=1 parties= dispo=true refus= alerte= prog=[bowling:1=39] blocs=[B1@15:00p1]'],
+    `ok type=bowling prix=39 base=39 duree=1 parties= dispo=true refus= alerte= prog=[bowling:1=39] blocs=[B1@15:00p${PISTE_DU_JOUR}]`],
   ['laser seul 4 parties', { ...BASE, type: 'laser', laserGames: 4, duration: 2 },
     'ok type=laser prix=100 base=100 duree=1.5 parties=3 dispo=true refus= alerte= prog=[] blocs=[L1@15:00]'],
   ['laser seul 3 parties', { ...BASE, type: 'laser', laserGames: 3, duration: 1.5 },
@@ -108,7 +112,7 @@ const TUNNEL_AVANT = [
   ['bowling seul 2 h 30', { ...BASE, type: 'bowling', duration: 2.5, totalDuration: 2.5 },
     'ERREUR  Durée indisponible pour cette activité. Choisissez une durée proposée.'],
   ['bowling seul 4 joueurs, 3 pistes demandees', { ...BASE, type: 'bowling', duration: 1, totalDuration: 1, laneCount: 3 },
-    'ok type=bowling prix=39 base=39 duree=1 parties= dispo=true refus= alerte= prog=[] blocs=[B1@15:00p1]'],
+    `ok type=bowling prix=39 base=39 duree=1 parties= dispo=true refus= alerte= prog=[] blocs=[B1@15:00p${PISTE_DU_JOUR}]`],
 ];
 
 async function mesurer() {

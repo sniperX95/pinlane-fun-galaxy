@@ -230,6 +230,7 @@
     "test:equipe-acces",
     "test:fondateur-invisible",
     "test:fondateur-historiques",
+    "test:pistes-reparties",
     "test:tour-controle",
     "test:migrations-attendues",
     "test:garde-postes",

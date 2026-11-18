@@ -261,6 +261,11 @@ async function scenario(browser, jour) {
 }
 
 async function scenarioBlocs(browser, jour) {
+  // LES PISTES SE REPARTISSENT (2026-11-18, assets/pinlane-pistes.js) : le moteur ne pose plus
+  // tout depuis la piste 1. La carte doit dire les pistes que le dossier tient vraiment.
+  const pistesDe = (id) => ((jour.find((r) => r.id === id) || {}).lanes || []).map(Number).sort((a, b) => a - b);
+  const pistesDupont = pistesDe(81004);
+  const pistesLambda = pistesDe(81008);
   // [A] LES SECTIONS
   await bloc('[A]', async () => {
     const { ctx, page, erreurs } = await ouvrir(browser, jour);
@@ -301,9 +306,10 @@ async function scenarioBlocs(browser, jour) {
     const aides = dupont ? dupont.etapes.map((e) => `${e.heure.slice(0, 5)} ${e.aide}`) : [];
     ok(aides.join(' | ') === '14:00 Fini | 15:00 En cours · fin 15:25 | 16:00 Dans 50 min', '[B] Dupont : bowling fini, laser en cours, la 2e partie dans 50 min', aides.join(' | '));
     ok(dupont && dupont.etapes[1].focus && !dupont.etapes[0].focus, '[B] l activite en cours porte le contour', dupont && JSON.stringify(dupont.etapes.map((e) => e.focus)));
-    ok(dupont && /pistes 1, 2/.test(dupont.etapes[0].quoi) && /partie 2\/2/.test(dupont.etapes[2].quoi), '[B] les pistes et le rang de la partie se lisent sur la ligne', dupont && dupont.etapes.map((e) => e.quoi).join(' | '));
+    ok(dupont && pistesDupont.length === 2 && dupont.etapes[0].quoi.includes(`pistes ${pistesDupont.join(', ')}`) && /partie 2\/2/.test(dupont.etapes[2].quoi), `[B] les pistes et le rang de la partie se lisent sur la ligne (pistes ${pistesDupont.join(', ')})`, dupont && dupont.etapes.map((e) => e.quoi).join(' | '));
     const lambda = carte(sections, 81008);
-    ok(lambda && /pistes 1 à 5/.test(lambda.etapes[0].quoi) && lambda.etapes[0].aide === 'Dans 20 min', '[B] Lambda : « pistes 1 à 5 », dans 20 min', lambda && JSON.stringify(lambda.etapes[0]));
+    const plageLambda = pistesLambda.length === 5 && pistesLambda[4] - pistesLambda[0] === 4 ? `pistes ${pistesLambda[0]} à ${pistesLambda[4]}` : '(5 pistes cote a cote attendues)';
+    ok(lambda && lambda.etapes[0].quoi.includes(plageLambda) && lambda.etapes[0].aide === 'Dans 20 min', `[B] Lambda : « ${plageLambda} », dans 20 min`, lambda && JSON.stringify(lambda.etapes[0]));
     const ardennes = carte(sections, 81005);
     // UNE LIGNE POUR TOUTES LES ACTIVITES LIBRES (Movsar, 2026-10-01 : « quand
     // y aura une trentaine de reservations ca va etre super galere ») : « Libre,
@@ -389,7 +395,7 @@ async function scenarioBlocs(browser, jour) {
     // (2026-11-15 : la ligne ne redit plus « 10 joueurs · 1h », lu dans le
     // programme a cote ; elle garde le calcul seul)
     ok(/^Bowling 2 pistes × 39\s*€ 78\s*€$/.test(fiche.lignes[0] || '') && /^Laser Game 18\s*€ × 10 180\s*€$/.test(fiche.lignes[1] || ''), '[F] l addition ligne par ligne, avec le calcul (2 pistes × 39 €, 18 € × 10)', fiche.lignes.join(' | '));
-    ok(fiche.facts && fiche.facts.Ressources === 'Pistes 1, 2 + arène laser', '[F] l en-tête dit où : « Pistes 1, 2 + arène laser »', JSON.stringify(fiche.facts));
+    ok(fiche.facts && pistesDupont.length === 2 && fiche.facts.Ressources === `Pistes ${pistesDupont.join(', ')} + arène laser`, `[F] l en-tête dit où : « Pistes ${pistesDupont.join(', ')} + arène laser »`, JSON.stringify(fiche.facts));
     // DEPUIS LA FICHE REFAITE (2026-11-15), « À encaisser 258 € » se lit une
     // fois, en tete de la caisse, le prix par joueur au centime juste dessous ;
     // plus aucune ligne « Total » ne le redit.

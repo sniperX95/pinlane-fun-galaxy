@@ -1281,35 +1281,38 @@ function getFreeCount(date, startTime, duration, ignoreId) {
   return count;
 }
 
+// Les minutes deja reservees sur chaque piste ce jour-la : les memes dossiers
+// que getOccupiedLanes (retenues en ligne comprises, « Pas venu » exclus).
+function usageDesPistesDuJour(date, ignoreId) {
+  const dossiers = [...state.reservations, ...getBlocagesEnLigne(date)]
+    .filter(r => r.id !== ignoreId && r.date === date && tientSesPlaces(r) && (r.lanes || []).length > 0);
+  const fenetres = dossiers.flatMap(r => getBowlingWindowsFromReservation(r)
+    .map(w => ({ lanes: w.lanes, minutes: Math.round(Number(w.duration || 0) * 60) })));
+  return window.PinlanePistes.usageDesPistes(fenetres);
+}
+
+// LES PISTES SE REPARTISSENT (2026-11-18, Vosk via Ansar : « pas tout le temps
+// [...] sur la piste numero 1 », « genre equilibrer »). Ici finissait « la
+// premiere libre ». La regle est celle du serveur, le meme fichier
+// (assets/pinlane-pistes.js) : une paire entiere pour 2, cote a cote pour un
+// groupe, puis la piste la moins utilisee du jour (la paire entamee se complete
+// a une heure pres), puis le tour du jour. Pour la meme journee, la piste
+// montree est celle que le serveur garde.
 function allocateLanes(n, date, startTime, duration, ignoreId) {
   if (n === 0) return [];
   const occ = getOccupiedLanes(date, startTime, duration, ignoreId);
   const laneCount = getAvailabilityLaneCount();
-  const pairs = getAvailabilityLanePairs(laneCount);
   const avail = [];
   for (let i = 1; i <= laneCount; i++) if (!occ.has(i) && state.laneStatuses[i] !== 'maintenance') avail.push(i);
   if (avail.length < n) return null;
-  if (n === 1) {
-    for (const pair of pairs) {
-      if (avail.includes(pair[0]) && !avail.includes(pair[1])) return [pair[0]];
-      if (!avail.includes(pair[0]) && avail.includes(pair[1])) return [pair[1]];
-    }
-    return [avail[0]];
-  }
-  if (n === 2) {
-    for (const pair of pairs) if (avail.includes(pair[0]) && avail.includes(pair[1])) return pair;
-  }
-  avail.sort((a, b) => a - b);
-  for (let i = 0; i <= avail.length - n; i++) {
-    const group = [avail[i]];
-    let ok = true;
-    for (let j = 1; j < n; j++) {
-      if (avail[i + j] === group[group.length - 1] + 1) group.push(avail[i + j]);
-      else { ok = false; break; }
-    }
-    if (ok) return group;
-  }
-  return avail.slice(0, n);
+  return window.PinlanePistes.choisirPistes({
+    libres: avail,
+    nombre: n,
+    pistes: laneCount,
+    usage: usageDesPistesDuJour(date, ignoreId),
+    date,
+    coteACote: getAvailabilitySessionCenter()?.resources?.bowling?.preferAdjacentLanes !== false,
+  });
 }
 
 // Alloue N pistes libres en GARDANT les pistes déjà choisies (« graines »),

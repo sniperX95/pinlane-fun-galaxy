@@ -46,7 +46,11 @@ async function main() {
   bench.semer([fixture()]);
   const retained=await bench.retenir({reservations:require('../api/public-reservations')},bench.BOWLING('17:30'));
   equal(retained.statut,201,'real public hold created in fixture only');
-  await denied({activityId:'bowling',startTime:'17:30',lanes:[1,2]},/piste|créneau|libre/i);
+  // Les pistes se repartissent (2026-11-18, assets/pinlane-pistes.js) : la retenue ne prend plus la 1, elle prend
+  // une piste moins utilisee du jour. Le deplacement vise la paire de la piste qu elle tient vraiment.
+  const heldLane=Number(([...bench.base.holds.values()].find(h=>!h.released_at)?.payload?.lanes||[])[0]);
+  equal(Number.isInteger(heldLane)&&heldLane>0,true,'real public hold keeps a lane');
+  await denied({activityId:'bowling',startTime:'17:30',lanes:heldLane%2?[heldLane,heldLane+1]:[heldLane-1,heldLane]},/piste|créneau|libre/i);
   bench.semer([fixture(),bench.reservationLigne(779,'18:00',[],{type:'laser',pax:29,duration:0.5})]);
   await denied({activityId:'laser_game',unitKey:'1.1',startTime:'18:00'},/Laser Game complet/);
   bench.semer([fixture()]);

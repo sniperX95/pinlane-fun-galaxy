@@ -2716,6 +2716,18 @@ function retenuesDuJour(dateStr = state.currentDate) {
   }, { pistes: 0, armes: 0 });
 }
 
+// LES FERMETURES ET PRIVATISATIONS DU JOUR (2026-11-18, Marius : « un onglet privatisation »).
+// staff-state les sert a chaque poste (`blocks`, deja resolues pour la date) : le gerant les voit
+// sans le droit de regler les fermetures du centre, et un autre poste les voit au sondage suivant.
+// Une lecture sans `blocks` (journee degradee) garde ce que le poste savait.
+const fermeturesDuJour = new Map();
+function memoriserFermeturesDuJour(centerId, dateStr, liste) {
+  if (Array.isArray(liste)) fermeturesDuJour.set(`${centerId}:${dateStr}`, liste.filter(b => b && b.scopeType));
+}
+function fermeturesServies(dateStr = state.currentDate) {
+  return fermeturesDuJour.get(`${getCurrentStaffCenterId()}:${dateStr}`) || null;
+}
+
 function getStaffDataSignature(dateStr = state.currentDate) {
   const reservations = dateStr === state.currentDate
     ? getCurrentStaffReservationsForUi()
@@ -2727,6 +2739,7 @@ function getStaffDataSignature(dateStr = state.currentDate) {
     staffResourceView: state.staffResourceView || 'all',
     reservations,
     blocagesEnLigne: getBlocagesEnLigne(dateStr).map(b => `${b.id}@${b.blocage.expiresAt}`),
+    fermetures: (fermeturesServies(dateStr) || []).map(b => `${b.id}:${b.kind || ''}:${b.scopeType}:${b.scopeRef || ''}:${b.startMin ?? ''}-${b.endMin ?? ''}:${b.reason || ''}:${b.reservationId || ''}`),
     laneStatuses: state.laneStatuses,
     searchTerm: state.searchTerm || '',
     staffStatusFilter: state.staffStatusFilter || 'all',
@@ -2849,6 +2862,7 @@ function renderStaffDataPage() {
     return;
   }
   renderKpis();
+  renderBandeauPrivatisations();
   const view = getStaffResourceView();
   syncStaffResourceTabs(dayReservations, view);
   renderPlanning();
@@ -3809,6 +3823,7 @@ async function syncDateReservations(dateStr, opts = {}) {
     const avantBouge = new Map(state.reservations.filter((r) => r.date === dateStr).map((r) => [r.id, empreinteBouge(r)]));
     const masque = replaceReservationsForDate(dateStr, payload.reservations || []);
     memoriserBlocagesEnLigne(getCurrentStaffCenterId(), dateStr, payload.holds);
+    memoriserFermeturesDuJour(getCurrentStaffCenterId(), dateStr, payload.blocks);
     if (payload.laneStatuses) state.laneStatuses = payload.laneStatuses;
     if (payload.laneMaintenance) state.laneMaintenance = payload.laneMaintenance;
     // Classification client/groupe du centre (seuils groupe + formules annif),
@@ -16291,13 +16306,16 @@ function ebStatutDuJour(iso) {
   const open = q('open') ? q('open').value : '';
   const closeChamp = q('close') ? q('close').value : '';
   const close = ebApresMinuit(open, closeChamp) ? ebLendemain(closeChamp) : closeChamp;
-  const blocs = getAvailabilityBlocksForDate(iso);
+  // (une privatisation n est pas une fermeture du centre : elle a sa ligne et son « Retirer »)
+  const duJour = getAvailabilityBlocksForDate(iso);
+  const blocs = duJour.filter(b => b.kind !== 'private');
+  const privatisations = duJour.some(b => b && b.kind === 'private') ? privatisationsGroupees(duJour, iso) : [];
   const centre = blocs.filter(b => b.scopeType === 'center');
   const totale = centre.some(b => !b.startTime);
   const partielle = centre.find(b => b.startTime);
   const pv = s => document.getElementById(`estab-hday-${dow}-${s}`);
   const vacOuvert = pv('closed') && !pv('closed').checked ? `${pv('open').value} à ${ebFermeDit(pv('open').value, pv('close').value)}` : '';
-  return { date, ferie, conge, force, vacances, ferme, open, close, blocs, centre, totale, partielle, vacOuvert, autres: blocs.filter(b => b.scopeType !== 'center') };
+  return { date, ferie, conge, force, vacances, ferme, open, close, blocs, privatisations, centre, totale, partielle, vacOuvert, autres: blocs.filter(b => b.scopeType !== 'center') };
 }
 function ebBlocPhrase(b) {
   const h = b.startTime ? ` de ${b.startTime} à ${b.endTime === '24:00' ? 'minuit' : b.endTime}` : '';
@@ -16325,7 +16343,7 @@ function ebPeindreCalendrier() {
     else if (s.vacances) cl += ' is-v';
     else cl += ' is-n';
     if (s.partielle && !s.totale) cl += ' is-p';
-    if (s.autres.length) cl += ' is-a';
+    if (s.autres.length || s.privatisations.length) cl += ' is-a';
     if (iso === auj) cl += ' is-auj';
     if (iso === ebJourChoisi) cl += ' is-sel';
     if (b.className !== cl) b.className = cl;
@@ -16363,7 +16381,8 @@ function ebDessinerJour() {
         <div class="eb-jl eb-force"><button type="button" class="eb-b" onclick="ebForcerJour('${iso}','${s.vacances ? 'normal' : 'holiday'}')">${s.vacances ? 'Mettre les horaires normaux ce jour' : 'Mettre les horaires de vacances ce jour'}</button></div>`;
     }
   }
-  const deja = s.blocs.length ? `<div class="eb-deja">${s.blocs.map(b => `<div><span>${ebE(ebBlocPhrase(b))}${b.reason ? `, ${ebE(b.reason)}` : ''}</span>${peutChanger ? `<button type="button" onclick="deleteAvailabilityBlockUi(${Number(b.id)})">Retirer</button>` : ''}</div>`).join('')}</div>` : '';
+  const prives = s.privatisations.map(p => `<div data-privatisation="${ebE(p.ids.join(','))}"><span>${ebE(`${privatisationPhrase(p)}, ${privatisationPortee(p).toLowerCase()}`)}</span>${iso >= ebIso(new Date()) && peutGeste('privatiser') ? `<button type="button" onclick="retirerPrivatisationUi('${ebE(p.ids.join(','))}')">Retirer</button>` : ''}</div>`).join('');
+  const deja = s.blocs.length || prives ? `<div class="eb-deja">${s.blocs.map(b => `<div><span>${ebE(ebBlocPhrase(b))}${b.reason ? `, ${ebE(b.reason)}` : ''}</span>${peutChanger ? `<button type="button" onclick="deleteAvailabilityBlockUi(${Number(b.id)})">Retirer</button>` : ''}</div>`).join('')}${prives}</div>` : '';
   const html = `<button type="button" class="eb-jour-x" aria-label="Refermer le jour" onclick="ebFermerFicheJour()">×</button><h3 class="eb-jt">${ebE(titre)}</h3><p class="eb-jd">${ebE(dit)}</p><div class="eb-jh${s.totale || s.ferme ? ' is-ferme' : ''}">${ebE(heures)}</div>${deja}${geste}`;
   // Le panneau suit chaque changement de la page : le meme contenu ne se reecrit pas, une heure en cours de saisie y reste.
   if (html === ebJourHtml) return;
@@ -18495,6 +18514,7 @@ function refreshAvailabilityBlocksUi() {
   if (list) list.innerHTML = renderAvailabilityBlocksList();
   if (document.querySelector('[data-estab-page]')) ebRefresh();
   if (state.view === 'staff') {
+    renderBandeauPrivatisations();
     if (document.getElementById('planningGridWrap')) renderPlanning();
     if (document.getElementById('laserPlanningGridWrap')) renderLaserPlanning();
     renderGlobalPlanningSurface();
@@ -18505,8 +18525,11 @@ function refreshAvailabilityBlocksUi() {
 }
 
 function getAvailabilityBlocksForDate(dateStr) {
-  const blocks = availabilityBlocksCache.blocks || [];
   if (!dateStr) return [];
+  // (la journee servie par staff-state, deja resolue, fait foi : elle suit les autres postes)
+  const servies = fermeturesServies(dateStr);
+  if (servies) return servies;
+  const blocks = availabilityBlocksCache.blocks || [];
   const dow = parseLocalDate(dateStr).getDay();
   return blocks.filter(block => {
     if (block.recurrence === 'weekly') {
@@ -18532,7 +18555,8 @@ function getBowlingBlockWindows(dateStr, openHour, closeHour) {
     const full = startMin === null && endMin === null;
     const startH = full ? openHour : Math.max(openHour, startMin / 60);
     const endH = full ? closeHour : Math.min(closeHour, endMin / 60);
-    return { startH, endH, reason: block.reason || '', full };
+    const prive = block.kind === 'private';
+    return { startH, endH, reason: prive ? `Privatisé : ${block.reason || 'groupe privé'}` : block.reason || '', full, prive };
   };
   // Un blocage de tout le centre couvre SES pistes : a 12 pistes, les pistes
   // 9 a 12 restaient ouvertes a la vente sous un « centre fermé ».
@@ -18601,11 +18625,15 @@ function renderAvailabilityBlocksList() {
     return `<div class="availability-empty availability-error">${escapeHtml(availabilityBlocksCache.error)} <button type="button" class="btn btn-secondary btn-sm" onclick="loadAvailabilityBlocks(true)">Réessayer</button></div>`;
   }
   const cle = block => (block.recurrence === 'weekly' ? `2${block.dateFrom || ''}` : `1${block.date || ''}`);
-  const blocks = (availabilityBlocksCache.blocks || []).slice().sort((a, b) => (cle(a) < cle(b) ? -1 : cle(a) > cle(b) ? 1 : 0));
-  if (!blocks.length) {
+  const tous = (availabilityBlocksCache.blocks || []).slice().sort((a, b) => (cle(a) < cle(b) ? -1 : cle(a) > cle(b) ? 1 : 0));
+  // (une privatisation se lit et se retire en entier : une ligne pour ses blocages, « Retirer » les retire tous)
+  const blocks = tous.filter(block => block.kind !== 'private');
+  const privatisations = privatisationsGroupees(tous);
+  if (!blocks.length && !privatisations.length) {
     return '<div class="availability-empty">Aucune fermeture décidée. Le centre suit ses horaires.</div>';
   }
-  return `<ul class="availability-list">${blocks.map(block => `<li class="availability-item" data-block-id="${escapeHtml(String(block.id))}"><span class="availability-item-body"><span class="availability-item-label">${escapeHtml(`${availabilityScopeText(block)} ${availabilityQuandLisible(block)}`)}</span>${block.reason ? `<span class="availability-item-reason">${escapeHtml(block.reason)}</span>` : ''}</span><button type="button" class="availability-del" onclick="deleteAvailabilityBlockUi(${Number(block.id)})">Retirer</button></li>`).join('')}</ul>`;
+  const lignesPrivees = privatisations.map(p => `<li class="availability-item is-prive" data-privatisation="${escapeHtml(p.ids.join(','))}"><span class="availability-item-body"><span class="availability-item-label">${escapeHtml(`Privatisé : ${p.nom || 'groupe privé'}, ${availabilityQuandLisible(p.bloc)}`)}</span><span class="availability-item-reason">${escapeHtml(privatisationPortee(p))}</span></span><button type="button" class="availability-del" onclick="retirerPrivatisationUi('${escapeHtml(p.ids.join(','))}')">Retirer</button></li>`).join('');
+  return `<ul class="availability-list">${blocks.map(block => `<li class="availability-item" data-block-id="${escapeHtml(String(block.id))}"><span class="availability-item-body"><span class="availability-item-label">${escapeHtml(`${availabilityScopeText(block)} ${availabilityQuandLisible(block)}`)}</span>${block.reason ? `<span class="availability-item-reason">${escapeHtml(block.reason)}</span>` : ''}</span><button type="button" class="availability-del" onclick="deleteAvailabilityBlockUi(${Number(block.id)})">Retirer</button></li>`).join('')}${lignesPrivees}</ul>`;
 }
 
 function updateAvailabilityFormVisibility() {
@@ -18694,6 +18722,236 @@ async function deleteAvailabilityBlockUi(id) {
     await loadAvailabilityBlocks(true);
   } catch (error) {
     toast(error?.message || 'Suppression impossible.');
+  }
+}
+
+// ── LA PRIVATISATION (2026-11-18) ────────────────────────────────────────────
+// Marius (Gembloux) : « est-ce que tu as prévu un onglet privatisation ? Genre comme ça je suis
+// sûr que personne ne rajoute de réservation à ce moment-là ». Une privatisation est une fermeture
+// nommee (availability_blocks, kind 'private') que le serveur fait respecter partout : en ligne, au
+// comptoir et dans sa simulation, au glisser, dans l assistant. La console la montre, la pose et
+// la retire ; le droit est juge par le serveur (api/ops.js), GESTES_STAFF.privatiser ne fait que
+// cacher ce qui serait refuse.
+
+// Les privatisations d une liste de blocages, une par groupe pose ensemble : meme jour, meme plage,
+// meme nom, meme dossier (le regroupement de lib/privatisation.js privatisationsDuJour).
+function privatisationsGroupees(blocs, dateStr = '') {
+  const groupes = new Map();
+  const vus = new Set();
+  (Array.isArray(blocs) ? blocs : []).forEach(b => {
+    if (!b || b.kind !== 'private' || vus.has(Number(b.id))) return;
+    vus.add(Number(b.id));
+    const debut = availabilityBlockStartMin(b);
+    const fin = availabilityBlockEndMin(b);
+    const jour = b.date || dateStr;
+    const cle = [jour, debut, fin, b.reason || '', b.reservationId || ''].join('|');
+    if (!groupes.has(cle)) groupes.set(cle, { ids: [], nom: String(b.reason || ''), date: jour, debut, fin, toutLeCentre: false, activites: [], reservationId: b.reservationId || null, bloc: b });
+    const groupe = groupes.get(cle);
+    groupe.ids.push(Number(b.id));
+    if (b.scopeType === 'center') groupe.toutLeCentre = true;
+    else if (b.scopeType === 'activity' && b.scopeRef && !groupe.activites.includes(String(b.scopeRef))) groupe.activites.push(String(b.scopeRef));
+  });
+  return [...groupes.values()].sort((a, b) => String(a.date).localeCompare(String(b.date)) || (a.debut ?? 0) - (b.debut ?? 0) || a.nom.localeCompare(b.nom));
+}
+
+function privatisationPlage(p) {
+  if (p.debut == null && p.fin == null) return 'toute la journée';
+  const fin = p.fin == null || p.fin >= 1440 ? 'minuit' : availabilityMinutesToHHMM(p.fin);
+  return `de ${availabilityMinutesToHHMM(p.debut ?? 0)} à ${fin}`;
+}
+
+function privatisationPortee(p) {
+  return p.toutLeCentre ? 'Tout le centre' : p.activites.map(id => rvNomActivite(id)).join(', ');
+}
+
+// La phrase du serveur (lib/availability-blocks.js phraseDuBlocage) : « Privatisé : Dupont, de 18:00 à 22:00 ».
+function privatisationPhrase(p) {
+  return `Privatisé : ${p.nom || 'groupe privé'}, ${privatisationPlage(p)}`;
+}
+
+// LE BANDEAU, sous la barre des trois plannings : chaque privatisation du jour, ce qu elle ferme,
+// le dossier du groupe, et « Retirer » pour qui peut privatiser. Une journee sans privatisation
+// ne le montre pas : le planning reste celui d avant.
+function renderBandeauPrivatisations() {
+  if (typeof document === 'undefined') return;
+  const zone = document.getElementById('planningPrivatisations');
+  if (!zone) return;
+  const liste = state.view === 'staff' ? privatisationsGroupees(getAvailabilityBlocksForDate(state.currentDate), state.currentDate) : [];
+  const peut = peutGeste('privatiser');
+  const html = liste.map(p => {
+    const groupe = p.reservationId ? todaysReservations().find(r => Number(r.id) === Number(p.reservationId)) : null;
+    const detail = [privatisationPortee(p), groupe ? `dossier ${groupe.name || `n° ${groupe.id}`}` : ''].filter(Boolean).join(' · ');
+    const ids = escapeHtml(p.ids.join(','));
+    return `<div class="pb-prive" data-privatisation="${ids}"><span class="pb-prive__t"><b>${escapeHtml(privatisationPhrase(p))}</b><span>${escapeHtml(detail)}</span></span>${peut ? `<button type="button" class="pb-prive__x" onclick="retirerPrivatisationUi('${ids}')">Retirer</button>` : ''}</div>`;
+  }).join('');
+  if (zone.__rendu === html) return;
+  zone.__rendu = html;
+  zone.innerHTML = html;
+  zone.hidden = !liste.length;
+}
+
+// Apres une ecriture : la journee se relit (staff-state sert les privatisations a chaque poste), et
+// la liste d Etablissement aussi quand elle est chargee.
+async function privatisationRelire(date) {
+  try {
+    await syncDateReservations(date || state.currentDate, { silent: true });
+  } catch (error) {
+    // (la lecture suivante du planning reprendra la journee)
+  }
+  if (availabilityBlocksCache.loaded) await loadAvailabilityBlocks(true);
+  else refreshAvailabilityBlocksUi();
+}
+
+async function retirerPrivatisationUi(idsTexte) {
+  if (!peutGeste('privatiser')) { toast('Votre rôle ne permet pas de retirer une privatisation. Demandez à un responsable.'); return; }
+  const ids = String(idsTexte || '').split(',').map(Number).filter(n => Number.isInteger(n) && n > 0);
+  if (!ids.length) return;
+  const connus = [...(fermeturesServies(state.currentDate) || []), ...(availabilityBlocksCache.blocks || [])].filter(b => ids.includes(Number(b.id)));
+  const p = privatisationsGroupees(connus)[0];
+  const dit = p ? `\n${privatisationPhrase(p)} (${privatisationPortee(p)})` : '';
+  if (!window.confirm(`Retirer cette privatisation ?${dit}\nCes heures redeviendront réservables, en ligne et au comptoir.`)) return;
+  try {
+    await apiRequest(API_ENDPOINTS.ops, { method: 'POST', body: JSON.stringify({ action: 'retirerPrivatisation', centerId: getCurrentStaffCenterId(), ids }) });
+    toast('Privatisation retirée.');
+  } catch (error) {
+    toast(error?.message || 'Retrait impossible pour le moment. Réessayez.');
+  }
+  await privatisationRelire(p ? p.date : state.currentDate);
+}
+
+// LA FENETRE « PRIVATISER » : le jour, de quelle heure a quelle heure, tout le centre ou les
+// activites choisies, pour qui. Avant d enregistrer, elle montre les reservations deja sur ces
+// heures (le serveur les lit a blanc) : elles restent a leur place, et l une d elles peut etre le
+// dossier du groupe prive. Tout changement de la demande redemande cette lecture.
+let privatiserVu = null;
+
+function privatiserActivites() {
+  const ids = [...new Set((typeof getCenterActivities === 'function' ? getCenterActivities() : []).map(a => String((a && a.id) || '')).filter(Boolean))];
+  return (ids.length ? ids : ['bowling', 'laser_game']).map(id => ({ id, nom: rvNomActivite(id) }));
+}
+
+function ouvrirPrivatiser({ date = '', debut = '', fin = '' } = {}) {
+  if (!peutGeste('privatiser')) { toast('Votre rôle ne permet pas de privatiser. Demandez à un responsable.'); return; }
+  privatiserVu = null;
+  const jour = date || state.currentDate;
+  const activites = privatiserActivites().map(a => `<label class="prv-act"><input type="checkbox" name="prvActivite" value="${escapeHtml(a.id)}" onchange="privatiserChange('activite')"><span>${escapeHtml(a.nom)}</span></label>`).join('');
+  smFenetreOuvrir({
+    titre: 'Privatiser',
+    sous: 'Personne ne pourra réserver sur ces heures, ni en ligne ni au comptoir.',
+    classe: 'is-petite prv-fen',
+    corps: `<form class="bdg-hf prv" id="prvForm" onsubmit="privatiserEnvoyer(event)" novalidate>
+      <label class="bdg-champ"><span>Jour</span><input class="input" id="prvDate" type="date" required value="${escapeHtml(jour)}" min="${escapeHtml(todayStr())}" oninput="privatiserChange()"></label>
+      <div class="bdg-hf-l">
+        <label class="bdg-champ"><span>De</span><input class="input" id="prvDe" type="time" step="900" required value="${escapeHtml(debut)}" oninput="privatiserChange()"></label>
+        <label class="bdg-champ"><span>À</span><input class="input" id="prvA" type="time" step="900" required value="${escapeHtml(fin)}" oninput="privatiserChange()"></label>
+      </div>
+      <fieldset class="prv-quoi"><legend>Ce qui est privatisé</legend>
+        <div class="prv-choix">
+          <label class="prv-act"><input type="radio" name="prvQuoi" value="centre" checked onchange="privatiserChange('centre')"><span>Tout le centre</span></label>
+          <label class="prv-act"><input type="radio" name="prvQuoi" value="activites" onchange="privatiserChange()"><span>Seulement des activités</span></label>
+        </div>
+        <div class="prv-acts" id="prvActs" hidden>${activites}</div>
+      </fieldset>
+      <label class="bdg-champ"><span>Pour qui</span><input class="input" id="prvNom" maxlength="120" autocomplete="off" required placeholder="Anniversaire Dupont, société Lambert" oninput="privatiserChange()"></label>
+      <div class="prv-vu" id="prvVu" aria-live="polite"></div>
+      <p class="bdg-hf-err" id="prvErr" role="alert" hidden></p>
+      <div class="bdg-actions">
+        <button type="button" class="bdg-b" onclick="smFenetreFermer()">Annuler</button>
+        <button type="submit" class="bdg-p" id="prvOk">Voir ce qui est déjà réservé</button>
+      </div>
+    </form>`,
+  });
+}
+
+function privatiserErreur(message) {
+  const zone = document.getElementById('prvErr');
+  if (!zone) { if (message) toast(message); return; }
+  zone.textContent = message || '';
+  zone.hidden = !message;
+}
+
+// La demande change : ce qui a ete vu ne vaut plus pour elle.
+function privatiserChange(quoi = '') {
+  if (quoi === 'centre') document.querySelectorAll('input[name="prvActivite"]').forEach(c => { c.checked = false; });
+  // (les activites ne se montrent qu a qui ne privatise pas tout le centre)
+  const acts = document.getElementById('prvActs');
+  if (acts) acts.hidden = (document.querySelector('input[name="prvQuoi"]:checked') || {}).value !== 'activites';
+  privatiserVu = null;
+  const vu = document.getElementById('prvVu');
+  if (vu) vu.innerHTML = '';
+  const ok = document.getElementById('prvOk');
+  if (ok) ok.textContent = 'Voir ce qui est déjà réservé';
+  privatiserErreur('');
+}
+
+function privatiserLire() {
+  const valeur = id => (document.getElementById(id)?.value || '').trim();
+  const toutLeCentre = (document.querySelector('input[name="prvQuoi"]:checked') || {}).value !== 'activites';
+  const activites = toutLeCentre ? [] : [...document.querySelectorAll('input[name="prvActivite"]:checked')].map(c => c.value);
+  // (« À 00:00 » veut dire jusqu a minuit)
+  const fin = valeur('prvA');
+  return { date: valeur('prvDate'), startTime: valeur('prvDe'), endTime: fin === '00:00' ? '24:00' : fin, toutLeCentre, activites, nom: valeur('prvNom') };
+}
+
+function privatiserMontrer(reponse, { garderLeChoix = false } = {}) {
+  const zone = document.getElementById('prvVu');
+  if (!zone) return;
+  const choisi = garderLeChoix ? ((document.querySelector('input[name="prvGroupe"]:checked') || {}).value || '') : '';
+  const reservations = Array.isArray(reponse && reponse.reservations) ? reponse.reservations : [];
+  const privatisation = (reponse && reponse.privatisation) || (privatiserVu && privatiserVu.privatisation) || null;
+  privatiserVu = { privatisation, reservations };
+  const phrase = privatisation && privatisation.phrase ? `<p class="prv-phrase">${escapeHtml(privatisation.phrase)}</p>` : '';
+  const detail = (r) => [`${r.debut} à ${r.fin}`, r.libelle, r.joueurs ? `${r.joueurs} joueur${r.joueurs > 1 ? 's' : ''}` : ''].filter(Boolean).join(', ');
+  const liste = reservations.length
+    ? `<p class="prv-dit">${reservations.length > 1 ? `${reservations.length} réservations sont déjà sur ces heures. Rien ne se déplace tout seul : elles restent à leur place. Si l’une d’elles est le groupe privé, cochez-la.` : 'Une réservation est déjà sur ces heures. Rien ne se déplace tout seul : elle reste à sa place. Si c’est le groupe privé, cochez-la.'}</p>
+      <ul class="prv-resas">${reservations.map(r => `<li><label class="prv-resa"><input type="radio" name="prvGroupe" value="${Number(r.id)}"${String(r.id) === choisi ? ' checked' : ''}><span><b>${escapeHtml(r.nom)}</b> <small>${escapeHtml(detail(r))}</small></span></label></li>`).join('')}
+      <li><label class="prv-resa"><input type="radio" name="prvGroupe" value=""${choisi ? '' : ' checked'}><span>Aucune n’est le groupe privé</span></label></li></ul>`
+    : '<p class="prv-dit">Aucune réservation sur ces heures.</p>';
+  zone.innerHTML = phrase + liste;
+  const ok = document.getElementById('prvOk');
+  if (ok) {
+    ok.textContent = 'Privatiser';
+    // (la liste et « Privatiser » se lisent ensemble, sans chercher sous le bord)
+    ok.scrollIntoView({ block: 'nearest' });
+  }
+}
+
+async function privatiserEnvoyer(event) {
+  if (event) event.preventDefault();
+  const corps = privatiserLire();
+  const manque = !corps.date ? 'Choisissez le jour.'
+    : !corps.startTime || !corps.endTime ? 'Choisissez de quelle heure à quelle heure.'
+      : !corps.toutLeCentre && !corps.activites.length ? 'Cochez au moins une activité, ou tout le centre.'
+        : !corps.nom ? 'Donnez le nom du client ou de l’événement.' : '';
+  if (manque) { privatiserErreur(manque); return; }
+  const bouton = document.getElementById('prvOk');
+  if (bouton) bouton.disabled = true;
+  const aBlanc = !privatiserVu;
+  const envoi = { action: 'privatiser', centerId: getCurrentStaffCenterId(), ...corps };
+  if (aBlanc) envoi.aBlanc = true;
+  else {
+    envoi.reservationsVues = privatiserVu.reservations.map(r => Number(r.id));
+    const groupe = document.querySelector('input[name="prvGroupe"]:checked');
+    if (groupe && groupe.value) envoi.reservationId = Number(groupe.value);
+  }
+  try {
+    const reponse = await apiRequest(API_ENDPOINTS.ops, { method: 'POST', body: JSON.stringify(envoi) });
+    if (aBlanc) {
+      privatiserErreur('');
+      privatiserMontrer(reponse);
+      return;
+    }
+    smFenetreFermer();
+    toast((reponse.privatisation && reponse.privatisation.phrase) || 'Privatisation enregistrée.');
+    await privatisationRelire(corps.date);
+  } catch (error) {
+    const payload = error && error.payload;
+    // Une reservation arrivee pendant la lecture : la liste revient a jour, a relire avant d enregistrer.
+    if (payload && payload.code === 'reservations_sur_la_plage' && Array.isArray(payload.reservations)) privatiserMontrer(payload, { garderLeChoix: true });
+    privatiserErreur(error?.message || 'Privatisation impossible pour le moment. Réessayez.');
+  } finally {
+    const b = document.getElementById('prvOk');
+    if (b) b.disabled = false;
   }
 }
 
@@ -19436,6 +19694,8 @@ const GESTES_STAFF = {
   retard: (peut) => peut(['reservations.edit', 'planning.drag']),
   prevenir: (peut) => peut(['emails.send', 'reservations.edit']),
   fermerPiste: (peut) => peut(['planning.drag', 'settings.manage']),
+  // (le meme droit que le serveur, api/ops.js getRequiredOpsPermission : qui modifie les reservations)
+  privatiser: (peut) => peut(['reservations.edit', 'settings.manage']),
   ecrire: (peut) => peut('emails.view') && peut('emails.send'),
   exporter: (peut) => peut('exports.download'),
   noterClient: (peut) => peut('clients.edit'),
@@ -24068,6 +24328,7 @@ function togglePlanningActionsMenu(event) {
     <button type="button" onclick="telechargerSecours('feuille'); closeStaffFloatingMenus();">Imprimer la feuille de secours (PDF)</button>
     <button type="button" onclick="refreshStaffPlanning()">Actualiser les données</button>
     ${peutGeste('exporter') ? '<button type="button" onclick="exportStaffPlanningCsv()">Exporter le jour en CSV</button>' : ''}
+    ${peutGeste('privatiser') ? '<button type="button" data-privatiser onclick="closeStaffFloatingMenus(); ouvrirPrivatiser();">Privatiser…</button>' : ''}
     ${vue === 'all' || !peutGeste('reserver') ? '' : `<button type="button" onclick="openQuickBook({ date: state.currentDate, type: getStaffResourceView() === 'laser' ? 'laser' : 'bowling' }); closeStaffFloatingMenus();">Nouvelle réservation ici</button>`}
     ${vue === 'laser' && peutGeste('reserver') ? '<button type="button" onclick="lpReserverAuProchain(event); closeStaffFloatingMenus();">Réserver au prochain départ</button>' : ''}
     ${depart}
@@ -26498,9 +26759,9 @@ function renderPlanning() {
       const blkTop = (w.startH - startHour) * HH + HEADER_H;
       const blkHeight = Math.max((w.endH - w.startH) * HH, 16);
       const blkReason = w.reason ? w.reason : (w.full ? 'Bloqué toute la journée' : 'Créneau bloqué');
-      blockHtml += `<div class="planning-blocked${w.full ? ' full' : ''}" data-blocked-lane="${i}" style="top:${blkTop}px;height:${blkHeight}px;" title="${escapeHtml(blkReason)}"><span>${escapeHtml(blkReason)}</span></div>`;
+      blockHtml += `<div class="planning-blocked${w.full ? ' full' : ''}${w.prive ? ' is-prive' : ''}" data-blocked-lane="${i}" style="top:${blkTop}px;height:${blkHeight}px;" title="${escapeHtml(blkReason)}"><span>${escapeHtml(blkReason)}</span></div>`;
     });
-    lanesHtml += `<div class="lane-col ${maint ? 'maint' : ''}${laneWins.length ? ' has-block' : ''}" data-lane="${i}"${laneWins.length ? ' data-blocked="1"' : ''}>
+    lanesHtml += `<div class="lane-col ${maint ? 'maint' : ''}${laneWins.some(w => !w.prive) ? ' has-block' : ''}" data-lane="${i}"${laneWins.length ? ' data-blocked="1"' : ''}>
       <div class="lane-header">
         <span class="pl">Piste</span>
         <span class="num">${i}</span>
@@ -26631,14 +26892,20 @@ function lpArene(w) { return Math.max(0, Number(w.players || w.reservation?.pax 
 function lpGroupe(w) { return Math.max(1, Number(w.joueursReels ?? w.players) || Number(w.reservation?.pax) || 1); }
 
 function lpBlocages(jour) {
-  if (typeof availabilityBlocksCache === 'undefined' || !availabilityBlocksCache.loaded) return [];
+  if ((typeof availabilityBlocksCache === 'undefined' || !availabilityBlocksCache.loaded) && !fermeturesServies(jour)) return [];
   return getAvailabilityBlocksForDate(jour)
     .filter(b => b.scopeType === 'center' || (b.scopeType === 'activity' && b.scopeRef === 'laser_game'))
     .map(b => {
       const a = availabilityBlockStartMin(b);
       const z = availabilityBlockEndMin(b);
-      return { debut: a == null ? 0 : a / 60, fin: z == null ? 24 : z / 60, raison: b.reason || '', centre: b.scopeType === 'center' };
+      return { debut: a == null ? 0 : a / 60, fin: z == null ? 24 : z / 60, raison: b.reason || '', centre: b.scopeType === 'center', prive: b.kind === 'private', reservationId: b.reservationId || null };
     });
+}
+
+// Ce qu un depart ferme dit de lui : « Privatisé : Dupont », « Centre fermé », « Laser Game bloqué ».
+function lpMotDuFerme(ferme) {
+  if (ferme.prive) return `Privatisé : ${ferme.raison || 'groupe privé'}`;
+  return `${ferme.centre ? 'Centre fermé' : 'Laser Game bloqué'}${ferme.raison ? ` · ${ferme.raison}` : ''}`;
 }
 
 // LA COULEUR D UN GROUPE EST CELLE DE SON ETAT (Movsar, 2026-10-09 : huit
@@ -26829,7 +27096,9 @@ function lpVerdict(modele, choisi, d) {
   const h = lpHeure(d.t);
   if (choisi.placee && Math.abs(modele.creneau(choisi.placee.start) - d.t) < 0.001) return { ok: false, ici: true, raison: `Elle est déjà à ${lpHeure(choisi.placee.start)}.` };
   if (modele.config.closed) return { ok: false, raison: 'Centre fermé ce jour.' };
-  if (d.ferme) return { ok: false, raison: `${h} : ${d.ferme.centre ? 'centre fermé' : 'Laser Game bloqué'}${d.ferme.raison ? ` (${d.ferme.raison})` : ''}.` };
+  // (le groupe d une privatisation joue dans la sienne)
+  const saPrivatisation = Boolean(d.ferme && d.ferme.prive && d.ferme.reservationId && Number(d.ferme.reservationId) === Number(choisi.id));
+  if (d.ferme && !saPrivatisation) return { ok: false, raison: d.ferme.prive ? `${h} : ${lpMotDuFerme(d.ferme)}.` : `${h} : ${d.ferme.centre ? 'centre fermé' : 'Laser Game bloqué'}${d.ferme.raison ? ` (${d.ferme.raison})` : ''}.` };
   if (d.hors) return { ok: false, raison: `${h} : hors des horaires du jour.` };
   if (modele.aujourdHui && d.t <= modele.maintenant + 0.0001) return { ok: false, raison: `${h} : ce départ est déjà parti.` };
   const id = choisi.id;
@@ -26911,7 +27180,7 @@ function lpLegende(modele, d, choisi) {
   const encore = lpEncore(d);
   if (!d.ici.length && !d.holds.length) {
     if (d.ferme) {
-      const label = `${d.ferme.centre ? 'Centre fermé' : 'Laser Game bloqué'}${d.ferme.raison ? ` · ${d.ferme.raison}` : ''}`;
+      const label = lpMotDuFerme(d.ferme);
       return `<span class="lp-libre" title="${escapeHtml(label)}">${escapeHtml(label)}</span>`;
     }
     if (d.hors) return '<span class="lp-libre" title="Hors des horaires">Hors des horaires</span>';
@@ -27430,7 +27699,7 @@ async function lpViser(t) {
     // Un depart qui ne se reserve pas dit pourquoi, comme « complet » : le toucher ne reste pas
     // muet (2026-11-05, le robot de la console trouvait la jauge morte).
     const pourquoi = modele.config.closed ? 'laser fermé ce jour-là'
-      : d.ferme ? `fermé${d.ferme.raison ? `, ${d.ferme.raison}` : ''}`
+      : d.ferme ? (d.ferme.prive ? lpMotDuFerme(d.ferme) : `fermé${d.ferme.raison ? `, ${d.ferme.raison}` : ''}`)
       : d.hors ? 'hors des heures d’ouverture'
       : d.joue ? 'partie déjà jouée' : '';
     if (pourquoi) { toast(`${lpHeure(d.t)} : ${pourquoi}.`); return; }
@@ -36432,7 +36701,7 @@ function rvPiedHtml() {
     <button type="button" class="rs-tk-tot${rsLigneIci() === 'total' ? ' is-ici' : ''}${sansPrix ? ' is-inconnu' : ''}" id="rsL-total" onclick="rsOuvrir('total')"><span>${lot ? 'Total du lot' : 'Total'}${suite ? `<small>${escapeHtml(suite)}</small>` : ''}</span><b id="rvTotalPied">${escapeHtml(montant)}</b></button>
     <div class="rs-tk-pay">${payer}</div>
     <button type="button" class="rs-tk-creer${bloque || attente ? ' is-bloque' : ''}" id="rvCreer" data-pret="${pret ? '1' : '0'}"${proche ? ` data-proche="${proche}"` : ''}${occupe} onclick="rsCreer()">${escapeHtml(libelle)}${entree ? '<kbd>Entrée</kbd>' : ''}</button>
-    <div class="rs-tk-liens">${forcer}<button type="button" class="rs-lien" id="rvEncore" onclick="rsAutreResa()">+ Une autre réservation</button></div>`;
+    <div class="rs-tk-liens">${plan && plan.fermeture ? '' : forcer}<button type="button" class="rs-lien" id="rvEncore" onclick="rsAutreResa()">+ Une autre réservation</button></div>`;
 }
 
 // CREER ET ENCAISSER D UN COUP (2026-11-02). Un client de passage paie en
@@ -37491,6 +37760,8 @@ function rvConstruire({ simulation = false } = {}) {
     extras,
     ...(needsLanes && rvPistesALaMain() ? { pistesALaMain: rvPistesALaMain() } : {}),
     ...(!simulation && rsFmActive(s) ? { formuleSurMesure: { nom: rsFmNom(s), ...(s.fm.mode === 'personne' && rsFmMontant(s.fm) != null ? { prixParPersonne: rsFmMontant(s.fm) } : {}) } } : {}),
+    // « Réserver pour Dupont » : le dossier du groupe prive, que le serveur rattache a sa privatisation.
+    ...(s.privatisation ? { privatisation: s.privatisation } : {}),
   };
   if (forcer) reservation.forcer = true;
   return { reservation, needsLanes, requiredCount: programme ? requiredCount : Math.max(requiredCount, lanes.length) };
@@ -37603,6 +37874,8 @@ async function rvSimuler() {
   }
   const plan = rvPlanCourant();
   if (plan && plan.disponible) quickBookState.heureArretee = true;
+  // (une fermeture ou une privatisation ne se force pas : le serveur la refuserait aussi « à placer »)
+  if (plan && plan.fermeture) quickBookState.forcer = false;
   // Un refus : on cherche tout de suite les heures ou TOUT tient.
   if (plan && !plan.disponible) {
     const premiere = rvActivites()[0];
@@ -38006,7 +38279,10 @@ function rsHeureDite() {
 // Les phrases du moteur, sans deux-points au milieu. Une heure (15:30) n a pas
 // d espace autour des siens, elle ne bouge pas.
 function rsPhrase(texte) {
-  return String(texte || '').replace(/\s:\s/g, ', ');
+  // (« Privatisé : Dupont, de 18:00 à 22:00 » garde ses deux-points : le nom suit le mot, comme au planning)
+  const prive = /^Privatisé : /.exec(String(texte || ''));
+  const reste = String(texte || '').slice(prive ? prive[0].length : 0).replace(/\s:\s/g, ', ');
+  return prive ? `${prive[0]}${reste}` : reste;
 }
 
 function rsNomCourt(id) {
@@ -38869,7 +39145,7 @@ function rsModeBloc(id) {
 function rsCleBloc(id) {
   const s = quickBookState;
   const mode = rsModeBloc(id);
-  const base = [id, mode, s.date, s.pax, getQuickVisitParticipants(id), rvPistesALaMain(), rsVariante(id), rvRevisionDuJour(s.date), state.reservations.length, getBlocagesEnLigne(s.date).map((b) => b.id).join(), Math.floor(currentTimeDecimal() * 60)];
+  const base = [id, mode, s.date, s.pax, getQuickVisitParticipants(id), rvPistesALaMain(), rsVariante(id), rvRevisionDuJour(s.date), state.reservations.length, getBlocagesEnLigne(s.date).map((b) => b.id).join(), Math.floor(currentTimeDecimal() * 60), s.privatisation || 0];
   const compose = mode === 'seul' ? [] : [s.type, s.formuleId, s.adaptee, s.activityId, s.duration, s.visit, s.ordre, s.pistesNombre];
   const heures = mode === 'suite' || mode === 'ajout' ? [s.startTime, mode === 'suite' ? null : s.heures] : [];
   return JSON.stringify([...base, ...compose, ...heures]);
@@ -40866,11 +41142,40 @@ function rsVerdictHtml() {
     }
     // Le tableau a demande une heure qui ne tient pas : la fenetre le dit, sinon on croit
     // reserver 15:30 et on cree 15:00.
-    if (rvPropositionActive(s) && s.heureVoulue && s.heureVoulue !== s.startTime) morceaux.push(`<p class="rs-v-ligne" data-rv-deplacee>${escapeHtml(`${s.heureVoulue} ne tient pas. Voici l’heure la plus proche.`)}</p>`);
+    if (rvPropositionActive(s) && s.heureVoulue && s.heureVoulue !== s.startTime) {
+      // (une heure privatisee dit pour qui : « 19:30 ne tient pas. Privatisé : Dupont, de 18:00 à 22:00. »)
+      const voulue = rsVerdictDesCandidats(rvActivites()[0], 0, s.heureVoulue);
+      const prive = voulue && /^Privatisé/.test(String(voulue.raison || '')) ? ` ${rsPhrase(voulue.raison)}` : '';
+      morceaux.push(`<p class="rs-v-ligne" data-rv-deplacee>${escapeHtml(`${s.heureVoulue} ne tient pas.${prive} Voici l’heure la plus proche.`)}</p>`);
+    }
   }
   // L heure prise quand meme : ce que « à placer » veut dire, avant le clic.
   if (refus && s.forcer && !rvHeureEnRecherche()) morceaux.push('<p class="rs-v-ligne is-att" id="rvAPlacer">Le dossier partira « à placer » et n’occupera rien tant que l’équipe ne l’aura pas placé.</p>');
+  // UNE PRIVATISATION ENCORE SANS DOSSIER reçoit celui de son groupe : « Réserver pour Dupont »
+  // (le serveur verifie le droit et la rattache). Le dossier du groupe le dit, et se detache.
+  const prive = refus && plan.fermeture && plan.fermeture.type === 'privatisation' ? plan.fermeture : null;
+  if (prive && prive.libre && Array.isArray(prive.ids) && prive.ids.length && peutGeste('privatiser') && !rvHeureEnRecherche()) {
+    morceaux.push(`<p class="rs-v-ligne" id="rvPrive"><button type="button" class="rs-lien is-fort" id="rvPourPrive" onclick="rvReserverPourPrivatisation()">${escapeHtml(`Réserver pour ${prive.nom || 'ce groupe'}`)}</button></p>`);
+  }
+  const pour = s.privatisation && plan && plan.pourPrivatisation ? plan.pourPrivatisation : null;
+  if (pour) morceaux.push(`<p class="rs-v-ligne" id="rvPourPrivatisation">${escapeHtml(`Dossier du groupe privé : ${pour.nom}, ${pour.plage}.`)} <button type="button" class="rs-lien" onclick="rvSansPrivatisation()">Ce n’est pas ce groupe</button></p>`);
   return morceaux.join('');
+}
+
+function rvReserverPourPrivatisation() {
+  const s = quickBookState;
+  const plan = rvPlanCourant();
+  const prive = plan && plan.fermeture && plan.fermeture.type === 'privatisation' ? plan.fermeture : null;
+  if (!s || !prive || !Array.isArray(prive.ids) || !prive.ids.length) return;
+  s.privatisation = Number(prive.ids[0]);
+  s.forcer = false;
+  renderQuickBook();
+}
+
+function rvSansPrivatisation() {
+  if (!quickBookState) return;
+  quickBookState.privatisation = null;
+  renderQuickBook();
 }
 
 function rsBasculerTicket() {
@@ -41856,7 +42161,9 @@ async function rvCreerLeLot() {
 // La sortie d un refus. « Créer quand même » ne se promet qu a qui peut le faire :
 // sans le niveau forcer, le serveur le refuserait.
 function rvSortieDuRefus(pronom) {
-  return niveauStaff('forcer') === 'oui'
+  // (une fermeture ou une privatisation ne se force pas : « Créer quand même » n y est pas offert)
+  const plan = rvPlanCourant();
+  return niveauStaff('forcer') === 'oui' && !(plan && plan.fermeture)
     ? `Choisissez une autre heure, ou « Créer quand même » pour ${pronom} créer à placer.`
     : 'Choisissez une autre heure.';
 }

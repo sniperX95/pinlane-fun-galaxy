@@ -50,6 +50,8 @@ const {
   isCenterClosedDuring,
   isActivityBlockedAt,
   isActivityFullyBlockedOn,
+  blocageDActivite,
+  estPrivatisation,
   isFormulaBlockedOn,
   isFormulaFullyBlockedOn,
 } = require('../lib/availability-blocks');
@@ -1084,6 +1086,9 @@ module.exports = async (req, res) => {
           laneCount: program.laneCount,
           requiresLanes: program.hasBowling,
           label: visitLabel,
+          // Les activites libres de la visite (le minigolf, les arcades) : une privatisation qui en
+          // ferme une retire le creneau ici, au lieu de le refuser a la confirmation (2026-11-18).
+          program: program.items,
           snapshot,
         };
         // LES COMPLEMENTS DE VISITE VOYAGENT AVEC LE CRENEAU QUI VIENT D ETRE
@@ -1144,6 +1149,7 @@ module.exports = async (req, res) => {
                     laneCount: plannedLaneCount(scenario, candidat.laneCount),
                     requiresLanes: candidat.hasBowling,
                     duration: candidat.plannedItems[0]?.duration || 0,
+                    program: candidat.items || guardContext.program,
                   },
                 );
               },
@@ -1393,6 +1399,9 @@ module.exports = async (req, res) => {
         // La visite entiere, pas son seul depart : sinon on propose une heure
         // dont la fin tombe dans une fermeture ponctuelle.
         if (isCenterClosedDuring(snapshot.blocks || [], date, startMin, endMin)) continue;
+        // Une activite PRIVATISEE pendant la visite (2026-11-18) : l heure ne se propose pas. Les
+        // fermetures ordinaires d une activite gardent leur regle d avant (le jour entier, plus haut).
+        if (program.items.some((item) => estPrivatisation(blocageDActivite(snapshot.blocks || [], date, item.activityId, startMin, endMin)))) continue;
         const startTime = numToTime(value);
         const endTime = numToTime(endMin / 60);
         freeSlots.push({

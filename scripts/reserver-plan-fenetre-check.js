@@ -170,7 +170,7 @@ async function contrePreuve(nom, mutation, attendu) {
       { fichier: 'lib/reserver-fenetre.js', de: '          const qui = nomDuDossier(autre);', vers: "          const qui = 'un autre dossier';" },
       /\[1\] conflit pistes/);
     await contrePreuve('chaque heure relit la journee',
-      { fichier: 'api/staff-reservations.js', de: '    if (!lectures.has(cle)) lectures.set(cle, readStaffState(jour, centre, { avecBlocages: true }));', vers: '    lectures.set(cle, readStaffState(jour, centre, { avecBlocages: true }));' },
+      { fichier: 'api/staff-reservations.js', de: '    if (!lectures.has(cle)) lectures.set(cle, readStaffState(jour, centre, { avecBlocages: true, avecFermetures: true }));', vers: '    lectures.set(cle, readStaffState(jour, centre, { avecBlocages: true, avecFermetures: true }));' },
       /\[2\] une seule lecture/);
     await contrePreuve('l arene occupee ne ferme plus l heure',
       { fichier: 'lib/reserver-simulation.js', de: '  if (bloquant) return refusDHeure(bloquant.message, [bloquant, ...duMoteur]);', vers: '' },

@@ -2638,6 +2638,75 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     return;
   }
 
+  // PRIVATISER UNE PLAGE (2026-11-18, Marius, manager de Gembloux : « je suis sur que personne ne
+  // rajoute de reservation a ce moment-la »). Le droit est juge par getRequiredOpsPermission
+  // (reservations.edit ou settings.manage) ; le centre est celui de la session, jamais 'all'.
+  // `aBlanc` montre, avant d enregistrer, les reservations deja sur la plage ; l ecriture refuse
+  // tant que l equipe ne les a pas vues (lib/privatisation.js).
+  if (action === 'privatiser') {
+    const targetCenter = requireConcreteCenter('privatisation');
+    const pool = getPool();
+    const actor = actorFromSession(options.session || {});
+    const db = require('../lib/database');
+    const { poserPrivatisation } = require('../lib/privatisation');
+    const { jourDuCentre } = require('../lib/center-facts');
+    const jour = jourDuCentre();
+    let activites = [];
+    try { activites = (require('../lib/activity-catalog').listCenterActivities(targetCenter) || []).map((a) => a && a.id).filter(Boolean); } catch (error) { activites = []; }
+    let resultat;
+    try {
+      resultat = await poserPrivatisation({
+        pool,
+        centerId: targetCenter,
+        body,
+        // (le fondateur ne signe pas, lib/fondateur-invisible.js)
+        createdBy: require('../lib/fondateur-invisible').signatureVisible(options.session || {}, { avecId: false }) || actor.actorLabel || '',
+        aujourdhui: jour ? jour.date : new Date().toISOString().slice(0, 10),
+        activitesDuCentre: activites,
+        nomDActivite: (id) => db.nomDActiviteDuCentre(targetCenter, id),
+        lireLeJour: (date) => readStaffState(date, targetCenter, { avecFermetures: true }),
+        relireSousVerrou: (client, date) => db.reservationsDuJourSousVerrou(client, date, targetCenter),
+        blocageDuDossier: db.blocageDuDossier,
+        fenetreDeLaVisite: db.fenetreDeLaVisite,
+        rafraichir: () => refreshAvailabilityBlocks(pool, { centerId: targetCenter, force: true }),
+      });
+    } catch (error) {
+      if (error && error.expose === true && error.code) {
+        sendError(res, error.statusCode || 409, error.message, { code: error.code, ...(Array.isArray(error.reservations) ? { reservations: error.reservations } : {}) });
+        return;
+      }
+      throw createHttpError(safeUserMessage(error, 'Privatisation non enregistrée pour le moment. Réessayez.'), error && error.expose ? (error.statusCode || 400) : 503, Boolean(error && error.expose));
+    }
+    if (!resultat.aBlanc) {
+      noterAudit(options, {
+        entityType: 'privatisation',
+        entityId: (resultat.privatisation.ids || []).join(','),
+        changes: { privatisation: { before: null, after: `${resultat.privatisation.date} ${resultat.privatisation.startTime}-${resultat.privatisation.endTime} ${resultat.privatisation.nom}` } },
+        context: { reservationsSurLaPlage: resultat.reservations.length },
+      });
+    }
+    sendJson(res, 200, { ok: true, action, centerId: targetCenter, ...resultat });
+    return;
+  }
+
+  // Retirer une privatisation : ses blocages, rien d autre (kind = 'private', lib/availability-blocks.js).
+  if (action === 'retirerPrivatisation') {
+    const targetCenter = requireConcreteCenter('privatisation');
+    const pool = getPool();
+    const { retirerPrivatisation } = require('../lib/availability-blocks');
+    let out;
+    try {
+      out = await retirerPrivatisation(pool, { centerId: targetCenter, ids: body.ids });
+    } catch (error) {
+      throw createHttpError(safeUserMessage(error, 'Retrait de la privatisation impossible pour le moment. Réessayez.'), error.expose ? 400 : 503, error.expose === true);
+    }
+    if (!out.removed) throw createHttpError('Cette privatisation n’existe plus : le planning se met à jour.', 404, true);
+    await refreshAvailabilityBlocks(pool, { centerId: targetCenter, force: true });
+    noterAudit(options, { entityType: 'privatisation', entityId: out.ids.join(','), changes: { privatisation: { before: out.ids.join(','), after: null } } });
+    sendJson(res, 200, { ok: true, action, ...out });
+    return;
+  }
+
   // Blocage granulaire de la disponibilite (permission settings.manage). Le
   // centre est FORCE a celui de la session (withCenter a deja ecrase body.centerId,
   // requireConcreteCenter rejette 'all'/vide) : un centre ne bloque que chez lui,
@@ -4233,6 +4302,11 @@ function getRequiredOpsPermission(method, action) {
   // la meme que la config du centre (saveCenterConfig). Centre force a la session,
   // 'all' refuse (requireConcreteCenter + garde lib). Jamais platform.admin.
   if (['saveAvailabilityBlock', 'deleteAvailabilityBlock'].includes(action)) return 'settings.manage';
+  // PRIVATISER (2026-11-18) : le droit de MODIFIER les reservations (reservations.edit), celui du
+  // manager et de l assistant manager, qui deplacent et corrigent deja les dossiers de la journee ;
+  // la personne qui regle le centre (settings.manage) aussi, elle pose deja les fermetures. Jamais
+  // le seul droit de reserver : la Staff bar ne ferme pas une soiree.
+  if (['privatiser', 'retirerPrivatisation'].includes(action)) return ['reservations.edit', 'settings.manage'];
   // Telemetrie d'erreurs : TOUT membre du staff peut rapporter (chaque role
   // reel porte au moins une permission de vue). Pas de permission dediee :
   // le rapport d'un bug ne doit jamais echouer pour cause de droits.

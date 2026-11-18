@@ -1986,6 +1986,26 @@ button.staff-date-label:focus-visible,
 .planning-blocked.full {
   background: repeating-linear-gradient(45deg, var(--danger-soft), var(--danger-soft) 7px, transparent 7px, transparent 14px);
 }
+/* UNE PRIVATISATION (2026-11-18) : une zone grise qui porte le nom du groupe, sous ses cartes (le
+   dossier du groupe prive s y lit et s y touche). */
+.planning-blocked.is-prive,
+.planning-blocked.is-prive.full {
+  z-index: 1;
+  background: repeating-linear-gradient(45deg, var(--subtle), var(--subtle) 7px, transparent 7px, transparent 14px);
+  border-color: var(--line-strong);
+  color: var(--muted);
+  font-weight: 600;
+}
+/* LE BANDEAU DES PRIVATISATIONS, sous la barre des trois plannings (renderBandeauPrivatisations). */
+#planningPrivatisations { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+#planningPrivatisations[hidden] { display: none; }
+#planningPrivatisations .pb-prive { box-sizing: border-box; display: flex; align-items: center; gap: 12px; min-width: 0; min-height: 40px; padding: 4px 6px 4px 14px; border-radius: 10px; background: repeating-linear-gradient(45deg, var(--subtle), var(--subtle) 7px, var(--surface) 7px, var(--surface) 14px); box-shadow: inset 0 0 0 1px var(--line-strong); font-size: 14px; }
+#planningPrivatisations .pb-prive__t { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; flex: 1 1 auto; min-width: 0; }
+#planningPrivatisations .pb-prive__t b { font-weight: 650; color: var(--text); }
+#planningPrivatisations .pb-prive__t span { color: var(--muted); }
+#planningPrivatisations .pb-prive__x { flex: none; min-height: 32px; padding: 0 12px; border: 0; border-radius: 8px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-strong); color: var(--text); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+#planningPrivatisations .pb-prive__x:hover { background: var(--subtle); }
+#planningPrivatisations .pb-prive__x:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 1px; }
 .planning-blocked-banner {
   margin: 0 0 8px;
   padding: 10px 12px;
@@ -21728,6 +21748,22 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
 .bdg-hf-dit { min-height: 19px; font-weight: 600; }
 .bdg-hf-err { color: var(--danger); font-weight: 600; }
 .bdg-hf .bdg-actions { justify-content: flex-end; margin-top: 0; }
+/* PRIVATISER (2026-11-18, ouvrirPrivatiser) : le jour, la plage, ce qui est privatise, pour qui,
+   puis les reservations deja sur ces heures avant d enregistrer. */
+.prv-quoi { display: flex; flex-direction: column; gap: 8px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.prv-quoi legend { margin-bottom: 4px; padding: 0; font-size: 12.5px; font-weight: 600; color: var(--muted); }
+.prv-choix { display: flex; flex-wrap: wrap; gap: 6px 18px; }
+.prv-acts { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 4px 12px; }
+.prv-acts[hidden] { display: none; }
+.prv-act, .prv-resa { display: flex; align-items: center; gap: 8px; min-height: 32px; font-size: 14px; color: var(--text); cursor: pointer; }
+.prv-act input, .prv-resa input { flex: none; width: 16px; height: 16px; margin: 0; accent-color: var(--accent-strong); }
+.prv-vu:empty { display: none; }
+.prv-vu { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: var(--radius-md); background: var(--subtle); }
+.prv-phrase { font-weight: 650; color: var(--text); }
+.prv-dit { font-size: 13.5px; color: var(--text); }
+.prv-resas { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.prv-resa span { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; min-width: 0; }
+.prv-resa small { font-size: 12.5px; color: var(--muted); }
 @media (max-width: 640px) {
   .bdg-fen-fond { padding: 0; }
   .bdg-fen, .bdg-fen.is-large { max-width: none; max-height: none; height: 100%; border-radius: 0; }

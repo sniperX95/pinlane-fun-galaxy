@@ -1537,14 +1537,18 @@
   // requete ouverte. Le texte brut reste : une relecture le compare tel quel,
   // sans rien reserialiser.
   var DELAI_LECTURE = 12000;
+  // L APERCU DE L EQUIPE (2026-11-18, demanderApercu plus bas) : ce que le serveur a accorde, ou null. Accorde,
+  // chaque lecture le redemande (apercu=1) avec la session de la console. Sinon, aucune lecture ne la joint.
+  var APERCU = null;
   function lire(url, reglages) {
     reglages = reglages || {};
+    var apercu = Boolean(APERCU || reglages.apercu);
     var controle = new AbortController(), parDelai = false, externe = reglages.signal || null;
     var suivre = function () { controle.abort(); };
     if (externe) { if (externe.aborted) controle.abort(); else externe.addEventListener('abort', suivre); }
     var minuteur = setTimeout(function () { parDelai = true; controle.abort(); }, reglages.delai || DELAI_LECTURE);
     var finir = function () { clearTimeout(minuteur); if (externe) externe.removeEventListener('abort', suivre); };
-    return fetch(url, { credentials: 'omit', headers: reglages.headers || {}, signal: controle.signal })
+    return fetch(apercu ? url + (url.indexOf('?') < 0 ? '?' : '&') + 'apercu=1' : url, { credentials: apercu ? 'same-origin' : 'omit', headers: reglages.headers || {}, signal: controle.signal })
       .then(function (r) { return r.text().then(function (texte) { finir(); return { statut: r.status, ok: r.ok, texte: texte }; }); })
       .catch(function () { finir(); var e = new Error(parDelai ? 'delai' : 'reseau'); e.delai = parDelai; e.annule = !parDelai && controle.signal.aborted; throw e; });
   }
@@ -6486,6 +6490,8 @@
     // Le meme choix, encore bloque (retour arriere, puis Continuer) : le
     // decompte continue, il ne repart pas. Dix minutes par choix, pas plus.
     if (blocage.etat === 'tenu' && blocage.cle === cle && blocage.echeance > Date.now()) { versLeContact(); return; }
+    // L apercu de l equipe ne retient aucune heure (le serveur le refuserait) : il passe aux coordonnees.
+    if (APERCU) { versLeContact(); return; }
     goContact.classList.add('is-busy'); goContact.setAttribute('aria-busy', 'true');
     retenir(corpsBlocage(), cle).then(function (r) {
       goContact.classList.remove('is-busy'); goContact.removeAttribute('aria-busy');
@@ -7555,6 +7561,8 @@
       return;
     }
     annulerVitrine();
+    // L apercu de l equipe n envoie rien : il le dit a la place (le serveur refuserait de toute facon).
+    if (APERCU) { erreurEnvoi('<b>' + esc(APERCU.envoi || '') + '</b>'); return; }
     erreurEnvoi('');
     confirmBtn.classList.add('is-busy'); confirmBtn.setAttribute('aria-busy', 'true');
     envoiEnCours(true);
@@ -7888,7 +7896,7 @@
   // s ouvre qu une fois les deux arrives (jamais un ecran sans sa mise en
   // forme). Un fichier qui echoue se redemande au clic suivant, celui qui est
   // arrive ne se recharge pas.
-  var SM_JS = '/assets/fungalaxy-sur-mesure.js?v=20261118porte';
+  var SM_JS = '/assets/fungalaxy-sur-mesure.js?v=20261118apercu';
   var SM_CSS = '/assets/fungalaxy-sur-mesure.css?v=20261117habillage';
   var smModule = null, smFichiers = {};
   function chargerFichier(cle, balise, attributs) {
@@ -8107,6 +8115,34 @@
     poster({ type: 'pinlane:coupe' });
     posterHauteur();
   }
+  // L APERCU DE L EQUIPE (2026-11-18, Ansar : « fais en sorte que je puisse revoir [...] le formulaire »). Coupe, le
+  // formulaire demande une fois au serveur si la personne devant l ecran est de l equipe de ce centre : sa session de
+  // la console, un cookie que le navigateur joint seul aux pages de Pinlane. Le serveur seul en decide
+  // (lib/apercu-equipe.js) ; sans reponse, c est la coupure. Jamais dans le cadre pose sur le site d un autre domaine :
+  // la question n y est pas posee. Accorde, le formulaire s ouvre sous son bandeau ; rien ne s y retient, ne s y
+  // reserve ni ne s y envoie, et la visite ne compte pas dans les statistiques des visiteurs.
+  function surUnePageDePinlane() {
+    try { return window.top === window || window.top.location.origin === window.location.origin; } catch (e) { return false; }
+  }
+  function demanderApercu(q, coupe) {
+    if (!surUnePageDePinlane()) return coupe;
+    return lire('/api/public-booking-meta?' + q.toString(), { apercu: true })
+      .then(function (rep) {
+        var j = lu(rep);
+        if (!j || j.ok === false || j.coupure || !j.apercu) return coupe;
+        APERCU = j.apercu;
+        VISITE = '';
+        return j;
+      })
+      .catch(function () { return coupe; });
+  }
+  function montrerApercu() {
+    var bloc = doc.createElement('section');
+    bloc.className = 'fg-apercu';
+    bloc.setAttribute('role', 'status');
+    bloc.textContent = String(APERCU.bandeau || '');
+    body.insertBefore(bloc, body.firstChild);
+  }
   function demarrer() {
     poserPhotos();
     decouperTitres();
@@ -8126,8 +8162,12 @@
       .then(function (rep) {
         var j = lu(rep);
         if (!j || j.ok === false) throw erreurLisible(j, PANNE_CATALOGUE);
+        return j.coupure ? demanderApercu(q, j) : j;
+      })
+      .then(function (j) {
         meta = j; direErreur('');
         if (meta.coupure) { fermerPourCoupure(String(meta.coupure)); return; }
+        if (APERCU) montrerApercu();
         empreinteCatalogue = empreinteDuCatalogue(j);
         // La case des offres nomme le centre qui les enverrait : un retrait
         // vaut pour CE centre (la liste est tenue centre par centre).

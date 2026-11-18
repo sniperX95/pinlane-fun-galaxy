@@ -1119,6 +1119,9 @@
     }
     smSend.addEventListener('click', function () {
       if (smSend.classList.contains('is-busy')) return;
+      // L apercu de l equipe (2026-11-18) n envoie aucune demande : il le dit a la place.
+      var apercu = I.meta && I.meta.apercu;
+      if (apercu) { smErreur('<b>' + esc(apercu.envoi || '') + '</b>'); return; }
       smErreur('');
       smSend.classList.add('is-busy'); smSend.setAttribute('aria-busy', 'true');
       fetch('/api/custom-request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign(corpsDemande(), { acquisition: typeof window.pinlaneAcquisition === 'function' ? window.pinlaneAcquisition() : null })), credentials: 'omit' })

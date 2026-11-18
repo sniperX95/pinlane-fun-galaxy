@@ -3224,3 +3224,5 @@ body.is-embed .fg-info-dialog.is-sheet { inset:auto; left:50%; margin:0; transla
 body.is-coupe > :not(.fg-coupe) { display: none !important; }
 .fg-coupe { box-sizing: border-box; max-width: 640px; margin: 24px auto; padding: 20px 22px; border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 14px; font-size: 16px; line-height: 1.5; }
 .fg-coupe p { margin: 0; }
+/* L APERCU DE L EQUIPE (2026-11-18) : le bandeau qui dit que le formulaire est coupe pour les clients. */
+.fg-apercu { box-sizing: border-box; width: calc(100% - 2 * var(--fg-gutter)); max-width: 1280px; margin: 12px auto 0; padding: 12px 16px; border: 1px solid var(--fg-amber); border-radius: 12px; background: rgba(227, 179, 65, 0.12); color: var(--fg-text); font-size: 15px; font-weight: 600; line-height: 1.45; }

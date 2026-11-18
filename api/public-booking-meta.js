@@ -23,6 +23,7 @@ const { getPool, checkDatabaseHealth, createCustomRequest, empreinteJetonBlocage
 const { readJson, sendError, sendJson, setCors } = require('../lib/http');
 const { cleDeLAdresse, enforceRateLimit, getClientIp } = require('../lib/rate-limit');
 const { sessionDuPersonnel } = require('../lib/session-du-personnel');
+const { apercuDeLEquipe } = require('../lib/apercu-equipe');
 
 // Les visiteurs distincts qui ont vu le meme plantage dans l heure (passe securite du
 // 2026-11-08). En memoire, par instance : il ne s agit que de choisir entre sonner et ne
@@ -1142,6 +1143,10 @@ async function routeur(req, res) {
     return;
   }
 
+  // L APERCU DE L EQUIPE (2026-11-18, lib/apercu-equipe.js) : coupe, l equipe de ce centre qui le demande lit le
+  // catalogue comme s il etait ouvert, dans une reponse privee. Rien ne change pour le visiteur.
+  const apercu = await apercuDeLEquipe(req, res, center);
+
   // Config bookable per-center (pistes, capacités, tarifs, options laser) : le
   // front la consomme quand elle est présente, ses constantes locales restent
   // le fallback (mêmes valeurs sans override).
@@ -1193,6 +1198,8 @@ async function routeur(req, res) {
   if (center) {
     const regles = reglesDeReservation(center);
     if ((regles.minDaysAhead > 0 || regles.horizonDays < BOOKING_HORIZON_DAYS) && !(await sessionDuPersonnel(req))) reglesEnLigne = regles;
+    // L apercu montre ce que le client verra : la regle du centre comprise.
+    if (apercu && (regles.minDaysAhead > 0 || regles.horizonDays < BOOKING_HORIZON_DAYS)) reglesEnLigne = regles;
   }
   // Le calendrier envoye au navigateur d un centre hors Federation se relit aussi quand la page ne demande ni
   // jour ni calendrier (meme cache de 24 h : un seul appel par instance et par jour).
@@ -1201,11 +1208,12 @@ async function routeur(req, res) {
   }
 
   // Coupe depuis la Tour de controle (2026-11-14) : le formulaire se retire des qu il lit ce champ. Cle ADDITIVE,
-  // absente quand le centre est en ligne.
-  const coupure = coupureEnLigne(centerId);
+  // absente quand le centre est en ligne, et dans l apercu de l equipe, qui porte `apercu` a la place.
+  const coupure = apercu ? '' : coupureEnLigne(centerId);
   sendJson(res, 200, {
     ok: true,
     ...(coupure ? { coupure } : {}),
+    ...(apercu ? { apercu } : {}),
     today: todayStr(),
     // Le tunnel borne son champ date avec CE nombre : la limite n'est ecrite
     // qu'ici, le navigateur ne la redevine pas.

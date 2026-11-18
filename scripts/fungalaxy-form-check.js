@@ -740,8 +740,12 @@ const FICHIERS = ['assets/fungalaxy-booking.js', 'assets/fungalaxy-booking.css',
 // build, fins de ligne Windows) : +1,06 Ko, presque tout dans la feuille. Retire avant de monter : un selecteur
 // en double. Le script de l habillage (assets/fungalaxy-habillage.js) est un quatrieme fichier, hors de ce
 // compte : 4,05 Ko servis, 1,83 transferes, charge avant le premier affichage. Plafonds 393 et 114 Ko.
-const BUDGET_SERVI = 393 * 1024;
-const BUDGET_TRANSFERE = 114 * 1024;
+// 2026-11-18, l apercu de l equipe quand la reservation en ligne est coupee (Ansar : « fais en sorte que je puisse
+// revoir [...] le formulaire ») : 393,77 Ko servis et 113,84 Ko transferes, contre 392,83 et 113,40 sur c3a3157
+// (memes fichiers passes par le build, fins de ligne Windows) : +0,94 et +0,44 Ko. La base tenait a 0,17 Ko du
+// plafond. Poids mort cherche avant : les 544 fonctions nommees sont toutes citees. Plafonds 395 et 115 Ko.
+const BUDGET_SERVI = 395 * 1024;
+const BUDGET_TRANSFERE = 115 * 1024;
 
 let failures = 0;
 function ok(cond, label, detail) {

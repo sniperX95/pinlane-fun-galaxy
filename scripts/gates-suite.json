@@ -22,6 +22,7 @@
     "test:embed-demande",
     "test:embed-killswitch",
     "test:coupure-en-ligne",
+    "test:apercu-equipe",
     "test:embed-miroir",
     "test:porte-publique",
     "test:embed-question",

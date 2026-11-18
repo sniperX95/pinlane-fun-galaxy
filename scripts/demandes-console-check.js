@@ -278,7 +278,8 @@ function verifier(r) {
   ok(/^Athénée de Libramont$/.test(r.entete.nom.trim()) && /École, jeunesse · Ansar Bisultanov, Enseignant · reçue/.test(r.entete.sous), 'le groupe en grand, son type, qui ecrit, quand la demande est arrivee', JSON.stringify(r.entete));
   ok(r.entete.liens.includes('tel:+32470112233') && r.entete.liens.includes('mailto:ansar@example.org'), 'le telephone et le mail se touchent', JSON.stringify(r.entete.liens));
   ok(JSON.stringify(r.entete.gestes) === JSON.stringify(['Appeler', 'Sans suite']), 'en tete : appeler et classer sans suite, rien d autre', JSON.stringify(r.entete.gestes));
-  ok(/^Réponse promise avant \d\d:\d\d, il reste/.test(r.entete.promis), 'l heure promise au client se lit en tete', r.entete.promis);
+  // Le fixture promet la reponse dans deux heures : apres 22:00, l echeance passe minuit et l en-tete dit « demain 01:33 ».
+  ok(/^Réponse promise avant (demain )?\d\d:\d\d, il reste/.test(r.entete.promis), 'l heure promise au client se lit en tete', r.entete.promis);
   ok(/Dimanche \d{1,2} \S+, l’après-midi/.test(r.demande) && /ou le vendredi \d{1,2} \S+/.test(r.demande), 'le jour et le moment, et l autre date', r.demande);
   ok(/31 joueurs de 7 à 12 ans et 3 accompagnateurs/.test(r.demande) && /25 € par personne, soit 775 € pour 31 joueurs/.test(r.demande), 'les joueurs, leurs ages, et le budget par personne', r.demande);
   ok(JSON.stringify(r.envies.map((e) => `${e.t}:${e.n}`)) === JSON.stringify(['1:Bowling', '2:Laser Game', '3:Minigolf Blacklight']) && r.envies.every((e) => /^\/assets\/fungalaxy\/.+-carte\.webp$/.test(e.photo)), 'leurs envies en photos, chacune a sa couleur', JSON.stringify(r.envies));

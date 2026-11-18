@@ -2950,7 +2950,13 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     }
     if (refait.action === 'assistantGeste' || refait.action === 'assistantReservation') throw createHttpError('Geste invalide.', 400, true);
     if (!sessionHasPermission(options.session, getRequiredOpsPermission('POST', refait.action))) throw createHttpError('Votre rôle ne permet pas ce geste dans le logiciel.', 403, true);
-    noterAudit(options, { changes: { assistant: { geste, action: refait.action } } });
+    // UNE ACTION A TRACE OBLIGATOIRE GARDE SA REGLE QUAND L ASSISTANT LA REJOUE (2026-11-18, avant-lancement
+    // C2). Reglages, tarifs ou campagne (lib/audit-log.js, BLOCKING_ACTIONS) ecrivent leur ligne AVANT
+    // l action, et si le journal tombe, rien ne change. C est la meme ligne « assistantGeste » qu avant,
+    // ecrite une seule fois (le dispatcher n en ajoute pas apres), que le releve Modifications ignore.
+    const traceDuGeste = { assistant: { geste, action: refait.action } };
+    if (isBlockingAction(refait.action) && typeof options.tracerAvant === 'function') await options.tracerAvant(traceDuGeste);
+    else noterAudit(options, { changes: traceDuGeste });
     if (ACTIONS_DU_CATALOGUE.has(refait.action)) { res.__montantsDuCatalogue = true; res.__sansMontants = false; }
     await handlePost(req, res, withCenter({ ...refait.corps, action: refait.action }, centre), options);
     return;
@@ -4472,8 +4478,15 @@ const traiterOps = async (req, res) => {
       // Ce que le handler deposera pour le registre (noterAudit) : l entite
       // exacte, l avant/apres, un contexte. Lu apres l action.
       const auditDetails = {};
+      // Un geste de l assistant qui rejoue une action bloquante ecrit SA ligne avant l action, avec le
+      // meme regime que ci-dessus (assistantGeste, plus haut). La ligne d apres ne la double pas.
+      let traceDejaEcrite = false;
+      const tracerAvant = async (changes) => {
+        await writeAuditLogOrThrow({ ...auditBase, changes, outcome: 'success' });
+        traceDejaEcrite = true;
+      };
       try {
-        await handlePost(req, res, withCenter(body, effectiveCenterId), { centerId: effectiveCenterId, session, audit: auditDetails });
+        await handlePost(req, res, withCenter(body, effectiveCenterId), { centerId: effectiveCenterId, session, audit: auditDetails, tracerAvant });
       } catch (error) {
         // Une action qui echoue est une information d'audit : elle distingue
         // "personne n'a essaye" de "quelqu'un a essaye et ca a casse".
@@ -4491,7 +4504,7 @@ const traiterOps = async (req, res) => {
       // sendJson). On ecrit apres, donc sans ajouter la moindre latence percue
       // par le staff. Un echec ici ne casse pas l'action, mais il crie :
       // console.error a prefixe stable + compteur expose dans l'action health.
-      if (audited && !isBlockingAction(action)) {
+      if (audited && !isBlockingAction(action) && !traceDejaEcrite) {
         await writeAuditLog({
           ...auditBase,
           ...(auditDetails.entityType ? { entityType: auditDetails.entityType } : {}),

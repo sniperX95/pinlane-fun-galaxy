@@ -261,6 +261,7 @@
     "test:fiche-gestes",
     "test:fiche-simple",
     "test:fiche-modifier",
+    "test:heure-activite-dossier",
     "test:compte-arrivee",
     "test:planning-recherche",
     "test:heures-du-dossier",

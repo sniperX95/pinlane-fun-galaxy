@@ -2453,6 +2453,19 @@ button.staff-date-label:focus-visible,
   color: var(--surface);
   font-weight: 700;
 }
+/* PISTES CHARGEES (2026-11-18, Ansar : « les 108 joueurs s affiche moche ») : un
+   triangle de marqueur A COTE de la pastille, jamais dedans, a la taille des
+   marqueurs de la tete (12 px). Le `gap` de .booking-stats le separe du nombre ; son
+   nom et son infobulle disent pourquoi. Il part avant la duree (RANG 0 bis, plus
+   bas), et avec le nombre sur la carte d une ligne. */
+.bk-pax-alerte {
+  flex: 0 0 auto;
+  display: inline-flex;
+  width: 12px;
+  height: 12px;
+  color: var(--warning);
+}
+.bk-pax-alerte svg { width: 100%; height: 100%; }
 
 /* Durée : 1h neutre, toute autre durée ressort (ambre = attention). Le libellé
    texte porte l'info, la couleur ne fait que la renforcer. */
@@ -2680,6 +2693,23 @@ button.staff-date-label:focus-visible,
    lisent dans la même unité, sans rien changer à ce qui est rendu. */
 @container piste (max-width: 107px) {
   .booking .activity-pill { display: none; }
+}
+/* LES PISTES CHARGEES ONT LEUR PLACE DANS CETTE ECHELLE (2026-11-18). Leur triangle
+   (12 px et sa gouttiere de 5) s ajoute au pied d une carte : MESURE sur le Family
+   Day de 108 joueurs, effectif 25 px (27 en fenetre agrandie), la ligne des chiffres
+   passe de 42 a 59 px (63 agrandie). Deux planchers, CALCULES depuis ces mesures
+   (pied = piste - 24 px) :
+   - avec la progression (26 px et sa gouttiere de 6), 63 + 32 = 95 px de pied, soit
+     119 px de piste : sous ce plancher, la progression part la premiere, c est du
+     suivi terrain ;
+   - le triangle seul part avant la duree, une donnee : 63 px de pied, soit 87 px
+     de piste (le conteneur, sans la bordure de la colonne). Le nombre reste, son
+     infobulle dit encore pourquoi ; le triangle ne reste jamais sans lui. */
+@container piste (max-width: 119px) {
+  .booking:has(.bk-pax-alerte) .activity-pill { display: none; }
+}
+@container piste (max-width: 87px) {
+  .booking .bk-pax-alerte { display: none; }
 }
 /* UNE BOITE DE BADGE VIDE NE GARDE PAS SA GOUTTIERE (2026-11-03). Sur une carte qui
    porte au pied sa progression ET la boite du badge laser, cette boite tombe a 0 px
@@ -2924,7 +2954,7 @@ button.staff-date-label:focus-visible,
    une duree ecrasee a 12px et croyait a un masquage abusif. Un rang, une
    regle, un element. */
 @container piste (max-width: 100px) {
-  .booking.dens-xs .bk-pax { display: none; }
+  .booking.dens-xs :is(.bk-pax, .bk-pax-alerte) { display: none; }
 }
 /* RANG 5 : le repère d'état, dernier avant le nom seul. Il ne fait que 11px et
    il répond à la question du comptoir : il tient donc le plus longtemps.
@@ -18988,6 +19018,15 @@ html[data-theme] .booking.is-absent { z-index: 1; --bk-haut: var(--subtle); --bk
   .booking .bk-pax.grp-l,
   .booking .bk-pax.grp-xl { background: none; color: var(--bk-encre); }
 }
+/* L UNITE DANS LA PASTILLE SE LIT (2026-11-18, Ansar : « les 108 joueurs s affiche
+   moche »). Le « j » gardait l encre secondaire de la carte, posee sur la pastille :
+   MESURE en clair, bleu #005ac2 sur bleu nuit #004597, il ne se voyait pas et la
+   pastille paraissait coupee apres le nombre. Dans la pastille, il prend sa couleur ;
+   quand elle tombe (sous 190 px), il reprend celle des autres cartes. */
+.booking .bk-pax:is(.grp-l, .grp-xl) .u { color: inherit; }
+@container piste (max-width: 190px) {
+  .booking .bk-pax:is(.grp-l, .grp-xl) .u { color: var(--bk-encre-2); }
+}
 /* La duree inhabituelle reste AMBRE (Movsar, 2026-08-14 : en couleur de texte
    « on ne remarque pas assez du tout les heures differentes de 1h »). */
 .booking .bk-dur.dur-special { color: var(--warning); }
@@ -19599,7 +19638,14 @@ body:is(.staff-mode, .admin-mode) .fx-modal .dossier-facts { display: block; fon
 body:is(.staff-mode, .admin-mode) .fx-modal .dossier-facts .dossier-fact strong { font-size: 13.5px; font-weight: 500; line-height: 1.5; white-space: nowrap; font-variant-numeric: tabular-nums; }
 body:is(.staff-mode, .admin-mode) .fx-modal .dossier-facts .dossier-fact + .dossier-fact::before { content: "\0000a0\0000b7\000020"; color: var(--faint); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fx-numero strong { font-weight: 400; color: var(--muted); }
-body:is(.staff-mode, .admin-mode) .fx-modal .fx-etiquettes { display: flex; flex-wrap: wrap; gap: 0 16px; }
+/* LA VISITE, PUIS CE QUI L ENTOURE (Ansar, 2026-11-18 : « ya plein de texte on
+   comprend rien »). La visite garde sa ligne ; les etiquettes (Entreprise, Hors
+   horaires) et « Modifié 17:39, Julie » passent dessous, a la meme taille, separes
+   par un point median ecrit dans le texte. Leur ancienne boite flex (un `gap`) etait
+   ecrasee par la ligne qui coule, et deux etiquettes se collaient. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-ligne .fz-faits > .fx-contexte { display: block; margin: 0; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-ligne .fz-faits > p.dossier-facts:not(:last-child)::after { content: none; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-contexte .fx-sep { color: var(--faint); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fx-etiquette { display: inline; padding: 0; border-radius: 0; background: none; color: var(--muted); font-size: 13.5px; font-weight: 500; line-height: 1.5; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fx-etiquette small { font-size: 13.5px; font-weight: 400; color: var(--muted); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fx-etiquette.is-suivi { color: var(--warning); }

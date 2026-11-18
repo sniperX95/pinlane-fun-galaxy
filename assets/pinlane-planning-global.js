@@ -158,7 +158,7 @@
   function gpFormule(r) {
     // La formule du comptoir : le nom que l equipe lui a donne (lib/formule-comptoir.js).
     var comptoir = r.program && !Array.isArray(r.program) && r.program.formuleSurMesure;
-    if (comptoir && comptoir.nom) return { court: 'Sur mesure', long: 'Formule sur mesure : ' + comptoir.nom, nom: comptoir.nom, comptoir: true, parJoueur: comptoir.prixParPersonne };
+    if (comptoir && comptoir.nom) return { court: 'Sur mesure', long: gfSansRedite('Formule sur mesure : ' + comptoir.nom), nom: comptoir.nom, comptoir: true, parJoueur: comptoir.prixParPersonne };
     if (!r.formuleId && r.type !== 'formule') return null;
     var f = r.formuleId && typeof resolveDisplayFormule === 'function' ? resolveDisplayFormule(r.formuleId) : null;
     var nom = String((f && f.name) || r.label || 'Formule').trim();
@@ -792,6 +792,21 @@
   var GF_ALLERGIE = /allerg|intoleran|coeliaque|celiaque|anaphyla|epipen|arachide|sans gluten|sans lactose/;
   function gfAllergie(texte) { return GF_ALLERGIE.test(gfCle(texte).replace(/œ/g, 'oe')); }
   function gfEnMinuscule(s) { var t = String(s || '').trim(); return t.charAt(0).toLowerCase() + t.slice(1); }
+  // UNE ETIQUETTE NE SE REDIT PAS DANS SA VALEUR (2026-11-18, Ansar : « pourquoi deux fois
+  // dire formule sur mesure »). « Formule sur mesure : Formule sur mesure » se dit
+  // « Formule sur mesure » ; « Formule sur mesure : Formule sur mesure Family Day »,
+  // « Formule sur mesure Family Day ». Pour les phrases deja ecrites en base (la raison
+  // d un prix, la derniere modification) : le serveur ne les ecrit plus ainsi
+  // (lib/historique-dossier.js, sansRedite, la meme regle).
+  function gfSansRedite(texte) {
+    return String(texte || '').replace(/(^|, | · )([^,·:]+?) : ([^,·]+?)(?=$|, | · )/g, function (tout, avant, etiquette, valeur) {
+      var e = gfCle(etiquette);
+      var v = gfCle(valeur);
+      if (!e || (v !== e && v.indexOf(e + ' ') !== 0)) return tout;
+      return avant + (v === e ? etiquette.trim() : valeur.trim());
+    });
+  }
+  window.pgSansRedite = gfSansRedite;
   function gfUneLigne(s) { return String(s || '').replace(/\s+/g, ' ').trim(); }
   // UNE NOTE SE VOIT ET DIT QUI L A ECRITE (2026-11-06, Ansar : « on doit voir plus
   // visiblement [...] la note c un client avec couleur et mieux expliqué que c une note
@@ -816,7 +831,7 @@
     var encaisse = r.status === 'paid' && r.amountPaid != null && Math.round(Number(r.amountPaid) * 100) !== Math.round((Number(r.price) || 0) * 100);
     if (encaisse) morceaux.push(formatMoneyCentimes(r.amountPaid) + ' encaissés');
     if (!morceaux.length) return '';
-    var raison = (notePrix && notePrix.raison) || r.discountReason || '';
+    var raison = gfSansRedite((notePrix && notePrix.raison) || r.discountReason || '');
     if (raison) morceaux.push(gfEnMinuscule(gfUneLigne(raison)));
     if (sortie && raison) sortie.raison = gfEnMinuscule(gfUneLigne(raison));
     return morceaux.join(', ');
@@ -871,8 +886,10 @@
       liste.push(gfRubrique('formule', 'Formule', gpEsc(formuleDite), formuleDite));
     }
     if (g.extras.length) { var mesure = g.extras.join(', '); liste.push(gfRubrique('mesure', 'Sur mesure', gpEsc(mesure), mesure)); }
-    // (le nom de la formule vient de se lire : la raison du prix ne le redit pas)
-    var prix = String(gfPrixTexte(r, notePrix, g.sortie) || '').replace(comptoir ? /,?\s*formule sur mesure\s*:.*$/i : /$^/, '');
+    // (le nom de la formule vient de se lire : la raison du prix ne le redit pas, ecrite
+    // « formule sur mesure : <nom> » ou, depuis le 2026-11-18, « formule sur mesure »
+    // seule quand elle n a pas d autre nom ; une raison qui la suit reste)
+    var prix = String(gfPrixTexte(r, notePrix, g.sortie) || '').replace(comptoir ? /,\s*formule sur mesure(?:\s*:[^·,]*)?(\s*·\s*)?/i : /$^/, function (x, suite) { return suite ? ', ' : ''; });
     if (prix) liste.push(gfRubrique('prix', 'Prix', gpEsc(prix), prix));
     // (la derniere modification ne s ecrit plus sur la ligne, 2026-11-06, Ansar : « quand
     // c modifié pas besoin d écrire sur la page ici que ça a été modifié, ça prend trop de
@@ -929,7 +946,7 @@
     var occasion = typeof getReservationOccasion === 'function' ? getReservationOccasion(r) : '';
     if (GF_GROUPES[occasion]) sortie.push({ cle: 'groupe', mot: GF_GROUPES[occasion] });
     var hors = gfHorsHoraires(r);
-    if (hors) sortie.push({ cle: 'horaire', mot: 'Hors horaires', detail: 'ouverture exceptionnelle, ' + hors, bulle: 'Hors horaires, ouverture exceptionnelle, ' + hors });
+    if (hors) sortie.push({ cle: 'horaire', mot: 'Hors horaires', detail: 'ouverture exceptionnelle de ' + hors, bulle: 'Hors horaires, ouverture exceptionnelle de ' + hors });
     return sortie;
   };
   // Les seules notes ecrites par l equipe, sans lire le reste du dossier : la liste sous

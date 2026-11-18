@@ -98,11 +98,17 @@ function verifier(f, afficher = true) {
   const notes = [];
   const v = (cond, label) => notes.push([Boolean(cond), label]);
   v(f.lot.statut === 207 && f.lot.ok === false, `[1] lot partiel : 207, ok false (${f.lot.statut}, ${f.lot.ok})`);
-  v(JSON.stringify(f.lot.crees) === JSON.stringify(['0:1+2+3+4+5+6+7', '1:8']),
-    `[1] dans l ordre, chacun apres le precedent : 40 joueurs sur 7 pistes, le suivant sur la 8e (${JSON.stringify(f.lot.crees)})`);
+  // LES PISTES SE REPARTISSENT (2026-11-18, assets/pinlane-pistes.js) : le bloc de 7 n est plus
+  // forcement 1-7, il suit le tour du jour (1-7 ou 2-8). Ce qui compte ici reste : le grand
+  // groupe prend 7 pistes cote a cote, le dossier suivant la seule piste qui reste.
+  const pistesDe = (texte) => String(texte || '').split(':')[1] ? String(texte).split(':')[1].split('+').map(Number) : [];
+  const septPuisLaDerniere = (grand, petit) => grand.length === 7 && grand[6] - grand[0] === 6 && petit.length === 1
+    && [...grand, ...petit].sort((a, b) => a - b).join(',') === '1,2,3,4,5,6,7,8';
+  v(f.lot.crees.length === 2 && /^0:/.test(f.lot.crees[0]) && /^1:/.test(f.lot.crees[1]) && septPuisLaDerniere(pistesDe(f.lot.crees[0]), pistesDe(f.lot.crees[1])),
+    `[1] dans l ordre, chacun apres le precedent : 40 joueurs sur 7 pistes cote a cote, le suivant sur la 8e, celle qui reste (${JSON.stringify(f.lot.crees)})`);
   v(f.lot.echecs.length === 1 && f.lot.echecs[0].index === 2 && /piste/i.test(f.lot.echecs[0].message),
     `[1] l echec dit son rang et sa raison (${JSON.stringify(f.lot.echecs)})`);
-  v(JSON.stringify(f.enBase1) === JSON.stringify(['Grand groupe:1+2+3+4+5+6+7', 'Petit:8']), `[1] en base : les deux crees, rien d autre (${JSON.stringify(f.enBase1)})`);
+  v(f.enBase1.length === 2 && /^Grand groupe:/.test(f.enBase1[0]) && /^Petit:/.test(f.enBase1[1]) && septPuisLaDerniere(pistesDe(f.enBase1[0]), pistesDe(f.enBase1[1])), `[1] en base : les deux crees, rien d autre (${JSON.stringify(f.enBase1)})`);
   v(f.tout.statut === 201 && f.tout.ok === true && f.tout.n === 3 && f.tout.echecs === 0 && f.tout.ordre === 'Un,Deux,Trois',
     `[2] tout passe : 201, trois reservations dans l ordre (${JSON.stringify(f.tout)})`);
   v(f.forceLot.statut === 207 && JSON.stringify(f.forceLot.aPlacer) === '[false,false]' && JSON.stringify(f.forceLot.echecs) === '[2]',

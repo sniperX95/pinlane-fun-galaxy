@@ -629,7 +629,11 @@ async function scenarioPlanRetenu(S) {
   // confirmation doit obtenir la piste 8, qui lui etait gardee. La piste 2 se
   // libere aussi : sans le plan retenu, le rechange sous le verrou donnerait
   // une piste libre (2 : voir scripts/rush-reservations-check.js), pas la sienne.
-  semer([2, 3, 4, 5, 6, 7].map((l) => reservationLigne(900 + l, '15:00', [l])).concat([reservationLigne(991, '15:00', [1])]));
+  // LES PISTES SE REPARTISSENT (2026-11-18, assets/pinlane-pistes.js) : le moteur ne prend
+  // plus la premiere libre mais la moins utilisee du jour. La 2 (une heure) et la 8 (deux
+  // heures) ont donc servi le matin : a la confirmation, le moteur choisit la 1, comme la
+  // course le suppose, et le rechange sans plan retenu donnerait la 2, jamais la 8.
+  semer([2, 3, 4, 5, 6, 7].map((l) => reservationLigne(900 + l, '15:00', [l])).concat([reservationLigne(991, '15:00', [1]), reservationLigne(992, '10:00', [2]), reservationLigne(998, '10:00', [8], { duration: 2, total_duration: 2 })]));
   const b = await retenir(S, corps);
   const tenue = blocagesEnCours()[0];
   base.reservations.set(991, { ...base.reservations.get(991), status: 'cancelled' });

@@ -117,7 +117,19 @@ function gestesVitrine(body) {
 // UNE ERREUR CHEZ LE CLIENT SE SAIT (2026-11-05). Le formulaire public ne remontait rien :
 // un plantage au milieu du parcours ne se voyait que si le client appelait. Meme table et
 // memes gardes que la console (lib/client-errors : plafonds, expurgation, 20 lignes par
-// heure et par centre). Le message Telegram ne recopie rien de ce que le navigateur envoie.
+// heure et par appareil). Le message Telegram ne recopie rien de ce que le navigateur envoie.
+//
+// UN APPAREIL, UN COMPTEUR (2026-11-18, avant-lancement B3). Toutes les erreurs du formulaire d un centre portaient le
+// meme membre, public:<centre>. Le plafond de 20 lignes par heure et par membre (lib/client-errors) etait donc commun
+// a tous les visiteurs, et 20 fausses erreurs d un seul envoyeur faisaient taire les vrais plantages des autres. Le
+// membre nomme maintenant l appareil : le bloc de son adresse (lib/adresse-reseau) et son navigateur, en empreinte
+// poivree par le secret du serveur, jamais l adresse elle-meme. Il commence toujours par public:<centre>, le prefixe
+// que lisent la Tour de controle, le bilan et lib/client-errors.
+function membreDuFormulaire(req, centre) {
+  const appareil = `${cleDeLAdresse(getClientIp(req))}|${String((req.headers && req.headers['user-agent']) || '').slice(0, 200)}`;
+  const empreinte = crypto.createHmac('sha256', `pinlane-erreurs:${process.env.STAFF_AUTH_SECRET || ''}`).update(appareil).digest('hex').slice(0, 16);
+  return `public:${centre}:${empreinte}`;
+}
 async function handleErreurFormulaire(req, res, body) {
   if (enforceRateLimit(req, res, { scope: 'erreur-formulaire', limit: 10, windowMs: 600_000 })) return;
   const centre = String(body.centerId || '').trim().toLowerCase();
@@ -136,7 +148,7 @@ async function handleErreurFormulaire(req, res, body) {
     lineno: body.lineno,
     colno: body.colno,
     stack: body.stack,
-    memberId: `public:${centre}`,
+    memberId: membreDuFormulaire(req, centre),
     userAgent: req.headers['user-agent'],
   });
   // Une erreur qu Ansar a vue sur son ecran (sa session, la salle d essai) s enregistre, sans alerte.

@@ -1,9 +1,12 @@
-// LA PORTE PUBLIQUE : CE QU UN INCONNU NE PEUT PLUS FAIRE (2026-11-18, avant-lancement B2).
+// LA PORTE PUBLIQUE : CE QU UN INCONNU NE PEUT PLUS FAIRE (2026-11-18, avant-lancement B2 et B3).
 //
 // [M] LA COPIE RATEE (B2). Les numeros de reservation se suivent : n importe qui faisait sonner « copie ratee »,
 //     URGENT, sur les vraies reservations de l heure. Le signal ne sonne plus que s il porte ce que seul le client a
 //     recu : un jeton de sa reservation (retenue ou cle de confirmation, dont la base garde l empreinte) ou, pour une
 //     demande de groupe, la preuve rendue avec son numero. Sans elle, rien ne sonne et la base n est pas lue.
+// [E] LES ERREURS DU FORMULAIRE (B3). Toutes portaient le meme membre (public:<centre>) : 20 fausses erreurs d un seul
+//     envoyeur remplissaient le plafond de l heure et faisaient taire les vrais plantages de tous. Le membre est
+//     maintenant l appareil (bloc d adresse et navigateur, en empreinte) : l envoyeur ne remplit que le sien.
 //
 // Zero reseau, zero base : 'pg' est remplace avant tout require du depot, les alertes sont gardees en memoire.
 // Les contre-preuves chargent le code mute en memoire : aucun fichier n est ecrit.
@@ -33,6 +36,8 @@ const MUTATIONS = {
   'miroir-reservation-sans-jeton': { f: 'api/public-booking-meta.js', de: " and exists (select 1 from slot_holds h where h.reservation_id = reservations.id and h.release_reason = 'converted' and h.token_hash = any($3::text[]))", vers: '', lettre: 'M' },
   'miroir-demande-sans-preuve': { f: 'api/public-booking-meta.js', de: 'estDemande ? !demandeProuvee(centre, numero, body.preuve) : !empreintes.length', vers: 'estDemande ? false : !empreintes.length', lettre: 'M' },
   'miroir-preuve-sans-centre': { f: 'api/public-booking-meta.js', de: 'update(`${centre}:d${numero}`)', vers: 'update(`d${numero}`)', lettre: 'M' },
+  'erreurs-un-seul-compteur': { f: 'api/public-booking-meta.js', de: '    memberId: membreDuFormulaire(req, centre),\n', vers: '    memberId: `public:${centre}`,\n', lettre: 'E' },
+  'erreurs-adresse-entiere': { f: 'api/public-booking-meta.js', de: '`${cleDeLAdresse(getClientIp(req))}|', vers: '`${getClientIp(req)}|', lettre: 'E' },
 };
 const MUTATION = (process.argv.find((a) => a.startsWith('--mutation=')) || '').slice('--mutation='.length);
 if (MUTATION && !MUTATIONS[MUTATION]) { console.error(`mutation inconnue : ${MUTATION}`); process.exit(2); }
@@ -199,6 +204,29 @@ async function lire(handler, query, headers = {}) {
 
     const source = muter(META, fs.readFileSync(META, 'utf8'));
     ok(/preuveMiroir: preuveDeLaDemande\(centerId, lead\.id\),/.test(source), 'la preuve relue est celle que la demande rend au client (handleCustomRequest)');
+  }
+
+  // =========================================================================
+  section('[E] LES ERREURS DU FORMULAIRE (B3) : un appareil, un compteur');
+  // =========================================================================
+  {
+    const erreur = (message) => ({ kind: 'erreur-formulaire', centerId: 'libramont', scene: 'date', message, source: 'https://app.pinlane.be/assets/fungalaxy-booking.js', lineno: 1, colno: 1, stack: `Error: ${message}\n    at x (https://app.pinlane.be/assets/fungalaxy-booking.js:1:1)` });
+    const ROBOT = { ip: '203.0.113.50', ua: 'Robot/1.0' };
+    for (let k = 0; k < 25; k += 1) await poster(handler, erreur(`fausse erreur ${k}`), ROBOT);
+    const membresRobot = [...new Set(ERREURS.map((e) => e.member_id))];
+    ok(membresRobot.length === 1 && ERREURS.length === 20, 'un envoyeur seul remplit son propre plafond, 20 lignes, pas plus', `${ERREURS.length} lignes, ${membresRobot.length} membre(s)`);
+    ok(/^public:libramont:[0-9a-f]{16}$/.test(membresRobot[0] || '') && !/203\.0\.113/.test(membresRobot[0] || ''), 'le membre commence par public:<centre> et ne porte pas l adresse en clair', membresRobot[0]);
+    const avant = ALERTES.length;
+    await poster(handler, erreur('Le catalogue ne s est pas charge'), { ip: '198.51.100.20', ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)' });
+    const vraie = ERREURS.find((e) => /catalogue/.test(e.message));
+    ok(Boolean(vraie) && vraie.member_id !== membresRobot[0], 'la vraie erreur d un client, juste apres, est enregistree sous son propre appareil', vraie ? vraie.member_id : 'perdue');
+    ok(ALERTES.length === avant + 1, 'et elle se dit', `${ALERTES.length - avant} alerte(s)`);
+    await poster(handler, erreur('ipv6 un'), { ip: '2001:db8:1:2::5', ua: 'Navigateur/1' });
+    await poster(handler, erreur('ipv6 deux'), { ip: '2001:db8:1:2:aaaa::9', ua: 'Navigateur/1' });
+    await poster(handler, erreur('ipv6 trois'), { ip: '2001:db8:1:2::5', ua: 'Navigateur/2' });
+    const membre = (m) => (ERREURS.find((e) => e.message === m) || {}).member_id;
+    ok(Boolean(membre('ipv6 un')) && membre('ipv6 un') === membre('ipv6 deux'), 'deux adresses du meme bloc /64 sont le meme appareil (changer d adresse ne rend pas un plafond neuf)', `${membre('ipv6 un')} / ${membre('ipv6 deux')}`);
+    ok(Boolean(membre('ipv6 trois')) && membre('ipv6 trois') !== membre('ipv6 un'), 'un autre navigateur derriere la meme adresse a son propre compteur', `${membre('ipv6 trois')}`);
   }
 
   console.info = infos;

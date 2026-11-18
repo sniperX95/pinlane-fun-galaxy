@@ -228,6 +228,7 @@
     "test:equipe-centre",
     "test:equipe-acces",
     "test:fondateur-invisible",
+    "test:fondateur-historiques",
     "test:tour-controle",
     "test:migrations-attendues",
     "test:garde-postes",

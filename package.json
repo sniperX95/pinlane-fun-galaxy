@@ -321,6 +321,7 @@
     "test:equipe-centre": "node scripts/equipe-centre-check.js",
     "test:equipe-acces": "node scripts/equipe-acces-check.js",
     "test:fondateur-invisible": "node scripts/fondateur-invisible-check.js",
+    "test:fondateur-historiques": "node scripts/fondateur-historiques-check.js && node scripts/fondateur-historiques-check.js --contre-preuves",
     "test:tour-controle": "node scripts/tour-controle-check.js",
     "test:migrations-attendues": "node scripts/migrations-attendues-check.js && node scripts/migrations-attendues-check.js --contre-preuves",
     "test:garde-postes": "node scripts/garde-postes-check.js",

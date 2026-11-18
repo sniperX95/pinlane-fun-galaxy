@@ -83,6 +83,8 @@ const traiter = async (req, res) => {
     // Sans le fondateur, ce n est pas non plus la meme reponse (2026-11-13, lib/fondateur-invisible.js) :
     // un poste qui a lu la journee du fondateur ne la garde pas pour une session du centre.
     if (res.__nomsDuFondateur && snapshot.revision) snapshot.revision = `${snapshot.revision}:sf`;
+    // Sa propre journee, ses traces masquees (2026-11-18), n est pas non plus celle d avant.
+    else if (res.__sesTraces && snapshot.revision) snapshot.revision = `${snapshot.revision}:st`;
     if (res.__sansMontants && snapshot.revision) {
       snapshot.revision = `sm-${require('crypto').createHash('sha256').update(String(snapshot.revision)).digest('hex').slice(0, 32)}:sans-montants`;
     }

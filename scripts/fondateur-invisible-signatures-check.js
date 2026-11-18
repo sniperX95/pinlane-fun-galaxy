@@ -109,7 +109,7 @@ function monter(liste = []) {
       const s = etat.session;
       if (!s || !auth.sessionHasPermission(s, permission)) { sendError(res, 403, 'Accès refusé.'); return null; }
       const F = require(path.join(ROOT, 'lib/fondateur-invisible.js'));
-      if (res && typeof res === 'object') res.__nomsDuFondateur = F.estFondateur(s) ? null : await F.nomsDuFondateur();
+      if (res && typeof res === 'object') await F.marquerLaReponse(res, s, permission);
       return { ...s, authorizedCenterId: options.centerId && options.centerId !== 'all' ? options.centerId : s.centerId };
     },
   });

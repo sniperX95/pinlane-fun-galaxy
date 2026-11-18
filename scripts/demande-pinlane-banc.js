@@ -195,8 +195,7 @@ function installerDoubles({ cerveauReel = false } = {}) {
       const ouverte = { ...s, authorizedCenterId: centre };
       if (res && typeof res === 'object' && res.__montantsDuCatalogue !== true) res.__sansMontants = !auth.sessionHasPermission(ouverte, 'payments.view');
       if (res && typeof res === 'object') {
-        const F = require(path.join(ROOT, 'lib/fondateur-invisible.js'));
-        res.__nomsDuFondateur = F.estFondateur(ouverte) ? null : await F.nomsDuFondateur();
+        await require(path.join(ROOT, 'lib/fondateur-invisible.js')).marquerLaReponse(res, ouverte, permission);
       }
       return ouverte;
     },

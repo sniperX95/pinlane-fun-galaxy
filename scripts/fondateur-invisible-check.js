@@ -8,7 +8,10 @@
 // Le centre de Libramont : Marie (Direction), Luc (Manager), le fondateur (membre platform-owner, qui
 // s appelle en base « Ansar Pinlane » : son nom ACTUEL, pas celui du seed) et sa session de secours.
 // Pour chaque surface : la Direction et le Manager ne voient RIEN du fondateur, ce que fait Marie reste
-// visible, le fondateur voit tout. Les serveurs sont les vrais (api/*.js), la base est en memoire et lit
+// visible. Le fondateur garde son identite (son membre, son role) et ses pages de fondateur (le journal de
+// la plateforme), mais depuis le 2026-11-18 un historique du centre ne le nomme pas, lui compris : il lit
+// l historique d un dossier, une note client, ses mails et le journal de l equipe comme la Direction, sa
+// prise d un mail sous « Vous ». Les serveurs sont les vrais (api/*.js), la base est en memoire et lit
 // les colonnes et les valeurs DANS le SQL : un predicat absent du texte ne filtre rien.
 //
 //   [R] la regle partagee (lib/fondateur-invisible.js) sur une valeur de chaque surface
@@ -512,6 +515,35 @@ function regle() {
   ok(!traceDuFondateur(JSON.stringify({ ...vu, client: null })), '[R] plus aucune trace du fondateur dans la valeur masquee', JSON.stringify(vu).slice(0, 300));
   const rendues = F.notesRendues(`${r.notes}\n${note('', 'Nouvelle', '2026-11-13T10:00:00.000Z')}`, brut.reservations[0].notes, noms);
   ok(rendues.split('\n')[1] === brut.reservations[0].notes.split('\n')[1] && rendues.endsWith(note('', 'Nouvelle', '2026-11-13T10:00:00.000Z')), '[R] le chemin du retour : une note masquee redevient la ligne en base, une nouvelle reste nouvelle', rendues);
+
+  // LUI COMPRIS (2026-11-18) : sa propre session lit les historiques comme la Direction, garde son identite
+  // (son membre) et sa prise d un mail, sous « Vous ».
+  const lui = F.sesTracesMasquees({ ...brut, threads: [{ ...brut.threads[0], prise: { memberId: FONDATEUR, memberName: NOM_ACTUEL } }], session: { member: { id: FONDATEUR, name: NOM_ACTUEL } } }, noms);
+  const rl = lui.reservations[0];
+  ok(!traceDuFondateur(rl.notes) && rl.notes.includes('Allergie aux noix') && rl.extras[0].par === '' && rl.opsPlan.derniereModif.par === '' && rl.activityProgress.bowling.by === '' && rl.activityProgress.laser.by === 'Luc Martin' && lui.suivi[0].par === '' && lui.archivedBy === '',
+    '[R] pour lui : ses notes, sur mesure, derniere modification, coches, suivi et auteurs perdent son nom, comme pour la Direction', rl);
+  ok(lui.threads[0].lecteurs.length === 1 && lui.threads[0].reponduPar === null && lui.messages[0].sentBy === null && lui.messages[0].lectures.length === 0,
+    '[R] pour lui : « Ouvert par », « Lu par » et « Répondu par » ne le nomment pas', lui.threads[0]);
+  ok(lui.threads[0].prise && lui.threads[0].prise.memberId === FONDATEUR && lui.threads[0].prise.memberName === 'Vous',
+    '[R] pour lui : le mail qu il a pris reste le sien, « Vous » a la place de son nom', lui.threads[0].prise);
+  ok(lui.members.length === 2 && lui.session.member.id === FONDATEUR && lui.session.member.name === NOM_ACTUEL && lui.client.name === 'Ansar Pinlane',
+    '[R] pour lui : son identite (son membre, sa session) ne bouge pas ; le nom d un client non plus', { members: lui.members, session: lui.session });
+}
+
+// La marque d une reponse, pour chaque session : la Direction ne lit rien de lui ; lui lit le centre sans ses
+// traces, sauf sur une page de fondateur (une route qui demande platform.admin), qui garde tout.
+async function regleDeLaMarque() {
+  section = 'R';
+  const F = require(LIB('fondateur-invisible.js'));
+  const staffAuth = require(LIB('staff-auth.js'));
+  const direction = { member: { id: 'libramont:direction-marie', name: 'Marie Dumont' }, role: { id: 'direction', locked: true }, permissions: [...staffAuth.ALL_PERMISSIONS] };
+  const fondateur = { member: { id: FONDATEUR, name: NOM_ACTUEL }, role: { id: 'platform-owner', locked: true }, permissions: [...staffAuth.ALL_PERMISSIONS, 'platform.admin'] };
+  const valeur = { historique: [{ le: '2026-11-11', par: NOM_ACTUEL, quoi: ['Heure 14:00 → 15:00'] }] };
+  const lue = async (session, permission) => { const res = {}; await F.marquerLaReponse(res, session, permission); return F.pourLaReponse(res, valeur).historique[0].par; };
+  ok(await lue(direction, 'reservations.view') === '' && await lue(fondateur, 'reservations.view') === '' && await lue(fondateur, ['emails.view', 'reservations.view']) === '',
+    '[R] la marque : une page du centre ne le nomme pour personne, lui compris', valeur);
+  ok(await lue(fondateur, 'platform.admin') === NOM_ACTUEL && await lue(fondateur, ['platform.admin']) === NOM_ACTUEL,
+    '[R] la marque : sa page de fondateur (platform.admin) garde tout', valeur);
 }
 
 // ---------------------------------------------------------------------------
@@ -533,10 +565,13 @@ async function equipe() {
   ok(!(ac.roles || []).some((r) => r.id === 'platform-owner') && (ac.roles || []).length === 2, '[E] Direction : les roles sans celui de la plateforme', (ac.roles || []).map((r) => r.id));
   ok(Array.isArray(ac.events) && ac.events.length === 0, '[E] Direction : le journal de l equipe ne part pas (il est au fondateur)', ac.events);
   ok(!traceDuFondateur(vueMarie.texte), '[E] Direction : aucune trace du fondateur dans toute la reponse, meme par appel direct', vueMarie.texte.slice(0, 300));
+  // Un geste d equipe du fondateur, ecrit au journal de l equipe avant le 18/11.
+  db.staff_access_events.push({ id: 9901, center_id: 'libramont', actor_member_id: FONDATEUR, event_type: 'access_change', label: 'Code de Luc Martin régénéré', payload: {}, created_at: '2026-11-12T09:00:00.000Z' });
   const vueFondateur = await appeler('/api/staff-auth?centerId=libramont', { jeton: s.fondateur.jeton });
   const acF = (vueFondateur.json && vueFondateur.json.accessControl) || {};
-  ok((acF.members || []).some((m) => m.id === FONDATEUR) && (acF.roles || []).some((r) => r.id === 'platform-owner'), '[E] le fondateur voit tout : son membre et son role', (acF.members || []).map((m) => m.id));
+  ok((acF.members || []).some((m) => m.id === FONDATEUR) && (acF.roles || []).some((r) => r.id === 'platform-owner'), '[E] le fondateur garde son identite : son membre et son role', (acF.members || []).map((m) => m.id));
   ok((acF.events || []).some((e) => e.label === 'Marie Dumont connecté'), '[E] le fondateur lit le journal de l equipe', acF.events);
+  ok(!(acF.events || []).some((e) => e.actorMemberId === FONDATEUR || e.label === 'Code de Luc Martin régénéré'), '[E] lui compris (2026-11-18) : ses propres gestes ne sont pas au journal de l equipe', acF.events);
   const vueSecours = await appeler('/api/staff-auth?centerId=libramont', { jeton: s.secours.jeton });
   ok(vueSecours.statut === 200 && ((vueSecours.json.accessControl || {}).events || []).length > 0, '[E] la session de secours est le fondateur : elle lit aussi le journal', vueSecours.texte.slice(0, 200));
   return s;
@@ -562,9 +597,10 @@ async function journalDAudit() {
   ok(hMarie.statut === 200 && quoi(hMarie).length === 1 && /4 → 6 joueurs/.test(quoi(hMarie)[0]) && hMarie.json.historique[0].par === 'Marie Dumont', '[A] historique, Direction : le geste de Marie reste, avec son nom', hMarie.texte.slice(0, 300));
   ok(!traceDuFondateur(hMarie.texte) && !/Heure 14:00|Date /.test(hMarie.texte), '[A] historique, Direction : rien de ce que le fondateur a fait sur le dossier', hMarie.texte.slice(0, 300));
   ok(hLuc.statut === 200 && !traceDuFondateur(hLuc.texte) && quoi(hLuc).length === 1, '[A] historique, Manager : pareil', hLuc.texte.slice(0, 300));
-  ok(hFondateur.statut === 200 && quoi(hFondateur).length === 3 && hFondateur.texte.includes(NOM_ACTUEL), '[A] historique, fondateur : tout, ses gestes compris', hFondateur.texte.slice(0, 300));
+  ok(hFondateur.statut === 200 && quoi(hFondateur).length === 1 && /4 → 6 joueurs/.test(quoi(hFondateur)[0]) && !traceDuFondateur(hFondateur.texte) && !/Heure 14:00|Date /.test(hFondateur.texte),
+    '[A] historique, fondateur : lui compris (2026-11-18), il lit l historique de la Direction, sans ses gestes ni son nom', hFondateur.texte.slice(0, 300));
   const plateforme = await appeler('/api/ops?action=auditLog&centerId=libramont', { jeton: s.fondateur.jeton });
-  ok(plateforme.statut === 200 && ((plateforme.json && plateforme.json.entries) || []).some((l) => l.actorMemberId === FONDATEUR), '[A] Plateforme › Journal : le fondateur y lit ses propres lignes', plateforme.texte.slice(0, 300));
+  ok(plateforme.statut === 200 && ((plateforme.json && plateforme.json.entries) || []).some((l) => l.actorMemberId === FONDATEUR && l.actorLabel === NOM_ACTUEL), '[A] Plateforme › Journal (page de fondateur) : il y lit ses propres lignes, a son nom', plateforme.texte.slice(0, 300));
   const refus = await appeler('/api/ops?action=auditLog&centerId=libramont', { jeton: s.marie.jeton });
   ok(refus.statut === 403, '[A] la Direction n ouvre pas le journal de la plateforme', refus.statut);
 }
@@ -587,7 +623,8 @@ async function reponses() {
   const de = (r) => (r.json && r.json.note) || {};
   ok(nMarie.statut === 200 && de(nMarie).body === 'Client fidele, prefere la piste 3.' && de(nMarie).updatedBy === '', '[M] note client, Direction : le texte reste, le nom actuel du fondateur part (vieille ligne)', nMarie.texte);
   ok(nLuc.statut === 200 && de(nLuc).updatedBy === '' && !traceDuFondateur(nLuc.texte), '[M] note client, Manager : pareil', nLuc.texte);
-  ok(de(nFondateur).updatedBy === NOM_ACTUEL && de(nSecours).updatedBy === NOM_ACTUEL, '[M] note client, fondateur et session de secours : son nom reste', [nFondateur.texte, nSecours.texte]);
+  ok(nFondateur.statut === 200 && de(nFondateur).body === 'Client fidele, prefere la piste 3.' && de(nFondateur).updatedBy === '' && de(nSecours).updatedBy === '',
+    '[M] note client, fondateur et session de secours : lui compris (2026-11-18), le texte reste, son nom part', [nFondateur.texte, nSecours.texte]);
   db.client_notes[0].updated_by = NOM_DE_NAISSANCE;
   const nMarie2 = await note(s.marie.jeton);
   ok(de(nMarie2).updatedBy === '', '[M] le nom de naissance du membre fondateur part aussi', nMarie2.texte);
@@ -642,14 +679,22 @@ async function mails() {
   ok(fLuc.statut === 200 && !traceDuFondateur(fLuc.texte) && parId(fLuc)[501].lecteurs.length === 0, '[L] Manager : pareil', fLuc.texte.slice(0, 200));
   const fLui = await fils(s.fondateur.jeton);
   const tF = parId(fLui);
-  ok(tF[501] && tF[501].lecteurs.some((l) => l.memberId === FONDATEUR) && tF[502].reponduPar && tF[502].reponduPar.memberName === NOM_ACTUEL, '[L] fondateur : il voit ses lectures et ses vieilles reponses', [tF[501] && tF[501].lecteurs, tF[502] && tF[502].reponduPar]);
+  // Lui compris (2026-11-18) : « Ouvert par » et « Répondu par » ne le nomment pas ; le mail qu il a pris
+  // reste le sien, sous « Vous ».
+  ok(fLui.statut === 200 && tF[501] && tF[501].lecteurs.length === 0 && tF[502] && tF[502].lecteurs.length === 1 && tF[502].lecteurs[0].memberName === 'Marie Dumont'
+    && tF[502].status === 'answered' && !(tF[502].reponduPar && tF[502].reponduPar.memberName) && tF[503] && tF[503].reponduPar && tF[503].reponduPar.memberName === '',
+  '[L] fondateur : ses lectures et ses vieilles reponses ne le nomment pas, comme pour la Direction', [tF[501] && tF[501].lecteurs, tF[502] && tF[502].reponduPar]);
+  ok(tF[501] && tF[501].prise && tF[501].prise.memberId === FONDATEUR && tF[501].prise.memberName === 'Vous', '[L] fondateur : le mail qu il a pris reste le sien, « Vous » a la place de son nom', tF[501] && tF[501].prise);
+  ok(tF[501] && tF[501].luParMoi === false && tM[502] && tM[502].luParMoi === true, '[L] fondateur : sa vieille lecture ne fait pas « Ouvert par vous », le mail reste nouveau ; celle de Marie, oui', [tF[501] && tF[501].luParMoi, tM[502] && tM[502].luParMoi]);
+  ok(!fLui.texte.includes(NOM_ACTUEL) && !fLui.texte.includes(NOM_DE_NAISSANCE), '[L] fondateur : son nom nulle part dans la liste des mails', fLui.texte.slice(0, 300));
   const unFil = async (jeton) => appeler('/api/ops?action=emailThread&centerId=libramont&id=502', { jeton });
   const dMarie = await unFil(s.marie.jeton);
   const msg = (r, id) => (((r.json && r.json.messages) || []).find((m) => m.id === id) || {});
   ok(dMarie.statut === 200 && msg(dMarie, 7002).lectures.length === 1 && msg(dMarie, 7004).sentBy === null && msg(dMarie, 7003).sentBy.memberName === 'Marie Dumont', '[L] Direction, le fil : « Lu par » sans lui, sa reponse dite par l equipe, celle de Marie a son nom', [msg(dMarie, 7002).lectures, msg(dMarie, 7004).sentBy]);
   ok(!traceDuFondateur(dMarie.texte), '[L] Direction, le fil : aucune trace du fondateur', dMarie.texte.slice(0, 300));
   const dLui = await unFil(s.fondateur.jeton);
-  ok(msg(dLui, 7002).lectures.length === 2 && msg(dLui, 7004).sentBy && msg(dLui, 7004).sentBy.memberName === NOM_ACTUEL, '[L] fondateur, le fil : tout', [msg(dLui, 7002).lectures, msg(dLui, 7004).sentBy]);
+  ok(dLui.statut === 200 && msg(dLui, 7002).lectures.length === 1 && msg(dLui, 7002).lectures[0].memberName === 'Marie Dumont' && msg(dLui, 7004).sentBy === null && msg(dLui, 7003).sentBy.memberName === 'Marie Dumont' && !traceDuFondateur(dLui.texte),
+    '[L] fondateur, le fil : « Lu par » sans lui ni sa session de secours, sa reponse dite par l equipe, comme pour la Direction', [msg(dLui, 7002).lectures, msg(dLui, 7004).sentBy]);
   const lire = async (jeton) => appeler('/api/ops', { methode: 'POST', jeton, corps: { action: 'markCommunicationRead', centerId: 'libramont', communicationIds: [7005] } });
   const avant = db.communication_reads.length;
   const rLui = await lire(s.fondateur.jeton);
@@ -722,7 +767,8 @@ async function journauxAssistant() {
   const jDirection = await jouer(marie, 'journal_du_centre');
   ok(jDirection.erreur === true && /n'a pas le droit/.test(jDirection.contenu), '[J] journal_du_centre, Direction : refuse, meme demande en direct', jDirection.contenu);
   const jFondateur = await jouer(fondateur, 'journal_du_centre');
-  ok(!jFondateur.erreur && jFondateur.lignes.length === 3 && jFondateur.lignes.some((l) => l.qui === NOM_ACTUEL) && jFondateur.lignes.some((l) => l.qui === 'Marie Dumont'), '[J] journal_du_centre, fondateur : toutes les lignes, les siennes comprises', jFondateur.contenu.slice(0, 400));
+  ok(!jFondateur.erreur && jFondateur.lignes.length === 1 && jFondateur.lignes[0].qui === 'Marie Dumont' && !traceDuFondateur(jFondateur.contenu),
+    '[J] journal_du_centre, fondateur : lui compris (2026-11-18), les gestes de l equipe sans les siens (ils restent au journal de la plateforme)', jFondateur.contenu.slice(0, 400));
   const eDirection = await jouer(marie, 'equipe_et_activite');
   const nomsE = eDirection.lignes.map((l) => l.nom);
   const marieE = eDirection.lignes.find((l) => l.nom === 'Marie Dumont') || {};
@@ -735,7 +781,9 @@ async function journauxAssistant() {
   ok(!nDirection.erreur && auteursD.includes('Marie Dumont') && auteursD.includes('') && !auteursD.includes(NOM_ACTUEL), '[J] notes_equipe, Direction : la note du fondateur sans son nom, celle de Marie avec le sien', auteursD);
   ok(!traceDuFondateur(nDirection.contenu) && nDirection.contenu.includes('Marie Dumont'), '[J] notes_equipe, Direction : ce que lit le modele (tableau compact) n a pas son nom', nDirection.contenu.slice(0, 400));
   const nFondateur = await jouer(fondateur, 'notes_equipe');
-  ok(nFondateur.lignes.some((l) => l.auteur === NOM_ACTUEL), '[J] notes_equipe, fondateur : son nom reste', nFondateur.lignes.map((l) => l.auteur));
+  const auteursF = nFondateur.lignes.map((l) => l.auteur);
+  ok(!nFondateur.erreur && auteursF.includes('Marie Dumont') && auteursF.includes('') && !auteursF.includes(NOM_ACTUEL) && !traceDuFondateur(nFondateur.contenu),
+    '[J] notes_equipe, fondateur : lui compris (2026-11-18), sa note sans son nom, celle de Marie avec le sien, dans ce que lit le modele aussi', auteursF);
 }
 
 // La vraie console, un navigateur a la fois (la RAM du poste est comptee).
@@ -808,18 +856,26 @@ const CONTRE_PREUVES = [
   { nom: 'le membre du fondateur rendu a la Direction', section: 'E', jouer: equipe, fichier: LIB('staff-auth.js'),
     de: "const lesMembres = fondateur ? members.rows : members.rows.filter((row) => !estMembreFondateur(row.id));", vers: 'const lesMembres = members.rows;' },
   { nom: 'le journal de l equipe rendu a la Direction', section: 'E', jouer: equipe, fichier: LIB('staff-auth.js'),
-    de: 'events: fondateur ? events.rows.map(mapEvent) : [],', vers: 'events: events.rows.map(mapEvent),' },
+    de: 'events: fondateur ? events.rows.filter((row) => !estMembreFondateur(row.actor_member_id)).map(mapEvent) : [],', vers: 'events: events.rows.map(mapEvent),' },
+  { nom: 'ses propres gestes au journal de l equipe', section: 'E', jouer: equipe, fichier: LIB('staff-auth.js'),
+    de: 'events: fondateur ? events.rows.filter((row) => !estMembreFondateur(row.actor_member_id)).map(mapEvent) : [],', vers: 'events: fondateur ? events.rows.map(mapEvent) : [],' },
   { nom: 'la connexion du fondateur inscrite au centre', section: 'E', jouer: equipe, fichier: LIB('staff-auth.js'),
     de: 'if (!estMembreFondateur(subject.member.id)) {', vers: 'if (true) {' },
   { nom: 'le journal d audit lu sans le filtre', section: 'A', jouer: journalDAudit, fichier: LIB('audit-log.js'),
     de: 'if (options.avecFondateur !== true) {', vers: 'if (false) {' },
   { nom: 'l historique ouvert avec le fondateur pour tous', section: 'A', jouer: journalDAudit, fichiers: [
-    { fichier: API('staff-reservations.js'), de: 'avecFondateur: estFondateur(sessionHistorique)', vers: 'avecFondateur: true' },
+    { fichier: API('staff-reservations.js'), de: 'lireHistoriqueDossier({ centerId: centre, reservationId: dossier.id })', vers: 'lireHistoriqueDossier({ centerId: centre, reservationId: dossier.id, avecFondateur: true })' },
   ] },
+  { nom: 'l historique rendu au fondateur avec ses gestes', section: 'A', jouer: journalDAudit, fichier: API('staff-reservations.js'),
+    de: 'lireHistoriqueDossier({ centerId: centre, reservationId: dossier.id })', vers: "lireHistoriqueDossier({ centerId: centre, reservationId: dossier.id, avecFondateur: sessionHasPermission(sessionHistorique, 'platform.admin') })" },
   { nom: 'la marque des reponses jamais posee', section: 'M', jouer: reponses, fichier: LIB('staff-auth.js'),
-    de: "res.__nomsDuFondateur = estFondateur(effective) ? null : await nomsDuFondateur();", vers: 'res.__nomsDuFondateur = null;' },
+    de: 'await marquerLaReponse(res, effective, permission);', vers: '' },
   { nom: 'sendJson qui ignore la marque', section: 'M', jouer: reponses, fichier: LIB('http.js'),
-    de: 'const sansFondateur = res.__nomsDuFondateur ?', vers: 'const sansFondateur = false ?' },
+    de: 'const sansFondateur = res.__nomsDuFondateur || res.__sesTraces ?', vers: 'const sansFondateur = false ?' },
+  { nom: 'sa propre reponse rendue avec son nom', section: 'M', jouer: reponses, fichier: LIB('fondateur-invisible.js'),
+    de: '  res.__sesTraces = fondateur && !pageDeFondateur ? await nomsDuFondateur() : null;', vers: '  res.__sesTraces = null;' },
+  { nom: 'sa page de fondateur masquee comme le centre', section: 'R', jouer: regleDeLaMarque, fichier: LIB('fondateur-invisible.js'),
+    de: '  res.__sesTraces = fondateur && !pageDeFondateur ? await nomsDuFondateur() : null;', vers: '  res.__sesTraces = fondateur ? await nomsDuFondateur() : null;' },
   { nom: 'le nom actuel du fondateur jamais lu', section: 'M', jouer: reponses, fichier: LIB('fondateur-invisible.js'),
     de: "lus = (result && Array.isArray(result.rows) ? result.rows : []).map((row) => row && row.name).filter(Boolean);", vers: 'lus = [];' },
   { nom: 'la lecture du fondateur acceptee par la route', section: 'L', jouer: mails, fichier: API('ops.js'),
@@ -828,6 +884,16 @@ const CONTRE_PREUVES = [
     de: "if (require('./fondateur-invisible').estMembreFondateur(memberId)) return { marques: 0 };", vers: '' },
   { nom: 'la reponse du fondateur signee de son nom', section: 'L', jouer: mails, fichier: LIB('ops-communications.js'),
     de: "if (require('./fondateur-invisible').estMembreFondateur(memberId)) return { memberId: '', memberName: '', memberRole: '' };", vers: '' },
+  { nom: 'ses lectures gardees dans sa propre liste', section: 'L', jouer: mails, fichier: LIB('fondateur-invisible.js'),
+    de: '    const retirer = !pourLui || CLES_DE_TRACES.includes(cle);', vers: '    const retirer = !pourLui;' },
+  { nom: 'sa reponse gardee a son nom pour lui', section: 'L', jouer: mails, fichier: LIB('fondateur-invisible.js'),
+    de: '    if (!pourLui || sousUnAuteur) return null;', vers: '    if (!pourLui) return null;' },
+  { nom: 'sa prise rendue sous son nom', section: 'L', jouer: mails, fichier: LIB('fondateur-invisible.js'),
+    de: '    return CLES_D_ETAT_VIVANT.includes(cle) ? { ...valeur, memberName: VOUS } : valeur;', vers: '    return valeur;' },
+  { nom: 'sa vieille lecture fait « Ouvert par vous »', section: 'L', jouer: mails, fichier: LIB('email-threads.js'),
+    de: "luParMoi: Boolean(moi && !require('./fondateur-invisible').estMembreFondateur(moi) && lecteurs.some((lecteur) => lecteur.memberId === moi)),", vers: 'luParMoi: Boolean(moi && lecteurs.some((lecteur) => lecteur.memberId === moi)),' },
+  { nom: 'sa prise effacee comme pour le centre', section: 'L', jouer: mails, fichier: LIB('fondateur-invisible.js'),
+    de: '    return CLES_D_ETAT_VIVANT.includes(cle) ? { ...valeur, memberName: VOUS } : valeur;', vers: '    return null;' },
   { nom: 'la console du fondateur qui marque lu', section: 'L', jouer: mailsConsole, ecran: { fichier: 'assets/staff-pages-v2.js',
     de: 'if (!fondateur && nonLus.length && !pv2Threads.marquesLus.has(cle)) {', vers: 'if (nonLus.length && !pv2Threads.marquesLus.has(cle)) {' } },
   { nom: 'le journal du centre rendu a la Direction', section: 'J', jouer: journauxAssistant, fichier: LIB('assistant-outils-centre.js'),
@@ -836,6 +902,10 @@ const CONTRE_PREUVES = [
     de: 'const lesMembres = estFondateur(session) ? membres.rows : membres.rows.filter((m) => !estMembreFondateur(m.id));', vers: 'const lesMembres = membres.rows;' },
   { nom: 'les outils lus sans le filtre du fondateur', section: 'J', jouer: journauxAssistant, fichier: LIB('assistant-outils.js'),
     de: "const sortie = await require('./fondateur-invisible').pourLaSession(ctx.session, await outil.lire(ctx, donnees, ouverte, suivi));", vers: 'const sortie = await outil.lire(ctx, donnees, ouverte, suivi);' },
+  { nom: 'le journal du centre rendu au fondateur avec ses gestes', section: 'J', jouer: journauxAssistant, fichier: LIB('assistant-outils-centre.js'),
+    de: "journalDeLaPeriode(readAuditLog, { centerId: id, actorKind: 'staff', outcome: 'success' }, { debut, fin })", vers: "journalDeLaPeriode(readAuditLog, { centerId: id, actorKind: 'staff', outcome: 'success', avecFondateur: true }, { debut, fin })" },
+  { nom: 'les outils rendus entiers au fondateur', section: 'J', jouer: journauxAssistant, fichier: LIB('fondateur-invisible.js'),
+    de: '  return estFondateur(session) ? sesTracesMasquees(valeur, noms) : masquerFondateur(valeur, noms);', vers: '  return estFondateur(session) ? valeur : masquerFondateur(valeur, noms);' },
   { nom: 'un role d equipe pris pour le fondateur (sous-chaine)', section: 'R', jouer: regle, fichier: LIB('fondateur-invisible.js'),
     de: "return ID_MEMBRE.test(String(memberId ?? '').trim());", vers: "return String(memberId ?? '').includes(MARQUE_MEMBRE);" },
   { nom: 'le tableau compact du modele garde son nom', section: 'J', jouer: journauxAssistant, fichier: LIB('fondateur-invisible.js'),
@@ -882,6 +952,7 @@ async function contrePreuves() {
   try {
     remplirBase();
     regle();
+    await regleDeLaMarque();
     await equipe();
     await journalDAudit();
     await reponses();

@@ -10,7 +10,8 @@
 // de scripts/demande-pinlane-banc.js. La demande 51 porte deja des traces du fondateur (prise en charge,
 // note, reponse, preparation de Pinlane), sous son nom actuel « Ansar Pinlane » et sous son nom de
 // naissance, a cote de celles de Luc (Manager).
-//   [L] la lecture : GET customRequests rend ses traces sans nom a Marie (Direction) et a Luc, entieres a lui
+//   [L] la lecture : GET customRequests rend ses traces sans nom a Marie (Direction), a Luc, et a lui-meme
+//       (2026-11-18 : un historique du centre ne le nomme pas, lui compris)
 //   [E] l ecriture : prise en charge, note, reponse au client et reservation de la demande (proposition de
 //       la v4 et reservation de la v5) signees par personne pour lui et sa session de secours, par Marie
 //       pour Marie
@@ -128,7 +129,9 @@ async function groupeSuivi(editions = []) {
     const luc = await lireDemande(LUC(), 51);
     v(luc.statut === 200 && luc.demande && sansLui(JSON.stringify(luc.demande)) && JSON.stringify(luc.demande).includes('Luc Martin'), '[L4] Luc (Manager) ne le voit pas non plus', `${luc.statut} ${JSON.stringify(luc.demande || {}).slice(0, 200)}`);
     const lui = await lireDemande(FONDATEUR(), 51);
-    v(lui.statut === 200 && lui.demande && JSON.stringify(lui.demande).includes(NOM_ACTUEL) && JSON.stringify(lui.demande).includes(NOM_DE_NAISSANCE), '[L5] le fondateur, lui, voit tout', JSON.stringify(lui.demande || {}).slice(0, 200));
+    const histoLui = (lui.demande && lui.demande.suivi && lui.demande.suivi.historique) || [];
+    v(lui.statut === 200 && lui.demande && sansLui(JSON.stringify(lui.demande)) && histoLui.some((e) => e.type === 'prise-en-charge' && e.par === '') && JSON.stringify(lui.demande).includes('Luc Martin'),
+      '[L5] le fondateur lit la demande comme Marie : sa prise en charge reste, sans son nom ; Luc garde Luc', JSON.stringify(lui.demande || {}).slice(0, 200));
 
     let r = await ops(FONDATEUR(), { action: 'customRequestStatus', id: 51, status: 'in_progress' });
     const prise = dernier(51, 'prise-en-charge');
@@ -189,7 +192,8 @@ async function groupePinlane(editions = []) {
     v(!lu.systeme.includes(LIGNE_DU_FONDATEUR) && sansLui(lu.systeme), '[P2] en demande, le modele ne sait ni son nom ni qu il est le fondateur (sa reponse est lue par l equipe)', lu.systeme.slice(0, 300));
     const prep = dernier(51, 'pinlane');
     v(prep && prep.consigne === 'Relis la demande et dis-moi si le samedi tient' && prep.par === '', '[P3] sa consigne et la preparation entrent au suivi sans son nom', JSON.stringify(prep));
-    v(JSON.stringify((flux.un('fin') || {}).donnees || {}).includes(NOM_ACTUEL), '[P4] le flux du fondateur, lui, porte la demande entiere', JSON.stringify((flux.un('fin') || {}).donnees || {}).slice(0, 200));
+    const finLui = JSON.stringify((flux.un('fin') || {}).donnees || {});
+    v(flux.un('fin') && sansLui(finLui) && finLui.includes('Luc Martin'), '[P4] le flux du fondateur porte la demande sans son nom, comme celui de Marie ; Luc reste', finLui.slice(0, 200));
     // Marie fait de meme.
     etat.session = MARIE();
     etat.script = [fin('J’ai relu la demande : le samedi tient.')];
@@ -235,12 +239,15 @@ const GARDES = [
   { nom: 'sa reponse au client le nomme', fichier: OPS, de: '          par: signatureVisible(options.session),\n          objet: body.subject,', vers: "          par: String(options.session?.member?.name || ''),\n          objet: body.subject,", groupe: groupeSuivi, lettre: '[E6]' },
   { nom: 'la reservation de la proposition le nomme', fichier: DBC, de: "  const par = require('./fondateur-invisible').signatureVisible(session);\n  const cree = await deps.creer(prepare, session, { demandeSurMesure: item.id });\n  const reservation = cree.reservation;", vers: "  const par = String((session && session.member && session.member.name) || '');\n  const cree = await deps.creer(prepare, session, { demandeSurMesure: item.id });\n  const reservation = cree.reservation;", groupe: groupeSuivi, lettre: '[E7]' },
   { nom: 'la reservation preparee le nomme', fichier: DBC, de: "  const par = require('./fondateur-invisible').signatureVisible(session);\n  const cree = await deps.creer(prepare, session, { demandeSurMesure: item.id });\n  const creee = cree.reservation;", vers: "  const par = String((session && session.member && session.member.name) || '');\n  const cree = await deps.creer(prepare, session, { demandeSurMesure: item.id });\n  const creee = cree.reservation;", groupe: groupeSuivi, lettre: '[E8]' },
-  { nom: 'la reponse a un centre n est plus masquee', fichier: 'lib/http.js', de: "const sansFondateur = res.__nomsDuFondateur ? require('./fondateur-invisible').masquerFondateur(payload, res.__nomsDuFondateur) : payload;", vers: 'const sansFondateur = payload;', groupe: groupeSuivi, lettre: '[L1]' },
+  { nom: 'la reponse a un centre n est plus masquee', fichier: 'lib/http.js', de: "const sansFondateur = res.__nomsDuFondateur || res.__sesTraces ? require('./fondateur-invisible').pourLaReponse(res, payload) : payload;", vers: 'const sansFondateur = payload;', groupe: groupeSuivi, lettre: '[L1]' },
+  // 2026-11-18 : sa propre session lit la demande sans lui, la reponse comme le flux.
+  { nom: 'sa propre lecture rendue avec son nom', fichier: 'lib/fondateur-invisible.js', de: '  res.__sesTraces = fondateur && !pageDeFondateur ? await nomsDuFondateur() : null;', vers: '  res.__sesTraces = null;', groupe: groupeSuivi, lettre: '[L5]' },
+  { nom: 'son propre flux porte ses traces', fichier: 'lib/fondateur-invisible.js', de: '  return estFondateur(session) ? sesTracesMasquees(valeur, noms) : masquerFondateur(valeur, noms);', vers: '  return estFondateur(session) ? valeur : masquerFondateur(valeur, noms);', groupe: groupePinlane, lettre: '[P4]' },
   { nom: 'le modele lit la demande avec son nom', fichier: API, de: '      const item = F.masquerFondateur(ouverte.item, noms);', vers: '      const item = ouverte.item;', groupe: groupePinlane, lettre: '[P1]' },
   { nom: 'le modele lit qui donne la consigne', fichier: API, de: "{ qui: F.signatureVisible(session, { avecId: false }) }", vers: "{ qui: (session.member && session.member.name) || '' }", groupe: groupePinlane, lettre: '[P1]' },
   { nom: 'Pinlane sait le fondateur en demande', fichier: API, de: '      const personne = enDemande && F.estFondateur(session)', vers: '      const personne = false', groupe: groupePinlane, lettre: '[P2]' },
   { nom: 'la preparation le signe', fichier: API, de: "  const par = require('../lib/fondateur-invisible').signatureVisible(session);", vers: "  const par = String((session.member && session.member.name) || '');", groupe: groupePinlane, lettre: '[P3]' },
-  { nom: 'le flux d un centre porte ses traces', fichier: API, de: '    const nomsAMasquer = F.estFondateur(session) ? null : await F.nomsDuFondateur();', vers: '    const nomsAMasquer = null;', groupe: groupePinlane, lettre: '[P6]' },
+  { nom: 'le flux d un centre porte ses traces', fichier: API, de: '    const sansLeFondateur = (donnees) => F.selonLaSession(session, donnees, nomsAMasquer);', vers: '    const sansLeFondateur = (donnees) => donnees;', groupe: groupePinlane, lettre: '[P6]' },
   { nom: 'le parcours de secours se trace', fichier: OPS, de: "    if (estFondateur(activitySession) || activityMemberId.includes(':platform-owner')) {", vers: "    if (activityMemberId.endsWith(':platform-owner')) {", groupe: groupePinlane, lettre: '[T2]' },
 ];
 

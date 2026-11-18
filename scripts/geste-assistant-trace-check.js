@@ -9,9 +9,12 @@
 // [T] LE GESTE QUI REJOUE UNE ACTION BLOQUANTE : sa ligne s ecrit avant l action, par le regime qui
 //     refuse ; journal en panne, l action ne s execute pas (503).
 // [U] UNE SEULE LIGNE : le dispatcher n en ajoute pas une seconde apres l action. C est la ligne
-//     « assistantGeste » d avant, que le releve Modifications (lib/garde-journal.js) ignore : aucune
-//     alerte de plus, aucune en double.
+//     « assistantGeste », avec le geste et l action du logiciel qu il rejoue.
 // [N] UN GESTE NON BLOQUANT ne change pas de regime : l action, puis sa ligne avec le detail du handler.
+// [M] LE RELEVE MODIFICATIONS (lib/garde-journal.js, C14, Ansar oui le 18/11) : cette ligne s y dit comme
+//     le meme changement fait a la main, meme texte, au nom de qui a valide la carte (sans nom si c est le
+//     fondateur), « avec l’assistant » en plus. Une seule ligne par geste : un geste qui passe par une autre
+//     adresse (une reservation) laisse parler la ligne de cette adresse, jamais deux alertes.
 //
 // Sans base ni reseau : le journal, la base et les sauvegardes sont doubles en memoire.
 // Les contre-preuves chargent le code mute en memoire : aucun fichier n est ecrit.
@@ -28,11 +31,18 @@ const ROOT = path.resolve(__dirname, '..');
 ['DATABASE_URL', 'POSTGRES_URL', 'TELEGRAM_BOT_TOKEN'].forEach((cle) => { delete process.env[cle]; });
 
 const OPS = 'api/ops.js';
+const JOURNAL = 'lib/garde-journal.js';
 const MUTATIONS = {
   'trace-apres-l-action': { f: OPS, de: "    if (isBlockingAction(refait.action) && typeof options.tracerAvant === 'function') await options.tracerAvant(traceDuGeste);\n    else noterAudit(options, { changes: traceDuGeste });", vers: '    noterAudit(options, { changes: traceDuGeste });', lettre: 'T' },
   'trace-avant-sans-refus': { f: OPS, de: "        await writeAuditLogOrThrow({ ...auditBase, changes, outcome: 'success' });", vers: "        await writeAuditLog({ ...auditBase, changes, outcome: 'success' });", lettre: 'T' },
   'trace-doublee': { f: OPS, de: '      if (audited && !isBlockingAction(action) && !traceDejaEcrite) {', vers: '      if (audited && !isBlockingAction(action)) {', lettre: 'U' },
   'tout-geste-avant': { f: OPS, de: "    if (isBlockingAction(refait.action) && typeof options.tracerAvant === 'function')", vers: "    if (typeof options.tracerAvant === 'function')", lettre: 'N' },
+  // C14 (2026-11-18) : le releve Modifications dit le geste.
+  'colonne-du-geste-oubliee': { f: JOURNAL, de: "       coalesce(a.changes->'assistant'->>'action', '') as action_assistant,\n", vers: '', lettre: 'M' },
+  'geste-ignore-comme-avant': { f: JOURNAL, de: "    const refaite = r.action === 'assistantGeste' ? String(r.action_assistant || '') : '';", vers: "    const refaite = '';", lettre: 'M' },
+  'geste-sans-mention': { f: JOURNAL, de: "    const texte = x.l.avecAssistant ? `${x.texte}, avec l’assistant` : x.texte;", vers: '    const texte = x.texte;', lettre: 'M' },
+  'geste-par-adresse-dit-deux-fois': { f: JOURNAL, de: "'sendDesignTest', 'assistantGeste', 'snapshot'", vers: "'sendDesignTest', 'snapshot'", lettre: 'M' },
+  'geste-du-fondateur-signe': { f: JOURNAL, de: "const signature = (l) => (require('./fondateur-invisible').estMembreFondateur(l.actor_member_id) ? '' : auteur(l));", vers: 'const signature = (l) => auteur(l);', lettre: 'M' },
 };
 const MUTATION = (process.argv.find((a) => a.startsWith('--mutation=')) || '').slice('--mutation='.length);
 if (MUTATION && !MUTATIONS[MUTATION]) { console.error(`mutation inconnue : ${MUTATION}`); process.exit(2); }
@@ -150,6 +160,7 @@ async function principal() {
   aZero();
   const normal = await appeler({ action: 'saveGrillesTarif', centerId: 'libramont', grilles: { laser: { '2 parties': 20 } } });
   ok(normal.statut === 200 && JSON.stringify(evenements) === JSON.stringify(['ligne avant', 'ecriture']), 'une action bloquante ecrit sa ligne, puis change', `${normal.statut} ${JSON.stringify(evenements)}`);
+  const grilleALaMain = succes()[0];
 
   section('[T] LE GESTE QUI REJOUE UNE ACTION BLOQUANTE (assistantGeste vers saveGrillesTarif)');
   aZero();
@@ -165,8 +176,7 @@ async function principal() {
   const vues = succes();
   ok(vues.length === 1 && vues[0].action === 'assistantGeste' && vues[0].changes && vues[0].changes.assistant && vues[0].changes.assistant.action === 'saveGrillesTarif' && vues[0].changes.assistant.geste === 'grille',
     'une seule ligne de succes, « assistantGeste » avec le geste et l action du logiciel', JSON.stringify(vues.map((l) => [l.action, l.changes])));
-  const { classer } = require('../lib/garde-journal');
-  ok(vues.every((l) => classer({ action: l.action, champs: {}, cles: [] }).rien === true), 'le releve Modifications n en dit rien, comme avant', JSON.stringify(vues.map((l) => classer({ action: l.action, champs: {}, cles: [] }))));
+  const grilleParLeGeste = vues[0];
 
   section('[N] UN GESTE NON BLOQUANT (assistantGeste vers saveAvailabilityBlock)');
   aZero();
@@ -174,6 +184,55 @@ async function principal() {
   const apres = succes();
   ok(fermeture.statut === 200 && JSON.stringify(evenements) === JSON.stringify(['ecriture', 'ligne apres']) && apres.length === 1 && apres[0].changes.assistant.action === 'saveAvailabilityBlock',
     'l action d abord, puis une seule ligne avec le geste, comme avant', `${fermeture.statut} ${JSON.stringify(evenements)} ${JSON.stringify(apres.map((l) => l.changes))}`);
+  const fermetureParLeGeste = apres[0];
+  aZero();
+  await appeler({ action: 'saveAvailabilityBlock', centerId: 'libramont', ...GESTES.fermeture.corps });
+  const fermetureALaMain = succes()[0];
+
+  section('[M] LE RELEVE MODIFICATIONS DIT LE GESTE COMME LE MEME CHANGEMENT FAIT A LA MAIN (lib/garde-journal.js, C14)');
+  // Les lignes ecrites plus haut par le vrai dispatcher, rendues par une base qui lit les colonnes DANS le
+  // SQL de la garde (lireLignes) : une colonne absente du SELECT n arrive pas.
+  const J = require('../lib/garde-journal');
+  const CHAMPS = ['date', 'startTime', 'pax', 'price', 'status', 'amountPaid', 'discountReason', 'absentAt'];
+  const releve = async (entrees) => {
+    const pool = { query: async (sql) => {
+      const s = String(sql);
+      const rows = entrees.map((e, i) => {
+        const changes = e.changes && typeof e.changes === 'object' ? e.changes : {};
+        return {
+          id: i + 1, center_id: e.centerId || 'libramont', occurred_at: new Date(Date.UTC(2026, 10, 18, 13, 12, i)).toISOString(),
+          actor_kind: e.actorKind || 'staff', actor_label: e.actorLabel || '', actor_member_id: e.actorMemberId || '',
+          action: e.action, entity_type: e.entityType || '', entity_id: e.entityId || '', annonce: '', retard: null, dossiers: null,
+          champs: Object.fromEntries(CHAMPS.filter((k) => changes[k] !== undefined).map((k) => [k, changes[k]])),
+          cles: Object.keys(changes), dossier: {},
+          ...(/coalesce\(a\.changes->'assistant'->>'action', ''\) as action_assistant/.test(s) ? { action_assistant: String((changes.assistant && changes.assistant.action) || '') } : {}),
+        };
+      });
+      return { rows, rowCount: rows.length };
+    } };
+    return J.messageModifications(await J.lireLignes(pool, { apresId: 0 })) || '';
+  };
+  const lignesDe = (texte) => String(texte).split('\n').filter((l) => /^\d{2}:\d{2}/.test(l));
+  const aLaMain = await releve([grilleALaMain]);
+  const parLeGeste = await releve([grilleParLeGeste]);
+  ok(/^\d{2}:\d{2} Seb : grilles de prix enregistrées$/.test(lignesDe(aLaMain)[0] || ''), 'a la main : « Seb : grilles de prix enregistrées », pour reference', aLaMain);
+  ok(lignesDe(parLeGeste).length === 1 && lignesDe(parLeGeste)[0].replace(/^\d{2}:\d{2} /, '') === `${lignesDe(aLaMain)[0].replace(/^\d{2}:\d{2} /, '')}, avec l’assistant`,
+    'le tarif change par l assistant : la meme ligne, au nom de qui a valide la carte, « avec l’assistant » en plus', parLeGeste);
+  const fermetures = await releve([fermetureParLeGeste]);
+  const fermetureMain = await releve([fermetureALaMain]);
+  ok(lignesDe(fermetures).length === 1 && lignesDe(fermetureMain).length === 1 && lignesDe(fermetures)[0].replace(/^\d{2}:\d{2} /, '') === `${lignesDe(fermetureMain)[0].replace(/^\d{2}:\d{2} /, '')}, avec l’assistant`,
+    'un geste non bloquant (une fermeture) aussi : le texte de la main, une fois', [fermetures, fermetureMain]);
+  const parLui = await releve([{ ...grilleParLeGeste, actorMemberId: 'libramont:platform-owner', actorLabel: 'Ansar Pinlane' }]);
+  ok(/^\d{2}:\d{2} : grilles de prix enregistrées, avec l’assistant$/.test(lignesDe(parLui)[0] || '') && !/Ansar|Proprietaire|platform-owner/.test(parLui),
+    'valide par le fondateur : la ligne part sans son nom', parLui);
+  // Un geste vers une autre adresse : la ligne de l adresse (sa reservation) parle, celle du geste se tait.
+  const parAdresse = await releve([
+    { centerId: 'libramont', actorKind: 'staff', actorMemberId: 'm-dir', actorLabel: 'Seb', action: 'assistantGeste', entityType: 'ops_action', changes: { assistant: { geste: 'joueurs', adresse: 'staff-reservations', methode: 'PATCH' } } },
+    { centerId: 'libramont', actorKind: 'staff', actorMemberId: 'm-dir', actorLabel: 'Seb', action: 'updateReservation', entityType: 'reservation', entityId: '150', changes: { pax: { before: 4, after: 6 } } },
+  ]);
+  ok(lignesDe(parAdresse).length === 1 && /Seb : réservation n° 150 passe de 4 à 6 personnes$/.test(lignesDe(parAdresse)[0]) && !/autre action/.test(parAdresse),
+    'un geste vers une reservation : une seule ligne, celle de la reservation, jamais deux alertes', parAdresse);
+  ok(J.classer({ action: 'assistantGeste', champs: {}, cles: [] }).rien === true, 'la ligne brute « assistantGeste » ne se dit jamais seule : seule son action se lit', J.classer({ action: 'assistantGeste', champs: {}, cles: [] }));
 
   console.log(rouges ? `\ngeste-assistant-trace-check: ${rouges} ROUGE(S)` : '\ngeste-assistant-trace-check: ALL OK');
   process.exit(rouges ? 1 : 0);

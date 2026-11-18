@@ -54,6 +54,7 @@
     "test:retard-verrou": "node scripts/retard-verrou-check.js && node scripts/retard-verrou-check.js --contre-preuves",
     "test:comptoir-dotation": "node scripts/comptoir-dotation-check.js && node scripts/comptoir-dotation-check.js --contre-preuves",
     "test:attente-verrou": "node scripts/attente-verrou-check.js && node scripts/attente-verrou-check.js --contre-preuves",
+    "test:confirmation-en-file": "node scripts/confirmation-en-file-check.js && node scripts/confirmation-en-file-check.js --contre-preuves",
     "test:notes-scope": "node scripts/staff-notes-scope-check.js",
     "test:rush-status": "node scripts/rush-status-ui-check.cjs",
     "test:reservation-edit-clarity": "node scripts/reservation-edit-clarity-check.cjs",

@@ -417,6 +417,7 @@
     "test:retard-verrou",
     "test:comptoir-dotation",
     "test:attente-verrou",
+    "test:confirmation-en-file",
     "test:reservation-edit-clarity",
     "test:rush-status",
     "test:notes-scope",

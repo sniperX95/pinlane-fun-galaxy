@@ -382,6 +382,9 @@ module.exports = async (req, res) => {
           signatureDemande: signatureDemande(request),
           // D ou vient le client (UTM, gclid, page d origine, appareil) : 0055.
           acquisition: normaliserAcquisition(body && body.acquisition, { userAgent: req.headers && req.headers['user-agent'] }),
+          // L ordre d envoyer ses mails s ecrit avec la reservation (point C4, lib/database createReservation) :
+          // une coupure apres l ecriture ne laisse plus le client sans confirmation.
+          ordreDEnvoiAvecLaReservation: true,
           // Les installations comptees (pistes de duckpin, tables) se reverifient
           // SOUS le verrou de la journee : deux demandes simultanees ne prennent
           // plus toutes deux la derniere unite.

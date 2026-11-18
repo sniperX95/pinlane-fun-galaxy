@@ -154,7 +154,7 @@ const MUTATIONS = {
   // prend toute la hauteur du contenu et pousse le pied hors de l ecran,
   // « Créer » avec. (`auto` ne suffit pas a la casser : la colonne a un
   // min-height nul, sa rangee prend encore le reste de l ecran.)
-  pied: { fichier: 'assets/pinlane-staff.css', de: 'grid-template-rows: auto minmax(0, 1fr) auto auto;', vers: 'grid-template-rows: auto max-content auto auto;', vise: ['G'] },
+  pied: { fichier: 'assets/pinlane-staff.css', de: 'grid-template-rows: auto minmax(0, 1fr) auto auto auto;', vers: 'grid-template-rows: auto max-content auto auto auto;', vise: ['G'] },
   // Entree dans le telephone ne cree plus.
   comptoirEntree: { fichier: 'assets/app-main.js', de: "cible.matches('#qbName, #qbPhone, #qbEmail, #qbNotes')", vers: "cible.matches('#qbName, #qbEmail, #qbNotes')", vise: ['I'] },
   // Le telephone redevient facultatif : un dossier sans numero part.

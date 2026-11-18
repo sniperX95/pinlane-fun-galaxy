@@ -1297,8 +1297,9 @@ function usageDesPistesDuJour(date, ignoreId) {
 // (assets/pinlane-pistes.js) : une paire entiere pour 2, cote a cote pour un
 // groupe, puis la piste la moins utilisee du jour (la paire entamee se complete
 // a une heure pres), puis le tour du jour. Pour la meme journee, la piste
-// montree est celle que le serveur garde.
-function allocateLanes(n, date, startTime, duration, ignoreId) {
+// montree est celle que le serveur garde. `graine` : les pistes que le groupe
+// garde (allocateLanesIncludingSeed) ; la regle ne choisit que celles qui manquent.
+function allocateLanes(n, date, startTime, duration, ignoreId, graine = []) {
   if (n === 0) return [];
   const occ = getOccupiedLanes(date, startTime, duration, ignoreId);
   const laneCount = getAvailabilityLaneCount();
@@ -1312,28 +1313,23 @@ function allocateLanes(n, date, startTime, duration, ignoreId) {
     usage: usageDesPistesDuJour(date, ignoreId),
     date,
     coteACote: getAvailabilitySessionCenter()?.resources?.bowling?.preferAdjacentLanes !== false,
+    graine,
   });
 }
 
-// Alloue N pistes libres en GARDANT les pistes déjà choisies (« graines »),
-// puis complète avec les pistes libres restantes. Sert quand un groupe déborde
-// de la piste pré-remplie depuis une case du planning : l'extension inclut
-// toujours la piste cliquée.
+// Alloue N pistes libres en GARDANT les pistes déjà choisies (« graines ») :
+// une piste cliquée au comptoir, celles qu'un dossier modifié a déjà. Celles
+// qui manquent se choisissent par la règle de toutes les attributions, la même
+// que allocateLanes (assets/pinlane-pistes.js, sa graine) : une paire entière
+// pour 2, côte à côte pour un groupe, puis la moins utilisée du jour. Ici
+// finissait « la première libre » après la graine (2026-11-18) : la console
+// montrait une piste que la règle n'aurait pas prise.
 function allocateLanesIncludingSeed(n, seedLanes, date, startTime, duration, ignoreId) {
   if (n <= 0) return [];
   const occ = getOccupiedLanes(date, startTime, duration, ignoreId);
   const laneCount = getAvailabilityLaneCount();
   const isFree = (l) => l >= 1 && l <= laneCount && !occ.has(l) && state.laneStatuses[l] !== 'maintenance';
-  const avail = [];
-  for (let i = 1; i <= laneCount; i++) if (isFree(i)) avail.push(i);
-  if (avail.length < n) return null;
-  const result = [...new Set((seedLanes || []).map(Number))].filter(isFree).slice(0, n);
-  const chosen = new Set(result);
-  for (const lane of avail) {
-    if (result.length >= n) break;
-    if (!chosen.has(lane)) { result.push(lane); chosen.add(lane); }
-  }
-  return result.length >= n ? result.sort((a, b) => a - b) : null;
+  return allocateLanes(n, date, startTime, duration, ignoreId, [...new Set((seedLanes || []).map(Number))].filter(isFree));
 }
 
 function getBowlingCandidateWindows(startTime, duration, lanes, opsPlan = null) {
@@ -1532,15 +1528,11 @@ function getSuggestedEditLanes(requiredCount, date, startTime, duration, ignoreI
   // lanes [1,5,6] envoyees, [1,5,6] ecrites), c'est le client qui l'ecrasait.
   if (kept.length >= requiredCount) return kept;
 
-  if (requiredCount === 2 && kept.length === 1) {
-    const pair = getAvailabilityLanePairs(laneCount).find(group => group.includes(kept[0]));
-    const mate = pair ? pair.find(l => l !== kept[0]) : null;
-    if (mate && available.has(mate)) return [kept[0], mate].sort((a, b) => a - b);
-  }
-
   // COMPLETER N'EST PAS REMPLACER. Il manque des pistes pour l'effectif : on
   // AJOUTE a celles que le staff a cochees au lieu de repartir d'une allocation
-  // neuve, qui jetait son choix (piste 5 cochee, [1,2] enregistrees).
+  // neuve, qui jetait son choix (piste 5 cochee, [1,2] enregistrees). Celles
+  // qui manquent suivent la regle commune avec ces pistes pour graine (la
+  // voisine de paire pour un groupe de 2 : la regle la donne, 2026-11-18).
   if (kept.length) {
     const extended = allocateLanesIncludingSeed(requiredCount, kept, date, startTime, duration, ignoreId);
     if (extended) return extended;
@@ -1594,7 +1586,12 @@ function refreshEditPreview() {
 // sans que personne n ait rien touche. L heure du bowling est celle du dossier
 // enregistre, decalee d autant que l arrivee quand on la change (le serveur
 // replanifie a l enregistrement).
+// L HEURE DU BOWLING CHANGEE DANS SA RANGEE (2026-11-18) deplace la fenetre des
+// pistes avec elle : les pistes prises, le conseil et la carte des pistes se
+// lisent a la nouvelle heure.
 function debutBowlingEdition(r, e) {
+  const changee = e && e.heuresActivites && typeof e.heuresActivites === 'object' ? String(e.heuresActivites.bowling || '') : '';
+  if (/^\d{2}:\d{2}$/.test(changee)) return timeToNum(changee);
   const arrivee = timeToNum((e && e.startTime) || r.startTime);
   const fenetres = getBowlingWindowsFromReservation(r);
   if (!fenetres.length) return arrivee;
@@ -1620,9 +1617,412 @@ function syncEditLaneAssignment() {
   const requiredCount = getEditBowlingCapacityNeed(dossier, state.editState).requiredCount;
   const duration = Number(state.editState.duration || state.selectedRes.duration || 0);
   const suggested = getSuggestedEditLanes(requiredCount, state.selectedRes.date, debutBowlingEdition(dossier, state.editState), duration, state.selectedRes.id, state.editState.lanesStr);
-  if (suggested) state.editState.lanesStr = formatLaneInput(suggested);
+  if (suggested) state.editState.lanesStr = formatLaneInput(pistesApresDescenteEdition(suggested, requiredCount));
   refreshEditPreview();
   return suggested;
+}
+
+// ---------------------------------------------------------------------------
+// LES PISTES ET LES ARMES SUIVENT LE GROUPE, ET LA FENETRE LE DIT (2026-11-18).
+// Ansar : « quand on passe a plus de 6joueurs c normalement 2pistes etc faut
+// que chaque fois quon change ça change aussi tu vois automatiquement [...] et
+// que ça le montre et on peut choisir genre une petite pop up styler qui montre
+// les pistes attribué automatiquement ou arme pour laser et on peut choisir de
+// modifieir et tout super easy super user frienldy ça doit paas derangé ».
+// Avant : le champ Joueurs du haut recalculait les pistes sans le dire (une
+// phrase sous les pastilles, souvent hors de l ecran) ; les joueurs d une
+// activite du Programme ne les recalculaient pas avant l enregistrement ; un
+// groupe qui redescendait gardait les pistes ajoutees pour lui.
+// Maintenant, ou que le nombre change (le haut, le Programme, la duree du
+// bowling, une activite ajoutee, les joueurs d une partie) :
+//   - les pistes suivent tout de suite (syncEditLaneAssignment) : celles que le
+//     dossier a et qui sont libres restent, la regle commune choisit celles qui
+//     manquent (assets/pinlane-pistes.js, sa graine) ; celles que Pinlane a
+//     ajoutees pendant la saisie repartent quand le groupe redescend ; une
+//     piste touchee a la main ne part jamais ;
+//   - une petite carte le dit au-dessus de « Enregistrer », une fois la frappe
+//     calmee (taper 1 puis 8 pour 18 ne montre jamais « 1 piste ») :
+//     « 8 joueurs : pistes 3 et 4 (avant : piste 3) », au laser « 24 joueurs :
+//     2 vagues de 12 armes ». Ce qu elle dit est deja applique : « OK » la
+//     ferme, « Modifier » ouvre les pastilles des pistes (ou les parties du
+//     laser). Elle ne prend pas le focus et ne cache rien ;
+//   - un groupe qui redescend garde les pistes du dossier : la carte propose
+//     d en liberer, sans l imposer ;
+//   - le serveur a le dernier mot : des que son calcul a blanc arrive
+//     (demanderVerdictEdition), la carte montre ses pistes.
+// Rien ne s affiche quand le nombre de pistes ou de vagues ne change pas, ni
+// pour des pistes posees a la main (« Seulement ces pistes, à la main »).
+// L heure du bowling changee dans sa rangee deplace la fenetre des pistes
+// (debutBowlingEdition) : une piste prise a la nouvelle heure, la carte
+// propose les pistes que la regle prendrait, sans les imposer (le refus du
+// serveur reste le premier mot, avec ses heures libres).
+// ---------------------------------------------------------------------------
+const ATTRIBUTION_CALME_MS = 600;
+let attributionEdition = { pour: null, base: null, minuterie: 0, carte: null, entree: false };
+
+// La regle commune, sur les pistes de CE dossier (parmi : les pistes ou
+// choisir ; graine : celles a garder).
+function choisirPistesEdition(nombre, graine, parmi) {
+  const r = state.selectedRes;
+  const voisines = getAvailabilitySessionCenter()?.resources?.bowling?.preferAdjacentLanes !== false;
+  return window.PinlanePistes.choisirPistes({
+    libres: parmi,
+    nombre,
+    graine,
+    pistes: getAvailabilityLaneCount(),
+    usage: r ? usageDesPistesDuJour(r.date, r.id) : {},
+    date: r ? r.date : '',
+    coteACote: voisines,
+  });
+}
+
+// Les pistes que le dossier garde quoi qu il arrive : celles qu il avait a
+// l ouverture de Modifier, et celles touchees a la main pendant la saisie.
+function pistesGardeesEdition() {
+  const e = state.editState;
+  const origine = e && departsEdition().get(e)?.origine;
+  return new Set([...((origine && origine.lanes) || []), ...((e && e.pistesTouchees) || [])].map(Number));
+}
+
+// LE GROUPE QUI REDESCEND : les pistes que Pinlane a ajoutees pendant cette
+// saisie repartent ; celles du dossier et celles touchees a la main restent
+// (la carte propose de liberer celles du dossier). Il en faut encore quelques
+// unes : la regle garde les meilleures des ajoutees.
+function pistesApresDescenteEdition(pistes, requis) {
+  const e = state.editState;
+  if (!e || e.pistesALaMain || !(requis > 0) || pistes.length <= requis) return pistes;
+  const gardees = pistesGardeesEdition();
+  if (!pistes.some((piste) => !gardees.has(Number(piste)))) return pistes;
+  const restent = pistes.filter((piste) => gardees.has(Number(piste)));
+  if (restent.length >= requis) return restent;
+  return choisirPistesEdition(requis, restent, pistes) || pistes;
+}
+
+// Les pistes du dossier qu un groupe plus petit peut rendre : celles que la
+// regle ne garderait pas. Une piste touchee a la main : aucune proposition.
+function pistesLiberablesEdition(pistes, requis) {
+  const e = state.editState;
+  if (!e || e.pistesALaMain || !(requis > 0) || pistes.length <= requis) return [];
+  const touchees = (e.pistesTouchees || []).map(Number);
+  if (pistes.some((piste) => touchees.includes(Number(piste)))) return [];
+  const garder = choisirPistesEdition(requis, [], pistes) || pistes.slice(0, requis);
+  return pistes.filter((piste) => !garder.includes(piste));
+}
+
+// Les armes d un groupe au laser : ses vagues et la taille de chacune.
+function photoLaserAttribution(joueurs) {
+  const n = Math.max(1, Math.trunc(Number(joueurs) || 1));
+  return { joueurs: n, vagues: getLaserWaveCount(n), tailles: getBalancedLaserWaveSizes(n), armes: getLaserArenaCapacity() };
+}
+
+// L HEURE DU BOWLING CHANGEE : les pistes du dossier prises a la nouvelle
+// heure, et celles que la regle prendrait a leur place (autant que le dossier
+// en a : un deplacement garde le nombre). Rien quand elles restent libres.
+function heureDuBowlingEdition(r, e, dossier) {
+  const heure = String((e.heuresActivites || {}).bowling || '');
+  if (!/^\d{2}:\d{2}$/.test(heure)) return null;
+  const fenetres = getBowlingWindowsFromReservation(r);
+  if (fenetres.length !== 1) return null;
+  const actuelles = [...new Set(fenetres[0].lanes || [])].map(Number).sort((a, b) => a - b);
+  const duree = Number(fenetres[0].duration) || Number(e.duration || r.duration || 0);
+  const debut = debutBowlingEdition(dossier, e);
+  const prises = actuelles.filter((piste) => lanesConflict(r.date, debut, duree, [piste], r.id).length || state.laneStatuses[piste] === 'maintenance');
+  if (!prises.length) return { heure, prises: [], proposees: null };
+  const proposees = getSuggestedEditLanes(actuelles.length, r.date, debut, duree, r.id, formatLaneInput(actuelles));
+  return { heure, prises, proposees: proposees && proposees.length === actuelles.length ? [...proposees].sort((a, b) => a - b) : null };
+}
+
+// CE QUE LE GROUPE TIENT DANS MODIFIER, en une photo : ses pistes, ce qu il en
+// faut, ses vagues au laser.
+function photoAttributionEdition() {
+  const e = state.editState;
+  const r = state.selectedRes;
+  if (!e || !r) return null;
+  const dossier = dossierPourFormule(r);
+  const programme = e.programmeEdite;
+  const photo = { bowling: null, laser: null };
+  const bowlingAuProgramme = !programme || Boolean(programme.bowling && programme.bowling.on);
+  if (bowlingAuProgramme && reservationNeedsLanes(dossier.type, dossier.formuleId) && !(e.date && e.date !== r.date)) {
+    const besoin = getEditBowlingCapacityNeed(dossier, e);
+    const capacite = besoin.bowlingCapacity || {};
+    const requis = Number(besoin.requiredCount) || 0;
+    const pistes = parseLaneInput(e.lanesStr);
+    const touchees = (e.pistesTouchees || []).map(Number);
+    photo.bowling = {
+      joueurs: programme && programme.bowling && programme.bowling.on ? participantsLigneProgramme(programme.bowling, e.pax) : Math.max(1, Math.trunc(Number(e.pax) || 1)),
+      requis,
+      pistes,
+      aLaMain: Boolean(e.pistesALaMain),
+      urgence: Boolean(capacite.emergency),
+      message: capacite.emergency ? bowlingCapacityMessage(capacite) : '',
+      manque: pistes.length < requis,
+      main: pistes.filter((piste) => touchees.includes(piste)),
+      liberables: pistesLiberablesEdition(pistes, requis),
+      heure: heureDuBowlingEdition(r, e, dossier),
+    };
+  }
+  const laser = programme && programme.laser_game;
+  if ((laser && laser.on) || (!programme && String(r.type || '') === 'laser')) {
+    photo.laser = photoLaserAttribution(laser && laser.on ? participantsLigneProgramme(laser, e.pax) : e.pax);
+  }
+  return photo;
+}
+
+// LA DECISION, UNE SEULE FOIS, pour Modifier et pour Reserver : ce que la
+// carte dit, d apres deux photos du groupe (celle d avant le geste, celle
+// d apres la frappe calmee). Pure : elle ne lit que ses deux photos.
+// Rien quand le nombre de pistes ou de vagues ne bouge pas, ni pour des
+// pistes posees a la main ; une piste qui manque se dit ailleurs (le conseil
+// sous les pastilles, le verdict du serveur).
+function proposerAttribution(avant, apres) {
+  const lignes = [];
+  const a = avant && avant.bowling;
+  const b = apres && apres.bowling;
+  if (a && b && !a.aLaMain && !b.aLaMain && !b.manque) {
+    const enTrop = b.pistes.length > b.requis ? b.pistes.filter((piste) => (b.main || []).includes(piste)) : [];
+    if (b.pistes.length !== a.pistes.length) {
+      lignes.push({
+        activite: 'bowling', motif: b.pistes.length > a.pistes.length ? 'monte' : 'descend', joueurs: b.joueurs,
+        avant: a.pistes, apres: b.pistes, ajoutees: b.pistes.filter((piste) => !a.pistes.includes(piste)),
+        retirees: a.pistes.filter((piste) => !b.pistes.includes(piste)), liberables: b.liberables || [], requis: b.requis, aLaMain: enTrop,
+      });
+    } else if (b.requis < a.requis && (b.liberables || []).length) {
+      lignes.push({ activite: 'bowling', motif: 'liberer', joueurs: b.joueurs, avant: a.pistes, apres: b.pistes, liberables: b.liberables, requis: b.requis, aLaMain: [] });
+    } else if (b.urgence && !a.urgence) {
+      lignes.push({ activite: 'bowling', motif: 'urgence', joueurs: b.joueurs, avant: a.pistes, apres: b.pistes, message: b.message, liberables: [], aLaMain: [] });
+    } else if (b.heure && b.heure.prises.length && b.heure.proposees
+      && !(a.heure && a.heure.heure === b.heure.heure && a.heure.prises.length)) {
+      lignes.push({ activite: 'bowling', motif: 'heure', joueurs: b.joueurs, heure: b.heure.heure, prises: b.heure.prises, proposees: b.heure.proposees, avant: a.pistes, apres: b.pistes, liberables: [], aLaMain: [] });
+    }
+  }
+  const l = avant && avant.laser;
+  const m = apres && apres.laser;
+  if (l && m && m.vagues !== l.vagues) lignes.push({ activite: 'laser_game', motif: 'vagues', joueurs: m.joueurs, vagues: m.vagues, tailles: m.tailles, armes: m.armes, avant: l.vagues });
+  return lignes.length ? { lignes } : null;
+}
+
+// « pistes 3 et 4 », « piste 3 », « aucune piste ».
+function pistesEnMots(pistes) {
+  const liste = [...(pistes || [])].map(Number).sort((a, b) => a - b);
+  if (!liste.length) return 'aucune piste';
+  return `${liste.length > 1 ? 'pistes' : 'piste'} ${liste.length > 1 ? `${liste.slice(0, -1).join(', ')} et ${liste[liste.length - 1]}` : liste[0]}`;
+}
+
+// Les pistes en pastilles (celles qui arrivent en couleur), dans la phrase.
+function pistesEnPastillesHtml(pistes, neuves = []) {
+  const liste = [...(pistes || [])].map(Number).sort((a, b) => a - b);
+  if (!liste.length) return 'aucune piste';
+  const pastille = (piste) => `<span class="attr-piste${neuves.includes(piste) ? ' is-neuve' : ''}">${piste}</span>`;
+  const suite = liste.length > 1 ? `${liste.slice(0, -1).map(pastille).join(', ')} et ${pastille(liste[liste.length - 1])}` : pastille(liste[0]);
+  return `${liste.length > 1 ? 'pistes' : 'piste'} ${suite}`;
+}
+
+// UNE LIGNE DE LA CARTE, en mots simples (Modifier et Reserver).
+// `serveur` : les pistes que le calcul a blanc du serveur ecrira, quand il est la.
+function ligneAttributionHtml(ligne, serveur = null) {
+  const joueurs = `<b>${ligne.joueurs} joueur${ligne.joueurs > 1 ? 's' : ''}</b>`;
+  if (ligne.activite === 'laser_game') {
+    const tailles = [...new Set(ligne.tailles)].length === 1 ? String(ligne.tailles[0]) : `${ligne.tailles.slice(0, -1).join(', ')} et ${ligne.tailles[ligne.tailles.length - 1]}`;
+    const vagues = ligne.vagues > 1 ? `${ligne.vagues} vagues de ${tailles} armes` : `1 vague de ${ligne.tailles[0]} arme${ligne.tailles[0] > 1 ? 's' : ''}`;
+    return `${joueurs} au laser : ${escapeHtml(vagues)} <span class="attr-avant">(avant : ${ligne.avant} vague${ligne.avant > 1 ? 's' : ''}, l’arène a ${ligne.armes} armes)</span>`;
+  }
+  if (ligne.motif === 'heure') {
+    const libres = pistesEnPastillesHtml(ligne.proposees, ligne.proposees.filter((piste) => !ligne.avant.includes(piste)));
+    return `<b>Bowling à ${escapeHtml(ligne.heure)}</b> : ${ligne.prises.length > 1 ? `les ${pistesEnMots(ligne.prises)} sont prises` : `la ${pistesEnMots(ligne.prises)} est prise`} à cette heure. ${ligne.proposees.length > 1 ? `Les ${libres} sont libres` : `La ${libres} est libre`}.`;
+  }
+  const apres = serveur && serveur.length ? serveur : ligne.apres;
+  const neuves = apres.filter((piste) => !ligne.avant.includes(piste));
+  if (ligne.motif === 'urgence') return `${joueurs} : ${pistesEnPastillesHtml(apres)}. ${escapeHtml(ligne.message)}`;
+  // (au telephone, « avant » se tait : la barre du bas le dit deja, « Pistes 3 → 3, 4 »)
+  const avant = `<span class="attr-avant is-pistes">(avant : ${pistesEnMots(ligne.avant)})</span>`;
+  // (une phrase de plus va a la ligne : « (avant : …) » ne la colle pas sans point)
+  const main = (ligne.aLaMain || []).length ? ` <span class="attr-note">${escapeHtml(`${pistesEnMots(ligne.aLaMain).replace(/^p/, 'P')} ${ligne.aLaMain.length > 1 ? 'gardées' : 'gardée'} à la main.`)}</span>` : '';
+  const offre = (ligne.liberables || []).length ? ` <span class="attr-note">${ligne.requis} piste${ligne.requis > 1 ? 's' : ''} ${ligne.requis > 1 ? 'suffisent' : 'suffit'}.</span>` : '';
+  if (ligne.motif === 'liberer') return `${joueurs} : ${ligne.requis} piste${ligne.requis > 1 ? 's' : ''} ${ligne.requis > 1 ? 'suffisent' : 'suffit'}, vous gardez les ${pistesEnPastillesHtml(apres)}.`;
+  return `${joueurs} : ${pistesEnPastillesHtml(apres, neuves)} ${avant}${offre}${main}`;
+}
+
+// Les gestes de la carte : une offre (liberer, prendre) se refuse ; un
+// changement deja fait se garde (OK) ou s ajuste (Modifier).
+function gestesAttributionHtml(carte, faire) {
+  const liberer = carte.lignes.find((ligne) => (ligne.liberables || []).length);
+  const heure = carte.lignes.find((ligne) => ligne.motif === 'heure');
+  if (heure) return `<button type="button" class="attr-b is-fort" data-attr-geste="prendre" onclick="${faire.prendre}">${escapeHtml(`Prendre les ${pistesEnMots(heure.proposees)}`.replace('les piste ', 'la piste '))}</button><button type="button" class="attr-b" data-attr-geste="non" onclick="${faire.fermer}">Non</button>`;
+  if (liberer) return `<button type="button" class="attr-b is-fort" data-attr-geste="liberer" onclick="${faire.liberer}">${escapeHtml(`Libérer la ${pistesEnMots(liberer.liberables)}`.replace('la pistes', 'les pistes'))}</button><button type="button" class="attr-b" data-attr-geste="garder" onclick="${faire.fermer}">Garder</button>`;
+  return `<button type="button" class="attr-b" data-attr-geste="modifier" onclick="${faire.modifier}">Modifier</button><button type="button" class="attr-b is-fort" data-attr-geste="ok" onclick="${faire.fermer}">OK</button>`;
+}
+
+// La carte de Modifier (vide sans carte : la zone reste, pour le lecteur
+// d ecran qui annonce ce qui y arrive).
+function attributionEditionHtml() {
+  const a = attributionEdition;
+  const carte = a.pour === state.editState ? a.carte : null;
+  if (!carte) return '';
+  const ecrit = dossierEcritDuVerdict();
+  const serveur = ecrit && Array.isArray(ecrit.lanes) ? ecrit.lanes.map(Number).sort((x, y) => x - y) : null;
+  const lignes = carte.lignes.map((ligne) => `<p class="attr-ligne" data-attr-activite="${escapeHtml(ligne.activite)}" data-attr-motif="${escapeHtml(ligne.motif)}">${ligneAttributionHtml(ligne, ligne.activite === 'bowling' && ['monte', 'descend'].includes(ligne.motif) ? serveur : null)}</p>`).join('');
+  const gestes = gestesAttributionHtml(carte, { modifier: 'modifierAttributionEdition()', fermer: 'fermerAttributionEdition()', liberer: 'libererPistesEdition()', prendre: 'prendrePistesHeureEdition()' });
+  return `<div class="attr-carte">${iconeAttributionHtml(carte)}<div class="attr-lignes">${lignes}</div><div class="attr-gestes">${gestes}</div></div>`;
+}
+
+// Une quille pour les pistes, une cible pour les armes du laser.
+function iconeAttributionHtml(carte) {
+  const laser = carte.lignes.every((ligne) => ligne.activite === 'laser_game');
+  return laser
+    ? '<svg class="attr-icone" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>'
+    : '<svg class="attr-icone" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.5c-1.6 0-2.4 1.3-2.4 2.8 0 1.2.6 2 .6 2.9 0 .8-1.9 3.4-1.9 7 0 3.4 1.3 6.3 3.7 6.3s3.7-2.9 3.7-6.3c0-3.6-1.9-6.2-1.9-7 0-.9.6-1.7.6-2.9 0-1.5-.8-2.8-2.4-2.8Z"/><path d="M10.4 9.4h3.2"/></svg>';
+}
+
+// La zone de la carte, repeinte en place : le formulaire n est pas re-rendu (le
+// champ qu on tape garde son focus et son curseur).
+function peindreAttributionEdition() {
+  const zone = document.getElementById('editAttribution');
+  if (!zone) return;
+  const html = attributionEditionHtml();
+  const entree = attributionEdition.entree;
+  attributionEdition.entree = false;
+  if (zone.attrPeint === html && !entree) return;
+  // (un geste de la carte qui avait le focus le retrouve apres le repeint)
+  const geste = zone.contains(document.activeElement) ? document.activeElement.getAttribute('data-attr-geste') : '';
+  zone.innerHTML = html;
+  zone.attrPeint = html;
+  if (entree && zone.firstElementChild) zone.firstElementChild.classList.add('is-entree');
+  const retrouve = geste ? zone.querySelector(`[data-attr-geste="${geste}"]`) : null;
+  if (retrouve) retrouve.focus({ preventScroll: true });
+}
+
+// La photo de reference, prise quand Modifier se dessine pour un etat
+// d edition : la carte compare a elle. Un etat d edition que Modifier n a pas
+// dessine (le compte a l arrivee le prete le temps d un calcul) n a pas de carte.
+function baseAttributionEdition() {
+  const a = attributionEdition;
+  if (a.pour === state.editState) return;
+  clearTimeout(a.minuterie);
+  a.pour = state.editState;
+  a.base = state.editState ? photoAttributionEdition() : null;
+  a.carte = null;
+  a.minuterie = 0;
+  a.entree = false;
+}
+
+// Un geste a change le groupe (ou l heure du bowling) : la carte se decide une
+// fois la frappe calmee.
+function planifierAttributionEdition() {
+  const a = attributionEdition;
+  if (!state.editState || a.pour !== state.editState) return;
+  clearTimeout(a.minuterie);
+  a.minuterie = setTimeout(deciderAttributionEdition, ATTRIBUTION_CALME_MS);
+}
+
+function deciderAttributionEdition() {
+  const a = attributionEdition;
+  a.minuterie = 0;
+  if (!state.editState || a.pour !== state.editState || !state.selectedRes || state.activeTab !== 'modifier') return;
+  const photo = photoAttributionEdition();
+  const carte = proposerAttribution(a.base, photo);
+  a.base = photo;
+  // (une frappe sans changement efface la carte d avant : elle decrivait un autre groupe)
+  a.carte = carte;
+  a.entree = Boolean(carte);
+  peindreAttributionEdition();
+}
+
+// Les pistes ou les joueurs d une activite ont change dans Modifier : les pistes
+// suivent tout de suite, la carte le dira.
+function suivreAttributionEdition() {
+  syncEditLaneAssignment();
+  planifierAttributionEdition();
+}
+
+// La main a parle (une piste touchee, des pistes posees a la main) : la carte
+// se tait et la photo repart d ici.
+function oublierAttributionEdition() {
+  const a = attributionEdition;
+  if (a.pour !== state.editState) return;
+  clearTimeout(a.minuterie);
+  a.minuterie = 0;
+  a.carte = null;
+  a.base = photoAttributionEdition();
+  peindreAttributionEdition();
+}
+
+// « OK », « Garder », « Non » : la carte se ferme, rien d autre ne change. Le
+// focus qui etait dans la carte passe a « Enregistrer ».
+function fermerAttributionEdition() {
+  const zone = document.getElementById('editAttribution');
+  const avaitLeFocus = Boolean(zone && zone.contains(document.activeElement));
+  attributionEdition.carte = null;
+  peindreAttributionEdition();
+  if (avaitLeFocus) {
+    const enregistrer = document.querySelector('#posOverlay .fm .es-save');
+    if (enregistrer) enregistrer.focus({ preventScroll: true });
+  }
+}
+
+// « Modifier » : les pastilles des pistes (ou les parties du laser) sous les
+// yeux, la premiere choisie prete au doigt et au clavier.
+function modifierAttributionEdition() {
+  const carte = attributionEdition.carte;
+  attributionEdition.carte = null;
+  peindreAttributionEdition();
+  const premiere = carte && carte.lignes[0];
+  const laser = premiere && premiere.activite === 'laser_game';
+  const overlay = document.getElementById('posOverlay');
+  if (!overlay) return;
+  const rangeeLaser = overlay.querySelector('.fm-act[data-edit-activity="laser_game"]');
+  const pli = laser && rangeeLaser ? rangeeLaser.querySelector('details.dossier-laser-schedule') : null;
+  if (pli) pli.open = true;
+  const cible = laser
+    ? (pli || (rangeeLaser && rangeeLaser.querySelector('.fm-act-reglages')) || overlay.querySelector('#editDurationInput'))
+    : overlay.querySelector('.fm .lane-picker');
+  if (!cible) return;
+  const reduit = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  cible.scrollIntoView({ block: 'center', behavior: reduit ? 'auto' : 'smooth' });
+  const touche = laser
+    ? (pli ? pli.querySelector('summary') : cible.matches('select, input') ? cible : cible.querySelector('button:not([disabled]), select, input'))
+    : (cible.querySelector('.lane-chip.is-on:not([disabled])') || cible.querySelector('.lane-chip:not([disabled])'));
+  if (touche) touche.focus({ preventScroll: true });
+  cible.classList.remove('attr-repere');
+  void cible.offsetWidth;
+  cible.classList.add('attr-repere');
+  setTimeout(() => cible.classList.remove('attr-repere'), 1600);
+}
+
+// « Libérer la piste 4 » : le groupe plus petit rend les pistes que la carte
+// propose ; celles touchees a la main ne sont jamais dans l offre.
+function libererPistesEdition() {
+  const e = state.editState;
+  const carte = attributionEdition.carte;
+  const ligne = carte && carte.lignes.find((x) => (x.liberables || []).length);
+  if (!e || !ligne) { fermerAttributionEdition(); return; }
+  if (state.editError) setEditError('');
+  e.lanesStr = formatLaneInput(getEditLaneNumbers().filter((piste) => !ligne.liberables.includes(piste)));
+  fermerAttributionEdition();
+  attributionEdition.base = photoAttributionEdition();
+  refreshEditPreview();
+}
+
+// « Prendre les pistes 7 et 8 » : le bowling deplace part sur elles (le
+// deplacement garde le nombre de pistes ; preparerDeplacementsEdition).
+function prendrePistesHeureEdition() {
+  const e = state.editState;
+  const carte = attributionEdition.carte;
+  const ligne = carte && carte.lignes.find((x) => x.motif === 'heure');
+  if (!e || !ligne) { fermerAttributionEdition(); return; }
+  e.pistesDeLHeure = { heure: ligne.heure, pistes: ligne.proposees.slice() };
+  fermerAttributionEdition();
+  attributionEdition.base = photoAttributionEdition();
+  peindrePistesPrises();
+  majModifsEdition();
+}
+
+// Les pistes que le bowling deplace emporte : celles prises dans la carte pour
+// CETTE heure, sinon les siennes.
+function pistesDuDeplacementBowling(lanes) {
+  const e = state.editState;
+  const prises = e && e.pistesDeLHeure;
+  const heure = String(heuresChangeesEdition().bowling || '');
+  return prises && prises.heure === heure && Array.isArray(lanes) && prises.pistes.length === lanes.length ? prises.pistes.slice() : lanes;
 }
 
 // TOUT LE GROUPE RESTE TOUT LE GROUPE (2026-10-27). Une activite enregistree
@@ -1672,6 +2072,8 @@ function setEditField(field, value, syncLanes = false) {
   }
   if (syncLanes) syncEditLaneAssignment();
   else refreshEditPreview();
+  // (le groupe, la duree ou l arrivee changent les pistes : la carte le dira)
+  if (syncLanes && typeof planifierAttributionEdition === 'function') planifierAttributionEdition();
   if (field === 'pax' && state.editState.programmeEdite) {
     // Refresh derived activity limits without replacing the input being typed.
     document.querySelectorAll('.dossier-activity[data-edit-activity]').forEach(row => {
@@ -1707,6 +2109,16 @@ function toggleEditLane(lane) {
   if (choisies.has(lane)) choisies.delete(lane);
   else choisies.add(lane);
   state.editState.lanesStr = [...choisies].sort((a, b) => a - b).join(',');
+  // UNE PISTE TOUCHEE A LA MAIN NE PART JAMAIS SEULE (2026-11-18) : un groupe
+  // qui redescend rend les pistes que Pinlane avait ajoutees, jamais celle-ci,
+  // et la carte ne propose pas de la liberer. Les pistes prises pour une heure
+  // changee cedent la place a ce choix.
+  const touchees = new Set((state.editState.pistesTouchees || []).map(Number));
+  if (choisies.has(lane)) touchees.add(lane);
+  else touchees.delete(lane);
+  state.editState.pistesTouchees = [...touchees].sort((a, b) => a - b);
+  delete state.editState.pistesDeLHeure;
+  if (typeof oublierAttributionEdition === 'function') oublierAttributionEdition();
   const bouton = document.querySelector(`.lane-picker .lane-chip[onclick="toggleEditLane(${lane})"]`);
   if (bouton) {
     const actif = choisies.has(lane);
@@ -1730,6 +2142,8 @@ function basculerPistesALaMainEdition() {
     bouton.setAttribute('aria-pressed', e.pistesALaMain ? 'true' : 'false');
   }
   if (!e.pistesALaMain) syncEditLaneAssignment();
+  // (le nombre pose a la main ne se commente pas : la carte se tait)
+  if (typeof oublierAttributionEdition === 'function') oublierAttributionEdition();
   const hint = document.getElementById('editLanesHint');
   if (hint && state.selectedRes) hint.textContent = editLaneAdvice(dossierPourFormule(state.selectedRes), e);
   refreshEditPreview();
@@ -31146,6 +31560,10 @@ function toggleEditActivity(id) {
   if (id === 'bowling') programme.bowling.on = !programme.bowling.on;
   else if (id === 'laser_game') programme.laser_game.on = !programme.laser_game.on;
   else { programme.others[id] = !programme.others[id]; if (id === 'arcade_time' && programme.others[id] && !programme.othersOptions[id]) programme.othersOptions[id] = defaultArcadeOptions(getCenterActivity(id)); }
+  // (un bowling remis au programme reprend ses pistes tout de suite ; retire, il
+  // garde celles d avant, que l enregistrement ne demande plus)
+  if (id === 'bowling' && programme.bowling.on && typeof suivreAttributionEdition === 'function') suivreAttributionEdition();
+  else if (typeof planifierAttributionEdition === 'function') planifierAttributionEdition();
   renderPos();
 }
 
@@ -31154,6 +31572,8 @@ function setEditBowlingDuration(valeur) {
   if (!programme) return;
   programme.bowling.on = true;
   programme.bowling.duration = Number(valeur) || 1;
+  // (une partie plus longue peut demander d autres pistes : elles suivent)
+  if (typeof suivreAttributionEdition === 'function') suivreAttributionEdition();
   renderPos();
 }
 
@@ -31165,6 +31585,7 @@ function setEditLaserGames(nombre) {
   programme.laser_game.games = Math.max(1, Math.min(3, Math.trunc(Number(nombre) || 1)));
   if (Array.isArray(programme.laser_game.joueursParPartie)) rsPartiesAuNombre(programme.laser_game, programme.laser_game.games, state.editState.pax);
   if (state.selectedRes?.type === 'laser') state.editState.duration = programme.laser_game.games * 0.5;
+  if (typeof planifierAttributionEdition === 'function') planifierAttributionEdition();
   renderPos();
 }
 
@@ -32144,7 +32565,8 @@ function occupantPisteEdition(piste) {
 // place, et les touches cochees suivent celles que la console propose (une
 // heure changee retirait la piste 6 du dossier, sa touche restait bleue).
 function peindrePistesPrises() {
-  const choisies = new Set(getEditLaneNumbers());
+  // (un bowling deplace sur les pistes prises dans la carte montre celles-la)
+  const choisies = new Set(typeof pistesDuDeplacementBowling === 'function' ? pistesDuDeplacementBowling(getEditLaneNumbers()) : getEditLaneNumbers());
   document.querySelectorAll('#posOverlay .fm .lane-picker .lane-chip').forEach((bouton) => {
     if (bouton.disabled) return;
     const piste = Number(bouton.textContent);
@@ -32206,6 +32628,8 @@ function peindreVerdictEdition() {
     zone.textContent = texte;
     zone.hidden = !texte;
   }
+  // La carte des pistes prend celles que le serveur ecrira, des qu il l a dit.
+  if (typeof peindreAttributionEdition === 'function') peindreAttributionEdition();
   // Le refus d une heure se lit a son activite (son champ en rouge, la phrase dessous).
   peindreRefusHeuresEdition();
   if (ton === 'calcul') return;
@@ -32454,6 +32878,14 @@ function poserHeureActivite(cle, valeur) {
   if (state.editError) setEditError('');
   const ecrit = dossierEcritDuVerdict();
   peindreColonnesHeuresEdition(ecrit ? heuresDuProgrammeEnregistre(ecrit) : heuresDuProgrammeEnregistre(dossierPourFormule(r)));
+  // L HEURE DU BOWLING DEPLACE SES PISTES (2026-11-18) : les pastilles se lisent
+  // a la nouvelle heure, et la carte propose d autres pistes si les siennes y
+  // sont prises (la meme decision que pour les joueurs).
+  if (cle === 'bowling') {
+    if (e.pistesDeLHeure && e.pistesDeLHeure.heure !== changees.bowling) delete e.pistesDeLHeure;
+    peindrePistesPrises();
+    if (typeof planifierAttributionEdition === 'function') planifierAttributionEdition();
+  }
   majModifsEdition();
 }
 
@@ -32477,6 +32909,10 @@ function toucheHeureActivite(event, cle) {
     delete changees[cle];
     e.heuresActivites = changees;
   }
+  if (e && cle === 'bowling') {
+    delete e.pistesDeLHeure;
+    if (typeof planifierAttributionEdition === 'function') planifierAttributionEdition();
+  }
   heureOuverteEdition = '';
   noteHeuresEdition = null;
   renderPos();
@@ -32490,7 +32926,10 @@ function modifsHeuresEdition() {
   const points = pointsHeureEdition(state.selectedRes);
   return ordreHeuresEdition(Object.keys(changees)).map((cle) => {
     const point = points.get(cle);
-    return point ? `${point.nom} ${formatClockDisplay(point.start)} → ${changees[cle]}` : '';
+    if (!point) return '';
+    // (le bowling deplace sur les pistes prises dans la carte le dit aussi)
+    const prises = cle === 'bowling' && state.editState && state.editState.pistesDeLHeure && state.editState.pistesDeLHeure.heure === changees[cle] ? `, ${pistesEnMots(state.editState.pistesDeLHeure.pistes)}` : '';
+    return `${point.nom} ${formatClockDisplay(point.start)} → ${changees[cle]}${prises}`;
   }).filter(Boolean);
 }
 
@@ -32554,6 +32993,8 @@ function preparerDeplacementsEdition() {
       : point.activityId === 'laser_game'
         ? { activityId: 'laser_game', unitKey: point.unite, startTime: heure }
         : { activityId: point.activityId, startTime: heure };
+    // (les pistes prises dans la carte pour cette heure partent avec le bowling)
+    if (point.activityId === 'bowling') move.lanes = pistesDuDeplacementBowling(move.lanes);
     deplacements.push({ cle, point, heure, move, plancher });
   }
   return { heures: true, es, origine, versionDeBase, deplacements, auPlusTot: auPlusTot > 0 ? auPlusTot : null };
@@ -32785,6 +33226,8 @@ let editContactOuvert = false;
 
 function renderPosEdit(r) {
   const e = state.editState;
+  // La photo des pistes et des armes a l ouverture : la carte compare a elle.
+  baseAttributionEdition();
   // Le verdict suit ce qui vient de changer, avant que les heures se dessinent.
   demanderVerdictEdition();
   // Ce que CETTE reservation a reellement : une session laser n'occupe aucune
@@ -32833,7 +33276,7 @@ function renderPosEdit(r) {
             <span class="lbl" id="editLanesLabel">Pistes</span>
             <div class="lane-picker dossier-lanes" role="group" aria-labelledby="editLanesLabel" aria-describedby="editLanesHint">
               ${Array.from({ length: getAvailabilityLaneCount() }, (_, index) => index + 1).map(lane => {
-                const choisie = getEditLaneNumbers().includes(lane);
+                const choisie = pistesDuDeplacementBowling(getEditLaneNumbers()).includes(lane);
                 const maintenance = state.laneStatuses[lane] === 'maintenance';
                 const occupant = maintenance ? null : occupantPisteEdition(lane);
                 return `<button type="button" class="lane-chip${choisie ? ' is-on' : ''}${maintenance ? ' is-off' : ''}${occupant ? ' is-prise' : ''}"
@@ -32935,6 +33378,7 @@ ${!adapte || (!isLaserRes && !editNeedsLanes && String(rf.type || '') !== 'formu
       </div>
       <p class="edit-error" id="editError" role="alert" ${state.editError ? '' : 'hidden'}>${escapeHtml(state.editError || '')}</p>
       <div class="edit-actions es-actions dossier-actions fm-pied">
+        <div class="fm-attr" id="editAttribution" role="status" aria-live="polite" aria-atomic="true">${attributionEditionHtml()}</div>
         ${verdictEditionHtml()}
         <p class="fm-modifs${resumeModifsEdition().length ? '' : ' is-vide'}" id="editModifs">${resumeModifsEditionHtml()}</p>
         <div class="edit-actions-main">
@@ -33257,6 +33701,9 @@ async function saveEdit(e) {
       // cause.
       departsEdition().set(es, { origine, base: error.reservation });
       applyOptimisticReservation(error.reservation);
+      // (la version du collegue a pu prendre ou rendre des pistes : celles de la
+      // saisie se relisent, et la carte dit ce qui change)
+      if (typeof suivreAttributionEdition === 'function' && state.editState === es) suivreAttributionEdition();
       const libelles = libellesChampsReservation(error.champs);
       failEdit(libelles
         ? `La réservation a changé entre-temps (${libelles}). Votre saisie est gardée : enregistrez à nouveau pour l’appliquer.`
@@ -33939,6 +34386,8 @@ function setQuickVisitParticipants(id, nombre) {
   syncQuickBookDuration();
   // (les joueurs du bowling changent ses pistes, comme le groupe : setQuickPax)
   reconcileQuickLaneSelection();
+  // (et la carte des pistes et des armes le dira, la frappe calmee)
+  if (typeof planifierAttributionReserver === 'function') planifierAttributionReserver();
   renderQuickBook();
 }
 
@@ -34082,6 +34531,10 @@ function setEditActivityParticipants(id, nombre) {
   if (id === 'arcade_time' && participants !== participantsLigneProgramme(options,e.pax)) { delete options.arcadeOffer; if (options.arcadeMode === 'time') options.cards=participants; }
   if (id === 'laser_game' && Array.isArray(options.joueursParPartie)) rsPartiesSuiventLaLigne(options, participants);
   options.participants = participants;
+  // LES PISTES SUIVENT LES JOUEURS DU BOWLING (2026-11-18) : 5 puis 8 au
+  // Programme demande une piste de plus, tout de suite, et la carte le dit
+  // (les vagues du laser aussi). Avant : « complétée à l’enregistrement ».
+  if (typeof suivreAttributionEdition === 'function') suivreAttributionEdition();
   renderPos();
 }
 
@@ -34112,6 +34565,7 @@ function setEditJoueursPartie(k, n) {
   liste[k] = n;
   if (lg.extraLaser) { delete lg.extraLaser; toast('La partie supplémentaire est retirée : chaque partie a maintenant ses joueurs.'); }
   rsPoserJoueursDesParties(lg, liste, e.pax);
+  if (typeof planifierAttributionEdition === 'function') planifierAttributionEdition();
   renderPos();
 }
 
@@ -34211,6 +34665,7 @@ function setQuickPax(value) {
   quickBookState.pax = Math.max(1, Number(value) || 1);
   syncQuickBookDuration();
   reconcileQuickLaneSelection();
+  if (typeof planifierAttributionReserver === 'function') planifierAttributionReserver();
   renderQuickBook();
 }
 
@@ -36285,6 +36740,7 @@ function rvCoquilleHtml() {
         <div class="rs-tk-lignes" id="rsLignes"></div>
         <div class="rs-tk-client" id="rsClient"></div>
       </div>
+      <div class="rs-attr-zone" id="rsAttrZone" role="status" aria-live="polite" aria-atomic="true"></div>
       <div class="rs-verdict" id="rvVerdict" aria-live="polite"></div>
       <div class="rs-tk-p" id="rvPied"></div>
     </aside>
@@ -36396,6 +36852,9 @@ function rvRepeindre({ sauf = [] } = {}) {
   rsPoser('rvPied', rvPiedHtml());
   rvPoser('rvCouche', rvCoucheHtml());
   rvPoser('rsQJZone', rsQuestionJoueursHtml());
+  // (la photo des pistes et des armes au premier dessin, puis la carte s il y en a une)
+  baseAttributionReserver();
+  rvPoser('rsAttrZone', attributionReserverHtml());
   rvPlacerHorloge();
   rsChercherLaProche();
   rsArmerCompteurs();
@@ -37595,7 +38054,9 @@ function rsNombre(n) {
     rsLacherChamp();
     b.faits.combien = true;
     b.demandeJoueurs = false;
-    quickBookState.pistesALaMain = null;
+    // UN NOMBRE DE PISTES POSE A LA MAIN SURVIT AU GROUPE QUI CHANGE (2026-11-18) :
+    // il s effacait ici, et le groupe repartait sur le conseil du centre sans un
+    // mot. La main a parle, elle garde la parole (la carte se tait pour lui).
     setQuickPax(pax);
   });
 }
@@ -37635,6 +38096,112 @@ function rsQuestionJoueursHtml() {
       <div class="rs-qj-ns">${RS_NOMBRES.map(cle).join('')}<label class="rs-qj-n rs-qj-autre"><input id="rsQJAutre" type="number" min="1" max="240" inputmode="numeric" placeholder="Autre" aria-label="Autre nombre de joueurs" onchange="rsNombreAutre(this)" onkeydown="if (event.key === 'Enter') { event.preventDefault(); rsNombreAutre(this); }"></label></div>
       <button type="button" class="rs-lien rs-qj-tard" id="rsQJTard" onclick="rsFermerQuestionJoueurs()">Plus tard</button>
     </div>`;
+}
+
+// LA CARTE DES PISTES ET DES ARMES DANS RESERVER (2026-11-18, la demande d Ansar
+// en tete de proposerAttribution) : la meme decision que Modifier. Le mode
+// « Auto » montre deja les pistes en direct (le ticket, le bloc du bowling) :
+// la carte ne parle que quand le nombre de pistes ou de vagues change, la
+// frappe calmee, dans le ticket au-dessus de « Créer », sans voile ni focus :
+// elle ne couvre rien de la colonne (posee en bas de la colonne, elle cachait
+// « Formules » et des heures). Un premier nombre
+// de joueurs (la question « Combien de joueurs ? ») n est pas un changement :
+// rien ne s affiche. Un nombre de pistes pose a la main non plus.
+let attributionReserver = { pour: null, base: null, minuterie: 0, carte: null };
+
+function rvPhotoAttribution() {
+  const s = quickBookState;
+  if (!s) return null;
+  const ids = rvActivites();
+  const photo = { connu: Boolean(rsEtat() && rsEtat().faits.combien), bowling: null, laser: null };
+  if (ids.includes('bowling')) {
+    const heure = (rvHeuresDesLignes(ids).bowling || {}).heure || s.startTime;
+    const besoin = rvBesoinPistes(heure);
+    const capacite = besoin.bowlingCapacity || {};
+    const requis = Math.max(1, Number(besoin.requiredCount) || 1);
+    const pistes = [...rvPistesDuBowling(heure).pistes].map(Number).sort((a, b) => a - b);
+    const main = (s.lanesALaMain || []).map(Number);
+    photo.bowling = {
+      joueurs: getQuickVisitParticipants('bowling'),
+      requis,
+      pistes,
+      aLaMain: Boolean(rvPistesALaMain()),
+      urgence: Boolean(capacite.emergency),
+      message: capacite.emergency ? bowlingCapacityMessage(capacite) : '',
+      manque: !heure || pistes.length < requis,
+      main: rvPlacementManuel() ? pistes.filter((piste) => main.includes(piste)) : [],
+      liberables: [],
+      heure: null,
+    };
+  }
+  if (ids.includes('laser_game')) photo.laser = photoLaserAttribution(getQuickVisitParticipants('laser_game'));
+  return photo;
+}
+
+// La photo de reference : celle de la fenetre a son premier dessin.
+function baseAttributionReserver() {
+  const a = attributionReserver;
+  if (a.pour === quickBookState) return;
+  clearTimeout(a.minuterie);
+  a.pour = quickBookState;
+  a.base = quickBookState ? rvPhotoAttribution() : null;
+  a.carte = null;
+  a.minuterie = 0;
+}
+
+function planifierAttributionReserver() {
+  const a = attributionReserver;
+  if (!quickBookState || a.pour !== quickBookState) return;
+  clearTimeout(a.minuterie);
+  a.minuterie = setTimeout(deciderAttributionReserver, ATTRIBUTION_CALME_MS);
+}
+
+function deciderAttributionReserver() {
+  const a = attributionReserver;
+  a.minuterie = 0;
+  if (!quickBookState || a.pour !== quickBookState) return;
+  const photo = rvPhotoAttribution();
+  a.carte = a.base && a.base.connu ? proposerAttribution(a.base, photo) : null;
+  a.base = photo;
+  rvPeindreAttribution();
+}
+
+function attributionReserverHtml() {
+  const a = attributionReserver;
+  const carte = a.pour === quickBookState ? a.carte : null;
+  if (!carte) return '';
+  const lignes = carte.lignes.map((ligne) => `<p class="attr-ligne" data-attr-activite="${escapeHtml(ligne.activite)}" data-attr-motif="${escapeHtml(ligne.motif)}">${ligneAttributionHtml(ligne)}</p>`).join('');
+  const fermer = 'fermerAttributionReserver()';
+  return `<div class="attr-carte rs-attr">${iconeAttributionHtml(carte)}<div class="attr-lignes">${lignes}</div><div class="attr-gestes">${gestesAttributionHtml(carte, { modifier: 'modifierAttributionReserver()', fermer, liberer: fermer, prendre: fermer })}</div></div>`;
+}
+
+// La zone se repeint seule (le reste de la fenetre ne bouge pas).
+function rvPeindreAttribution() {
+  if (!quickBookState) return;
+  // (le ticket raccourcit ou s allonge : son fondu du bas suit, rsOmbreDuTicket)
+  if (rvPoser('rsAttrZone', attributionReserverHtml())) requestAnimationFrame(rsOmbreDuTicket);
+}
+
+// « OK » : la carte se ferme ; le focus qui y etait revient a la colonne.
+function fermerAttributionReserver() {
+  const zone = document.getElementById('rsAttrZone');
+  const avaitLeFocus = Boolean(zone && zone.contains(document.activeElement));
+  attributionReserver.carte = null;
+  rvPeindreAttribution();
+  if (avaitLeFocus) {
+    const colonne = document.getElementById('rsCol');
+    if (colonne) colonne.focus({ preventScroll: true });
+  }
+}
+
+// « Modifier » : la page de la ligne, ou se choisissent ses pistes (ou ses
+// parties et ses departs pour le laser).
+function modifierAttributionReserver() {
+  const carte = attributionReserver.carte;
+  attributionReserver.carte = null;
+  rvPeindreAttribution();
+  const premiere = carte && carte.lignes[0];
+  if (premiere) rsOuvrirLigne(premiere.activite);
 }
 
 function rsFormuleHtml(f, commun) {

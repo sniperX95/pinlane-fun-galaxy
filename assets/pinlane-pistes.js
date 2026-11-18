@@ -97,10 +97,24 @@
     return 0;
   }
 
+  // LES GROUPES QUI GARDENT UNE GRAINE : elle, plus chaque suite des pistes
+  // libres qui lui manquent, dans l ordre des numeros (comme les candidats sans
+  // graine). Il y en a toujours un : la graine est libre et il reste assez de
+  // pistes libres pour la completer.
+  function autourDeLaGraine(graine, libres, nombre) {
+    const reste = libres.filter((piste) => !graine.includes(piste));
+    const manque = nombre - graine.length;
+    const groupes = [];
+    for (let i = 0; i + manque <= reste.length; i += 1) groupes.push([...graine, ...reste.slice(i, i + manque)].sort((a, b) => a - b));
+    return groupes;
+  }
+
   // options : libres (les pistes libres sur la fenetre), nombre (les pistes
   // voulues), pistes (le nombre de pistes du centre), usage (minutes par piste
   // sur la journee, usageDesPistes), date (« AAAA-MM-JJ »), coteACote (faux :
-  // le centre renonce a garder un groupe cote a cote, reglage preferAdjacentLanes).
+  // le centre renonce a garder un groupe cote a cote, reglage preferAdjacentLanes),
+  // graine (les pistes que le groupe garde : celles qu une reservation modifiee
+  // a deja, une piste touchee au comptoir).
   // Rend les pistes choisies (triees), [] pour zero piste, null s il en manque.
   function choisirPistes(options) {
     const o = options || {};
@@ -110,6 +124,16 @@
       .filter((piste) => Number.isInteger(piste) && piste > 0)
       .sort((a, b) => a - b);
     if (libres.length < nombre) return null;
+    // LA GRAINE (2026-11-18, Ansar : « quand on passe 5j a 8j partout faut que ça
+    // change les pistes »). Le groupe qui grandit garde ses pistes encore libres
+    // et la regle ne choisit que celles qui manquent (avant : « la premiere
+    // libre » apres elles, une copie de plus de la regle dans la console). Plus
+    // de graine que de pistes voulues : la regle choisit celles qui restent,
+    // parmi elles. Une piste de la graine qui n est pas libre ne compte pas.
+    const graine = [...new Set((Array.isArray(o.graine) ? o.graine : []).map(Number))]
+      .filter((piste) => libres.includes(piste))
+      .sort((a, b) => a - b);
+    if (graine.length >= nombre) return choisirPistes({ ...o, libres: graine, graine: [] });
     const total = Math.max(Math.trunc(Number(o.pistes)) || 0, libres[libres.length - 1]);
     const estLibre = new Set(libres);
     const voisine = new Map();
@@ -120,11 +144,12 @@
     const charge = (piste) => Math.max(0, Number(usage[piste]) || 0);
     const somme = (groupe) => groupe.reduce((s, piste) => s + charge(piste), 0);
 
-    // Un centre sans « pistes voisines » : les moins utilisees, ou qu elles soient.
+    // Un centre sans « pistes voisines » : les moins utilisees, ou qu elles
+    // soient (apres la graine).
     if (o.coteACote === false && nombre > 1) {
-      return [...libres]
+      return [...graine, ...libres.filter((piste) => !graine.includes(piste))
         .sort((a, b) => charge(a) - charge(b) || rang(a) - rang(b))
-        .slice(0, nombre)
+        .slice(0, nombre - graine.length)]
         .sort((a, b) => a - b);
     }
 
@@ -139,9 +164,12 @@
     const paireEntiere = (groupe) => groupe.length === 2 && voisine.get(groupe[0]) === groupe[1];
 
     // Les candidats : chaque suite de `nombre` pistes libres consecutives dans
-    // la liste (un bloc cote a cote quand il n y a pas de trou).
+    // la liste (un bloc cote a cote quand il n y a pas de trou). Avec une
+    // graine : elle, plus chaque suite de celles qui manquent ; les memes cles
+    // les departagent.
     const candidats = [];
     for (let i = 0; i + nombre <= libres.length; i += 1) candidats.push(libres.slice(i, i + nombre));
+    if (graine.length) candidats.splice(0, candidats.length, ...autourDeLaGraine(graine, libres, nombre));
     // 1. Ce que le groupe exige : une paire entiere pour 2, le bloc le plus serre.
     const exige = (groupe) => [nombre === 2 && !paireEntiere(groupe) ? 1 : 0, groupe[groupe.length - 1] - groupe[0]];
     const meilleureExigence = candidats.map(exige).reduce((a, b) => (comparerCles(b, a) < 0 ? b : a));

@@ -302,6 +302,12 @@ async function requete(texte, params = []) {
     if (!r) return vide();
     return lignes([{ member_id: m.id, member_name: m.name, contact: m.contact || '', member_status: m.status, role_id: m.role_id, role_name: r.name, role_code: r.code, permissions: r.permissions || [], locked: Boolean(r.locked) }]);
   }
+  // Le nom du fondateur, lu par lib/fondateur-invisible.js (nomsDuFondateur) pour le taire dans les
+  // historiques du centre depuis le 18/11 : le LIKE de la vraie base, joue sur les membres du banc.
+  if (/^select distinct name from staff_members where id like \$1/i.test(sql)) {
+    const motif = new RegExp(`^${String(params[0]).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/%/g, '.*').replace(/_/g, '.')}$`);
+    return lignes([...new Set(db.staff_members.filter((m) => motif.test(String(m.id))).map((m) => m.name).filter(Boolean))].map((name) => ({ name })));
+  }
   NON_COUVERTES.push(sql.slice(0, 160));
   return vide();
 }

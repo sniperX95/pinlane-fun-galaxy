@@ -395,7 +395,19 @@ async function tablette(browser, seulement) {
       await page.evaluate(() => { const se = document.scrollingElement || document.documentElement; se.scrollTop = document.getElementById('staffTableBox').getBoundingClientRect().top + se.scrollTop - innerHeight / 2; });
       await page.waitForFunction(() => listeVisible && !listeEnAttente, null, { timeout: 4000 }).catch(() => null);
       await repos(page);
-      const ids = await page.evaluate(() => state.reservations.filter((r) => r.type === 'bowling' && r.status === 'confirmed').slice(0, 5).map((r) => r.id));
+      const ids = await page.evaluate(() => state.reservations.filter((r) => r.type === 'bowling' && r.status === 'confirmed').slice(0, 6).map((r) => r.id));
+      // UN CHANGEMENT D ECHAUFFEMENT, NON COMPTE (2026-11-19). Sur la machine GitHub, le premier
+      // changement apres [A] a [C] coutait 5 mises en page au lieu de 3, sans meme le lot du
+      // mouvement : [D] joue seul y donnait 3 partout, et 5 apres [A] a [C] (essais etiquetes
+      // essai-perf-*), 6 avec le rouleau des compteurs qui pose ses colonnes une premiere fois.
+      // Des couts d une seule fois (les cartes reprises a l ecran apres le defilement, le premier
+      // rouleau), pas un rendu qui force sa mise en page : un changement les paie, puis les cinq
+      // se mesurent. (la contre-preuve « defilement » rougit toujours : quatre par changement)
+      const echauffement = ids.shift();
+      if (echauffement !== undefined) {
+        await page.evaluate((id) => applyOptimisticReservation({ ...state.reservations.find((r) => r.id === id), status: 'arrived', updatedAt: new Date().toISOString() }), echauffement);
+        await repos(page);
+      }
       const parChangement = [];
       for (const id of ids) {
         const m0 = await metriques(cdp);

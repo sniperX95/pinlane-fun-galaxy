@@ -27289,7 +27289,7 @@ function lpLegende(modele, d, choisi) {
     // Dans une rangee serree, les pictos cedent et un coin replie dit la note : il rougit
     // avec une allergie, et l infobulle de la carte dit la note en entier.
     const noteLaser = texteNoteDeCarte(essentielDuDossier(r));
-    return `<button type="button" class="lp-g ${k}${etat}${choisiIci}${grise}${/^Allergie · /.test(noteLaser) ? ' a-allergie' : ''}"${volonteLaser ? ' data-a-volonte="1"' : ''} ${lpAttrsGroupe(id, unitKey, { fiche: true })} title="${escapeHtml(`${titre} ${infos}${volonteLaser ? ` · ${volonteLaser}` : ''} · ${statut}${noteLaser ? ` · ${noteLaser}` : ''}`)}"><i aria-hidden="true"></i><span class="lp-g__nom"><b>${escapeHtml(r.name || 'Groupe')}</b>${lpPictos(r)}</span><span class="lp-g__sous"><span class="lp-card-info">${escapeHtml(infos)}</span><span class="lp-card-status">${statut}</span></span></button>`;
+    return `<button type="button" class="lp-g ${k}${etat}${choisiIci}${grise}${/^Allergie · /.test(noteLaser) ? ' a-allergie' : ''}" ${lpAttrsGroupe(id, unitKey, { fiche: true })}${volonteLaser ? ' data-a-volonte="1"' : ''} title="${escapeHtml(`${titre} ${infos}${volonteLaser ? ` · ${volonteLaser}` : ''} · ${statut}${noteLaser ? ` · ${noteLaser}` : ''}`)}"><i aria-hidden="true"></i><span class="lp-g__nom"><b>${escapeHtml(r.name || 'Groupe')}</b>${lpPictos(r)}</span><span class="lp-g__sous"><span class="lp-card-info">${escapeHtml(infos)}</span><span class="lp-card-status">${statut}</span></span></button>`;
   });
   // Un client retient ces armes en ligne : la carte dit quand elles se
   // liberent (comme la carte du planning bowling) et ne lance rien au toucher.
@@ -28433,9 +28433,9 @@ function getGroupeProgramme(r) {
       unite: `${partie}.${Number(f.groupWaveIndex) || 1}`,
       activityId: 'laser_game',
       nom: 'Laser Game',
-      quoi: f.aVolonte
-        ? `${Number(f.players) || effectifActivite('laser_game')} armes à chaque départ · à volonté`
-        : `${Number(f.joueursReels ?? f.players) || effectifActivite('laser_game')} joueurs · ${parties > 1 ? `partie ${partie}/${parties}` : '1 partie'}`,
+      quoi: `${Number(f.joueursReels ?? f.players) || effectifActivite('laser_game')} joueurs · ${parties > 1 ? `partie ${partie}/${parties}` : '1 partie'}`,
+      // (des armes gardees a chaque depart d un acces illimite, lib/a-volonte.js)
+      ...(f.aVolonte ? { quoi: `${Number(f.players) || effectifActivite('laser_game')} armes à chaque départ · à volonté` } : {}),
       ou: f.aVolonte && f.departs > 1 ? `${f.departs} départs` : '',
       groupe: vagues > 1 ? `groupe ${Number(f.groupWaveIndex) || 1}/${vagues}` : '',
       start: f.start,
@@ -31791,7 +31791,8 @@ function illimiteDeSaCarte(r) {
 
 function buildEditProgramFromReservation(r) {
   const etat = { bowling: { on: false, duration: 1 }, laser_game: { on: false, games: 1 }, others: {}, othersOptions: {} };
-  const items = r && r.program && Array.isArray(r.program.items) && !illimiteDeSaCarte(r) ? r.program.items : null;
+  // (un banc qui ne charge que cette fonction n a pas illimiteDeSaCarte : le programme du dossier fait foi)
+  const items = r && r.program && Array.isArray(r.program.items) && !(typeof illimiteDeSaCarte === 'function' && illimiteDeSaCarte(r)) ? r.program.items : null;
   if (items && items.length) {
     items.forEach((item) => {
       const id = String(item.activityId || '');

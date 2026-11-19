@@ -66,6 +66,19 @@
     // pas la meme reaction, et la couleur le dit avant que le nombre soit lu.
     el.classList.add(vers > de ? 'pl-num-up' : 'pl-num-down');
 
+    // LE ROULEAU (2026-11-19, Ansar : « beaucoup plus waw [...] et leger ») : un nombre
+    // entier tourne chiffre par chiffre dans sa colonne, comme un compteur mecanique
+    // (NumberFlow, React Bits Counter). Transform seulement : plus d ecriture du texte a
+    // chaque image. Le texte exact revient a la fin, tel quel.
+    if (!decimales && rouleau(el, de, vers, modele, function () {
+      if (enCours[cle] !== jeton || !el.isConnected) return;
+      el.textContent = modele;
+      Promise.resolve().then(function () { el.removeAttribute('data-pl-anim'); });
+      window.setTimeout(function () {
+        if (enCours[cle] === jeton) el.classList.remove('pl-num-up', 'pl-num-down');
+      }, 900);
+    })) return;
+
     function pas(t) {
       if (enCours[cle] !== jeton) return;            // un rendu plus recent a pris la main
       if (debut === null) debut = t;
@@ -87,6 +100,64 @@
       }
     }
     requestAnimationFrame(pas);
+  }
+
+  // Les colonnes : chaque chiffre du nombre final, aligne a droite sur l ancien (les unites
+  // sous les unites). Une colonne empile trois fois 0 a 9 et part du tour du milieu : une
+  // hausse tourne vers le haut, une baisse vers le bas, par le plus court chemin. Les
+  // chiffres de droite partent les premiers, 40 ms d ecart, 650 ms chacun.
+  function rouleau(el, de, vers, modele, fin) {
+    if (typeof el.animate !== 'function') return false;
+    var m = modele.match(/-?[\d\s\u00a0\u202f.,]*\d/);
+    if (!m) return false;
+    var nouveau = m[0];
+    var avantTexte = modele.slice(0, m.index);
+    var apresTexte = modele.slice(m.index + nouveau.length);
+    var anciens = formater(de, 0).replace(/\D/g, '').split('');
+    var style = window.getComputedStyle(el);
+    var h = parseFloat(style.lineHeight);
+    if (!(h > 0)) h = (parseFloat(style.fontSize) || 14) * 1.2;
+    var hausse = vers > de;
+    var colonnes = [];
+    var html = '';
+    var rang = 0;
+    for (var i = nouveau.length - 1; i >= 0; i -= 1) {
+      var c = nouveau.charAt(i);
+      if (!/\d/.test(c)) { html = '<span class="pl-rl-s">' + (c === '-' ? '-' : c === ',' || c === '.' ? c : '&#8239;') + '</span>' + html; continue; }
+      var n = Number(c);
+      var o = anciens.length - 1 - rang >= 0 ? Number(anciens[anciens.length - 1 - rang]) : null;
+      var saut = o === null ? 0 : hausse ? (n - o + 10) % 10 : -((o - n + 10) % 10);
+      var depart = 10 + (o === null ? n : o);
+      colonnes.unshift({ rang: rang, depart: depart, arrivee: depart + saut, neuf: o === null });
+      var pile = '';
+      for (var k = 0; k < 30; k += 1) pile += '<i>' + (k % 10) + '</i>';
+      html = '<span class="pl-rl"><span class="pl-rl-p" style="transform:translateY(' + (-(depart + saut) * h) + 'px)">' + pile + '</span></span>' + html;
+      rang += 1;
+    }
+    el.style.setProperty('--pl-rl-h', h + 'px');
+    el.innerHTML = '<span class="pl-rl-t">' + echapper(avantTexte) + '</span>' + html + '<span class="pl-rl-t">' + echapper(apresTexte) + '</span>';
+    var piles = el.querySelectorAll('.pl-rl-p');
+    var restantes = 0;
+    var termine = function () { restantes -= 1; if (restantes === 0) fin(); };
+    colonnes.forEach(function (col, j) {
+      var pile = piles[j];
+      if (!pile || !col.neuf && col.depart === col.arrivee) return;
+      var etapes = col.neuf
+        ? [{ transform: 'translateY(' + (-col.arrivee * h + h * 0.6) + 'px)', opacity: 0 }, { transform: 'translateY(' + (-col.arrivee * h) + 'px)', opacity: 1 }]
+        : [{ transform: 'translateY(' + (-col.depart * h) + 'px)' }, { transform: 'translateY(' + (-col.arrivee * h) + 'px)' }];
+      restantes += 1;
+      var a = pile.animate(etapes, { duration: 650, delay: col.rang * 40, easing: 'cubic-bezier(0.22, 1, 0.36, 1)', fill: 'backwards' });
+      a.onfinish = termine;
+      a.oncancel = termine;
+    });
+    if (!restantes) { fin(); return true; }
+    // (un onglet en arriere-plan peut ne jamais finir l animation)
+    window.setTimeout(function () { if (restantes > 0) { restantes = -1; fin(); } }, 2000);
+    return true;
+  }
+
+  function echapper(t) {
+    return String(t).replace(/[&<>"']/g, function (c) { return '&#' + c.charCodeAt(0) + ';'; });
   }
 
   function formater(v, decimales) {

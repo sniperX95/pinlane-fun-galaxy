@@ -62,7 +62,7 @@
 .plc-line-dot { fill: currentColor; }
 
 .plc-anim .plc-line-path {
-  transition: stroke-dashoffset 600ms cubic-bezier(0.23, 1, 0.32, 1);
+  transition: stroke-dashoffset 600ms cubic-bezier(0.23, 1, 0.32, 1); /* mouvement-permis : la courbe des donnees se dessine une fois */
 }
 /* !important : gagne sur le style inline initial (dashoffset:1000). */
 .plc-anim.plc-in .plc-line-path { stroke-dashoffset: 0 !important; }
@@ -128,7 +128,7 @@
 .plc-donut-seg.plc-tone-danger { stroke: var(--danger); }
 
 .plc-anim .plc-donut-seg {
-  transition: stroke-dashoffset 600ms cubic-bezier(0.23, 1, 0.32, 1);
+  transition: stroke-dashoffset 600ms cubic-bezier(0.23, 1, 0.32, 1); /* mouvement-permis : la courbe des donnees se dessine une fois */
 }
 .plc-anim.plc-in .plc-donut-seg { stroke-dashoffset: 0 !important; }
 
@@ -340,7 +340,7 @@
 .plc-trend-dot { fill: var(--accent); stroke: var(--surface); stroke-width: 2; }
 .plc-trend-dot-compare { fill: var(--surface); stroke: var(--faint); stroke-width: 1.5; }
 
-.plc-anim .plc-trend-line { transition: stroke-dashoffset 600ms cubic-bezier(0.23, 1, 0.32, 1); }
+.plc-anim .plc-trend-line { transition: stroke-dashoffset 600ms cubic-bezier(0.23, 1, 0.32, 1); } /* mouvement-permis : la courbe des donnees se dessine une fois */
 .plc-anim.plc-in .plc-trend-line { stroke-dashoffset: 0 !important; }
 .plc-anim .plc-trend-area,
 .plc-anim .plc-trend-compare,

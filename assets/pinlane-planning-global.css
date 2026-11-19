@@ -311,7 +311,8 @@ button.gf-c.is-on, button.gf-c.is-on:hover { background: var(--text); color: var
 .gf-retenue .gf-gb--etat:not(.gf-compte) { color: var(--muted); font-weight: 500; font-variant-numeric: tabular-nums; }
 .gf-r:focus-visible { outline: 2px solid var(--console-focus); outline-offset: -2px; }
 @media (hover: hover) {
-  .gf-r:not(.gf-retenue):hover > td:not(.gf-bloc, .gf-h) { background: var(--gf-survol); }
+  /* (avec la souris, la surbrillance qui glisse de pinlane-mouvement.js remplace ce survol) */
+  body:not(.pl-glisse) .gf-r:not(.gf-retenue):hover > td:not(.gf-bloc, .gf-h) { background: var(--gf-survol); }
 }
 
 /* LA LIGNE QUI VIENT DE BOUGER SUR UN AUTRE ECRAN : elle se souligne, le temps d etre vue
@@ -445,6 +446,21 @@ button.gf-bloc__in:focus-visible { outline: 2px solid var(--console-focus); outl
 .gf-x.is-fini .gf-x__h, .gf-r.is-parti .gf-x__h { background: transparent; box-shadow: inset 0 0 0 1px var(--line); color: var(--muted); font-weight: 600; }
 /* « Illimité » prend la couleur de la formule : c est elle qui le donne. */
 .gf-x__t.is-illimite { background: var(--gf-formule-fond); color: var(--gf-formule-encre); }
+/* « Libre » porte la pastille des heures (2026-11-19). Une activite finie la perd, et son mot
+   est barre d un trait net de 1,5 px, a la couleur du texte attenue ; il se dessine de gauche
+   a droite quand elle vient de finir, une seule fois (vient-de-finir). */
+.gf-x.is-libre .gf-x__t.is-libre { margin-left: -5px; padding: 0 5px; font-weight: 600; }
+.gf-x.is-fini .gf-x__t:not(.is-nu) { position: relative; }
+.gf-x.is-fini .gf-x__t:not(.is-nu)::after { content: ''; position: absolute; left: -2px; right: -2px; top: 50%; height: 1.5px; margin-top: -0.75px; border-radius: 1px; background: currentColor; opacity: .7; transform-origin: 0 50%; pointer-events: none; }
+/* (un mot sur deux lignes, « 8 crédits » dans une colonne etroite, se barre ligne par ligne) */
+.gf-x.is-fini .gf-x__t.is-nu { text-decoration: line-through; text-decoration-thickness: 1.5px; text-decoration-color: color-mix(in srgb, currentColor 70%, transparent); }
+.gf-x.is-fini .gf-x__t .gf-x__ok { opacity: .8; }
+@media (prefers-reduced-motion: no-preference) {
+  .gf-x.vient-de-finir .gf-x__t:not(.is-nu)::after { animation: gfRaye 380ms var(--ease) 80ms backwards; }
+  .gf-x.vient-de-finir .gf-x__t { animation: gfDesurligne 300ms var(--ease) backwards; }
+}
+@keyframes gfRaye { from { transform: scaleX(0); } }
+@keyframes gfDesurligne { from { background-color: color-mix(in srgb, var(--bk-barre) 15%, var(--surface)); color: var(--bk-encre-2); } }
 .gf-x:is(.is-lancer, .is-encours, .is-retard) .gf-x__t { font-weight: 700; }
 .gf-x.is-lancer .gf-x__t { background: transparent; box-shadow: inset 0 0 0 1px var(--bk-barre); color: var(--bk-encre); }
 .gf-x.is-encours .gf-x__t { background: var(--bk-cadre); color: var(--bk-encre); }

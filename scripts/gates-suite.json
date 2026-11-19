@@ -457,7 +457,8 @@
     "test:fungalaxy-host",
     "test:data-hub",
     "test:mail-studio",
-    "test:planning-persistent-move"
+    "test:planning-persistent-move",
+    "test:mouvement"
   ],
   "seuls": [
     "test:visit-motion",
@@ -474,7 +475,8 @@
     "test:caracteres-de-controle",
     "test:public-leak",
     "test:constants-drift",
-    "test:ancres"
+    "test:ancres",
+    "test:mouvement"
   ],
   "nuit": [
     "test:fungalaxy-host"

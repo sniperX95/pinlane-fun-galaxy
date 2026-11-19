@@ -743,7 +743,7 @@
         bulle = gpTitreActivite(e.activityId) + (e.libre ? ', sans heure fixe' : ' à ' + gpHeure(debut)) + (dureeDite > 0 ? ' · ' + gfDuree(dureeDite) : '') + (d ? ' · ' + d : '');
       }
     }
-    var classes = 'gf-x is-' + etat + (e.libre && !e.journee ? ' is-libre' : '') + (e.credit ? ' is-credit' : '') + (gfBientot(g, e, etat, m) ? ' is-bientot' : '') + (panne ? ' is-panne' : '');
+    var classes = 'gf-x is-' + etat + (etat === 'fini' && gfVientDeFinir(g, e, col, m.jour) ? ' vient-de-finir' : '') + (e.libre && !e.journee ? ' is-libre' : '') + (e.credit ? ' is-credit' : '') + (gfBientot(g, e, etat, m) ? ' is-bientot' : '') + (panne ? ' is-panne' : '');
     return '<span class="' + classes + '" title="' + gpEsc(bulle + ' · ' + GF_ETATS[etat]) + '"' + (panne ? ' data-gf-voir="bowling"' : '') + '>' + gfHeureHtml(t, etat === 'fini' && gfPresent(g), etat) + (d ? '<span class="gf-x__d">' + gfNumerosEntiers(d) + '</span>' : '') + gfHorsHtml(d2, d3) + '</span>';
   }
   // L HEURE SE REPERE DE LOIN (2026-11-03, Movsar : « les heures et tout on voit pas bien
@@ -756,12 +756,27 @@
   // ce soit que les heures »). En retard, en cours ou a lancer, « Libre » et
   // « 10 enf. » prennent donc aussi une pastille : sans elle, leur etat ne se lirait plus.
   // (« Illimité » a toujours la sienne, a la couleur de la formule)
+  // « LIBRE » SE SURLIGNE AUSSI, LE FAIT SE BARRE (2026-11-19, Ansar : « sur le planning meme les
+  // heures libre faut quils soient surligne et quand c fait dcp c plus surligne et quand c fait
+  // montre plus visible avec une barre [...] super clean et pro »). « Libre » prend la pastille
+  // des heures fixes ; une activite finie perd la sienne et son mot est barre d un trait (CSS).
   function gfHeureHtml(t, fait, etat) {
     var fixe = /^\d{1,2}:\d{2}$/.test(t);
     var signe = t !== '' && (etat === 'retard' || etat === 'encours' || etat === 'lancer');
+    var libre = t === 'Libre';
+    var fini = etat === 'fini' && t !== '';
     if (t === GF_ILLIMITE) return '<b class="gf-x__t is-illimite">' + (fait ? GF_FAIT : '') + gpEsc(t) + '</b>';
-    if (!fixe && !signe && !fait) return gpEsc(t);
-    return '<b class="gf-x__t' + (fixe || signe ? '' : ' is-nu') + '">' + (fait ? GF_FAIT : '') + gpEsc(t) + '</b>';
+    if (!fixe && !signe && !fait && !fini && !libre) return gpEsc(t);
+    return '<b class="gf-x__t' + (fixe || signe || libre && !fini ? '' : ' is-nu') + (libre ? ' is-libre' : '') + '">' + (fait ? GF_FAIT : '') + gpEsc(t) + '</b>';
+  }
+  // LE TRAIT SE DESSINE QUAND L ACTIVITE VIENT DE FINIR, une fois : jamais au premier rendu
+  // d un jour, jamais au rendu suivant (la ligne inchangee n est pas redessinee).
+  var gfFinisVus = { jour: null, cles: null };
+  var gfFinisCourant = new Set();
+  function gfVientDeFinir(g, e, col, jour) {
+    var cle = g.r.id + '|' + col.cle + '|' + e.activityId + '|' + (e.start == null ? e.partie || '' : e.start);
+    gfFinisCourant.add(cle);
+    return gfFinisVus.jour === jour && Boolean(gfFinisVus.cles) && !gfFinisVus.cles.has(cle);
   }
   // (deux parties de laser partagent la case, trois aussi : chacune son etat sur sa
   // pastille)
@@ -1412,6 +1427,7 @@
       + gfAutresDatesHtml(m, terme);
   }
   function gfParties(m, q, cartes) {
+    gfFinisCourant = new Set();
     var nbCol = 7 + m.colonnes.length;
     var lignes = gfRecherche(m, q).filter(function (g) { return !m.visibles || m.visibles.has(g.id); });
     // (au telephone, la page defile : les groupes finis se replient, une ligne les
@@ -1506,6 +1522,7 @@
     if (!lignes.length && (m.groupes.length || q)) {
       poser('rien', '<tr class="gf-rien"><td colspan="' + nbCol + '">' + (q ? gfRienHtml(m, q) : '<b>Aucun groupe dans ce filtre</b>') + '</td></tr>');
     }
+    gfFinisVus = { jour: m.jour, cles: gfFinisCourant };
     return {
       table: '<table class="gf-t' + (m.colonnes.length > 8 ? ' is-serre' : m.colonnes.length > 6 ? ' is-dense' : '') + '" style="--gf-nb:' + m.colonnes.length + '" aria-label="' + gpEsc('Feuille du ' + m.jour + ' : un groupe par ligne, ses activités en colonnes') + '">',
       colonnes: m.colonnes.map(function (c) { return c.cle + (c.groupes ? '' : '-'); }).join('|'),

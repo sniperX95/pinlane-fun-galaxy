@@ -416,6 +416,7 @@
     "test:embed-demande": "node scripts/embed-demande-signal-check.js",
     "test:occupancy": "node scripts/occupancy-check.js",
     "test:motion-exploitation": "node scripts/motion-exploitation-check.js",
+    "test:mouvement": "node scripts/mouvement-check.js",
     "test:boot-flash": "node scripts/boot-flash-check.js",
     "test:update-banner": "node scripts/update-banner-check.js",
     "test:demo-mode": "node scripts/demo-mode-check.js",

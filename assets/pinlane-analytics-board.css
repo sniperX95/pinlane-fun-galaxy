@@ -273,7 +273,7 @@
 }
 
 .pab[data-editing="true"] .pab-widget {
-  animation: pab-jiggle 300ms var(--ease-out-strong) infinite;
+  animation: pab-jiggle 300ms var(--ease-out-strong) infinite; /* mouvement-permis : mode edition seulement, rotation */
   user-select: none;
 }
 .pab[data-editing="true"] .pab-widget:nth-child(2n) {

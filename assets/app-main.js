@@ -29666,6 +29666,8 @@ function closePos() {
   state.selectedRes = null;
   ficheFaitsPeints = '';
   const overlay = document.getElementById('posOverlay');
+  // Elle se range dans sa ligne : sa forme y retourne, le voile s eteint (rien n attend).
+  if (window.PlMouvement && !overlay.classList.contains('hidden')) window.PlMouvement.fermerFenetre(overlay.querySelector('.edit-modal'), equivalentDeLOuvreur(posReturnFocus));
   overlay.classList.add('hidden');
   overlay.classList.remove('centered');
   overlay.innerHTML = '';
@@ -34878,6 +34880,7 @@ let quickBookDialogRelease = null;
 // d abord ce qui est ouvert dedans (la barre de frappe, le ticket au telephone).
 function openQuickBook(prefill = {}) {
   if (!requireClientPermission('reservations.quick', 'Votre rôle ne permet pas de créer une réservation.')) return;
+  const ouvreurReserver = document.activeElement;
   quickBookState = createQuickBookState(prefill);
   // UN NOMBRE DEVINE N EST PAS UN NOMBRE DIT (2026-11-13, Ansar : « choix du nombre de joueur
   // passe souvent a la trappe »). Le bandeau Laser du planning et un depart qui a des places
@@ -34913,6 +34916,11 @@ function openQuickBook(prefill = {}) {
     overlay.addEventListener('keydown', rvToucheHorloge);
   }
   renderQuickBook();
+  // La fenetre nait du bouton qui l ouvre, et s y range a la fermeture (pinlane-mouvement.js).
+  if (overlay && window.PlMouvement) {
+    overlay._plOuvreur = ouvreurReserver;
+    window.PlMouvement.ouvrirFenetre(overlay, overlay.querySelector('.qb-modal'), ouvreurReserver);
+  }
   if (!quickBookDialogRelease) {
     quickBookDialogRelease = containStaffDialog(document.getElementById('quickBookOverlay'), '.qb-modal', '.qb-modal.rv', () => {
       if (quickBookState?.horloge) { rvFermerHorloge(); return; }
@@ -34980,6 +34988,8 @@ function closeQuickBook() {
   clearTimeout(rvSimulationTimer);
   clearTimeout(rvClientTimer);
   const overlay = document.getElementById('quickBookOverlay');
+  if (window.PlMouvement && !overlay.classList.contains('hidden')) window.PlMouvement.fermerFenetre(overlay.querySelector('.qb-modal'), overlay._plOuvreur);
+  overlay._plOuvreur = null;
   overlay.classList.add('hidden');
   overlay.innerHTML = '';
   if (quickBookDialogRelease) { quickBookDialogRelease(); quickBookDialogRelease = null; }
@@ -43919,6 +43929,9 @@ function renderPosInner() {
   // ne l a dans la fiche (rendu d ouverture, ou focus perdu sur un noeud
   // que le rendu vient de detruire).
   if (!wasOpen) {
+    // LA FICHE NAIT DE LA LIGNE TOUCHEE (2026-11-19, pinlane-mouvement.js) : elle est deja
+    // peinte et lisible, une forme vide vole de la ligne a la fenetre pendant qu elle apparait.
+    if (window.PlMouvement) window.PlMouvement.ouvrirFenetre(overlay, overlay.querySelector('.edit-modal'), posReturnFocus);
     const entry = overlay.querySelector('.modal-tabs .tab.active') || overlay.querySelector('.edit-modal');
     if (entry) entry.focus({ preventScroll: true });
   } else if (focusAvantRendu) {

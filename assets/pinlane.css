@@ -162,7 +162,12 @@
   --backdrop: rgba(0, 0, 0, 0.4);
 
   /* Motion */
-  --ease: cubic-bezier(0.25, 0.1, 0.25, 1);
+  /* LA COURBE PAR DEFAUT EST FORTE (2026-11-19, Ansar : les animations de la
+     console « sont mal faites »). `--ease` valait la courbe native `ease`, molle :
+     417 transitions trainaient leur fin de mouvement. Elle part vite et se pose,
+     comme sur Linear, Vercel ou Raycast. Une boucle douce (squelette) dit sa
+     courbe elle-meme. */
+  --ease: cubic-bezier(0.23, 1, 0.32, 1);
   --dur-fast: 120ms;
   --dur: 160ms;
   --dur-slow: 200ms;
@@ -183,6 +188,11 @@
   --dur-move: 180ms;
   --dur-enter: 240ms;
   --dur-exit: 150ms;
+  /* Les fenetres et les panneaux : la courbe des feuilles d iOS (Vaul, Ionic),
+     une entree un peu plus longue qu un menu, une sortie bien plus courte. */
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --dur-panel: 280ms;
+  --dur-panel-exit: 160ms;
 
   /* Layout */
   --sidebar-w: 248px;
@@ -523,7 +533,7 @@ textarea {
   color: var(--text);
   font-family: var(--font-ui);
   font-size: 14px;
-  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+  transition: border-color var(--dur) var(--ease);
 }
 
 textarea {
@@ -764,7 +774,7 @@ table.pl-table tbody tr:hover {
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
 }
 
 .seg-item:hover {
@@ -826,6 +836,45 @@ kbd, .kbd {
 }
 
 /* ----------------------------------------------------------------------------
+   10 bis. LE MOUVEMENT (2026-11-19) : les calques de pinlane-mouvement.js
+   Vides, sans texte ni id, hors du flux et jamais cliquables : la forme qui vole
+   (une fenetre qui nait de ce qu on a touche), le voile qui s eteint, la
+   surbrillance qui glisse. Seuls transform et opacity s animent.
+   -------------------------------------------------------------------------- */
+.pl-calque { position: fixed; left: 0; top: 0; pointer-events: none; transform-origin: 0 0; contain: strict; will-change: transform, opacity; }
+.pl-vol { z-index: 440; background: var(--raised); border: 1px solid var(--line); border-radius: var(--radius-lg); box-shadow: var(--shadow-overlay); }
+.pl-voile { z-index: 439; width: 100vw; height: 100dvh; background: var(--scrim, var(--backdrop)); }
+.pl-surbrillance { z-index: 3; opacity: 0; border-radius: 6px; background: color-mix(in srgb, var(--text) 5%, transparent); }
+.pl-surbrillance.is-menu { z-index: 71; border-radius: 8px; background: color-mix(in srgb, var(--text) 7%, transparent); }
+.pl-surbrillance.is-ligne { border-radius: 0; background: color-mix(in srgb, var(--text) 5%, transparent); }
+/* Le repere d onglet voyage derriere les libelles ; posé, l onglet reprend son fond. */
+.pl-repere { position: absolute; left: 0; top: 0; z-index: 0; pointer-events: none; transform-origin: 0 0; will-change: transform; }
+.pl-repere-voyage { position: relative; isolation: isolate; }
+.pl-repere-voyage > :not(.pl-repere) { position: relative; z-index: 1; }
+.pl-repere-voyage.pl-repere-voyage > .active { background: transparent; box-shadow: none; }
+
+/* L APPUI SE SENT (2026-11-19) : ce qui se presse s enfonce de 3 % sous le doigt, comme sur
+   Vercel ou Linear. `scale` s ajoute au transform deja pose, et les familles qui avaient
+   deja leur appui (planning, laser, Etablissement, assistant, Reserver) gardent le leur. */
+:where(.btn, .btn-secondary, .admin-btn, .ops-admin-btn, .eb-b, .gc-btn, .delay-btn, .attr-b, .close-btn, .res-status-btn, .qb-dur-btn, .dur-pill, .pb-seg__b, .staff-today-btn, .staff-cal-nav, .fgx-menu-item, .fgx-menu-subitem) {
+  transition: background-color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), opacity var(--dur-fast) var(--ease), scale var(--dur-press) var(--ease-out-strong);
+}
+@media (prefers-reduced-motion: no-preference) {
+  :where(.btn, .btn-secondary, .admin-btn, .ops-admin-btn, .eb-b, .gc-btn, .delay-btn, .attr-b, .close-btn, .res-status-btn, .qb-dur-btn, .dur-pill, .pb-seg__b, .staff-today-btn, .staff-cal-nav, .fgx-menu-item, .fgx-menu-subitem):not(:disabled):active,
+  :where(.btn-primary):not(.edit-actions *):not(:disabled):active,
+  :where(.pv2-btn):not(#staffEmailsPage *, #staffCockpitPage *):not(:disabled):active { scale: 0.97; }
+  /* Le toast monte de 10 px a son arrivee. */
+  #toast:not(.hidden) { animation: pl-toast-entre var(--dur-enter) var(--ease-out-strong); }
+}
+@keyframes pl-toast-entre { from { opacity: 0; translate: 0 10px; scale: .98; } }
+/* Le rouleau des chiffres (pinlane-motion.js) : une colonne par chiffre, de la hauteur d une
+   ligne ; ceux qui entrent et sortent s effacent en haut et en bas (masque, NumberFlow). */
+.pl-rl { display: inline-block; height: var(--pl-rl-h, 1.2em); overflow: hidden; vertical-align: top; -webkit-mask-image: linear-gradient(transparent, #000 24%, #000 76%, transparent); mask-image: linear-gradient(transparent, #000 24%, #000 76%, transparent); }
+.pl-rl-p { display: flex; flex-direction: column; will-change: transform; }
+.pl-rl-p > i { display: block; height: var(--pl-rl-h, 1.2em); line-height: var(--pl-rl-h, 1.2em); font-style: normal; text-align: center; font-variant-numeric: tabular-nums; }
+.pl-rl-s, .pl-rl-t { white-space: pre; }
+
+/* ----------------------------------------------------------------------------
    11. EMPTY STATES + SKELETONS
    -------------------------------------------------------------------------- */
 .empty-state {
@@ -853,7 +902,7 @@ kbd, .kbd {
 .skeleton {
   background: var(--subtle);
   border-radius: var(--radius-sm);
-  animation: pl-skeleton 1.4s var(--ease) infinite;
+  animation: pl-skeleton 1.4s ease-in-out infinite; /* mouvement-permis : signe de travail, opacite seule */
 }
 
 @keyframes pl-skeleton {
@@ -1048,7 +1097,7 @@ kbd, .kbd {
 
 .job-progress-step.is-live .job-progress-dot {
   background: var(--accent);
-  animation: pl-skeleton 1.4s var(--ease) infinite;
+  animation: pl-skeleton 1.4s ease-in-out infinite; /* mouvement-permis : signe de travail, opacite seule */
 }
 
 .job-progress-step.is-live .job-progress-label { color: var(--text); font-weight: 500; }

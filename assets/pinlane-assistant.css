@@ -41,8 +41,8 @@
 @keyframes luPousse { from { transform: scaleX(0); } }
 @keyframes luPose { from { opacity: 0; transform: translateY(3px); } }
 @keyframes luPoint { from { opacity: 0; transform: scale(.6); } }
-@keyframes luTrace { from { stroke-dasharray: 0 100; } }
-@keyframes luBalaie { from { clip-path: inset(-4px 100% -4px 0); } }
+@keyframes luTrace { from { stroke-dasharray: 0 100; } } /* mouvement-permis : un trace qui se dessine une fois */
+@keyframes luBalaie { from { clip-path: inset(-4px 100% -4px 0); } } /* mouvement-permis : un trait qui se dessine une fois */
 @property --ast-angle { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
 @property --ast-voile-bas { syntax: "<length>"; inherits: false; initial-value: 0px; }
 @keyframes astMonte { from { opacity: 0; transform: translateY(10px); } }
@@ -51,18 +51,18 @@
 @keyframes astEclot { from { opacity: 0; transform: scale(.4); } }
 @keyframes astMenu { from { opacity: 0; transform: translateY(6px) scale(.96); } }
 @keyframes astTour { to { --ast-angle: 360deg; } }
-@keyframes astLueur { from { background-position: 100% 0; } to { background-position: 0 0; } }
+@keyframes astLueur { from { background-position: 100% 0; } to { background-position: 0 0; } } /* mouvement-permis : signe de travail, la phrase en cours */
 @keyframes astSouffle { 50% { opacity: .72; } }
 @keyframes astDerive1 { to { transform: translate3d(16%, -12%, 0) scale(1.16); } }
 @keyframes astDerive2 { to { transform: translate3d(-18%, -14%, 0) scale(1.24); } }
 @keyframes astDerive3 { to { transform: translate3d(-10%, -8%, 0) scale(.88); } }
 @keyframes astOrbeTourne { to { rotate: 360deg; } }
-@keyframes astOrbeForme { 0%, 100% { border-radius: 50%; scale: 1; } 33% { border-radius: 44% 56% 53% 47% / 55% 45% 55% 45%; scale: 1.07 .95; } 66% { border-radius: 56% 44% 46% 54% / 45% 56% 44% 55%; scale: .94 1.06; } }
+@keyframes astOrbeForme { 0%, 100% { scale: 1; } 33% { scale: 1.07 .95; } 66% { scale: .94 1.06; } } /* mouvement-permis : signe de travail de 16 px, choisi par Ansar le 10/11 */
 @keyframes astOrbeHalo { 50% { opacity: 1; scale: 1.2; } }
 @keyframes astOrbeReflet { 50% { translate: 7% 6%; opacity: .75; } }
-@keyframes astBloc { from { opacity: 0; transform: translateY(6px); filter: blur(2px); } }
+@keyframes astBloc { from { opacity: 0; transform: translateY(6px); filter: blur(2px); } } /* mouvement-permis : une fois, flou de 2 px sur un bloc neuf */
 @keyframes astMot { from { opacity: 0; } }
-@keyframes astTrait { from { background-size: 0% 1px; color: var(--ast-corps); } }
+@keyframes astTrait { from { background-size: 0% 1px; color: var(--ast-corps); } } /* mouvement-permis : une fois, le trait sous un chiffre prouve */
 
 /* Le signe de travail : une goutte de lumiere bleue. Un halo qui respire, un corps aux bleus de la
    page qui tourne sur lui-meme en changeant doucement de forme, un reflet. Trois couches de
@@ -92,7 +92,7 @@
 
 /* Le fond, un peu comme Gemini : trois lueurs tres douces en bas de la page. Pas de flou, pas de photo. */
 .ast-chat { isolation: isolate; }
-.ast-fond { position: absolute; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; opacity: .6; transition: opacity 700ms ease; }
+.ast-fond { position: absolute; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; opacity: .6; transition: opacity 450ms ease; }
 .ast.est-vide .ast-fond, .ast.est-occupe .ast-fond { opacity: 1; }
 .ast-fond i { position: absolute; display: block; background: radial-gradient(closest-side, var(--l), color-mix(in srgb, var(--l) 52%, transparent) 42%, color-mix(in srgb, var(--l) 16%, transparent) 74%, transparent); border-radius: 50%; will-change: transform; }
 .ast-fond i:nth-child(1) { left: -16%; bottom: -46%; width: 70%; height: 84%; --l: var(--lueur-1); }
@@ -186,7 +186,7 @@ button.ast-cite:hover, button.ast-cite.est-fait:hover { color: var(--text); back
 .ast-rech-tete > svg { flex: none; width: 14px; height: 14px; color: var(--faint); transform: rotate(-90deg); transition: transform var(--d-net) ease; }
 .ast-rech.est-ouvert > .ast-rech-tete > svg { transform: none; }
 
-.lu-plis { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--d-feuille) var(--c-net); }
+.lu-plis { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--d-feuille) var(--c-net); } /* mouvement-permis : un panneau qui se deplie a la demande */
 .ast-rech > .lu-plis { transition-duration: 350ms; transition-timing-function: cubic-bezier(.3, .1, .2, 1); }
 .lu-plis > * { min-height: 0; overflow: hidden; }
 .ast-rech.est-ouvert > .lu-plis, .lu.est-ouvert > .lu-plis { grid-template-rows: 1fr; }
@@ -195,7 +195,7 @@ button.ast-cite:hover, button.ast-cite.est-fait:hover { color: var(--text); back
 
 /* Le direct : chaque lecture a sa ligne, qui ne bouge plus une fois finie. */
 .ast-rech.est-cours .lu { overflow: clip; }
-.lu.is-cours .lu-phrase { color: var(--text); }
+.lu.is-cours .lu-phrase { color: var(--text); } /* mouvement-permis : signe de travail, la lecture en cours */
 .ast-rech.est-cours.vient-de-plier .ast-rech-liste { opacity: 0; transform: translateY(-8px); transition: opacity 150ms ease-out, transform 200ms var(--c-sortie); }
 
 
@@ -485,7 +485,7 @@ button.lu-tete:hover > svg, button.lu-tete:focus-visible > svg, .lu.est-ouvert >
 .ast-carte-champ { display: grid; gap: 4px; }
 .ast-carte-champ span { font-size: 13px; font-weight: 500; color: var(--text); }
 .ast-carte-champ em { margin-left: 6px; font-size: 12px; font-style: normal; font-weight: 400; color: var(--muted); }
-.ast .ast-carte-champ input { width: 100%; height: 40px; padding: 0 11px; font: inherit; font-size: 14.5px; color: var(--text); background: var(--surface); border: 0; border-radius: 9px; box-shadow: inset 0 0 0 1px var(--voile-3); font-variant-numeric: tabular-nums; transition: box-shadow var(--d-net) ease; }
+.ast .ast-carte-champ input { width: 100%; height: 40px; padding: 0 11px; font: inherit; font-size: 14.5px; color: var(--text); background: var(--surface); border: 0; border-radius: 9px; box-shadow: inset 0 0 0 1px var(--voile-3); font-variant-numeric: tabular-nums; transition: none; }
 .ast .ast-carte-champ input:focus { outline: 0; box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--text) 55%, transparent); }
 .ast .ast-carte-champ.est-manque input { box-shadow: inset 0 0 0 1.5px var(--danger, var(--text)); }
 .ast-carte-champ.est-manque em { color: var(--danger, var(--text)); }
@@ -575,7 +575,7 @@ button.lu-tete:hover > svg, button.lu-tete:focus-visible > svg, .lu.est-ouvert >
 .ast-bouton:disabled { color: var(--faint); background: var(--subtle); border-color: var(--subtle); cursor: default; }
 .ast-corriger { margin-top: 10px; padding: 12px 14px; background: var(--voile-1); border-radius: 12px; }
 .ast-corriger-titre { display: block; margin-bottom: 6px; font-size: 13px; font-weight: 500; color: var(--muted); }
-.ast .ast-champ-court { display: block; width: 100%; margin: 0 0 10px; padding: 9px 11px; font: inherit; font-size: 14px; line-height: 1.5; color: var(--text); background: var(--surface); border: 0; border-radius: 9px; box-shadow: inset 0 0 0 1px var(--voile-3); resize: vertical; transition: box-shadow var(--d-net) ease; }
+.ast .ast-champ-court { display: block; width: 100%; margin: 0 0 10px; padding: 9px 11px; font: inherit; font-size: 14px; line-height: 1.5; color: var(--text); background: var(--surface); border: 0; border-radius: 9px; box-shadow: inset 0 0 0 1px var(--voile-3); resize: vertical; transition: none; }
 .ast .ast-champ-court:focus { outline: 0; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 45%, transparent); }
 
 /* --- Les barres de la reponse : la couleur est dans la donnee --- */
@@ -593,11 +593,11 @@ button.lu-tete:hover > svg, button.lu-tete:focus-visible > svg, .lu.est-ouvert >
 .ast-ancre { position: relative; z-index: 4; max-width: 720px; height: 0; margin: 0 auto; }
 .ast-bande { position: absolute; right: -24px; bottom: 0; left: -24px; height: 48px; background: linear-gradient(to top, var(--surface), transparent); pointer-events: none; opacity: 0; visibility: hidden; transition: opacity 150ms ease-out, visibility 150ms ease-out; }
 .ast-bande.est-visible { opacity: 1; visibility: visible; }
-.ast-descendre { position: absolute; right: auto; bottom: 18px; left: 50%; width: 32px; height: 32px; margin-left: -16px; color: var(--text); background: var(--raised); border: 0; border-radius: 50%; box-shadow: 0 0 0 1px var(--voile-3), 0 2px 8px color-mix(in srgb, #000 10%, transparent); pointer-events: none; opacity: 0; transform: translateY(6px) scale(.9); transition: opacity var(--d-base) ease-out, box-shadow var(--d-base) ease-out, transform var(--d-base) var(--c-sortie); }
+.ast-descendre { position: absolute; right: auto; bottom: 18px; left: 50%; width: 32px; height: 32px; margin-left: -16px; color: var(--text); background: var(--raised); border: 0; border-radius: 50%; box-shadow: 0 0 0 1px var(--voile-3), 0 2px 8px color-mix(in srgb, #000 10%, transparent); pointer-events: none; opacity: 0; transform: translateY(6px) scale(.9); transition: opacity var(--d-base) ease-out, transform var(--d-base) var(--c-sortie); }
 .ast-descendre.est-visible { pointer-events: auto; opacity: 1; transform: none; }
 .ast-descendre.est-flux { box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent), 0 2px 8px color-mix(in srgb, #000 10%, transparent); }
 .ast-descendre:hover { background: var(--raised); }
-.ast-compo { position: relative; max-width: 720px; padding: 12px 12px 9px 14px; background: var(--surface); border: 0; border-radius: 22px; box-shadow: 0 12px 44px -16px color-mix(in srgb, var(--azur) 38%, transparent), inset 0 0 0 1px var(--voile-2); transition: box-shadow var(--d-base) ease; }
+.ast-compo { position: relative; max-width: 720px; padding: 12px 12px 9px 14px; background: var(--surface); border: 0; border-radius: 22px; box-shadow: 0 12px 44px -16px color-mix(in srgb, var(--azur) 38%, transparent), inset 0 0 0 1px var(--voile-2); transition: none; }
 .ast-compo:focus-within { border: 0; box-shadow: 0 14px 48px -14px color-mix(in srgb, var(--azur) 55%, transparent), 0 0 0 3px color-mix(in srgb, var(--azur) 13%, transparent), inset 0 0 0 1px color-mix(in srgb, var(--azur) 55%, transparent); }
 .ast .ast-champ { padding: 0 3px; font-size: 15px; line-height: 22px; }
 .ast .ast-champ:focus, .ast .ast-champ:focus-visible { outline: 0; box-shadow: none; }
@@ -655,16 +655,16 @@ button.lu-tete:hover > svg, button.lu-tete:focus-visible > svg, .lu.est-ouvert >
 @media (prefers-reduced-motion: no-preference) {
   /* Le signe de travail : il eclot, puis tourne, respire et change doucement de forme. */
   .ast .ast-orbe { animation: astEclot 260ms var(--c-sortie) backwards; }
-  .ast-orbe i:nth-child(1) { animation: astOrbeHalo 2400ms ease-in-out infinite; }
-  .ast-orbe i:nth-child(2) { animation: astOrbeTourne 2600ms linear infinite, astOrbeForme 3400ms ease-in-out infinite; }
-  .ast-orbe i:nth-child(3) { animation: astOrbeReflet 3400ms ease-in-out infinite; }
+  .ast-orbe i:nth-child(1) { animation: astOrbeHalo 2400ms ease-in-out infinite; } /* mouvement-permis : signe de travail, choisi par Ansar le 10/11 */
+  .ast-orbe i:nth-child(2) { animation: astOrbeTourne 2600ms linear infinite, astOrbeForme 3400ms ease-in-out infinite; } /* mouvement-permis : signe de travail, choisi par Ansar le 10/11 */
+  .ast-orbe i:nth-child(3) { animation: astOrbeReflet 3400ms ease-in-out infinite; } /* mouvement-permis : signe de travail, choisi par Ansar le 10/11 */
 
   /* Le fond : trois lueurs qui derivent tres lentement, des transformations seulement. */
   .ast-fond { animation: astFondu 900ms ease-out backwards; }
-  .ast-fond i:nth-child(1) { animation: astDerive1 19s ease-in-out infinite alternate; }
-  .ast-fond i:nth-child(2) { animation: astDerive2 24s ease-in-out infinite alternate; }
-  .ast-fond i:nth-child(3) { animation: astDerive3 15s ease-in-out infinite alternate; }
-  .ast.est-occupe .ast-fond { animation: astFondu 900ms ease-out backwards, astSouffle 2600ms ease-in-out infinite; }
+  .ast-fond i:nth-child(1) { animation: astDerive1 19s ease-in-out infinite alternate; } /* mouvement-permis : fond de l assistant choisi par Ansar le 09/11, transform seul */
+  .ast-fond i:nth-child(2) { animation: astDerive2 24s ease-in-out infinite alternate; } /* mouvement-permis : fond de l assistant choisi par Ansar le 09/11, transform seul */
+  .ast-fond i:nth-child(3) { animation: astDerive3 15s ease-in-out infinite alternate; } /* mouvement-permis : fond de l assistant choisi par Ansar le 09/11, transform seul */
+  .ast.est-occupe .ast-fond { animation: astFondu 900ms ease-out backwards, astSouffle 2600ms ease-in-out infinite; } /* mouvement-permis : signe de travail, pendant une reponse */
 
   /* L arrivee : la liste glisse, la phrase monte et une lueur la traverse une fois, le champ suit. */
   .ast-salut { color: transparent; background: linear-gradient(100deg, var(--text) 42%, var(--azur) 50%, var(--text) 58%) 0 0 / 260% 100% no-repeat; -webkit-background-clip: text; background-clip: text; animation: astMonte 520ms var(--c-sortie) 60ms backwards, astLueur 1300ms ease-out 220ms backwards; }
@@ -679,7 +679,7 @@ button.lu-tete:hover > svg, button.lu-tete:focus-visible > svg, .lu.est-ouvert >
   @media (min-width: 761px) { .ast-liste { animation: astGlisse 380ms var(--c-sortie) backwards; } }
 
   /* Ce qu on touche repond. */
-  .ast-nouvelle, .ast-savoir-lien, .ast-icone:not(.ast-descendre), .ast-pill, .ast-suggestion, .ast-modele-bouton, .ast-option, .ast-cite { transition: background-color var(--d-net) ease, color var(--d-net) ease, box-shadow var(--d-net) ease, scale var(--d-net) var(--c-sortie), translate var(--d-net) var(--c-sortie); }
+  .ast-nouvelle, .ast-savoir-lien, .ast-icone:not(.ast-descendre), .ast-pill, .ast-suggestion, .ast-modele-bouton, .ast-option, .ast-cite { transition: background-color var(--d-net) ease, color var(--d-net) ease, scale var(--d-net) var(--c-sortie), translate var(--d-net) var(--c-sortie); }
   .ast-nouvelle:active, .ast-savoir-lien:active, .ast-icone:not(.ast-descendre):active, .ast-pill:active, .ast-suggestion:active, .ast-modele-bouton:active, .ast-option:active { scale: .97; }
   .ast-suggestion:hover, button.ast-cite:hover { translate: 0 -1px; }
   .ast-conv-nom { transition: translate var(--d-net) var(--c-sortie); }
@@ -692,7 +692,7 @@ button.lu-tete:hover > svg, button.lu-tete:focus-visible > svg, .lu.est-ouvert >
 
   /* Pendant le travail : une lueur fait le tour du champ et le fond respire. */
   .ast-compo::before { content: ""; position: absolute; inset: 0; padding: 1.5px; background: conic-gradient(from var(--ast-angle, 0deg), transparent 0 52%, var(--azur) 76%, #9a8cff 90%, transparent); border-radius: inherit; -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite: exclude; pointer-events: none; opacity: 0; transition: opacity 360ms ease; }
-  .ast.est-occupe .ast-compo::before { opacity: 1; animation: astTour 2400ms linear infinite; }
+  .ast.est-occupe .ast-compo::before { opacity: 1; animation: astTour 2400ms linear infinite; } /* mouvement-permis : signe de travail, pendant une reponse */
 
   /* La reponse qui s ecrit : un bloc neuf entre en montant, les mots arrivent en fondu, au rythme du
      texte. A la fin, chaque chiffre prouve recoit son trait, dans l ordre de lecture : la verification
@@ -708,7 +708,7 @@ button.lu-tete:hover > svg, button.lu-tete:focus-visible > svg, .lu.est-ouvert >
   /* Une lecture : elle glisse a sa place, sa phrase brille tant qu elle travaille, puis son anneau se
      remplit, son resultat se pose et sa puce se dessine. */
   .lu.is-cours .lu-source { animation: astGlisse 260ms var(--c-sortie) backwards; }
-  .lu.is-cours .lu-phrase { color: transparent; background: linear-gradient(90deg, var(--text) 38%, var(--azur) 50%, var(--text) 62%) 0 0 / 240% 100%; -webkit-background-clip: text; background-clip: text; animation: astGlisse 260ms var(--c-sortie) 40ms backwards, astLueur 1500ms linear infinite; }
+  .lu.is-cours .lu-phrase { color: transparent; background: linear-gradient(90deg, var(--text) 38%, var(--azur) 50%, var(--text) 62%) 0 0 / 240% 100%; -webkit-background-clip: text; background-clip: text; animation: astGlisse 260ms var(--c-sortie) 40ms backwards, astLueur 1500ms linear infinite; } /* mouvement-permis : signe de travail, la lecture en cours */
   .ast-rech.est-cours .lu { position: relative; isolation: isolate; }
   .ast-rech.est-cours .lu.is-fini .lu-point { animation: astEclot 260ms var(--c-sortie) backwards; }
   .ast-rech.est-cours .lu.is-fini .lu-res { animation: astFondu var(--d-feuille) ease-out backwards; }

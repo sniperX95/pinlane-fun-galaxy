@@ -706,10 +706,15 @@
   }
 
   function toggleMenuCollapsed() {
+    // LA PAGE GLISSE AU REPLI DU MENU (2026-11-19) : sa largeur change d un coup (une seule
+    // mise en page au lieu d une par image), puis elle glisse de son ancienne place.
+    const page = document.querySelector('main');
+    const avant = page ? page.getBoundingClientRect().left : null;
     if (grandTableau()) menuRouvertIci = !menuRouvertIci;
     else persistCollapsed(!readPreference());
     applyMenuCollapsed();
     syncStaffMenuState();
+    if (page && window.PlMouvement) window.PlMouvement.glisserDepuis(page, avant);
   }
 
   function sectionMarkup(section) {

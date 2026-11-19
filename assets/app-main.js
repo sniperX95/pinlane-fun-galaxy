@@ -29240,6 +29240,8 @@ function openPos(id) {
   historiquesLus.clear();
   editContactOuvert = false;
   heureOuverteEdition = '';
+  // Une proposition d ordre lue sur une autre fiche ne revient pas : elle se redemande.
+  autresOrdresFiche.clear();
   const reservation = findStaffReservationById(id);
   if (!reservation) {
     toast('Réservation introuvable ou non chargée.');
@@ -29772,10 +29774,129 @@ function ficheBandeau(r, moment, droits) {
   if (r.absentAt) return renderGroupeEncaisseAbsence(r);
   if (r.status === 'cancelled' || !isReservationAwaitingReview(r)) return '';
   const phrase = fichePhraseMoment(r, moment, droits);
+  const id = Number(r.id);
+  const ordre = autreOrdrePossible(r, droits)
+    ? `<button type="button" class="fz-bouton fz-autre-ordre" id="ficheAutreOrdre${id}" aria-expanded="${autresOrdresFiche.has(id)}" aria-controls="ficheOrdre${id}" data-pl-focus="fiche.ordre.${id}" onclick="proposerAutreOrdre(${id}, event)">Proposer un autre ordre</button>`
+    : '';
   return `<section class="fz-bandeau is-verifier" role="status">
       <p class="fx-moment is-verifier"><span>${escapeHtml(phrase)}</span></p>
-      <div class="fz-bandeau-gestes">${ficheAppeler(r)}${droits.valider ? renderReservationFirstStatusButton(r, { fiche: true, suivant: true }) : ''}</div>
+      <div class="fz-bandeau-gestes">${ficheAppeler(r)}${ordre}${droits.valider ? renderReservationFirstStatusButton(r, { fiche: true, suivant: true }) : ''}</div>
+    </section>${ordre ? autreOrdreCarteFiche(r) : ''}`;
+}
+
+// UN AUTRE ORDRE, LA MEME ARRIVEE (2026-11-18, Marius, Gembloux : « l algo ne change pas
+// en se disant : finalement, le bowling, je vais le remettre en dernier. Ils vont d abord
+// commencer par Minigolf, Arcade »). Sur un dossier a valider, « Proposer un autre ordre »
+// demande au serveur le meilleur ordre de ses activites qui garde l heure d arrivee
+// (lib/autre-ordre.js, a blanc) ; la carte le dit en clair, « Appliquer » l ecrit d un geste
+// (PATCH autreOrdre : le serveur refait la proposition et refuse si elle a change), « Fermer »
+// ne change rien. Une formule garde l ordre de sa carte : pas de bouton.
+const autresOrdresFiche = new Map();
+function autreOrdrePossible(r, droits = ficheDroits(r)) {
+  if (!r || !droits.modifier || r.formuleId || r.status === 'cancelled') return false;
+  const items = Array.isArray(r.program) ? r.program : (r.program && Array.isArray(r.program.items) ? r.program.items : []);
+  const ids = [...new Set(items.map((item) => String((item && item.activityId) || '')).filter(Boolean))];
+  return ids.length >= 2 && ids.some((id) => RV_ANCRABLES.includes(id));
+}
+
+// « 15:15 Minigolf Blacklight, 16:00 Arcades, 16:30 Bowling pistes 1 et 2 ». Une heure ne se
+// separe jamais de son activite, ni « pistes 1 et 2 » de ses numeros : des espaces insecables
+// (les mots des pistes : pistesEnMots, la regle commune de la carte des pistes).
+function phraseAutreOrdreHtml(trouve) {
+  return escapeHtml((trouve && Array.isArray(trouve.etapes) ? trouve.etapes : [])
+    .map((e) => `${e.debut}\u00a0${rvNomCourt(e.id) || e.nom || e.id}${e.pistes && e.pistes.length ? ` ${pistesEnMots(e.pistes).replace(/ /g, '\u00a0')}` : ''}`)
+    .join(', '));
+}
+
+async function proposerAutreOrdre(id, ev) {
+  if (ev) ev.stopPropagation();
+  const cle = Number(id);
+  const r = findStaffReservationById(cle) || state.selectedRes;
+  if (!r || !autreOrdrePossible(r)) return;
+  const ticket = {};
+  autresOrdresFiche.set(cle, { etat: 'calcul', ticket });
+  renderPos();
+  let suite = null;
+  try {
+    const payload = await apiRequest(API_ENDPOINTS.staffReservations, {
+      method: 'POST',
+      body: JSON.stringify({ dryRun: true, autreOrdre: { id: cle, centerId: r.centerId || getCurrentStaffCenterId() } }),
+    });
+    const reponse = payload && payload.autreOrdre;
+    suite = reponse ? { etat: 'ok', reponse } : { etat: 'erreur', message: 'Le serveur n’a pas répondu à la question.' };
+  } catch (error) {
+    suite = { etat: 'erreur', message: (error && error.message) || 'Le serveur ne répond pas.' };
+  }
+  if (!autresOrdresFiche.has(cle) || autresOrdresFiche.get(cle).ticket !== ticket) return;
+  autresOrdresFiche.set(cle, suite);
+  renderPos();
+  const geste = document.querySelector(`#ficheOrdre${cle} [data-ordre-geste]`);
+  if (geste) geste.focus({ preventScroll: true });
+}
+
+function fermerAutreOrdre(id, ev) {
+  if (ev) ev.stopPropagation();
+  autresOrdresFiche.delete(Number(id));
+  renderPos();
+  const bouton = document.getElementById(`ficheAutreOrdre${Number(id)}`);
+  if (bouton) bouton.focus({ preventScroll: true });
+}
+
+function appliquerAutreOrdre(id, ev) {
+  if (ev) ev.stopPropagation();
+  const cle = Number(id);
+  const e = autresOrdresFiche.get(cle);
+  const trouve = e && e.etat === 'ok' && e.reponse && e.reponse.trouve;
+  const r = findStaffReservationById(cle) || state.selectedRes;
+  if (!trouve || !r) return;
+  autresOrdresFiche.set(cle, { ...e, etat: 'envoi', refus: '' });
+  renderPos();
+  enchainerEcritureReservation(cle, () => apiRequest(API_ENDPOINTS.staffReservations, {
+    method: 'PATCH',
+    body: JSON.stringify({ id: cle, centerId: r.centerId || getCurrentStaffCenterId(), baseUpdatedAt: e.reponse.baseUpdatedAt || r.updatedAt, autreOrdre: { cle: trouve.cle } }),
+  })).then((payload) => {
+    autresOrdresFiche.delete(cle);
+    if (payload && payload.reservation) {
+      markReservationMutation(cle, payload.reservation, ['startTime', 'program', 'opsPlan', 'lanes']);
+      const peint = applyOptimisticReservation(payload.reservation, { preserveEditState: true }) || {};
+      if (!peint.fiche && state.selectedRes && Number(state.selectedRes.id) === cle) renderPos();
+    } else renderPos();
+    toast(isReservationAwaitingReview(payload && payload.reservation) ? 'Nouvel ordre enregistré. La réservation reste à valider.' : 'Nouvel ordre enregistré.');
+  }).catch((error) => {
+    clearReservationMutation(cle);
+    autresOrdresFiche.set(cle, { ...e, etat: 'ok', refus: (error && error.message) || 'Le nouvel ordre n’a pas été enregistré.' });
+    renderPos();
+  });
+}
+
+function autreOrdreCarteFiche(r) {
+  const id = Number(r.id);
+  const e = autresOrdresFiche.get(id);
+  if (!e) return '';
+  const carte = (lignes, gestes, etat = '') => `<section class="attr-carte ordre-carte${etat ? ` is-${etat}` : ''}" id="ficheOrdre${id}" aria-label="Autre ordre pour ce dossier">
+      <div class="attr-lignes">${lignes}</div>
+      ${gestes ? `<div class="attr-gestes">${gestes}</div>` : ''}
     </section>`;
+  const fermer = `<button type="button" class="attr-b" data-ordre-geste="fermer" onclick="fermerAutreOrdre(${id}, event)">Fermer</button>`;
+  if (e.etat === 'calcul') return carte('<p class="attr-ligne" role="status">Le planning essaie chaque ordre avec la même arrivée…</p>', '', 'calcul');
+  if (e.etat === 'erreur') {
+    return carte(`<p class="attr-ligne" role="alert"><b>Pas de proposition.</b> ${escapeHtml(e.message || '')}</p>`,
+      `${fermer}<button type="button" class="attr-b is-fort" data-ordre-geste="relancer" onclick="proposerAutreOrdre(${id}, event)">Réessayer</button>`);
+  }
+  const reponse = e.reponse || {};
+  const trouve = reponse.trouve;
+  if (!trouve) return carte(`<p class="attr-ligne" role="status">${escapeHtml(reponse.raison || 'Aucun ordre ne tient.')}</p>`, fermer, 'aucun');
+  const titre = trouve.inchange ? `L’ordre actuel tient, arrivée à ${reponse.arrivee}` : `Autre ordre, même arrivée à ${reponse.arrivee}`;
+  const suite = [`Fin vers ${trouve.fin}.`];
+  if (trouve.attente > 0) suite.push(`${Number(trouve.attente)} min sans activité.`);
+  suite.push('Rien ne change avant «\u00a0Appliquer\u00a0».');
+  const envoi = e.etat === 'envoi';
+  const lignes = `<p class="attr-ligne"><b>${escapeHtml(titre)}</b></p>
+      <p class="attr-ligne ordre-phrase" data-ordre-phrase>${phraseAutreOrdreHtml(trouve)}</p>
+      <p class="attr-ligne"><span class="attr-note">${escapeHtml(suite.join(' '))}</span></p>
+      ${e.refus ? `<p class="attr-ligne ordre-refus" role="alert">${escapeHtml(e.refus)}</p>` : ''}`;
+  const appliquer = `<button type="button" class="attr-b is-fort" data-ordre-geste="appliquer"${envoi ? ' aria-busy="true" disabled' : ''} onclick="appliquerAutreOrdre(${id}, event)">${envoi ? 'Enregistrement…' : 'Appliquer'}</button>`;
+  return carte(lignes, `${fermer}${appliquer}`);
 }
 
 // L ARRIVEE SE COCHE COMME UNE ACTIVITE. La ligne dit le moment (« Attendu à
@@ -36919,6 +37040,7 @@ function rvRepeindre({ sauf = [] } = {}) {
   rvPoser('rsAttrZone', attributionReserverHtml());
   rvPlacerHorloge();
   rsChercherLaProche();
+  rvChargerAutreOrdre();
   rsArmerCompteurs();
   // (apres la peinture : lire la hauteur maintenant forcerait la mise en page de la fenetre)
   requestAnimationFrame(rsOmbreDuTicket);
@@ -37173,6 +37295,9 @@ function rvInverserOrdre() {
   s.heures = {};
   s.partiesEcarts = null;
   s.forcer = false;
+  // L ordre pose a la main est respecte : aucun autre ordre ne se propose (rvAutreOrdrePossible).
+  s.ordreALaMain = true;
+  s.ordreVariante = null;
   renderQuickBook();
 }
 
@@ -37393,6 +37518,10 @@ function rvConstruire({ simulation = false } = {}) {
       else if (id !== 'bowling' && id !== 'laser_game' && (visit.others || {})[id]) visitProgram.push(ligneProgrammeQuick(id));
     });
     if (!visitProgram.length) return { erreur: 'Choisissez au moins une activité.' };
+    // L AUTRE ORDRE PRIS (rvPrendreAutreOrdre) : les activites libres d avant le bowling ou le
+    // laser partent « avant », a l heure d arrivee (lib/autre-ordre.js, le meme corps).
+    const variante = rvOrdreVarianteActive(ids);
+    if (variante) visitProgram.forEach((ligne) => { if (variante.avant.includes(ligne.activityId)) ligne.avant = true; });
   }
   const planActuel = simulation ? null : rvPlanCourant();
   const forcer = !simulation && Boolean(s.forcer) && Boolean(planActuel && !planActuel.disponible);
@@ -37493,6 +37622,8 @@ function rvConstruire({ simulation = false } = {}) {
     ...(!simulation && rsFmActive(s) ? { formuleSurMesure: { nom: rsFmNom(s), ...(s.fm.mode === 'personne' && rsFmMontant(s.fm) != null ? { prixParPersonne: rsFmMontant(s.fm) } : {}) } } : {}),
   };
   if (forcer) reservation.forcer = true;
+  const varianteArrivee = programme ? rvOrdreVarianteActive(ids) : null;
+  if (varianteArrivee && varianteArrivee.parArrivee) reservation.preference = { ...(reservation.preference || {}), arrivalTime: s.startTime };
   return { reservation, needsLanes, requiredCount: programme ? requiredCount : Math.max(requiredCount, lanes.length) };
 }
 
@@ -37679,6 +37810,9 @@ function rvAppliquerComposition(x) {
   s.forcer = false;
   s.adaptee = false;
   s.ordre = [];
+  // Une composition neuve : son ordre n a pas ete pose a la main.
+  s.ordreALaMain = false;
+  s.ordreVariante = null;
   s.ajoutsOuverts = false;
   s.bowlingParDefaut = false;
   s.activitesAvantFormule = null;
@@ -40115,6 +40249,90 @@ function rsPrendreProche() {
   });
 }
 
+// UN AUTRE ORDRE QUI GARDE L HEURE (2026-11-18, Marius, Gembloux ; lib/autre-ordre.js). Le
+// bowling est plein a l heure choisie : a cote de l heure la plus proche (« Prendre 16:30 »),
+// la fenetre propose l ordre qui garde l heure (« 15:30 Minigolf, 16:15 Arcades, 17:00
+// Bowling »), joue a blanc par le serveur sur la journee. Un ordre pose a la main (« Passer
+// avant ») est respecte : rien ne se propose. Une demande par composition (la cle du plan).
+let rvAutreOrdreSeq = 0;
+function rvAutreOrdrePossible() {
+  const s = quickBookState;
+  if (!s || s.ordreALaMain || s.type !== 'visite' || rvResas.length > 1) return false;
+  const ids = rvActivites();
+  return ids.length >= 2 && ids.some((id) => RV_ANCRABLES.includes(id));
+}
+
+// L ordre pris dans la carte, tant que la fenetre garde ces activites, dans cet ordre, a cette heure.
+function rvOrdreVarianteActive(ids = rvActivites()) {
+  const s = quickBookState;
+  const v = s && s.ordreVariante;
+  return v && v.ordre === ids.join('>') && v.arrivee === s.startTime ? v : null;
+}
+
+async function rvChargerAutreOrdre() {
+  const s = quickBookState;
+  if (rsLeger || !s) return;
+  const plan = rvPlanCourant();
+  if (!plan || plan.disponible || s.forcer || !rvAutreOrdrePossible()) return;
+  const cle = s.cleCourante;
+  if (!cle || (s.autreOrdre && s.autreOrdre.base === cle)) return;
+  const corps = rvCorpsDeSimulation();
+  if (!corps) return;
+  const seq = ++rvAutreOrdreSeq;
+  s.autreOrdre = { base: cle, etat: 'calcul' };
+  let suite;
+  try {
+    const payload = await apiRequest(API_ENDPOINTS.staffReservations, { method: 'POST', body: JSON.stringify({ ...corps, dryRun: true, autreOrdre: true }) });
+    suite = { base: cle, etat: 'ok', reponse: (payload && payload.autreOrdre) || null };
+  } catch (error) {
+    suite = { base: cle, etat: 'erreur' };
+  }
+  if (seq !== rvAutreOrdreSeq || quickBookState !== s) return;
+  s.autreOrdre = suite;
+  rvRepeindre();
+}
+
+function rvAutreOrdrePropose() {
+  const s = quickBookState;
+  const plan = rvPlanCourant();
+  const a = s && s.autreOrdre;
+  if (!plan || plan.disponible || s.forcer || !rvAutreOrdrePossible() || !a || a.base !== s.cleCourante || a.etat !== 'ok') return null;
+  const trouve = a.reponse && a.reponse.trouve;
+  return trouve && !trouve.inchange ? { ...trouve, arrivee: a.reponse.arrivee } : null;
+}
+
+function rvAutreOrdreHtml() {
+  const t = rvAutreOrdrePropose();
+  if (!t) return '';
+  const attente = t.attente > 0 ? ` ${Number(t.attente)} min sans activité.` : '';
+  return `<div class="attr-carte ordre-carte" id="rvAutreOrdre">
+      <div class="attr-lignes">
+        <p class="attr-ligne"><b>${escapeHtml(`Ou gardez ${t.arrivee} en changeant l’ordre`)}</b></p>
+        <p class="attr-ligne ordre-phrase" data-ordre-phrase>${phraseAutreOrdreHtml(t)}</p>
+        <p class="attr-ligne"><span class="attr-note">${escapeHtml(`Fin vers ${t.fin}.${attente}`)}</span></p>
+      </div>
+      <div class="attr-gestes"><button type="button" class="attr-b is-fort" id="rvAutreOrdreOk" onclick="rvPrendreAutreOrdre()">Prendre cet ordre</button></div>
+    </div>`;
+}
+
+// « Prendre cet ordre » : les lignes dans cet ordre, l heure du bowling et du laser posees, la
+// meme arrivee. Le plan se redemande ; « Créer » enverra exactement ce corps.
+function rvPrendreAutreOrdre() {
+  const s = quickBookState;
+  const t = rvAutreOrdrePropose();
+  if (!s || !t) return;
+  rsGeste(() => {
+    s.error = '';
+    s.ordre = [...t.ordre, ...(s.ordre || []).filter((id) => !t.ordre.includes(id))];
+    s.heures = {};
+    t.etapes.forEach((e, rang) => { if (rang > 0 && RV_ANCRABLES.includes(e.id)) s.heures[e.id] = e.debut; });
+    s.partiesEcarts = null;
+    s.forcer = false;
+    s.ordreVariante = { ordre: t.ordre.join('>'), avant: t.etapes.filter((e) => e.avant).map((e) => e.id), arrivee: s.startTime, parArrivee: Boolean(t.parArrivee) };
+  });
+  toast(`Ordre changé, arrivée à ${s.startTime}.`);
+}
+
 // ── POUR QUI ─────────────────────────────────────────────────────────────────
 // L E-MAIL ET L OCCASION, a un toucher du ticket : le telephone, le nom et la note
 // se tapent au ticket (rsClientHtml), jamais deux fois le meme champ dans la fenetre.
@@ -40527,6 +40745,9 @@ function rsPasserAvant(id) {
     s.heures = {};
     s.partiesEcarts = null;
     s.forcer = false;
+    // L ordre pose a la main est respecte : aucun autre ordre ne se propose (rvAutreOrdrePossible).
+    s.ordreALaMain = true;
+    s.ordreVariante = null;
   });
 }
 
@@ -40870,6 +41091,8 @@ function rsVerdictHtml() {
   }
   // L heure prise quand meme : ce que « à placer » veut dire, avant le clic.
   if (refus && s.forcer && !rvHeureEnRecherche()) morceaux.push('<p class="rs-v-ligne is-att" id="rvAPlacer">Le dossier partira « à placer » et n’occupera rien tant que l’équipe ne l’aura pas placé.</p>');
+  // A cote de l heure la plus proche (le pied), l ordre qui garde l heure (rvAutreOrdreHtml).
+  morceaux.push(rvAutreOrdreHtml());
   return morceaux.join('');
 }
 

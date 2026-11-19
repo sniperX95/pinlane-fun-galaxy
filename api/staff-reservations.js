@@ -54,6 +54,7 @@ const { exigerHistorique, exigerPistesALaMain, jugerEncaisse, pistesALaMainDuPla
 const { lireHistoriqueDossier } = require('../lib/historique-dossier');
 const { simulerCandidats } = require('../lib/reserver-simulation');
 const { normaliserEpingles } = require('../lib/departs-rapides');
+const { chercherUnAutreOrdre, corpsDuDossier, planConformeALaProposition } = require('../lib/autre-ordre');
 
 // LE COMPTOIR CONNAIT LES MEMES CENTRES QUE LE TUNNEL (2026-08-21).
 //
@@ -533,6 +534,35 @@ async function deplacerABlanc(req, res, corps) {
   }
 }
 
+// UN AUTRE ORDRE POUR UN DOSSIER ENREGISTRE (2026-11-18, Marius, Gembloux : « l algo ne
+// change pas en se disant : finalement, le bowling, je vais le remettre en dernier »). La meme
+// arrivee, les memes activites, les memes joueurs, l ordre libre (lib/autre-ordre.js), joue a
+// blanc par la porte de la fenetre sur UNE lecture de la journee ; le dossier ne compte pas
+// dans sa propre journee. Rien ne s ecrit.
+async function proposerUnAutreOrdre(current, session) {
+  const lectures = new Map();
+  const readState = (jour, centre) => {
+    const cle = `${centre}|${jour}`;
+    if (!lectures.has(cle)) lectures.set(cle, readStaffState(jour, centre, { avecBlocages: true }));
+    return lectures.get(cle);
+  };
+  if (current.status === 'cancelled') return { ok: true, trouve: null, raison: 'Une réservation annulée ne change pas d’ordre.', essais: 0 };
+  return chercherUnAutreOrdre({ corps: corpsDuDossier(current), planifier: (essai) => planifierPourLaFenetre(essai, session, { readState }) });
+}
+
+// « Proposer un autre ordre » sur la fiche : le droit de modifier le dossier, dans son centre.
+async function autreOrdreABlanc(req, res, demande) {
+  if (!demande.id) throw createHttpError('Reservation manquante.', 400);
+  const current = await getReservationById(demande.id);
+  if (!current) throw createHttpError('Reservation introuvable.', 404);
+  const centre = current.centerId || 'libramont';
+  const session = await requireStaffPermission(req, res, 'reservations.edit', { centerId: centre });
+  if (!session) return null;
+  if ((demande.centerId || demande.center_id || centre) !== centre) throw createHttpError('Une réservation reste dans son centre : annulez-la et recréez-la dans l autre.', 422);
+  const proposition = await proposerUnAutreOrdre(current, session);
+  return { ok: true, dryRun: true, autreOrdre: { ...proposition, id: current.id, baseUpdatedAt: current.updatedAt } };
+}
+
 function minuteDeLaFenetre(texte) {
   const lu = /^(\d{1,2}):(\d{2})$/.exec(String(texte || ''));
   return lu && Number(lu[2]) < 60 ? Number(lu[1]) * 60 + Number(lu[2]) : NaN;
@@ -591,7 +621,7 @@ async function simulerPourLaFenetre(body, session) {
     return lectures.get(cle);
   };
   const corps = { ...body };
-  ['dryRun', 'autres', 'candidats', 'forcer', 'dossiers'].forEach((champ) => { delete corps[champ]; });
+  ['dryRun', 'autres', 'candidats', 'forcer', 'dossiers', 'autreOrdre'].forEach((champ) => { delete corps[champ]; });
   const autres = Array.isArray(body.autres) ? body.autres.slice(0, LOT_MAX) : [];
   const { virtuelles, plans } = autres.length
     ? await simulerAutres(autres, session, { readState })
@@ -599,6 +629,11 @@ async function simulerPourLaFenetre(body, session) {
   const principal = await planifierPourLaFenetre(corps, session, { readState, virtuelles });
   const reponse = { ok: true, dryRun: true, plan: principal.plan };
   if (autres.length) reponse.autres = plans;
+  // LE COMPTOIR DEMANDE AUSSI L ORDRE QUI GARDE L HEURE (2026-11-18, lib/autre-ordre.js) :
+  // seulement quand le plan ne tient pas, sur la meme lecture de la journee.
+  if (body.autreOrdre === true && principal.plan && principal.plan.disponible === false) {
+    reponse.autreOrdre = await chercherUnAutreOrdre({ corps, planifier: (essai) => planifierPourLaFenetre(essai, session, { readState, virtuelles }) });
+  }
   if (Array.isArray(body.candidats)) {
     reponse.candidats = await simulerCandidats({
       corps,
@@ -922,6 +957,14 @@ const traiter = async (req, res) => {
         if (blanc) sendJson(res, 200, blanc);
         return;
       }
+      // « Proposer un autre ordre » sur un dossier (autreOrdreABlanc) : le droit de le modifier.
+      if (body.dryRun === true && body.autreOrdre && typeof body.autreOrdre === 'object' && !Array.isArray(body.autreOrdre)) {
+        if (!(await requireAnyStaffSession(req, res))) return;
+        await warmCenterKnowledge();
+        const blanc = await autreOrdreABlanc(req, res, body.autreOrdre);
+        if (blanc) sendJson(res, 200, blanc);
+        return;
+      }
       // L heure d une activite changee dans « Modifier » (deplacerABlanc) : le droit du glisser.
       if (body.dryRun === true && body.deplacement && typeof body.deplacement === 'object' && !Array.isArray(body.deplacement)) {
         if (!(await requireAnyStaffSession(req, res))) return;
@@ -1036,6 +1079,27 @@ const traiter = async (req, res) => {
       // refait ce controle sous verrou : c est lui qui fait foi.
       const versionAttendue = lireVersionAttendue(body.baseUpdatedAt);
       if (versionAttendue !== null && !memeVersion(current.updatedAt, versionAttendue)) throw reservationModifieeEntreTemps(current);
+
+      // UN AUTRE ORDRE, APPLIQUE D UN GESTE (2026-11-18, lib/autre-ordre.js). Le serveur refait
+      // la proposition sur la journee d aujourd hui ; celle que l employe a lue (sa cle) doit
+      // etre la meme, sinon rien ne s ecrit. Puis c est une modification comme « Modifier » :
+      // l ordre, ses heures et l arrivee, le plan refait par le moteur. Tout ou rien : un plan
+      // qui ne tient plus au moment d ecrire n ecrit rien (l ancien plan reste).
+      let autreOrdreApplique = null;
+      if (Object.prototype.hasOwnProperty.call(body, 'autreOrdre')) {
+        const enTrop = Object.keys(body).filter((cle) => !['id', 'centerId', 'center_id', 'baseUpdatedAt', 'autreOrdre'].includes(cle));
+        if (enTrop.length) throw createHttpError('Un autre ordre ne modifie aucun autre choix du dossier.', 422);
+        if (versionAttendue === null) throw createHttpError('Version du dossier manquante : rouvrez la fiche.', 422);
+        const voulue = String((body.autreOrdre && body.autreOrdre.cle) || '');
+        const proposition = await proposerUnAutreOrdre(current, session);
+        if (!proposition.trouve) throw createHttpError(proposition.raison || 'Aucun ordre ne tient.', 409);
+        if (proposition.trouve.cle !== voulue) throw createHttpError('La proposition a changé entre-temps : relancez « Proposer un autre ordre ».', 409);
+        delete body.autreOrdre;
+        // Les pistes lues voyagent : le moteur les reprend si elles sont toujours libres.
+        const pistes = [...new Set(proposition.trouve.etapes.flatMap((etape) => etape.pistes || []))];
+        Object.assign(body, proposition.trouve.modification, { opsPlan: null, lanes: pistes });
+        autreOrdreApplique = proposition.trouve;
+      }
 
       // CE QUI A ETE ENCAISSE / LE GROUPE QUI N EST PAS VENU (0056) : deux
       // gestes de l accueil, seuls dans leur PATCH. L encaisse demande le
@@ -1216,6 +1280,9 @@ const traiter = async (req, res) => {
         if (!sessionEncaisse) return;
       }
       const { patch, ops, shouldReplan } = await calculerLaModification({ body, current, session, requestedCenterId });
+      if (autreOrdreApplique && (!shouldReplan || ops.planAvailable === false || !planConformeALaProposition(ops.opsPlan, autreOrdreApplique))) {
+        throw createHttpError(`Cet ordre ne tient plus tel quel${ops.planRefusal ? ` (${ops.planRefusal})` : ''} : relancez « Proposer un autre ordre ».`, 409);
+      }
       const reservation = await updateReservation({
         ...patch,
         ...ops,

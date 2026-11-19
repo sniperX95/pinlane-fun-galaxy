@@ -232,6 +232,7 @@
     "test:fondateur-invisible",
     "test:fondateur-historiques",
     "test:pistes-reparties",
+    "test:autre-ordre",
     "test:tour-controle",
     "test:migrations-attendues",
     "test:garde-postes",

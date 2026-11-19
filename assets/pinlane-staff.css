@@ -20185,6 +20185,13 @@ body:is(.staff-mode, .admin-mode) .attr-b.is-fort:hover { background: color-mix(
 @media (pointer: coarse), (max-width: 760px) {
   body:is(.staff-mode, .admin-mode) .attr-b { min-width: 72px; min-height: 44px; }
 }
+/* UN AUTRE ORDRE, LA MEME ARRIVEE (2026-11-18, Marius, Gembloux). La meme petite carte :
+   sur la fiche, sous la demande a valider ; dans Reserver, au-dessus de « Prendre … ».
+   La phrase des heures en gras ; un refus du serveur en rouge ; le calcul en gris. */
+body:is(.staff-mode, .admin-mode) .ordre-carte .ordre-phrase { font-weight: 600; }
+body:is(.staff-mode, .admin-mode) .ordre-carte .ordre-refus { color: var(--danger); font-weight: 600; }
+body:is(.staff-mode, .admin-mode) .ordre-carte.is-calcul { background: var(--subtle); box-shadow: none; color: var(--muted); }
+.qb-modal.rv.rs .rs-verdict .ordre-carte { margin: 8px 0 4px; }
 /* Elle arrive (une fois : un nouveau dessin de la fiche ne la rejoue pas). */
 body:is(.staff-mode, .admin-mode) .attr-carte.is-entree { animation: attr-entree 180ms cubic-bezier(.23, 1, .32, 1); }
 @keyframes attr-entree { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }

@@ -20246,6 +20246,21 @@ body:is(.staff-mode, .admin-mode) .attr-b.is-fort:hover { background: color-mix(
 @media (pointer: coarse), (max-width: 760px) {
   body:is(.staff-mode, .admin-mode) .attr-b { min-width: 72px; min-height: 44px; }
 }
+/* UN AUTRE ORDRE, LA MEME ARRIVEE (2026-11-18, Marius, Gembloux). La meme petite carte :
+   sur la fiche, sous la demande a valider ; dans Reserver, au-dessus de « Prendre … ».
+   La phrase des heures en gras ; un refus du serveur en rouge ; le calcul en gris. */
+body:is(.staff-mode, .admin-mode) .ordre-carte .ordre-phrase { font-weight: 600; }
+body:is(.staff-mode, .admin-mode) .ordre-carte .ordre-refus { color: var(--danger); font-weight: 600; }
+body:is(.staff-mode, .admin-mode) .ordre-carte.is-calcul { background: var(--subtle); box-shadow: none; color: var(--muted); }
+.qb-modal.rv.rs .rs-verdict .ordre-carte { margin: 8px 0 4px; }
+/* Au telephone, le bandeau de la demande a valider (2026-11-19) : « Proposer un autre ordre » sur
+   toute la largeur sous la phrase, puis « Appeler » et « Valider » cote a cote ; « Valider » ne
+   tombe plus seul sur une ligne. */
+@media (max-width: 760px) {
+  body:is(.staff-mode, .admin-mode) .fx-modal .fz-bandeau-gestes.avec-ordre { flex: 1 1 100%; align-items: stretch; }
+  body:is(.staff-mode, .admin-mode) .fx-modal .fz-bandeau-gestes.avec-ordre > * { flex: 1 1 0; min-width: 0; }
+  body:is(.staff-mode, .admin-mode) .fx-modal .fz-bandeau-gestes.avec-ordre > .fz-autre-ordre { flex-basis: 100%; }
+}
 /* Elle arrive (une fois : un nouveau dessin de la fiche ne la rejoue pas). */
 body:is(.staff-mode, .admin-mode) .attr-carte.is-entree { animation: attr-entree 180ms cubic-bezier(.23, 1, .32, 1); }
 @keyframes attr-entree { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
@@ -20319,6 +20334,11 @@ body:is(.staff-mode, .admin-mode) .fx-modal .es2 .dossier-visit-section > .es-jo
 .compte-pop__prix b { font-size: 16px; font-weight: 700; }
 .compte-pop__avant { margin: 2px 0 0; text-align: right; font-size: 12px; color: var(--muted); }
 .compte-pop__erreur { margin: 10px 0 0; font-size: 13px; color: var(--danger); }
+/* La carte des pistes et des armes du compte (2026-11-19) : sous le prix, au-dessus
+   des boutons, le meme habit que dans Modifier, a la largeur de la bulle. */
+.compte-pop__attr { margin: 12px 0 0; }
+body:is(.staff-mode, .admin-mode) .compte-pop .attr-carte { gap: 6px 10px; padding: 8px 8px 8px 10px; font-size: 13px; }
+body:is(.staff-mode, .admin-mode) .compte-pop .attr-lignes { flex-basis: 170px; }
 .compte-pop__actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 .compte-pop__actions button { min-height: 36px; padding: 0 14px; border-radius: var(--radius-md); font: 600 13px var(--font-ui); cursor: pointer; }
 .compte-pop__annuler { background: transparent; border: 1px solid var(--line-strong); color: var(--text); }

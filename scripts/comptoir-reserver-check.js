@@ -103,8 +103,9 @@ const MUTATIONS = [
   { nom: 'panne-relancee', lettre: 'R1', bloc: 'aucune', cible: '[R1] une recherche en panne ne se relance pas d elle-meme', fichier: APP, de: "  if (c && c.etat === 'erreur' && c.id === id && c.partie === 0 && c.base === quickBookState.cleCourante) return;\n", vers: '' },
   { nom: 'passe-deplace', lettre: 'R2', cible: '[R2] une heure deja passee reste un choix', fichier: APP, de: 'heureSouhaitee: !rvHeurePassee(state.currentDate, heure)', vers: 'heureSouhaitee: true' },
   { nom: 'laser-commence', lettre: 'R2', cible: '[R2] une partie de laser commencee ne se propose pas', fichier: APP, de: '    .filter((h) => !(laserDabord && maintenant !== null && timeToNum(h) <= maintenant + 1e-9));', vers: ';' },
-  // (la phrase « 15:30 ne tient pas » se dit sur la ligne d etat du ticket, rsVerdictHtml)
-  { nom: 'souhait-muet', lettre: 'R2', cible: '[R2] et le dit', fichier: APP, de: '    if (rvPropositionActive(s) && s.heureVoulue && s.heureVoulue !== s.startTime) morceaux.push(', vers: '    if (false) morceaux.push(' },
+  // (la phrase « 15:30 ne tient pas » se dit sur la ligne d etat du ticket, rsVerdictHtml ; depuis
+  // le 18/11, un bloc qui dit aussi pour qui une heure privatisee est prise : l ancre vise son ouverture)
+  { nom: 'souhait-muet', lettre: 'R2', cible: '[R2] et le dit', fichier: APP, de: '    if (rvPropositionActive(s) && s.heureVoulue && s.heureVoulue !== s.startTime) {\n', vers: '    if (false) {\n' },
   { nom: 'souhait-fige', lettre: 'R2', cible: '[R2] une heure qui ne tient pas donne la plus proche', fichier: APP, de: '    quickBookState.heureVoulue = quickBookState.startTime;\n    quickBookState.heureProposee = true;', vers: '    quickBookState.heureVoulue = quickBookState.startTime;' },
   { nom: 'souhait-ignore', lettre: 'R2', cible: '[R2] une heure qui tient s ouvre dessus', fichier: APP, de: "...(heure ? { startTime: heure, heureSouhaitee: !rvHeurePassee(state.currentDate, heure) } : {}),", vers: '' },
   { nom: 'naît-attendu', lettre: 'R3', bloc: 'atteinte', cible: '[R3] une heure atteinte nait arrivee', fichier: APP, de: "status: !simulation && rvNaitArrive(s) ? 'arrived' : 'pending',", vers: "status: 'pending'," },

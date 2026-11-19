@@ -773,10 +773,23 @@
   // d un jour, jamais au rendu suivant (la ligne inchangee n est pas redessinee).
   var gfFinisVus = { jour: null, cles: null };
   var gfFinisCourant = new Set();
+  // SOUS UNE FENETRE OUVERTE, LE TRAIT SE POSE SANS SE DESSINER (2026-11-19) : cocher dans la
+  // fiche fait deja sauter la case, et une coche ne fait qu un seul mouvement (Ansar le
+  // 2026-10-02 : « aucune animation » quand on coche ; refresh-invisible-check [3]). Le
+  // planning est sous le voile : il retrouve son trait deja pose.
+  var gfFenetreOuverte = false;
+  function gfUneFenetreCouvre() {
+    var ids = ['posOverlay', 'quickBookOverlay'];
+    for (var i = 0; i < ids.length; i += 1) {
+      var o = document.getElementById(ids[i]);
+      if (o && !o.classList.contains('hidden')) return true;
+    }
+    return false;
+  }
   function gfVientDeFinir(g, e, col, jour) {
     var cle = g.r.id + '|' + col.cle + '|' + e.activityId + '|' + (e.start == null ? e.partie || '' : e.start);
     gfFinisCourant.add(cle);
-    return gfFinisVus.jour === jour && Boolean(gfFinisVus.cles) && !gfFinisVus.cles.has(cle);
+    return !gfFenetreOuverte && gfFinisVus.jour === jour && Boolean(gfFinisVus.cles) && !gfFinisVus.cles.has(cle);
   }
   // (deux parties de laser partagent la case, trois aussi : chacune son etat sur sa
   // pastille)
@@ -1428,6 +1441,7 @@
   }
   function gfParties(m, q, cartes) {
     gfFinisCourant = new Set();
+    gfFenetreOuverte = gfUneFenetreCouvre();
     var nbCol = 7 + m.colonnes.length;
     var lignes = gfRecherche(m, q).filter(function (g) { return !m.visibles || m.visibles.has(g.id); });
     // (au telephone, la page defile : les groupes finis se replient, une ligne les

@@ -120,8 +120,10 @@
       surface.animate([{ opacity: 0 }, { opacity: 0, offset: 0.62 }, { opacity: 1 }], { duration: (o.duree || 300) + 140, easing: 'linear' });
       return;
     }
-    // Sans origine visible (recherche, adresse) : elle monte de 8 px en grandissant de 97 % à 100 %.
-    surface.animate([{ opacity: 0, transform: 'translateY(8px) scale(0.97)' }, { opacity: 1, transform: 'none' }], { duration: 240, easing: SORTIE });
+    // Sans origine visible (ouverture par l'adresse, par un test) : elle apparaît en fondu, à sa
+    // vraie taille. Jamais de transform sur la vraie fenêtre : sous scale(0.97), une mesure faite
+    // pendant l'entrée lisait 38,8 px pour une photo de 40 (fiche-simple au téléphone, 19/11).
+    surface.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, easing: SORTIE });
   }
 
   // La fenêtre va disparaître d'un coup (l'appelant la cache juste après) : sa forme se range

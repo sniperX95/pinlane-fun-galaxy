@@ -418,6 +418,7 @@
     "test:occupancy": "node scripts/occupancy-check.js",
     "test:motion-exploitation": "node scripts/motion-exploitation-check.js",
     "test:mouvement": "node scripts/mouvement-check.js",
+    "test:fenetre-taille": "node scripts/fenetre-taille-juste-check.js && node scripts/fenetre-taille-juste-check.js --contre-preuves",
     "test:boot-flash": "node scripts/boot-flash-check.js",
     "test:update-banner": "node scripts/update-banner-check.js",
     "test:demo-mode": "node scripts/demo-mode-check.js",

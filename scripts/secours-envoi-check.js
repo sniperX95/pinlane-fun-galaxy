@@ -110,6 +110,9 @@ async function journee(module) {
   console.log('[E] les centres');
   ok(!r.tous.some((e) => e.to.includes('panne@fungalaxy.be')) && r.r8.resultats.some((x) => x.centre === 'panne' && /injoignable/.test(x.erreur || '')), '[E] un centre en panne est signale, les autres partent quand meme');
   ok(r.r8.resultats.some((x) => x.centre === 'sans' && x.ignore), '[E] un centre sans boite de secours ne recoit rien');
+  // La raison voyage jusqu a la Tour de controle : recordWorkerTask n ecrit que `message`
+  // (ops_worker_runs.error), sinon « Traitement partiellement ou totalement echoue. ».
+  ok(r.r8.ok === false && /panne/.test(r.r8.message || '') && /injoignable/.test(r.r8.message || ''), '[E] la raison de l echec est dans le message de la tache (centre et erreur)', r.r8.message);
   console.log('[F] l envoi Resend');
   let requete = null;
   const fauxFetch = async (url, init) => { requete = { url, init }; return { ok: true, json: async () => ({ id: 're_1' }) }; };

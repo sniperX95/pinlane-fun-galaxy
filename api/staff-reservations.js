@@ -543,8 +543,11 @@ async function proposerUnAutreOrdre(current, session) {
   const lectures = new Map();
   const readState = (jour, centre) => {
     const cle = `${centre}|${jour}`;
-    // (les fermetures et privatisations du jour aussi, lues une fois pour tous les ordres essayes)
-    if (!lectures.has(cle)) lectures.set(cle, readStaffState(jour, centre, { avecBlocages: true, avecFermetures: true }));
+    // (les fermetures et privatisations du jour aussi, lues une fois pour tous les ordres essayes ;
+    // ecrit en bloc pour que l ancre de la contre-preuve de simulerPourLaFenetre reste unique)
+    if (!lectures.has(cle)) {
+      lectures.set(cle, readStaffState(jour, centre, { avecBlocages: true, avecFermetures: true }));
+    }
     return lectures.get(cle);
   };
   if (current.status === 'cancelled') return { ok: true, trouve: null, raison: 'Une réservation annulée ne change pas d’ordre.', essais: 0 };

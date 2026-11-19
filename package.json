@@ -400,6 +400,7 @@
     "test:resa-lisible": "node scripts/resa-lisible-check.js && node scripts/resa-lisible-check.js --contre-preuves",
     "test:modifier-verdict": "node scripts/modifier-verdict-check.js && node scripts/modifier-verdict-check.js --contre-preuves",
     "test:heure-activite-dossier": "node scripts/heure-activite-dossier-check.js && node scripts/heure-activite-dossier-check.js --contre-preuves",
+    "test:programme-complet": "node scripts/programme-complet-check.js && node scripts/programme-complet-check.js --contre-preuves",
     "test:attribution-visible": "node scripts/attribution-visible-check.js && node scripts/attribution-visible-check.js --contre-preuves",
     "test:compte-arrivee": "node scripts/compte-arrivee-check.js && node scripts/compte-arrivee-check.js --contre-preuves",
     "test:planning-recherche": "node scripts/planning-recherche-check.js && node scripts/planning-recherche-check.js --contre-preuves",

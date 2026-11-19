@@ -27,7 +27,8 @@
 //        remplit le champ et revérifie, puis « Enregistrer » la pose ;
 //   [T1] chaque activite a heure du banc (bowling, laser, minigolf, playground,
 //        arcades) a son champ qui marche, de bout en bout ; une activite
-//        « Libre » ou sans heure n en montre pas ;
+//        « --:-- » n en montre pas ; une activite « Libre » se touche pour recevoir son heure
+//        (2026-11-19, scripts/programme-complet-check.js) ;
 //   [O1] le programme se lit dans l ordre des heures ;
 //   [R1] une ressource prise (une piste, l arene laser) : refusee avant le clic
 //        avec le nom de la ressource et la plage, rien n est ecrit ;
@@ -396,8 +397,11 @@ async function scenarioTypes(browser) {
   const sansHeure = lignes.filter((l) => !/^\d{2}:\d{2}$/.test(l.heure));
   const types = [...new Set(aHeure.filter((l) => l.touche).map((l) => l.activite))].sort();
   ok(lignes.length > 40 && lignes.every((l) => l.colonne === 1), '[T1] le banc entier : chaque rangee a une seule heure a gauche', { rangees: lignes.length, plusieurs: lignes.filter((l) => l.colonne !== 1).slice(0, 3) });
-  ok(aHeure.every((l) => l.touche || ['party_table'].includes(l.activite) || /^service_/.test(l.activite)) && sansHeure.every((l) => !l.touche),
-    '[T1] chaque activite a heure se touche ; « Libre » et « --:-- » ne se touchent pas', { sansBouton: aHeure.filter((l) => !l.touche).slice(0, 4), libresTouchables: sansHeure.filter((l) => l.touche).slice(0, 4) });
+  // (2026-11-19, scripts/programme-complet-check.js) Une activite « Libre » se touche pour recevoir son heure, sauf le
+  // bowling, le laser, la table d anniversaire, les jetons et les boissons ; « --:-- » ne se touche pas.
+  const libreQuiSeTouche = (l) => l.heure === 'Libre' && !['bowling', 'laser_game', 'party_table', 'arcade_credit'].includes(l.activite) && !/^service_/.test(l.activite);
+  ok(aHeure.every((l) => l.touche || ['party_table'].includes(l.activite) || /^service_/.test(l.activite)) && sansHeure.every((l) => (libreQuiSeTouche(l) ? l.touche : !l.touche)),
+    '[T1] chaque activite a heure se touche ; « Libre » se touche pour recevoir une heure, « --:-- » ne se touche pas', { sansBouton: aHeure.filter((l) => !l.touche).slice(0, 4), libresTouchables: sansHeure.filter((l) => l.touche).slice(0, 4) });
   ok(['arcade_time', 'bowling', 'laser_game', 'minigolf_blacklight', 'playground'].every((x) => types.includes(x)), '[T1] les activites a heure du banc : bowling, laser, minigolf, playground, arcades', types);
   console.log(`      (types a heure sur le banc : ${types.join(', ')} ; sans heure : ${[...new Set(sansHeure.map((l) => l.activite))].join(', ')})`);
   // Chaque type, de bout en bout : son heure decalee (5 min, 30 pour le bowling), une heure proposee si le serveur refuse, puis Enregistrer.

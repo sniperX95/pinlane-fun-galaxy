@@ -101,7 +101,9 @@ const MUTATIONS = {
   surface: ['assets/app-main.js', '    if (!suivi.touchee && suivi.html === html) return false;', '    if (false) return false;', ['A', 'F']],
   touchee: ['assets/app-main.js', SURFACE_TOUCHEE, '  return false;', ['C']],
   motion: ['assets/app-main.js', SURFACE_TOUCHEE, "  return mutations.some((m) => m.type === 'childList' || m.target !== conteneur);", ['A', 'F']],
-  compteur: ['assets/pinlane-motion.js', "        Promise.resolve().then(function () { el.removeAttribute('data-pl-anim'); });", "        el.removeAttribute('data-pl-anim');", ['A']],
+  // (2026-11-20 : les compteurs entiers tournent en rouleau, leur fin de course est la : l ancien
+  // defile pas a pas ne sert plus qu aux decimales, que [A] ne touche pas, et la mutation ne mordait plus)
+  compteur: ['assets/pinlane-motion.js', "      el.textContent = modele;\n      Promise.resolve().then(function () { el.removeAttribute('data-pl-anim'); });", "      el.textContent = modele;\n      el.removeAttribute('data-pl-anim');", ['A']],
   defilement: ['assets/app-main.js', '  const connu = lot && (lot.aPoser.get(el) || lot.lus.get(el));', '  const connu = null;', ['D']],
   cascade: ['assets/pinlane-motion.js', "      if (aDecaler[r][0].classList.contains('pl-in')) { aDecaler[r][0].classList.remove('pl-in'); relancer = true; }", "      if (aDecaler[r][0].classList.contains('pl-in')) { aDecaler[r][0].classList.remove('pl-in'); void aDecaler[r][0].offsetWidth; }", ['E']],
   // Le planning Laser de la maquette E (2026-10-08) : 40 px par case, 12

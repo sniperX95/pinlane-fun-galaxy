@@ -20278,6 +20278,11 @@ body:is(.staff-mode, .admin-mode) .fx-modal .es2 .dossier-visit-section > .es-jo
 .compte-pop__prix b { font-size: 16px; font-weight: 700; }
 .compte-pop__avant { margin: 2px 0 0; text-align: right; font-size: 12px; color: var(--muted); }
 .compte-pop__erreur { margin: 10px 0 0; font-size: 13px; color: var(--danger); }
+/* La carte des pistes et des armes du compte (2026-11-19) : sous le prix, au-dessus
+   des boutons, le meme habit que dans Modifier, a la largeur de la bulle. */
+.compte-pop__attr { margin: 12px 0 0; }
+body:is(.staff-mode, .admin-mode) .compte-pop .attr-carte { gap: 6px 10px; padding: 8px 8px 8px 10px; font-size: 13px; }
+body:is(.staff-mode, .admin-mode) .compte-pop .attr-lignes { flex-basis: 170px; }
 .compte-pop__actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 .compte-pop__actions button { min-height: 36px; padding: 0 14px; border-radius: var(--radius-md); font: 600 13px var(--font-ui); cursor: pointer; }
 .compte-pop__annuler { background: transparent; border: 1px solid var(--line-strong); color: var(--text); }

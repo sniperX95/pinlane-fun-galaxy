@@ -1616,8 +1616,12 @@ function syncEditLaneAssignment() {
   }
   const requiredCount = getEditBowlingCapacityNeed(dossier, state.editState).requiredCount;
   const duration = Number(state.editState.duration || state.selectedRes.duration || 0);
+  // LE GROUPE QUI BAISSE, ET LA FRAPPE QUI REPART DE LA PHOTO (2026-11-19) : les
+  // pistes se recalculent depuis celles du groupe avant ce geste (pistesDeDepartEdition).
+  const depart = typeof pistesDeDepartEdition === 'function' ? pistesDeDepartEdition(requiredCount, debutBowlingEdition(dossier, state.editState), duration) : null;
+  if (depart !== null) state.editState.lanesStr = depart;
   const suggested = getSuggestedEditLanes(requiredCount, state.selectedRes.date, debutBowlingEdition(dossier, state.editState), duration, state.selectedRes.id, state.editState.lanesStr);
-  if (suggested) state.editState.lanesStr = formatLaneInput(pistesApresDescenteEdition(suggested, requiredCount));
+  if (suggested) state.editState.lanesStr = formatLaneInput(suggested);
   refreshEditPreview();
   return suggested;
 }
@@ -1637,17 +1641,16 @@ function syncEditLaneAssignment() {
 // bowling, une activite ajoutee, les joueurs d une partie) :
 //   - les pistes suivent tout de suite (syncEditLaneAssignment) : celles que le
 //     dossier a et qui sont libres restent, la regle commune choisit celles qui
-//     manquent (assets/pinlane-pistes.js, sa graine) ; celles que Pinlane a
-//     ajoutees pendant la saisie repartent quand le groupe redescend ; une
-//     piste touchee a la main ne part jamais ;
+//     manquent (assets/pinlane-pistes.js, sa graine) ;
 //   - une petite carte le dit au-dessus de « Enregistrer », une fois la frappe
 //     calmee (taper 1 puis 8 pour 18 ne montre jamais « 1 piste ») :
 //     « 8 joueurs : pistes 3 et 4 (avant : piste 3) », au laser « 24 joueurs :
 //     2 vagues de 12 armes ». Ce qu elle dit est deja applique : « OK » la
 //     ferme, « Modifier » ouvre les pastilles des pistes (ou les parties du
 //     laser). Elle ne prend pas le focus et ne cache rien ;
-//   - un groupe qui redescend garde les pistes du dossier : la carte propose
-//     d en liberer, sans l imposer ;
+//   - un groupe qui baisse rend ses pistes en trop tout seul (2026-11-19, la
+//     decision d Ansar apres Gembloux) : il garde le meilleur bloc parmi les
+//     siennes, la carte dit celles qui sont libérées, « Modifier » en remet ;
 //   - le serveur a le dernier mot : des que son calcul a blanc arrive
 //     (demanderVerdictEdition), la carte montre ses pistes.
 // Rien ne s affiche quand le nombre de pistes ou de vagues ne change pas, ni
@@ -1676,26 +1679,61 @@ function choisirPistesEdition(nombre, graine, parmi) {
   });
 }
 
-// Les pistes que le dossier garde quoi qu il arrive : celles qu il avait a
-// l ouverture de Modifier, et celles touchees a la main pendant la saisie.
-function pistesGardeesEdition() {
-  const e = state.editState;
-  const origine = e && departsEdition().get(e)?.origine;
-  return new Set([...((origine && origine.lanes) || []), ...((e && e.pistesTouchees) || [])].map(Number));
+// LES JOUEURS DU BOWLING d un etat d edition : ceux de sa rangee dans le
+// Programme, sinon le groupe (comme la photo de la carte).
+function joueursBowlingEdition(e) {
+  const programme = e && e.programmeEdite;
+  return programme && programme.bowling && programme.bowling.on ? participantsLigneProgramme(programme.bowling, e.pax) : Math.max(1, Math.trunc(Number(e && e.pax) || 1));
 }
 
-// LE GROUPE QUI REDESCEND : les pistes que Pinlane a ajoutees pendant cette
-// saisie repartent ; celles du dossier et celles touchees a la main restent
-// (la carte propose de liberer celles du dossier). Il en faut encore quelques
-// unes : la regle garde les meilleures des ajoutees.
-function pistesApresDescenteEdition(pistes, requis) {
+// LE GROUPE AVANT CE GESTE : la photo de la carte (prise a l ouverture de
+// Modifier, puis a chaque frappe calmee et a chaque geste de la main) ; un etat
+// d edition que Modifier n a pas dessine (le compte a l arrivee) part du dossier.
+function referencePistesEdition() {
   const e = state.editState;
-  if (!e || e.pistesALaMain || !(requis > 0) || pistes.length <= requis) return pistes;
-  const gardees = pistesGardeesEdition();
-  if (!pistes.some((piste) => !gardees.has(Number(piste)))) return pistes;
-  const restent = pistes.filter((piste) => gardees.has(Number(piste)));
-  if (restent.length >= requis) return restent;
-  return choisirPistesEdition(requis, restent, pistes) || pistes;
+  if (!e) return null;
+  const a = attributionEdition;
+  if (a.pour === e && a.base && a.base.bowling) return { joueurs: a.base.bowling.joueurs, pistes: a.base.bowling.pistes.slice() };
+  const origine = departsEdition().get(e)?.origine;
+  if (!origine) return null;
+  const ligne = ((origine.program && origine.program.items) || []).find((item) => item && item.activityId === 'bowling');
+  const joueurs = ligne && Number(ligne.participants) > 0 ? Number(ligne.participants) : Number(origine.pax);
+  return { joueurs: Math.max(1, Math.trunc(joueurs) || 1), pistes: (origine.lanes || []).map(Number) };
+}
+
+// LE GROUPE QUI BAISSE garde le meilleur bloc parmi ses pistes encore libres a
+// cette heure : la regle commune, ses pistes pour graine, jugee sur toutes les
+// pistes libres (assets/pinlane-pistes.js). Rien quand il n en a pas en trop.
+function pistesQuiBaissentEdition(pistes, requis, debut, duree) {
+  const r = state.selectedRes;
+  if (!r || !(requis > 0)) return null;
+  const prises = getOccupiedLanes(r.date, debut, duree, r.id);
+  const libres = [];
+  for (let piste = 1; piste <= getAvailabilityLaneCount(); piste += 1) if (!prises.has(piste) && state.laneStatuses[piste] !== 'maintenance') libres.push(piste);
+  const siennes = [...new Set((pistes || []).map(Number))].filter((piste) => libres.includes(piste));
+  if (siennes.length <= requis) return null;
+  return choisirPistesEdition(requis, siennes, libres);
+}
+
+// D OU REPARTENT LES PISTES (2026-11-19, Ansar a Gembloux : « je viens de changer
+// le nombre de joueurs et ça n'a pas changé automatiquement le nombre de pistes
+// nécessaire »). Des pistes du groupe AVANT ce geste, jamais de celles qu une
+// frappe en cours a posees (taper 1 puis 2 pour 12 ne fait perdre aucune piste) :
+//   - le groupe baisse : ses pistes baissent toutes seules jusqu a ce que la
+//     regle commune demande, le meilleur bloc parmi les siennes ;
+//   - sinon, ses pistes, que getSuggestedEditLanes complete s il en manque
+//     (a la hausse, rien ne change).
+// « Seulement ces pistes, à la main » : rien ne bouge.
+function pistesDeDepartEdition(requis, debut, duree) {
+  const e = state.editState;
+  if (!e || e.pistesALaMain) return null;
+  const ref = referencePistesEdition();
+  if (!ref) return null;
+  if (joueursBowlingEdition(e) < ref.joueurs) {
+    const baisse = pistesQuiBaissentEdition(ref.pistes, requis, debut, duree);
+    if (baisse) return formatLaneInput(baisse);
+  }
+  return formatLaneInput(ref.pistes);
 }
 
 // Les pistes du dossier qu un groupe plus petit peut rendre : celles que la
@@ -1801,25 +1839,53 @@ function proposerAttribution(avant, apres) {
   return lignes.length ? { lignes } : null;
 }
 
-// « pistes 3 et 4 », « piste 3 », « aucune piste ».
+// Les pistes par suites : trois qui se suivent ou plus se disent « de … a … »
+// (« 1 à 5 »), les autres une par une. `pareil` coupe une suite (les pistes
+// neuves d une carte restent en couleur).
+function suitesDePistes(liste, pareil = () => true) {
+  const suites = [];
+  liste.forEach((piste) => {
+    const s = suites[suites.length - 1];
+    if (s && piste === s[s.length - 1] + 1 && pareil(piste, s[0])) s.push(piste);
+    else suites.push([piste]);
+  });
+  return suites;
+}
+
+function enEnumeration(morceaux) {
+  return morceaux.length > 1 ? `${morceaux.slice(0, -1).join(', ')} et ${morceaux[morceaux.length - 1]}` : morceaux[0];
+}
+
+// « pistes 3 et 4 », « piste 3 », « pistes 1 à 5 », « pistes 1 à 3 et 6 », « aucune piste ».
 function pistesEnMots(pistes) {
-  const liste = [...(pistes || [])].map(Number).sort((a, b) => a - b);
+  const liste = [...new Set((pistes || []).map(Number))].sort((a, b) => a - b);
   if (!liste.length) return 'aucune piste';
-  return `${liste.length > 1 ? 'pistes' : 'piste'} ${liste.length > 1 ? `${liste.slice(0, -1).join(', ')} et ${liste[liste.length - 1]}` : liste[0]}`;
+  const morceaux = suitesDePistes(liste).flatMap((s) => (s.length >= 3 ? [`${s[0]} à ${s[s.length - 1]}`] : s.map(String)));
+  return `${liste.length > 1 ? 'pistes' : 'piste'} ${enEnumeration(morceaux)}`;
+}
+
+// « Piste 7 libérée. », « Pistes 6 et 7 libérées. »
+function pistesLibereesEnMots(pistes) {
+  const liste = [...new Set((pistes || []).map(Number))];
+  return `${pistesEnMots(liste).replace(/^p/, 'P')} ${liste.length > 1 ? 'libérées' : 'libérée'}.`;
 }
 
 // Les pistes en pastilles (celles qui arrivent en couleur), dans la phrase.
 function pistesEnPastillesHtml(pistes, neuves = []) {
-  const liste = [...(pistes || [])].map(Number).sort((a, b) => a - b);
+  const liste = [...new Set((pistes || []).map(Number))].sort((a, b) => a - b);
   if (!liste.length) return 'aucune piste';
-  const pastille = (piste) => `<span class="attr-piste${neuves.includes(piste) ? ' is-neuve' : ''}">${piste}</span>`;
-  const suite = liste.length > 1 ? `${liste.slice(0, -1).map(pastille).join(', ')} et ${pastille(liste[liste.length - 1])}` : pastille(liste[0]);
-  return `${liste.length > 1 ? 'pistes' : 'piste'} ${suite}`;
+  const neuve = (piste) => neuves.includes(piste);
+  const pastille = (piste) => `<span class="attr-piste${neuve(piste) ? ' is-neuve' : ''}">${piste}</span>`;
+  const morceaux = suitesDePistes(liste, (piste, debut) => neuve(piste) === neuve(debut))
+    .flatMap((s) => (s.length >= 3 ? [`${pastille(s[0])} à ${pastille(s[s.length - 1])}`] : s.map(pastille)));
+  return `${liste.length > 1 ? 'pistes' : 'piste'} ${enEnumeration(morceaux)}`;
 }
 
-// UNE LIGNE DE LA CARTE, en mots simples (Modifier et Reserver).
+// UNE LIGNE DE LA CARTE, en mots simples (Modifier, le compte a l arrivee, Reserver).
 // `serveur` : les pistes que le calcul a blanc du serveur ecrira, quand il est la.
-function ligneAttributionHtml(ligne, serveur = null) {
+// `dossier` : un dossier existe (Modifier, le compte), ses pistes rendues se disent
+// « libérées » ; Reserver n a encore rien pris.
+function ligneAttributionHtml(ligne, serveur = null, { dossier = true } = {}) {
   const joueurs = `<b>${ligne.joueurs} joueur${ligne.joueurs > 1 ? 's' : ''}</b>`;
   if (ligne.activite === 'laser_game') {
     const tailles = [...new Set(ligne.tailles)].length === 1 ? String(ligne.tailles[0]) : `${ligne.tailles.slice(0, -1).join(', ')} et ${ligne.tailles[ligne.tailles.length - 1]}`;
@@ -1839,7 +1905,9 @@ function ligneAttributionHtml(ligne, serveur = null) {
   const main = (ligne.aLaMain || []).length ? ` <span class="attr-note">${escapeHtml(`${pistesEnMots(ligne.aLaMain).replace(/^p/, 'P')} ${ligne.aLaMain.length > 1 ? 'gardées' : 'gardée'} à la main.`)}</span>` : '';
   const offre = (ligne.liberables || []).length ? ` <span class="attr-note">${ligne.requis} piste${ligne.requis > 1 ? 's' : ''} ${ligne.requis > 1 ? 'suffisent' : 'suffit'}.</span>` : '';
   if (ligne.motif === 'liberer') return `${joueurs} : ${ligne.requis} piste${ligne.requis > 1 ? 's' : ''} ${ligne.requis > 1 ? 'suffisent' : 'suffit'}, vous gardez les ${pistesEnPastillesHtml(apres)}.`;
-  return `${joueurs} : ${pistesEnPastillesHtml(apres, neuves)} ${avant}${offre}${main}`;
+  const rendues = dossier && ligne.motif === 'descend' ? ligne.avant.filter((piste) => !apres.includes(piste)) : [];
+  const liberees = rendues.length ? ` <span class="attr-note">${escapeHtml(pistesLibereesEnMots(rendues))}</span>` : '';
+  return `${joueurs} : ${pistesEnPastillesHtml(apres, neuves)} ${avant}${offre}${liberees}${main}`;
 }
 
 // Les gestes de la carte : une offre (liberer, prendre) se refuse ; un
@@ -2109,10 +2177,11 @@ function toggleEditLane(lane) {
   if (choisies.has(lane)) choisies.delete(lane);
   else choisies.add(lane);
   state.editState.lanesStr = [...choisies].sort((a, b) => a - b).join(',');
-  // UNE PISTE TOUCHEE A LA MAIN NE PART JAMAIS SEULE (2026-11-18) : un groupe
-  // qui redescend rend les pistes que Pinlane avait ajoutees, jamais celle-ci,
-  // et la carte ne propose pas de la liberer. Les pistes prises pour une heure
-  // changee cedent la place a ce choix.
+  // UNE PISTE TOUCHEE A LA MAIN (2026-11-18) : la carte ne propose pas de la
+  // liberer, et la photo du groupe repart d ici (oublierAttributionEdition). Un
+  // groupe qui baisse rend ses pistes en trop, celle-ci comprise : seul
+  // « Seulement ces pistes, à la main » les fige (2026-11-19). Les pistes prises
+  // pour une heure changee cedent la place a ce choix.
   const touchees = new Set((state.editState.pistesTouchees || []).map(Number));
   if (choisies.has(lane)) touchees.add(lane);
   else touchees.delete(lane);
@@ -34097,10 +34166,13 @@ function preparerCompte(r, n) {
     ensureEditProgram(dossierPourFormule(r));
     ensureEditExtras(r);
     e.price = String(prixSuiviEdition(getEditPrixEstime()));
+    // (la carte des pistes et des armes du compte : le groupe avant, puis apres)
+    const photoAvant = typeof photoAttributionEdition === 'function' ? photoAttributionEdition() : null;
     setEditField('pax', n, true);
     const estime = getEditPrixEstime();
     e.price = String(prixSuiviEdition(estime));
-    return { ...preparerModificationEdition(), estime, prix: getEditPriceValue() };
+    const carte = photoAvant && typeof proposerAttribution === 'function' ? proposerAttribution(photoAvant, photoAttributionEdition()) : null;
+    return { ...preparerModificationEdition(), estime, prix: getEditPriceValue(), carte };
   } finally {
     state.selectedRes = avant.selectedRes;
     state.editState = avant.editState;
@@ -34189,6 +34261,7 @@ function peindreCompteArrivee() {
   const connu = devis.prix !== null && (prixDossierConnu(r) || Boolean(devis.estime && devis.estime.utilisable));
   const ligne = devis.estime && devis.estime.lignes.length === 1 ? devis.estime.lignes[0] : null;
   const erreur = compteArrivee().erreur || devis.erreur || '';
+  const carteCompte = erreur ? '' : carteCompteArriveeHtml(devis.carte);
   const focus = document.activeElement && document.activeElement.closest && document.activeElement.closest('#comptePop') ? document.activeElement.getAttribute('data-compte-focus') : '';
   const signe = (plus) => `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="${plus ? 'M5 12h14M12 5v14' : 'M5 12h14'}"/></svg>`;
   let pop = document.getElementById('comptePop');
@@ -34212,6 +34285,7 @@ function peindreCompteArrivee() {
     <p class="compte-pop__ref">${reserve === compteArrivee().n ? 'Comme à la réservation' : `${reserve} à la réservation`}</p>
     ${connu ? `<div class="compte-pop__prix"><span>${ligne ? `${escapeHtml(ligne.nom)}${ligne.detail ? ` · ${escapeHtml(ligne.detail)}` : ''}` : 'Total'}</span><b>${escapeHtml(formatMoneyCentimes(devis.prix))}</b></div>
     ${Math.round(devis.prix * 100) !== Math.round(avant * 100) ? `<p class="compte-pop__avant">avant ${escapeHtml(formatMoneyCentimes(avant))}</p>` : ''}` : '<div class="compte-pop__prix"><span>Prix au comptoir</span></div>'}
+    ${carteCompte}
     ${erreur ? `<p class="compte-pop__erreur" role="alert">${escapeHtml(erreur)}</p>` : ''}
     <div class="compte-pop__actions">
       <button type="button" class="compte-pop__annuler" data-compte-focus="annuler" onclick="fermerCompteArrivee()">Annuler</button>
@@ -34223,6 +34297,37 @@ function peindreCompteArrivee() {
   pop.classList.toggle('is-ecart', compteArrivee().n !== pax);
   poserCompteArrivee();
   if (focus) { const cible = pop.querySelector(`[data-compte-focus="${focus}"]`); if (cible) cible.focus({ preventScroll: true }); }
+}
+
+// LA CARTE DES PISTES DANS LA BULLE DU COMPTE (2026-11-19, Ansar : « j'ai changé
+// à l'endroit où c'est une case orange »). Ce que le compte fait aux pistes et
+// aux vagues du laser, avant d enregistrer : « 6 joueurs : piste 2 (avant :
+// pistes 1 et 2). Piste 1 libérée. ». « Modifier » ouvre la fiche pour en remettre.
+function carteCompteArriveeHtml(carte) {
+  if (!carte || !carte.lignes || !carte.lignes.length) return '';
+  const lignes = carte.lignes.map((ligne) => `<p class="attr-ligne" data-attr-activite="${escapeHtml(ligne.activite)}" data-attr-motif="${escapeHtml(ligne.motif)}">${ligneAttributionHtml(ligne)}</p>`).join('');
+  return `<div class="compte-pop__attr attr-carte">${iconeAttributionHtml(carte)}<div class="attr-lignes">${lignes}</div><div class="attr-gestes"><button type="button" class="attr-b" data-compte-focus="pistes" onclick="modifierPistesCompteArrivee()">Modifier</button></div></div>`;
+}
+
+// « Modifier » dans la bulle : la fiche s ouvre sur Modifier, le nombre compte
+// pose par le chemin de ses boutons − et +, les pastilles des pistes sous les
+// yeux pour en remettre ; « Enregistrer » de la fiche enregistre.
+function modifierPistesCompteArrivee() {
+  const id = compteArrivee().id;
+  const n = compteArrivee().n;
+  fermerCompteArrivee(false);
+  if (!findStaffReservationById(id)) return;
+  closePos();
+  openPos(id);
+  setTab('modifier');
+  const champ = document.getElementById('editPaxInput');
+  if (champ) champ.value = n;
+  setEditField('pax', n, true);
+  const choix = document.querySelector('#posOverlay .fm .lane-picker');
+  if (!choix) return;
+  choix.scrollIntoView({ block: 'center' });
+  const touche = choix.querySelector('.lane-chip.is-on:not([disabled])') || choix.querySelector('.lane-chip:not([disabled])');
+  if (touche) touche.focus({ preventScroll: true });
 }
 
 // Sous l ancre, alignee sur son bord droit ; au-dessus si la place manque en
@@ -34272,8 +34377,11 @@ async function enregistrerCompteArrivee() {
       : payload.planNonRefait
         ? `${nom} : ${fait.pax} personnes, mais le planning n’a pas suivi : ${payload.planNonRefait}`
         : `${nom} : ${fait.pax} personnes${pistesChangees ? `, pistes ${pistes}` : ''}${prixDossierConnu(fait) ? `, ${formatMoneyCentimes(fait.price)}` : ''}.`;
+    // (les pistes que le groupe plus petit a rendues se disent : « Piste 1 libérée. »)
+    const rendues = envoi.requiresLanes ? (r.lanes || []).map(Number).filter((piste) => !(fait.lanes || []).map(Number).includes(piste)) : [];
+    const dit = rendues.length ? `${constat} ${pistesLibereesEnMots(rendues)}` : constat;
     if (compteArrivee().id === id) fermerCompteArrivee();
-    toast(payload.changeEntreTemps ? `${constat} Modifié entre-temps et conservé : ${payload.changeEntreTemps}.` : constat);
+    toast(payload.changeEntreTemps ? `${dit} Modifié entre-temps et conservé : ${payload.changeEntreTemps}.` : dit);
   } catch (error) {
     applyOptimisticReservation(error.conflit && error.reservation ? error.reservation : r, { preserveEditState: true });
     const message = error.conflit && error.reservation
@@ -38510,7 +38618,7 @@ function attributionReserverHtml() {
   const a = attributionReserver;
   const carte = a.pour === quickBookState ? a.carte : null;
   if (!carte) return '';
-  const lignes = carte.lignes.map((ligne) => `<p class="attr-ligne" data-attr-activite="${escapeHtml(ligne.activite)}" data-attr-motif="${escapeHtml(ligne.motif)}">${ligneAttributionHtml(ligne)}</p>`).join('');
+  const lignes = carte.lignes.map((ligne) => `<p class="attr-ligne" data-attr-activite="${escapeHtml(ligne.activite)}" data-attr-motif="${escapeHtml(ligne.motif)}">${ligneAttributionHtml(ligne, null, { dossier: false })}</p>`).join('');
   const fermer = 'fermerAttributionReserver()';
   return `<div class="attr-carte rs-attr">${iconeAttributionHtml(carte)}<div class="attr-lignes">${lignes}</div><div class="attr-gestes">${gestesAttributionHtml(carte, { modifier: 'modifierAttributionReserver()', fermer, liberer: fermer, prendre: fermer })}</div></div>`;
 }

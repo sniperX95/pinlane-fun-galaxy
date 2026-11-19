@@ -460,7 +460,8 @@
     "test:mail-studio",
     "test:planning-persistent-move",
     "test:mouvement",
-    "test:fenetre-taille"
+    "test:fenetre-taille",
+    "test:mouvement-gestes"
   ],
   "seuls": [
     "test:visit-motion",

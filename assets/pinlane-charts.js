@@ -544,24 +544,45 @@
     var bars = [];
     var valueTexts = [];
     var centers = [];
+    // LA BARRE GLISSE D UNE MESURE A L AUTRE (2026-11-20, Ansar : « il faut beaucoup plus »).
+    // Meme suite d etiquettes que le rendu d avant sur ce cadre (les heures du jour, Joueurs puis
+    // Chiffre d affaires) : chaque barre part de son ancienne hauteur au lieu de repousser de zero.
+    var cleBarres = series.map(function (p) { return p.label; }).join('|');
+    var avant = el.__plcBarres && el.__plcBarres.cle === cleBarres ? el.__plcBarres : null;
+    var glisse = animate && Boolean(avant) && !reducedMotion();
+    var hauteurs = [];
+    var hautsTextes = [];
     series.forEach(function (p, i) {
       var h = innerH * (p.value / scale.top);
       var x = PAD.l + slot * i + (slot - barW) / 2;
       var y = baseY - h;
+      hauteurs.push(h);
+      var depart = '';
+      if (glisse && h > 0) depart = 'transform:scaleY(' + round2(Math.min(20, (avant.hauteurs[i] || 0) / h)) + ');';
       centers.push({ x: x + barW / 2, label: p.label });
       // pastBefore : les heures deja passees s effacent, l heure en cours se
       // detache (accueil, arrivees du jour). -1 ou absent : aucune marque.
       var when = past < 0 ? '' : i < past ? ' is-past' : i === past ? ' is-now' : '';
-      bars.push('<rect class="plc-bar' + when + '" data-i="' + i + '" x="' + round2(x) + '" y="' + round2(y) + '" width="' + round2(barW) + '" height="' + round2(h) + '" rx="2" style="--plc-d:' + Math.round(stepDelay * i) + 'ms"><title>' + esc((p.label ? p.label + ' : ' : '') + formatValue(p.value, format)) + '</title></rect>');
+      bars.push('<rect class="plc-bar' + when + '" data-i="' + i + '" x="' + round2(x) + '" y="' + round2(y) + '" width="' + round2(barW) + '" height="' + round2(h) + '" rx="2" style="' + depart + '--plc-d:' + Math.round(stepDelay * i) + 'ms"><title>' + esc((p.label ? p.label + ' : ' : '') + formatValue(p.value, format)) + '</title></rect>');
       // Un « 0 » imprime au-dessus d une barre absente se lit comme une donnee
       // de plus : la valeur ne s ecrit que sur une barre qui existe.
+      var yTexte = n <= 8 && p.value > 0 ? Math.max(12, y - 6) : null;
+      hautsTextes.push(yTexte);
+      var departTexte = '';
+      if (glisse && yTexte != null) departTexte = avant.hautsTextes && avant.hautsTextes[i] != null ? ' style="transform:translateY(' + round2(avant.hautsTextes[i] - yTexte) + 'px);--plc-d:' + Math.round(stepDelay * i) + 'ms"' : ' style="opacity:0;--plc-d:' + Math.round(stepDelay * i) + 'ms"';
       if (n <= 8 && p.value > 0) {
-        valueTexts.push('<text class="plc-bar-value" x="' + round2(x + barW / 2) + '" y="' + round2(Math.max(12, y - 6)) + '" text-anchor="middle">' + esc(formatTick(p.value, format)) + '</text>');
+        valueTexts.push('<text class="plc-bar-value"' + departTexte + ' x="' + round2(x + barW / 2) + '" y="' + round2(Math.max(12, y - 6)) + '" text-anchor="middle">' + esc(formatTick(p.value, format)) + '</text>');
       }
     });
     var parts = [gridMarkup(scale, format, height, vbW), xLabelsMarkup(centers, height, vbW), bars.join(''), valueTexts.join('')];
     var barInfo = series.map(function (p) { return { label: p.label, value: formatValue(p.value, format) }; });
-    var wrap = mountChart(el, 'plc-bar-wrap', chartFrame(parts.join(''), height, 'Volumes sur la periode', vbW), animate);
+    var wrap = mountChart(el, 'plc-bar-wrap' + (glisse ? ' plc-glisse' : ''), chartFrame(parts.join(''), height, 'Volumes sur la periode', vbW), animate && !glisse);
+    el.__plcBarres = { cle: cleBarres, hauteurs: hauteurs, hautsTextes: hautsTextes };
+    if (glisse && wrap) {
+      window.requestAnimationFrame(function () {
+        window.requestAnimationFrame(function () { if (wrap.isConnected) wrap.classList.add('plc-glisse-go'); });
+      });
+    }
     wireSegments(wrap, '.plc-bar', barInfo);
     keepScaled(el, function () { barChart(host, opts); });
   }

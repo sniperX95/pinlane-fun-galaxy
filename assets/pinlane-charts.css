@@ -108,6 +108,18 @@
 }
 .plc-anim.plc-in .plc-bar-value { opacity: 1; }
 
+/* LA BARRE GLISSE D UNE MESURE A L AUTRE (2026-11-20) : la barre part de son ancienne hauteur
+   (scaleY pose en ligne au rendu), puis .plc-glisse-go, en double rAF, la ramene a la sienne.
+   La valeur ecrite suit ; les graduations, reecrites, apparaissent en fondu. */
+.plc-glisse.plc-glisse-go .plc-bar,
+.plc-glisse.plc-glisse-go .plc-bar-value {
+  transform: none !important;
+  opacity: 1 !important;
+  transition: transform 440ms cubic-bezier(0.23, 1, 0.32, 1) var(--plc-d, 0ms), opacity 200ms linear var(--plc-d, 0ms);
+}
+.plc-glisse:not(.plc-glisse-go) .plc-ytick { opacity: 0; }
+.plc-glisse.plc-glisse-go .plc-ytick { transition: opacity 240ms linear; }
+
 /* ---- Donut + legende ----------------------------------------------------- */
 
 .plc-donut-wrap {

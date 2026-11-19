@@ -24585,6 +24585,7 @@ function showStaffFloatingMenu(event, html) {
     menu.style.left = `${left}px`;
     menu.style.top = `${top}px`;
   }
+  if (window.PlMouvement) window.PlMouvement.surgir(menu, event?.currentTarget);
   setTimeout(() => document.addEventListener('click', closeStaffFloatingMenus, { once: true }), 0);
 }
 
@@ -24786,6 +24787,7 @@ function openStaffCalendar(ev, options = null) {
   pop.innerHTML = renderStaffCalendar(getStaffCalendarValue());
   document.body.appendChild(pop);
   positionStaffCalendar(pop, staffCalAnchor);
+  if (window.PlMouvement) window.PlMouvement.surgir(pop, staffCalAnchor);
   const focusTarget = pop.querySelector('.staff-cal-day.is-selected')
     || pop.querySelector('.staff-cal-day.is-today')
     || pop.querySelector('.staff-cal-day');
@@ -26502,7 +26504,7 @@ function describeStaffLanesFreeNow({ libres, occupees, close }) {
 // reconstruisait la liste au sondage suivant chaque cascade, et coupait au
 // passage une animation en cours. Toute autre ecriture (classe d un geste,
 // texte reecrit, noeud ajoute) reste une retouche.
-var CLASSES_DU_MOTION = ['pl-in', 'pl-arrive', 'pl-pop', 'pl-num-up', 'pl-num-down'];
+var CLASSES_DU_MOTION = ['pl-in', 'pl-arrive', 'pl-pop', 'pl-num-up', 'pl-num-down', 'pl-repere-voyage'];
 var rendusDeSurface = typeof WeakMap === 'function' ? new WeakMap() : null;
 function sansDelaiDeCascade(style) {
   return String(style || '').replace(/(^|;)\s*animation-delay\s*:[^;]*;?/g, '$1').replace(/[\s;]+$/, '').trim();
@@ -26511,7 +26513,7 @@ function ecritureDuMotion(m) {
   const cible = m.target && m.target.nodeType === 1 ? m.target : m.target && m.target.parentNode;
   if (cible && cible.closest && cible.closest('[data-pl-anim]')) return true;
   if (m.type === 'attributes') {
-    if (m.attributeName === 'data-pl-anim') return true;
+    if (m.attributeName === 'data-pl-anim' || m.attributeName === 'data-pl-repere-actif') return true;
     if (m.attributeName === 'class') {
       const avant = String(m.oldValue || '').split(/\s+/).filter(Boolean);
       const apres = String(m.target.getAttribute('class') || '').split(/\s+/).filter(Boolean);
@@ -26523,7 +26525,8 @@ function ecritureDuMotion(m) {
   }
   if (m.type === 'childList') {
     const noeuds = [...m.addedNodes, ...m.removedNodes];
-    return noeuds.length > 0 && noeuds.every((n) => n.nodeType === 1 && n.classList.contains('pl-fantome'));
+    // (le repère d'onglet de pinlane-mouvement.js vit dans son groupe le temps d'un voyage)
+    return noeuds.length > 0 && noeuds.every((n) => n.nodeType === 1 && (n.classList.contains('pl-fantome') || n.classList.contains('pl-repere')));
   }
   return false;
 }
@@ -30567,7 +30570,13 @@ function corpsHistoriqueHtml(id) {
 }
 function peindreHistorique(id) {
   const corps = document.querySelector(`[data-fx-histo="${Number(id)}"] .fx-histo-corps`);
-  if (corps) corps.innerHTML = corpsHistoriqueHtml(Number(id));
+  if (!corps) return;
+  // La liste qui remplace « Chargement » entre en cascade ; une relecture qui la repeint ne bouge pas.
+  const arrivee = Boolean(corps.querySelector('.fx-histo-etat[role="status"]'));
+  corps.innerHTML = corpsHistoriqueHtml(Number(id));
+  if (arrivee && window.PlMouvement && typeof window.PlMouvement.entrer === 'function') {
+    window.PlMouvement.entrer(corps.querySelectorAll('.fx-histo-entree, .fx-histo-etat, .fx-histo-panne'), { dy: 6, pas: 30, duree: 240, max: 6 });
+  }
 }
 async function chargerHistoriqueDossier(r) {
   const id = Number(r && r.id);
@@ -43248,13 +43257,22 @@ async function saveQuickBook() {
 }
 
 let toastTimer;
+// LE TOAST BOUGE (2026-11-20) : une meche dit le temps qui reste, un message qui en remplace
+// un autre fait un petit saut, la sortie glisse (PlMouvement, pinlane-mouvement.js).
+function cacherToast(el) {
+  if (window.PlMouvement) window.PlMouvement.toastSortie(el, () => el.classList.add('hidden'));
+  else el.classList.add('hidden');
+}
+
 function toast(msg) {
   const el = document.getElementById('toast');
+  const remplace = !el.classList.contains('hidden');
   // msg peut contenir des données client (email, nom), toujours échappé au sink.
   el.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--teal)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> ${escapeHtml(String(msg ?? ''))}`;
   el.classList.remove('hidden');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.add('hidden'), 2500);
+  if (window.PlMouvement) window.PlMouvement.toastMontre(el, 2500, remplace);
+  toastTimer = setTimeout(() => cacherToast(el), 2500);
 }
 
 // LE TOAST D UN GESTE QU ON PEUT DEFAIRE (2026-10-12) : le meme toast, six
@@ -43264,12 +43282,14 @@ function toast(msg) {
 function toastAnnulable(msg, annuler) {
   const el = document.getElementById('toast');
   if (!el) return;
+  const remplace = !el.classList.contains('hidden');
   el.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--teal)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg> <span>${escapeHtml(String(msg ?? ''))}</span><button type="button" class="toast-annuler">Annuler</button>`;
   el.classList.remove('hidden');
-  const fermerDans = (delai) => { clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.add('hidden'), delai); };
+  if (window.PlMouvement) window.PlMouvement.toastMontre(el, 6000, remplace);
+  const fermerDans = (delai) => { clearTimeout(toastTimer); if (window.PlMouvement) window.PlMouvement.toastMeche(el, delai); toastTimer = setTimeout(() => cacherToast(el), delai); };
   const bouton = el.querySelector('.toast-annuler');
   bouton.onclick = (ev) => { ev.stopPropagation(); clearTimeout(toastTimer); el.classList.add('hidden'); annuler(); };
-  bouton.onmouseenter = bouton.onfocus = () => clearTimeout(toastTimer);
+  bouton.onmouseenter = bouton.onfocus = () => { clearTimeout(toastTimer); if (window.PlMouvement) window.PlMouvement.toastPause(el); };
   bouton.onmouseleave = bouton.onblur = () => fermerDans(2500);
   fermerDans(6000);
 }
@@ -43505,6 +43525,9 @@ function terminerAnimationsDuRendu(root) {
     if (animation.currentTime) return;
     const effet = animation.effect && animation.effect.getComputedTiming();
     if (!effet || effet.iterations === Infinity) return;
+    // (un geste du mouvement, pinlane-mouvement.js, nait juste apres le rendu, a l image
+    // suivante parfois : le repere sous l onglet de la fiche etait acheve par la deuxieme passe)
+    if (animation.id === 'pl-mouvement') return;
     animation.finish();
   });
 }

@@ -847,11 +847,29 @@ kbd, .kbd {
 .pl-surbrillance { z-index: 3; opacity: 0; border-radius: 6px; background: color-mix(in srgb, var(--text) 5%, transparent); }
 .pl-surbrillance.is-menu { z-index: 71; border-radius: 8px; background: color-mix(in srgb, var(--text) 7%, transparent); }
 .pl-surbrillance.is-ligne { border-radius: 0; background: color-mix(in srgb, var(--text) 5%, transparent); }
+/* L onde d Arrive et de Paye : la teinte du nouvel etat, posee par pinlane-mouvement.js. */
+.pl-onde { z-index: 3; }
 /* Le repere d onglet voyage derriere les libelles ; posé, l onglet reprend son fond. */
-.pl-repere { position: absolute; left: 0; top: 0; z-index: 0; pointer-events: none; transform-origin: 0 0; will-change: transform; }
+.pl-repere { position: absolute; left: 0; top: 0; z-index: 0; box-sizing: border-box; pointer-events: none; transform-origin: 0 0; will-change: transform; }
 .pl-repere-voyage { position: relative; isolation: isolate; }
 .pl-repere-voyage > :not(.pl-repere) { position: relative; z-index: 1; }
 .pl-repere-voyage.pl-repere-voyage > .active { background: transparent; box-shadow: none; }
+/* (le repère de tout groupe : l'onglet choisi rend son fond, ou son trait, le temps du voyage) */
+.pl-repere-voyage [data-pl-repere-actif="fond"] { background: transparent !important; box-shadow: none !important; }
+.pl-repere-voyage [data-pl-repere-actif="trait"] { border-bottom-color: transparent !important; box-shadow: none !important; }
+.pl-repere-voyage [data-pl-repere-actif="trait"]::after { opacity: 0 !important; }
+.pl-repere.is-trait { z-index: 2; }
+.pl-repere-voyage [data-pl-repere-actif="fond"] { border-color: transparent !important; }
+/* (la barre du menu, un ::before hors de l'entrée, se pose quand le fond arrive) */
+.pl-repere-voyage .fgx-menu-item[data-pl-repere-actif]::before { opacity: 0 !important; }
+.pl-surbrillance.is-carte { border-radius: var(--radius-lg, 12px); }
+/* LA MECHE DU TOAST (2026-11-20) : le temps qui reste avant qu'il parte, en scaleX. */
+#toast .pl-meche { position: absolute; left: 14px; right: 14px; bottom: 5px; height: 2px; border-radius: 2px; background: currentColor; opacity: 0.22; transform-origin: 0 50%; pointer-events: none; }
+@media (prefers-reduced-motion: no-preference) {
+  /* la coche du message se trace, une fois par message (le svg est neuf à chaque toast) */
+  #toast:not(.hidden) svg polyline { stroke-dasharray: 24; stroke-dashoffset: 24; animation: plTrace 320ms cubic-bezier(0.23, 1, 0.32, 1) 90ms forwards; } /* mouvement-permis : la coche du toast se trace une fois, 24 px de trait */
+}
+@keyframes plTrace { to { stroke-dashoffset: 0; } } /* mouvement-permis : la coche du toast, une fois */
 
 /* L APPUI SE SENT (2026-11-19) : ce qui se presse s enfonce de 3 % sous le doigt, comme sur
    Vercel ou Linear. `scale` s ajoute au transform deja pose, et les familles qui avaient

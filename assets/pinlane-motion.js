@@ -596,7 +596,9 @@
     var k;
     for (k = 0; k < m.addedNodes.length; k += 1) noeuds.push(m.addedNodes[k]);
     for (k = 0; k < m.removedNodes.length; k += 1) noeuds.push(m.removedNodes[k]);
-    return noeuds.length > 0 && noeuds.every(function (n) { return n.nodeType === 1 && n.classList && n.classList.contains('pl-fantome'); });
+    // (les calques de pinlane-mouvement.js, posés sur body, et le repère d'onglet, posé dans
+    // son groupe le temps d'un voyage, sont aussi des écritures du mouvement : 2026-11-20)
+    return noeuds.length > 0 && noeuds.every(function (n) { return n.nodeType === 1 && n.classList && (n.classList.contains('pl-fantome') || n.classList.contains('pl-calque') || n.classList.contains('pl-repere')); });
   }
   function observer() {
     var cible = document.body;

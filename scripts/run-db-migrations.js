@@ -312,6 +312,11 @@ const MIGRATIONS = [
     file: 'database/formulaire-heures-pleines-schema.sql',
     description: "Les heures completes que les gens voulaient dans le formulaire public : une ligne par heure marquee complet et touchee, une fois par visite (jour voulu, heure, activite ou formule, taille du groupe). Aucune donnee personnelle (visite = identifiant au hasard, aucun cookie, aucun texte libre). Table additive, lue par la page Donnees seulement ; tant qu elle manque, l envoi est ignore et la console affiche un tableau vide. Retour : database/rollbacks/0061_formulaire_heures_pleines.down.sql.",
   },
+  {
+    id: '0062_privatisation',
+    file: 'database/privatisation-schema.sql',
+    description: "La privatisation (Marius, manager de Gembloux, 18/11) : availability_blocks.kind ('closure' par defaut, 'private') et availability_blocks.reservation_id (la reservation du groupe prive, que sa privatisation ne bloque pas). Colonnes additives, lignes existantes = fermetures, aucune disponibilite ne change sans privatisation. Le code lit select * : tant qu elles manquent, tout se lit comme avant et seule la pose d une privatisation attend. Retour : database/rollbacks/0062_privatisation.down.sql (les privatisations redeviennent des fermetures nommees, rien ne se rouvre).",
+  },
 ];
 
 async function ensureMigrationsTable(client) {

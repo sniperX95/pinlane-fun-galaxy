@@ -29,6 +29,10 @@
 //   [B5] un PATCH « autre ordre » ne porte rien d autre (422) ;
 //   [B6] l arrivee a cinq minutes pres est celle du comptoir : en ligne, 15:15 reste refusee ;
 //   [B7] une formule garde l ordre de sa carte ; une seule activite n a pas d autre ordre ;
+//   [B8] la privatisation (lib/privatisation.js) : tout le centre privatise de 16:00 a 18:00,
+//        aucun ordre ne la traverse et la phrase la nomme ; le dossier du groupe prive n est
+//        pas refuse par SA privatisation (« l ordre actuel tient ») ; un corps du comptoir qui
+//        se dit « replanifie » ne la leve pas (le numero vient du serveur) ;
 //   [C1] le comptoir : refuse a 15:30, la variante d ordre garde 15:30 ; le corps que la
 //        fenetre envoie apres « Prendre cet ordre » est accepte tel quel, et la creation
 //        garde 15:30 avec le bowling apres ;
@@ -65,6 +69,8 @@ const fs = require('fs');
 const path = require('path');
 // La base en memoire et le faux 'pg' s installent au require, avant tout module de lib/.
 const B = require('./reserver-banc.js');
+// La table des fermetures et privatisations en memoire, apres le banc (scripts/privatisation-banc.js).
+const PB = require('./privatisation-banc.js');
 const { chromium } = require('playwright-core');
 const FX = require('./planning-v3-fixtures');
 
@@ -134,6 +140,7 @@ async function journeeDeMarius(serveur, jour) {
 }
 function monterServeur(role = 'manager') {
   B.semer([]);
+  PB.vider();
   return B.monter({ mutations: editionsServeur(), session: B.sessionDuRole(role, { nom: 'Marius' }) });
 }
 // UNE LECTURE DE LA JOURNEE PIEGEE : la n-ieme a partir de maintenant pose d abord une ligne
@@ -306,6 +313,43 @@ async function scenarioRegles() {
   const ecrit = cree.json.reservation || {};
   ok(t.ordre.join('>') === 'minigolf_blacklight>bowling>arcade_time' && simule.fin === '18:00' && finDeLaVisite(ecrit.opsPlan, ecrit) === '18:00',
     '[C2] la fin dite par le comptoir et par le dossier cree : 18:00 (les arcades apres le bowling, pas pendant le minigolf)', { ordre: t.ordre, simule: simule.fin, dossier: finDeLaVisite(ecrit.opsPlan, ecrit) });
+  return serveur;
+}
+
+// [B8] La privatisation, posee par le vrai geste (api/ops.js, action privatiser).
+async function scenarioPrive() {
+  const serveur = monterServeur();
+  const jour = B.JOUR;
+  await journeeDeMarius(serveur, jour);
+  const marius = await creer(serveur, { ...corpsVisite({ jour, nom: 'Famille Lambert', heure: '15:15', ids: IDS, pax: 10 }), forcer: true });
+  const ops = require(path.join(ROOT, 'api/ops.js'));
+  const privatiser = async (champs) => {
+    const demande = { centerId: 'libramont', action: 'privatiser', date: jour, ...champs };
+    const apercu = await B.appeler(ops, 'POST', '/api/ops', { ...demande, aBlanc: true });
+    const pose = await B.appeler(ops, 'POST', '/api/ops', { ...demande, reservationsVues: (apercu.json.reservations || []).map((r) => r.id) });
+    await PB.pause(40);
+    if (pose.statut !== 200) throw new Error(`montage : privatisation ${pose.statut} ${pose.json.message || ''}`);
+  };
+  const proposer = async (id) => ((await serveur.appeler('POST', '/api/staff-reservations', { dryRun: true, autreOrdre: { id, centerId: 'libramont' } })).json.autreOrdre || {});
+  // Tout le centre privatise de 16:00 a 18:00 : aucun ordre ne la traverse.
+  await privatiser({ startTime: '16:00', endTime: '18:00', toutLeCentre: true, nom: 'Anniversaire Dupont' });
+  const traverse = await proposer(marius.id);
+  ok(!traverse.trouve && /^Aucun ordre ne tient en gardant l’arrivée à 15:15\. Privatisé : Anniversaire Dupont, de 16:00 à 18:00\./.test(traverse.raison || ''),
+    '[B8] tout le centre privatise de 16:00 a 18:00 : aucun ordre ne la traverse, la phrase la nomme', traverse.raison || traverse.trouve);
+  // Le dossier du groupe prive, dans sa privatisation de 19:00 a 22:00.
+  PB.vider();
+  await PB.pause(40);
+  await privatiser({ startTime: '19:00', endTime: '22:00', toutLeCentre: true, nom: 'Mariage Durand' });
+  const bloc = Number((PB.privees()[0] || {}).id);
+  const durand = await creer(serveur, { ...corpsVisite({ jour, nom: 'Durand', heure: '19:00', ids: ['bowling', 'minigolf_blacklight'], pax: 8 }), privatisation: bloc });
+  await PB.pause(40);
+  const sienne = await proposer(durand.id);
+  ok(Number((PB.privees()[0] || {}).reservation_id) === Number(durand.id) && Boolean(sienne.trouve) && sienne.trouve.inchange === true,
+    '[B8] le dossier du groupe prive : sa propre privatisation ne le refuse pas (« l ordre actuel tient »)', sienne.raison || sienne.trouve);
+  // Un corps du comptoir qui se dit « replanifie » ne leve pas la privatisation.
+  const forge = (await serveur.appeler('POST', '/api/staff-reservations', { ...corpsVisite({ jour, nom: 'Intrus', heure: '19:30', ids: ['bowling', 'minigolf_blacklight'], pax: 4 }), dryRun: true, dossierReplanifie: durand.id, ignoreReservationId: durand.id })).json.plan || {};
+  ok(forge.disponible === false && /^Privatisé : Mariage Durand/.test(forge.refus || ''),
+    '[B8] un corps qui se dit « replanifie » ne leve pas la privatisation (le numero vient du serveur)', { disponible: forge.disponible, refus: forge.refus });
   return serveur;
 }
 
@@ -584,6 +628,13 @@ const MUTATIONS = [
     { fichier: API, serveur: true, de: 'if (proposition.trouve.cle !== voulue) throw', vers: 'if (false) throw' }] },
   { nom: 'ecrit-meme-si-l-ordre-ne-tient-plus', lettre: 'B3', scenarios: ['marius'], editions: [
     { fichier: API, serveur: true, de: 'if (autreOrdreApplique && (!shouldReplan || ops.planAvailable === false || !planConformeALaProposition(ops.opsPlan, autreOrdreApplique))) {', vers: 'if (false) {' }] },
+  // La privatisation (lib/autre-ordre.js, lib/reserver-fenetre.js).
+  { nom: 'ordre-a-travers-une-privatisation', lettre: 'B8', scenarios: ['prive'], editions: [
+    { fichier: MOTEUR, serveur: true, de: 'resultat.ops.planAvailable === false || aUnConflitBloquant(resultat.conflits)) {', vers: 'resultat.ops.planAvailable === false) {' }] },
+  { nom: 'privatisation-du-groupe-opposee', lettre: 'B8', scenarios: ['prive'], editions: [
+    { fichier: FENETRE, serveur: true, de: '  if (replanifie > 0) dossier.dossierReplanifie = () => replanifie;\n', vers: '' }] },
+  { nom: 'replanifie-lu-dans-le-corps', lettre: 'B8', scenarios: ['prive'], editions: [
+    { fichier: FENETRE, serveur: true, de: 'const replanifie = Number(options.dossierReplanifie) || 0;', vers: 'const replanifie = Number(options.dossierReplanifie || corps.dossierReplanifie) || 0;' }] },
   { nom: 'variante-sans-demande', lettre: 'C1', scenarios: ['regles'], editions: [
     { fichier: API, serveur: true, de: 'if (body.autreOrdre === true && principal.plan && principal.plan.disponible === false) {', vers: 'if (principal.plan && principal.plan.disponible === false) {' }] },
   // La fiche (assets/app-main.js, assets/pinlane-staff.css).
@@ -610,6 +661,7 @@ async function jouer(browser, noms) {
   for (const nom of noms) {
     if (nom === 'marius') await scenarioMarius();
     if (nom === 'regles') await scenarioRegles();
+    if (nom === 'prive') await scenarioPrive();
     if (nom === 'fiche') await scenarioFiche(browser);
     if (nom === 'reserver') await scenarioReserver(browser);
   }
@@ -617,7 +669,7 @@ async function jouer(browser, noms) {
 
 async function main() {
   const contre = process.argv.includes('--contre-preuves');
-  const noms = liste(process.env.AO_SCENARIOS) || ['marius', 'regles', 'fiche', 'reserver'];
+  const noms = liste(process.env.AO_SCENARIOS) || ['marius', 'regles', 'prive', 'fiche', 'reserver'];
   const avecNavigateur = contre || noms.some((n) => ['fiche', 'reserver'].includes(n));
   const serveurHttp = avecNavigateur ? await FX.servir({ port: PORT, transformer }) : null;
   const browser = avecNavigateur ? await chromium.launch({ executablePath: BROWSER_PATH, headless: true }) : null;

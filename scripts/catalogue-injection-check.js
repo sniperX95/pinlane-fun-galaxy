@@ -616,9 +616,19 @@ function reglesDuSource(lire = (rel) => fs.readFileSync(path.join(ROOT, rel), 'u
   const fautes = [];
   let bons = 0;
   for (const rel of FICHIERS_SERVIS()) {
-    lire(rel).split(/\r?\n/).forEach((ligne, i) => {
-      for (const m of ligne.matchAll(/([(,]\s*)'\$\{(escapeHtml|esc|msEsc|dhEsc|gpEsc)\(/g)) {
+    const lignes = lire(rel).split(/\r?\n/);
+    lignes.forEach((ligne, i) => {
+      // ebE (Etablissement) est escapeHtml sous un autre nom : la privatisation l avait glisse dans un
+      // onclick sans que la regle le voie (2026-11-19).
+      for (const m of ligne.matchAll(/([(,]\s*)'\$\{(escapeHtml|esc|msEsc|dhEsc|gpEsc|ebE)\(/g)) {
         if (!/url\($/.test(ligne.slice(0, m.index + 1))) fautes.push(`${rel}:${i + 1}`);
+      }
+      // La meme faute par une variable : `const ids = escapeHtml(...)` puis onclick="f('${ids}')". La
+      // declaration se cherche dans les 12 lignes au-dessus (2026-11-19 : le bandeau des privatisations,
+      // et renderActivityOptions depuis le 03/10).
+      for (const m of ligne.matchAll(/\bon[a-z]+="[^"]*'\$\{([A-Za-z_]\w*)\}'/g)) {
+        const decl = lignes.slice(Math.max(0, i - 12), i + 1).reverse().find((x) => new RegExp(`\\b(?:const|let)\\s+${m[1]}\\s*=`).test(x));
+        if (decl && /\b(?:escapeHtml|esc|msEsc|dhEsc|gpEsc|ebE)\(/.test(decl) && !/\b(?:escJs|escapeJsString)\(/.test(decl)) fautes.push(`${rel}:${i + 1}`);
       }
       bons += (ligne.match(/\bon[a-z]+="[^"]*\$\{(?:escJs|escapeJsString)\(/g) || []).length;
     });
@@ -633,6 +643,11 @@ function source() {
   // Contre-epreuve sans disque : la meme lecture, sur le fichier ramene a l ancien motif.
   const mute = reglesDuSource((rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8').split('escapeJsString(activity.activityId)').join('escapeHtml(activity.activityId)'));
   ok(mute.fautes.length > 0, '[mutation] la regle du source voit escapeHtml revenir dans un gestionnaire', String(mute.fautes.length));
+  // Les deux formes que la regle ne voyait pas avant le 19/11 : l alias ebE et la variable echappee pour HTML.
+  const muteAlias = reglesDuSource((rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8').replace("retirerPrivatisationUi('${escapeJsString(p.ids.join(','))}')", () => "retirerPrivatisationUi('${ebE(p.ids.join(','))}')"));
+  ok(muteAlias.fautes.length > 0, '[mutation] la regle du source voit ebE (escapeHtml sous un autre nom) dans un gestionnaire', String(muteAlias.fautes.length));
+  const muteVariable = reglesDuSource((rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8').replace('  const id = escapeJsString(activity.id);\n  const bounds', () => '  const id = escapeHtml(activity.id);\n  const bounds').replace('  const id = escapeJsString(activity.id);\r\n  const bounds', () => '  const id = escapeHtml(activity.id);\r\n  const bounds'));
+  ok(muteVariable.fautes.length > 0, '[mutation] la regle du source voit une variable echappee pour HTML seulement passer dans un gestionnaire', String(muteVariable.fautes.length));
 }
 
 const MUTANTS_CONSOLE = [

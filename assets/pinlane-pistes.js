@@ -101,7 +101,15 @@
   // libres qui lui manquent, dans l ordre des numeros (comme les candidats sans
   // graine). Il y en a toujours un : la graine est libre et il reste assez de
   // pistes libres pour la completer.
+  // TROP DE GRAINE (2026-11-19, le groupe qui baisse) : chaque suite de `nombre`
+  // pistes de la graine ; les memes cles les departagent, sur toutes les pistes
+  // libres de la journee (une piste rendue qui laisse sa voisine seule compte).
   function autourDeLaGraine(graine, libres, nombre) {
+    if (graine.length >= nombre) {
+      const blocs = [];
+      for (let i = 0; i + nombre <= graine.length; i += 1) blocs.push(graine.slice(i, i + nombre));
+      return blocs;
+    }
     const reste = libres.filter((piste) => !graine.includes(piste));
     const manque = nombre - graine.length;
     const groupes = [];
@@ -128,12 +136,12 @@
     // change les pistes »). Le groupe qui grandit garde ses pistes encore libres
     // et la regle ne choisit que celles qui manquent (avant : « la premiere
     // libre » apres elles, une copie de plus de la regle dans la console). Plus
-    // de graine que de pistes voulues : la regle choisit celles qui restent,
-    // parmi elles. Une piste de la graine qui n est pas libre ne compte pas.
+    // de graine que de pistes voulues (un groupe qui baisse, 2026-11-19) : la
+    // regle choisit le meilleur bloc parmi elles, juge sur toutes les pistes
+    // libres. Une piste de la graine qui n est pas libre ne compte pas.
     const graine = [...new Set((Array.isArray(o.graine) ? o.graine : []).map(Number))]
       .filter((piste) => libres.includes(piste))
       .sort((a, b) => a - b);
-    if (graine.length >= nombre) return choisirPistes({ ...o, libres: graine, graine: [] });
     const total = Math.max(Math.trunc(Number(o.pistes)) || 0, libres[libres.length - 1]);
     const estLibre = new Set(libres);
     const voisine = new Map();
@@ -147,6 +155,9 @@
     // Un centre sans « pistes voisines » : les moins utilisees, ou qu elles
     // soient (apres la graine).
     if (o.coteACote === false && nombre > 1) {
+      if (graine.length >= nombre) {
+        return graine.slice().sort((a, b) => charge(a) - charge(b) || rang(a) - rang(b)).slice(0, nombre).sort((a, b) => a - b);
+      }
       return [...graine, ...libres.filter((piste) => !graine.includes(piste))
         .sort((a, b) => charge(a) - charge(b) || rang(a) - rang(b))
         .slice(0, nombre - graine.length)]

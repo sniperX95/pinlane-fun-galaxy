@@ -10027,6 +10027,8 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv.rs .rs-discret { flex: none; min-height: 32px; padding: 0 2px; border: 0; background: transparent; font-size: 14px; font-weight: 550; line-height: 1; color: var(--accent-strong); white-space: nowrap; }
 .qb-modal.rv.rs .rs-discret.is-retirer { color: var(--danger); }
 .qb-modal.rv.rs .rs-texte { margin: 0; font-size: 15px; line-height: 1.4; color: var(--muted); }
+/* (2026-11-19) Une heure posee a la main qui ne tient pas : la phrase de Modifier, en rouge, sous la rangee. */
+.qb-modal.rv.rs .rs-texte.rs-heure-refus { color: var(--danger); font-weight: 600; }
 .qb-modal.rv.rs .rs-rangs { flex: 1 1 auto; display: flex; flex-direction: column; gap: 10px; }
 /* UNE RANGEE N EST JAMAIS PLUS PETITE QUE SES TOUCHES (2026-11-13, Ansar : « les heures partent
    dans des boutons en dessous »). `flex: 1 1 52px` avec un min-height pose a la main laissait la
@@ -20032,6 +20034,15 @@ body:is(.staff-mode, .admin-mode) .fx-modal .fm-heure-touche:focus-visible { out
 body:is(.staff-mode, .admin-mode) .fx-modal :is(.fm-heure, .fm-heure-mot).is-changee { color: var(--console-selected); text-decoration-color: currentColor; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm .fm-act-reglages .fm-heure-champ { display: grid; align-content: start; gap: 6px; width: 132px; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm .fm-heure-champ .input { min-height: 44px; font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+/* (2026-11-19) Une activite ni bowling ni laser peut redevenir Libre, ou le rester : le bouton encadre a cote du champ. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .fm-act-reglages .fm-heure-champ.a-libre { width: auto; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-heure-saisie { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-heure-saisie .input { width: 132px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-heure-libre { min-height: 44px; min-width: 72px; padding: 0 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--fz-carte); color: var(--text); font-size: 14px; font-weight: 650; cursor: pointer; transition: border-color 150ms ease, color 150ms ease; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-heure-libre:hover, body:is(.staff-mode, .admin-mode) .fx-modal .fm-heure-libre.is-on { border-color: var(--console-selected); color: var(--console-selected); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-heure-libre:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 2px; }
+/* (2026-11-19) Les reglages d une activite (tables, duree, session) se touchent au doigt, comme dans Reserver. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .dossier-option[data-reglage] { min-width: 44px; min-height: 44px; }
 /* Les parties d un laser (les groupes d un bowling), en mots sous le nom : une seule heure a gauche. */
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-act-parties { flex: 1 1 auto; min-width: 0; font-size: 13px; line-height: 1.6; color: var(--muted); font-variant-numeric: tabular-nums; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-act-parties:empty { display: none; }

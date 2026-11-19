@@ -266,6 +266,7 @@
     "test:fiche-simple",
     "test:fiche-modifier",
     "test:heure-activite-dossier",
+    "test:programme-complet",
     "test:resa-lisible",
     "test:attribution-visible",
     "test:compte-arrivee",

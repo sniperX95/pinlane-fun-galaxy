@@ -2487,6 +2487,10 @@ button.staff-date-label:focus-visible,
 }
 .bk-pax-alerte svg { width: 100%; height: 100%; }
 
+/* Pistes gardees a volonte pour un acces illimite (2026-11-19) : le mot sur la carte, le detail
+   dans son infobulle. Pas de couleur d alerte : c est une formule, pas un probleme. */
+.bk-volonte { display: inline-flex; align-items: center; font-size: 10px; font-weight: 600; color: var(--accent-strong); white-space: nowrap; }
+.booking.dens-xs .bk-volonte { display: none; }
 /* Durée : 1h neutre, toute autre durée ressort (ambre = attention). Le libellé
    texte porte l'info, la couleur ne fait que la renforcer. */
 .bk-dur {
@@ -7801,6 +7805,10 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .cev-inline-check input { width: 16px; height: 16px; }
 /* La formule illimitee (2026-11-18) : ce qui se joue a heure, ce qui est a volonte. */
 .cev-illimite-dit { margin: -4px 0 0; font-size: 13px; line-height: 1.45; color: var(--muted); }
+/* Bowling et laser : a volonte ou une fois (2026-11-19). Le nom, puis les deux choix. */
+.cev-volonte { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.cev-volonte-n { min-width: 64px; font-size: 13px; font-weight: 600; color: var(--text); }
+.cev-illimite-dit#cevIlDit { margin: 2px 0 0; padding: 8px 10px; border-radius: 8px; background: var(--subtle); color: var(--text); }
 
 .cev-days { display: flex; flex-wrap: wrap; gap: 6px; }
 .cev-day {
@@ -9878,6 +9886,21 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv.rs .rs-porte b { flex: none; font-size: 15px; font-weight: 600; line-height: 1.2; }
 .qb-modal.rv.rs .rs-porte-l { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 400; color: var(--muted); }
 .qb-modal.rv.rs .rs-fl { flex: none; font-size: 20px; line-height: 1; color: var(--muted); }
+/* L ACCES ILLIMITE (2026-11-19, Ansar : « mal mis en évidence ») : sa propre porte, sur toute la
+   largeur, encadree de bleu ; ce qu il promet en une ligne, son prix a droite. Pas d icone. */
+.qb-modal.rv.rs .rs-portes.is-acces { margin-bottom: 6px; }
+.qb-modal.rv.rs .rs-porte.rs-illimite { padding: 0 14px; box-shadow: inset 0 0 0 1.5px var(--accent); }
+.qb-modal.rv.rs .rs-porte.rs-illimite b { color: var(--accent-strong); }
+.qb-modal.rv.rs .rs-porte.rs-illimite em { flex: none; font-style: normal; font-size: 15px; font-weight: 600; color: var(--text); }
+.qb-modal.rv.rs .rs-porte.rs-illimite em small { font-size: 12px; font-weight: 400; color: var(--muted); }
+.qb-modal.rv.rs .rs-porte.rs-illimite.is-on { background: var(--accent-soft); }
+.qb-modal.rv.rs .rs-acces { display: grid; gap: 4px; margin: 4px 0 12px; padding: 12px 14px; border-radius: 12px; box-shadow: inset 0 0 0 1.5px var(--accent); }
+.qb-modal.rv.rs .rs-acces p { margin: 0; }
+.qb-modal.rv.rs .rs-acces-t { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.qb-modal.rv.rs .rs-acces-t b { font-size: 16px; font-weight: 600; color: var(--accent-strong); }
+.qb-modal.rv.rs .rs-acces-t span { font-size: 14px; font-weight: 600; }
+.qb-modal.rv.rs .rs-acces-p { font-size: 14px; line-height: 1.45; color: var(--text); }
+.qb-modal.rv.rs .rs-acces-c { font-size: 13px; line-height: 1.4; color: var(--muted); }
 
 /* LES FORMULES */
 .qb-modal.rv.rs .rs-fs-e { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 32px; font-size: 13px; color: var(--muted); }
@@ -9922,6 +9945,8 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv.rs .rs-tk-n small { font-size: 13px; font-weight: 400; line-height: 1.3; color: var(--muted); }
 .qb-modal.rv.rs .rs-tk-n small.is-ko { font-weight: 550; color: var(--danger); }
 .qb-modal.rv.rs .rs-tk-n small.is-att { font-weight: 500; color: var(--warning); }
+/* Ce qu un acces illimite garde et comprend, une phrase par ligne (2026-11-19). */
+.qb-modal.rv.rs .rs-tk-n small.is-garde { color: var(--text); }
 /* L ACTIVITE QUI A SUIVI LE GESTE (rsNoterDeplacement) : « Déplacé de 18:00 à 19:00 », dans
    l orange des avis, sur un fond qui s eteint pour que l oeil la trouve. */
 .qb-modal.rv.rs .rs-tk-n small.is-deplace { justify-self: start; margin: 1px 0; padding: 1px 6px; border-radius: 5px; background: var(--warning-soft); font-weight: 600; color: var(--warning); }
@@ -10216,6 +10241,10 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
   .qb-modal.rv.rs .rs-petits { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .qb-modal.rv.rs .rs-portes, .qb-modal.rv.rs .rs-portes.is-trois, .qb-modal.rv.rs .rs-fs-g { grid-template-columns: minmax(0, 1fr); }
   .qb-modal.rv.rs .rs-porte-l { white-space: normal; }
+  /* (l acces illimite a l etroit : le nom et le prix sur une ligne, sa promesse dessous) */
+  .qb-modal.rv.rs .rs-porte.rs-illimite { flex-wrap: wrap; row-gap: 2px; padding: 10px 14px; }
+  .qb-modal.rv.rs .rs-porte.rs-illimite b { flex: 1 1 auto; }
+  .qb-modal.rv.rs .rs-porte.rs-illimite .rs-porte-l { order: 3; flex: 1 1 100%; }
   .qb-modal.rv.rs .rs-heures { flex: none; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: none; grid-auto-rows: 56px; min-height: 0; max-height: none; }
   .qb-modal.rv.rs .rs-rang .rs-raisons { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .qb-modal.rv.rs .rs-rang { grid-template-columns: minmax(0, 1fr); gap: 4px; }
@@ -19773,6 +19802,9 @@ body:is(.staff-mode, .admin-mode) .fx-modal .fz-jauge i { flex: none; width: 16p
 body:is(.staff-mode, .admin-mode) .fx-modal .fz-jauge i.on { background: var(--success); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fz-jauge span { margin-left: 6px; font-size: 13px; font-weight: 600; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme :is(.gc-finish, .gc-done-all) { margin-left: auto; }
+/* L acces illimite, en une phrase sous le titre (2026-11-19) : ce qui est compris et garde. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .fz-acces { margin: 6px 0 8px; padding: 8px 12px; border-radius: 10px; box-shadow: inset 0 0 0 1.5px var(--accent); font-size: 13.5px; line-height: 1.45; color: var(--text); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .fz-acces b { color: var(--accent-strong); font-weight: 600; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .gc-finish { white-space: nowrap; min-height: 32px; padding: 0 12px; border: 1px solid var(--control-border); border-radius: 8px; background: var(--surface); color: var(--text); font-size: 13.5px; font-weight: 600; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .gc-finish:hover { background: var(--subtle); opacity: 1; }
 
@@ -19984,6 +20016,15 @@ body:is(.staff-mode, .admin-mode) .fx-modal .dossier-formula-origin strong { fon
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-formule { max-width: 440px; margin: -2px 0 10px; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm .fm-formule .field-hint.is-hors { font-size: 13px; font-weight: 600; color: var(--warning); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-replan { display: none; margin: -4px 0 12px; font-size: 13px; font-weight: 600; line-height: 1.45; color: var(--warning); }
+/* L ACCES ILLIMITE DANS MODIFIER (2026-11-19) : y passer, voir ce qu il garde, en revenir. Encadre
+   de bleu, un bouton secondaire encadre, pas d icone. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-acces { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 12px; padding: 10px 12px; border-radius: 10px; box-shadow: inset 0 0 0 1.5px var(--accent); font-size: 13.5px; line-height: 1.45; color: var(--text); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-acces p { flex: 1 1 260px; margin: 0; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-acces b { color: var(--accent-strong); font-weight: 600; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-acces.is-propose { padding: 0; box-shadow: none; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-acces-btn { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 1px; min-height: 40px; padding: 6px 14px; border: 1.5px solid var(--accent); border-radius: 10px; background: var(--surface); color: var(--text); font-size: 13px; text-align: left; cursor: pointer; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-acces-btn span { font-size: 12.5px; color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-acces-btn:hover { background: var(--accent-soft); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-programme.is-replan .fm-replan { display: block; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-programme.is-replan .fm-heure:not(.is-vide) { color: var(--faint); text-decoration: line-through; text-decoration-thickness: 1px; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-acts { display: grid; gap: 8px; }

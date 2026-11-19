@@ -425,7 +425,8 @@
         g.cases.get(c.cle).push(e);
       };
       getBowlingWindowsFromReservation(r).forEach(function (w) {
-        poser('bowling', { start: w.start, end: w.end, pistes: (w.lanes || []).filter(Number.isFinite), joueurs: Number(w.players) || Number(r.pax) || 0 });
+        // (aVolonte : des pistes gardees toute la visite d un acces illimite, lib/a-volonte.js)
+        poser('bowling', { start: w.start, end: w.end, pistes: (w.lanes || []).filter(Number.isFinite), joueurs: Number(w.players) || Number(r.pax) || 0, aVolonte: Boolean(w.aVolonte) });
       });
       // Les vagues d une meme partie entrent ensemble : une seule heure.
       var parties = new Map();
@@ -434,11 +435,12 @@
         var j = Math.max(1, Number(w.joueursReels != null ? w.joueursReels : w.players) || Number(r.pax) || 1);
         var deja = parties.get(k);
         if (deja) { deja.joueurs += j; deja.end = Math.max(deja.end, w.end); return; }
-        var e = { start: w.start, end: w.end, joueurs: j };
+        var e = { start: w.start, end: w.end, joueurs: j, aVolonte: Boolean(w.aVolonte) };
         parties.set(k, e);
         poser('laser_game', e);
       });
-      Array.from(parties.values()).sort(function (a, b) { return a.start - b.start; }).forEach(function (e, n, toutes) { e.partie = n + 1; e.parties = toutes.length; });
+      // (un depart garde a volonte n est pas une partie de plus : il ne se compte pas)
+      Array.from(parties.values()).filter(function (e) { return !e.aVolonte; }).sort(function (a, b) { return a.start - b.start; }).forEach(function (e, n, toutes) { e.partie = n + 1; e.parties = toutes.length; });
       g.prog.filter(function (e) { return e.aPlacer; }).forEach(function () { poser('laser_game', { aPlacer: true }); });
       // Les activites a heure d une formule (hors bowling, laser, table). Ses
       // credits d arcade restent un compteur, meme quand la formule leur donne
@@ -721,11 +723,13 @@
         if (fermees.length && etat !== 'fini') { d = gfPistesEnMots(fermees) + (fermees.length > 1 ? ' fermées' : ' fermée'); d2 = ''; panne = true; }
         else if (n && gfRendueA(r, fin)) { d = gfPistesEnMots(e.pistes) + (n > 1 ? ' libérées' : ' libérée'); d2 = ''; }
         bulle = 'Bowling de ' + gpHeure(debut) + ' à ' + gpHeure(fin) + ' · ' + (n ? (n > 1 ? 'pistes ' : 'piste ') + gpPistes(e.pistes) : 'pistes à attribuer') + ' · ' + (Number(e.joueurs) || Number(r.pax) || 0) + ' joueurs';
+        if (e.aVolonte) { d2 = 'à volonté'; bulle = 'Bowling à volonté de ' + gpHeure(debut) + ' à ' + gpHeure(fin) + ' · ' + (n ? (n > 1 ? 'pistes ' : 'piste ') + gpPistes(e.pistes) + (n > 1 ? ' gardées' : ' gardée') + ' toute la visite' : 'pistes à attribuer') + ' · ' + (Number(e.joueurs) || Number(r.pax) || 0) + ' joueurs'; }
       } else if (col.nature === 'laser') {
         var armes = Number(e.joueurs) || 0;
         d3 = gfJoueursHorsGroupe(r, armes, ['arme', 'armes']);
         if (gfRendueA(r, fin)) d = gfPluriel(armes || Number(r.pax) || 0, ['arme libérée', 'armes libérées']);
         bulle = 'Laser à ' + gpHeure(debut) + (e.parties > 1 ? ' · partie ' + e.partie + ' sur ' + e.parties : '') + ' · ' + (armes || Number(r.pax) || 0) + ' armes';
+        if (e.aVolonte) bulle = 'Laser à volonté · départ de ' + gpHeure(debut) + ' · ' + (armes || Number(r.pax) || 0) + ' armes gardées';
       } else if (col.nature === 'plaine') {
         var enfants = Number(e.enfants) || Number(r.pax) || 0;
         if (desLeDebut) t = enfants + ' enf.'; else d = enfants + ' enf.';

@@ -26710,7 +26710,10 @@ function renderPlanning() {
       const laserHtml = densClass === 'dens-xs' || (!offreSurSaLigne && offreHtml) ? '' : renderCardLaserBadge(r);
       const casLaser = laserHtml ? ' a-laser-pied' : '';
       const casProgression = progressionHtml ? ' a-progression' : '';
-      bkHtml += `<div class="booking ${cls} ${densClass} ${getReservationHighlightClasses(r)}${delayedClass}${retardClass}${activitiesCompleteClass(r)}${casLaser}${casProgression}${/^Allergie · /.test(noteDuCoin) ? ' a-allergie' : ''}${modifCarte || (essentiel && (essentiel.notes || essentiel.mesure || essentiel.adaptee)) ? ' a-dossier' : ''}${retenues.has(String(r.id)) ? '' : ' is-grise'}${isToday && item.window.end <= curH + 1e-6 ? ' is-passee' : ''}${peutDeplacerIci ? '' : ' is-fixe'}" data-booking-res-id="${r.id}" data-booking-lane="${i}" data-booking-start="${st}" data-range="${formatClockDisplay(st)} - ${end}" data-extra="${cls === 'paid' ? 'payé' : cls === 'arr' ? 'sur place' : 'confirmé'}" role="button" tabindex="0" aria-label="${escapeHtml(r.name || 'Client')} · ${formatClockDisplay(st)} - ${end}" style="top:${top}px;height:${height}px;--bk-order:${i};" ${peutDeplacerIci ? `aria-keyshortcuts="M" onkeydown="planningMoveKey(event,'bowling',${r.id},${i},${st})" onmousedown="startBowlingBookingPointerDrag(event, ${r.id}, ${i}, ${st})" ${planningTouchAttrs(`startBowlingBookingTouchDrag(event, ${r.id}, ${i}, ${st})`)}` : ''} onclick="if(shouldIgnoreBowlingDragClick(event)) return; event.stopPropagation();openPos(${r.id})">
+      // LES PISTES GARDEES A VOLONTE (2026-11-19, lib/a-volonte.js) : la carte le dit, et son
+      // infobulle dit lesquelles et jusqu a quand.
+      const volonte = item.window.aVolonte && window.PinlaneAVolonte ? window.PinlaneAVolonte.phraseDuBloc(r.opsPlan, item.window) : '';
+      bkHtml += `<div class="booking ${cls} ${densClass} ${getReservationHighlightClasses(r)}${delayedClass}${retardClass}${activitiesCompleteClass(r)}${casLaser}${casProgression}${/^Allergie · /.test(noteDuCoin) ? ' a-allergie' : ''}${modifCarte || (essentiel && (essentiel.notes || essentiel.mesure || essentiel.adaptee)) ? ' a-dossier' : ''}${retenues.has(String(r.id)) ? '' : ' is-grise'}${isToday && item.window.end <= curH + 1e-6 ? ' is-passee' : ''}${peutDeplacerIci ? '' : ' is-fixe'}" data-booking-res-id="${r.id}" data-booking-lane="${i}" data-booking-start="${st}" data-range="${formatClockDisplay(st)} - ${end}" data-extra="${cls === 'paid' ? 'payé' : cls === 'arr' ? 'sur place' : 'confirmé'}" role="button" tabindex="0" aria-label="${escapeHtml(r.name || 'Client')} · ${formatClockDisplay(st)} - ${end}${volonte ? ` · ${escapeHtml(volonte)}` : ''}"${volonte ? ` title="${escapeHtml(volonte)}" data-a-volonte="1"` : ''} style="top:${top}px;height:${height}px;--bk-order:${i};" ${peutDeplacerIci ? `aria-keyshortcuts="M" onkeydown="planningMoveKey(event,'bowling',${r.id},${i},${st})" onmousedown="startBowlingBookingPointerDrag(event, ${r.id}, ${i}, ${st})" ${planningTouchAttrs(`startBowlingBookingTouchDrag(event, ${r.id}, ${i}, ${st})`)}` : ''} onclick="if(shouldIgnoreBowlingDragClick(event)) return; event.stopPropagation();openPos(${r.id})">
         ${noteDuCoin ? `<span class="bk-coin" title="${escapeHtml(noteDuCoin)}" aria-hidden="true"></span>` : ''}
         <div class="booking-head">
           <span class="bk-time">${formatClockDisplay(st)}</span>
@@ -26730,6 +26733,7 @@ function renderPlanning() {
         ${offreSurSaLigne ? `<div class="booking-offer">${offreHtml}</div>` : ''}
         <div class="booking-foot">
           ${offreSurSaLigne ? '' : offreHtml}
+          ${volonte ? '<span class="bk-volonte">à volonté</span>' : ''}
           ${laserHtml}
           ${statsHtml}
           ${prixHtml}
@@ -27207,11 +27211,16 @@ function lpLegende(modele, d, choisi) {
     const totalParties = getLaserGameCountForReservation(r);
     const vague = Number(w.waveIndex || w.groupWaveIndex || 1);
     const vagues = Number(w.waveCount || w.groupWaveCount || 1);
-    const infos = `${lpGroupe(w)} j · P${partie}/${totalParties}${vagues > 1 ? ` · V${vague}/${vagues}` : ''} · fin ${lpHeure(w.end)}${w.arene === 'seuls' ? ' · privée' : ''}${Math.abs(w.start - d.t) > 0.001 ? ` · à ${lpHeure(w.start)}` : ''}`;
+    // LE LASER A VOLONTE (2026-11-19, lib/a-volonte.js) : ses armes gardees a ce depart, pas une
+    // partie numerotee ; l infobulle dit a quels departs.
+    const volonteLaser = w.aVolonte && window.PinlaneAVolonte ? window.PinlaneAVolonte.phraseDuBloc(r.opsPlan, w) : '';
+    const infos = volonteLaser
+      ? `${lpGroupe(w)} j · à volonté · fin ${lpHeure(w.end)}`
+      : `${lpGroupe(w)} j · P${partie}/${totalParties}${vagues > 1 ? ` · V${vague}/${vagues}` : ''} · fin ${lpHeure(w.end)}${w.arene === 'seuls' ? ' · privée' : ''}${Math.abs(w.start - d.t) > 0.001 ? ` · à ${lpHeure(w.start)}` : ''}`;
     // Dans une rangee serree, les pictos cedent et un coin replie dit la note : il rougit
     // avec une allergie, et l infobulle de la carte dit la note en entier.
     const noteLaser = texteNoteDeCarte(essentielDuDossier(r));
-    return `<button type="button" class="lp-g ${k}${etat}${choisiIci}${grise}${/^Allergie · /.test(noteLaser) ? ' a-allergie' : ''}" ${lpAttrsGroupe(id, unitKey, { fiche: true })} title="${escapeHtml(`${titre} ${infos} · ${statut}${noteLaser ? ` · ${noteLaser}` : ''}`)}"><i aria-hidden="true"></i><span class="lp-g__nom"><b>${escapeHtml(r.name || 'Groupe')}</b>${lpPictos(r)}</span><span class="lp-g__sous"><span class="lp-card-info">${escapeHtml(infos)}</span><span class="lp-card-status">${statut}</span></span></button>`;
+    return `<button type="button" class="lp-g ${k}${etat}${choisiIci}${grise}${/^Allergie · /.test(noteLaser) ? ' a-allergie' : ''}"${volonteLaser ? ' data-a-volonte="1"' : ''} ${lpAttrsGroupe(id, unitKey, { fiche: true })} title="${escapeHtml(`${titre} ${infos}${volonteLaser ? ` · ${volonteLaser}` : ''} · ${statut}${noteLaser ? ` · ${noteLaser}` : ''}`)}"><i aria-hidden="true"></i><span class="lp-g__nom"><b>${escapeHtml(r.name || 'Groupe')}</b>${lpPictos(r)}</span><span class="lp-g__sous"><span class="lp-card-info">${escapeHtml(infos)}</span><span class="lp-card-status">${statut}</span></span></button>`;
   });
   // Un client retient ces armes en ligne : la carte dit quand elles se
   // liberent (comme la carte du planning bowling) et ne lance rien au toucher.
@@ -28316,7 +28325,13 @@ function getGroupeProgramme(r) {
   const faite = (cle) => Boolean(progression[cle] && progression[cle].done);
   const fenetres = getStaffResourceWindows(r, 'all');
   const bowling = fenetres.filter(f => f.resourceType === 'bowling_lane');
-  const laser = fenetres.filter(f => f.resourceType === 'laser_arena');
+  // LE LASER A VOLONTE (2026-11-19, lib/a-volonte.js) garde l arene a chaque depart : une seule
+  // etape au programme, du premier depart a la fin du dernier, pas une partie par depart.
+  const departsGardes = fenetres.filter(f => f.resourceType === 'laser_arena' && f.aVolonte);
+  const laser = fenetres.filter(f => f.resourceType === 'laser_arena' && !f.aVolonte);
+  if (departsGardes.length) {
+    laser.push({ ...departsGardes[0], start: Math.min(...departsGardes.map(f => f.start)), end: Math.max(...departsGardes.map(f => f.end)), departs: departsGardes.length });
+  }
   const parties = Math.max(1, getLaserGameCountForReservation(r) || 1);
   // Une formule se suit en cochant ses activites (activityProgress) : chaque
   // etape porte la cle de sa coche, la meme que le suivi de la page Formules.
@@ -28327,8 +28342,10 @@ function getGroupeProgramme(r) {
       cle: `bowling-${index + 1}`,
       activityId: 'bowling',
       nom: 'Bowling',
-      quoi: `${Number(f.players) || effectifActivite('bowling')} joueurs · ${formatDurationLabel(f.duration)}${bowlingCapacityMessage(f.bowlingCapacity) ? ' · ' + bowlingCapacityMessage(f.bowlingCapacity) : ''}`,
-      ou: pistes.length ? `piste${pistes.length > 1 ? 's' : ''} ${joindrePistes(pistes)}` : 'pistes à attribuer',
+      quoi: f.aVolonte
+        ? `${Number(f.players) || effectifActivite('bowling')} joueurs · à volonté`
+        : `${Number(f.players) || effectifActivite('bowling')} joueurs · ${formatDurationLabel(f.duration)}${bowlingCapacityMessage(f.bowlingCapacity) ? ' · ' + bowlingCapacityMessage(f.bowlingCapacity) : ''}`,
+      ou: pistes.length ? `piste${pistes.length > 1 ? 's' : ''} ${joindrePistes(pistes)}${f.aVolonte ? ` gardée${pistes.length > 1 ? 's' : ''} toute la visite` : ''}` : 'pistes à attribuer',
       // (le nombre de joueurs du groupe est deja en tete de la ligne : « 10 joueurs · 1h · groupe 1/2 »)
       groupe: bowling.length > 1 ? `groupe ${index + 1}/${bowling.length}` : '',
       start: f.start,
@@ -28347,8 +28364,10 @@ function getGroupeProgramme(r) {
       unite: `${partie}.${Number(f.groupWaveIndex) || 1}`,
       activityId: 'laser_game',
       nom: 'Laser Game',
-      quoi: `${Number(f.joueursReels ?? f.players) || effectifActivite('laser_game')} joueurs · ${parties > 1 ? `partie ${partie}/${parties}` : '1 partie'}`,
-      ou: '',
+      quoi: f.aVolonte
+        ? `${Number(f.players) || effectifActivite('laser_game')} armes à chaque départ · à volonté`
+        : `${Number(f.joueursReels ?? f.players) || effectifActivite('laser_game')} joueurs · ${parties > 1 ? `partie ${partie}/${parties}` : '1 partie'}`,
+      ou: f.aVolonte && f.departs > 1 ? `${f.departs} départs` : '',
       groupe: vagues > 1 ? `groupe ${Number(f.groupWaveIndex) || 1}/${vagues}` : '',
       start: f.start,
       end: f.end,
@@ -30100,8 +30119,12 @@ function ficheParcours(r, moment, droits) {
   const jauge = cochables.length > 1
     ? `<span class="fz-jauge" role="img" aria-label="${faites} activité${faites > 1 ? 's' : ''} faite${faites > 1 ? 's' : ''} sur ${cochables.length}">${cochables.map(etape => `<i${etape.fait ? ' class="on"' : ''}></i>`).join('')}<span aria-hidden="true">${faites} sur ${cochables.length}</span></span>`
     : '';
+  // L ACCES ILLIMITE SE DIT EN UNE PHRASE (2026-11-19) : la visite, ce qui est garde, ce qui se joue
+  // une fois a son heure, lus sur le plan du dossier (assets/pinlane-a-volonte.js).
+  const acces = accesIllimiteDuDossier(r);
   return `<section class="info-block gc-sheet-block fx-programme fz-carte" aria-label="Programme">
       <div class="gc-sheet-head"><h4 class="fx-titre">Programme</h4>${jauge}${renderGroupeTerminer(r)}</div>
+      ${acces ? `<p class="fz-acces" id="ficheAcces"><b>Accès illimité</b> ${escapeHtml(acces.texte)}</p>` : ''}
       ${ficheArrivee(r, moment, droits)}
       ${renderGroupeEtapes(r, moment, { coches: true }) || '<p class="pos-note">Aucune activité au programme.</p>'}
     </section>`;
@@ -31567,9 +31590,15 @@ function peutAdapterLeProgramme(r) {
 // `others` reste une carte de BOOLEENS : c est ce que toggleEditActivity
 // bascule. Les reglages voyagent a cote, dans othersOptions, pour ne pas
 // changer la semantique de la bascule.
+// Un acces illimite non adapte se lit sur sa carte : une visite passee en acces illimite dans Modifier
+// garde en base son programme d avant (normalizeReservationPayload le reprend), il ne le decrit plus.
+function illimiteDeSaCarte(r) {
+  return Boolean(r && r.type === 'formule' && r.formuleId && !/(adaptée)$/.test(String(r.label || '')) && estFormuleIllimitee(resolveDisplayFormule(r.formuleId)));
+}
+
 function buildEditProgramFromReservation(r) {
   const etat = { bowling: { on: false, duration: 1 }, laser_game: { on: false, games: 1 }, others: {}, othersOptions: {} };
-  const items = r && r.program && Array.isArray(r.program.items) ? r.program.items : null;
+  const items = r && r.program && Array.isArray(r.program.items) && !illimiteDeSaCarte(r) ? r.program.items : null;
   if (items && items.length) {
     items.forEach((item) => {
       const id = String(item.activityId || '');
@@ -31835,8 +31864,8 @@ function editionChangeLePrix() {
   const e = state.editState;
   const r = state.selectedRes;
   if (!e || !r) return false;
-  // Une autre formule, un autre tarif.
-  if (formuleChangeeEdition() || poseEditionChange()) return true;
+  // Une autre formule, un autre tarif (un acces illimite redevenu un programme normal aussi).
+  if (formuleChangeeEdition() || poseEditionChange() || e.versProgrammeNormal) return true;
   if (r.formuleId && editProgramAChange() && Number(e.pax) === Number(r.pax)) {
     const sansEffectif = value => JSON.stringify(JSON.parse(value), (key, entry) => key === 'participants' ? undefined : entry);
     if (sansEffectif(JSON.stringify(e.programmeEdite)) === sansEffectif(e.programmeEditeInitial)) return false;
@@ -32081,13 +32110,88 @@ function formuleAcheteeDuDossier(r) {
 function formuleChangeeEdition() {
   const e = state.editState;
   const origine = e && departsEdition().get(e)?.origine;
-  return Boolean(origine && String(origine.type || '') === 'formule' && e.formuleId && String(e.formuleId) !== String(origine.formuleId || ''));
+  // (un dossier qui n etait pas une formule en prend une : l acces illimite, renderEditIllimiteChoix)
+  return Boolean(origine && (String(origine.type || '') === 'formule' || String(e.type || '') === 'formule') && e.formuleId && String(e.formuleId) !== String(origine.formuleId || ''));
+}
+
+// L ACCES ILLIMITE DANS MODIFIER (2026-11-19, Ansar : « il est pas dispo quand on veut modifier une
+// resa déjà faite »). Un dossier, quel qu il soit, passe en acces illimite : une formule illimitee
+// du centre, son contenu (les activites se retirent et s ajoutent dessous, comme pour toute
+// formule), ce qu elle garde, dit par le verdict du serveur, qui la verifie comme une creation. Il
+// en revient : au programme d avant s il vient d etre change ici, sinon a un programme normal,
+// chaque activite a son prix.
+function renderEditIllimiteChoix() {
+  const e = state.editState;
+  const origine = e && departsEdition().get(e)?.origine;
+  if (!e || !origine || e.versProgrammeNormal) return '';
+  const actuelle = String(e.type || '') === 'formule' && e.formuleId ? resolveDisplayFormule(e.formuleId) : null;
+  if (estFormuleIllimitee(actuelle)) {
+    // (ce que le serveur gardera, des que son verdict est la ; un dossier deja en acces illimite : son plan)
+    const ecrit = dossierEcritDuVerdict() || (formuleChangeeEdition() ? null : state.selectedRes);
+    const acces = ecrit ? accesIllimiteDuDossier(ecrit) : null;
+    const texte = acces ? acces.texte : phraseDeLIllimite(actuelle).texte;
+    const mot = formuleChangeeEdition() ? 'Revenir au programme d’avant' : 'Revenir à un programme normal';
+    return `<div class="fm-acces" id="editAcces" role="status"><p><b>${escapeHtml(rvNomFormule(actuelle))}</b> ${escapeHtml(texte)}</p><button type="button" class="fm-acces-btn" id="editAccesSortir" onclick="sortirDeLIllimiteEdition()">${escapeHtml(mot)}</button></div>`;
+  }
+  const illimitees = getEffectiveCatalogFormules().filter(estFormuleIllimitee);
+  if (!illimitees.length) { lireLesFormulesGardeesPourModifier(); return ''; }
+  return `<div class="fm-acces is-propose">${illimitees.map((f) => `<button type="button" class="fm-acces-btn" data-formule="${escapeHtml(f.id)}" onclick="passerEnIllimiteEdition(this.dataset.formule)"><b>Passer en ${escapeHtml(rvNomFormule(f))}</b><span>${escapeHtml(`${phraseDeLIllimite(f).titre}, ${formatMontant(f.price)} par joueur`)}</span></button>`).join('')}</div>`;
+}
+
+// Les formules gardees (dont l acces illimite) ne sont lues qu a l ouverture de Reserver : Modifier
+// ouvert d abord les lit une fois par centre, puis se repeint.
+let formulesGardeesLuesPourModifier = '';
+function lireLesFormulesGardeesPourModifier() {
+  const centre = getCurrentStaffCenterId();
+  if (!centre || formulesGardeesLuesPourModifier === centre || (catalogueSurMesureConsole.centre === centre && catalogueSurMesureConsole.articles)) return;
+  formulesGardeesLuesPourModifier = centre;
+  Promise.resolve(chargerCatalogueSurMesure()).then(() => {
+    if (state.editState && state.activeTab === 'modifier' && getEffectiveCatalogFormules().some(estFormuleIllimitee)) renderPos();
+  }).catch(() => {});
+}
+
+function passerEnIllimiteEdition(id) {
+  const e = state.editState;
+  if (!e || !estFormuleIllimitee(resolveDisplayFormule(id))) return;
+  changerFormuleEdition(id);
+}
+
+// Sortir de l acces illimite : ce qui venait d etre change ici se defait (le dossier tel qu a
+// l ouverture) ; un dossier deja en acces illimite devient un programme normal de ses activites.
+function sortirDeLIllimiteEdition() {
+  const e = state.editState;
+  const r = state.selectedRes;
+  const origine = e && departsEdition().get(e)?.origine;
+  if (!e || !r || !origine) return;
+  if (state.editError) setEditError('');
+  if (formuleChangeeEdition()) {
+    if (String(origine.type || '') === 'formule' && origine.formuleId) { changerFormuleEdition(origine.formuleId); return; }
+    e.type = origine.type;
+    e.formuleId = origine.formuleId || '';
+    e.label = origine.label;
+    e.duration = origine.duration;
+    e.totalDuration = origine.totalDuration;
+    delete e.programmeEdite;
+    delete e.programmeEditeInitial;
+    ensureEditProgram(r);
+    e.lanesStr = (origine.lanes || []).join(', ');
+    renderPos();
+    return;
+  }
+  e.versProgrammeNormal = true;
+  renderPos();
 }
 
 // LE DOSSIER LU AVEC LA FORMULE CHOISIE : le contenu de sa carte, sans le
 // programme, le plan ni la variante de l ancienne (la Formule 4 aux arcades ne
 // passe pas ses arcades a la Formule 5). Sans changement, le dossier tel quel.
 function dossierPourFormule(r) {
+  // Un acces illimite qui redevient un programme normal (sortirDeLIllimiteEdition) : ses activites,
+  // sans la formule, chiffrees ligne par ligne.
+  if (r && state.editState && state.editState.versProgrammeNormal) {
+    const { opsPlan: _plan, ...reste } = r;
+    return { ...reste, type: 'visite', formuleId: '', label: '' };
+  }
   if (!r || !formuleChangeeEdition()) return r;
   const { program: _programme, opsPlan: _plan, ...reste } = r;
   return { ...reste, type: 'formule', formuleId: state.editState.formuleId, label: state.editState.label };
@@ -32137,7 +32241,7 @@ function indiceFormuleEdition() {
 function renderEditFormuleChoix() {
   const e = state.editState;
   const origine = e && departsEdition().get(e)?.origine;
-  if (!origine || String(origine.type || '') !== 'formule' || !origine.formuleId) return '';
+  if (!origine || String(origine.type || '') !== 'formule' || !origine.formuleId || e.versProgrammeNormal) return '';
   const indice = indiceFormuleEdition();
   return `<div class="fm-champ fm-formule">
       <label class="lbl" for="editFormuleSelect">Formule</label>
@@ -32206,6 +32310,7 @@ function editionReplanifie() {
   if (!e || !origine) return false;
   return editProgramAChange()
     || formuleChangeeEdition()
+    || Boolean(e.versProgrammeNormal)
     || String(e.startTime || '') !== String(origine.startTime || '')
     || String(e.date || '') !== String(origine.date || '')
     || Number(e.pax) !== Number(origine.pax)
@@ -32296,7 +32401,10 @@ function renderEditFormuleBloc(r, formule, lignes, controls = {}) {
   const sansActivite = lignes.length && !editProgramAChange()
     ? `<ul class="edit-formule-list">${lignes.map(ligne => `<li>${escapeHtml(String(ligne))}</li>`).join('')}</ul>`
     : '<p class="fm-vide">Aucune activité au programme.</p>';
-  return `${renderEditFormuleChoix() || (formule?.name ?`<p class="dossier-formula-origin">Formule <strong>${escapeHtml(formule.name)}</strong> · les changements ne valent que pour cette visite.</p>` : '')}
+  const versNormal = state.editState && state.editState.versProgrammeNormal
+    ? '<p class="fm-acces" id="editAccesNormal" role="status">Programme normal : chaque activité a son prix, le bowling et le laser à leur heure. Les pistes et les armes ne sont plus gardées toute la visite.</p>'
+    : '';
+  return `${renderEditIllimiteChoix()}${versNormal}${renderEditFormuleChoix() || (formule?.name && !versNormal ? `<p class="dossier-formula-origin">Formule <strong>${escapeHtml(formule.name)}</strong> · les changements ne valent que pour cette visite.</p>` : '')}
     <p class="fm-replan" role="status">Les heures seront recalculées à l’enregistrement.</p>
     <div class="fm-acts">${rangees || sansActivite}</div>
     ${ajouts.length ? `<div class="fm-ajouts" role="group" aria-labelledby="fmAjoutsTitre"><span class="fm-ajouts-titre" id="fmAjoutsTitre">Ajouter</span>${ajouts.join('')}</div>` : ''}`;
@@ -32666,8 +32774,10 @@ function resumeModifsEdition() {
   if (accompagnants(e) !== accompagnants(origine)) modifs.push(`Accompagnants ${accompagnants(origine)} → ${accompagnants(e)}`);
   // « Formule 4 → Formule 5 » : sa duree vient avec elle, elle ne se redit pas.
   const formuleChangee = formuleChangeeEdition();
-  const nomFormule = (id) => { const f = resolveDisplayFormule(id); return f ? rvNomFormule(f) : String(id || ''); };
+  // (un dossier sans formule qui passe en acces illimite : « Programme → Accès illimité »)
+  const nomFormule = (id) => { const f = resolveDisplayFormule(id); return f ? rvNomFormule(f) : String(id || 'Programme'); };
   if (formuleChangee) modifs.push(`${nomFormule(origine.formuleId)} → ${nomFormule(e.formuleId)}`);
+  if (e.versProgrammeNormal) modifs.push(`${nomFormule(origine.formuleId)} → programme normal`);
   if (!formuleChangee && e.duration != null && Number(e.duration) > 0 && Number(e.duration) !== Number(origine.duration)) modifs.push(`Durée ${formatDurationLabel(Number(origine.duration) || 0)} → ${formatDurationLabel(Number(e.duration))}`);
   const pistesAvant = parseLaneInput((origine.lanes || []).join(','));
   const pistesApres = parseLaneInput(e.lanesStr);
@@ -32965,6 +33075,9 @@ function peindreVerdictEdition() {
   programme.classList.toggle('a-verdict', Boolean(ecrit));
   const heures = ecrit ? heuresDuProgrammeEnregistre(ecrit) : formuleChangeeEdition() ? new Map() : heuresDuProgrammeEnregistre(dossierPourFormule(r));
   peindreColonnesHeuresEdition(heures);
+  // L acces illimite dit ce que le serveur gardera (pistes, armes, heures), des qu il l a dit.
+  const acces = document.getElementById('editAcces');
+  if (acces) acces.outerHTML = renderEditIllimiteChoix();
 }
 
 // Les colonnes des heures et les parties en mots, en place. Les champs d heure
@@ -33110,9 +33223,12 @@ function minutesHeureEdition(valeur) {
 }
 
 function peutChangerHeureEdition(r, activityId) {
-  if (!state.editState || !r || state.activeTab !== 'modifier' || r.status === 'cancelled' || formuleChangeeEdition()) return false;
+  if (!state.editState || !r || state.activeTab !== 'modifier' || r.status === 'cancelled' || formuleChangeeEdition() || state.editState.versProgrammeNormal) return false;
   // La table d anniversaire tient une salle, les boissons se servent au bar.
   if (!activityId || activityId === 'party_table' || /^service_/.test(activityId)) return false;
+  // Une piste ou une arene gardee a volonte (lib/a-volonte.js) n a pas d heure a deplacer : elle
+  // est au groupe toute la visite.
+  if ((r.opsPlan && Array.isArray(r.opsPlan.resourceBlocks) ? r.opsPlan.resourceBlocks : []).some((bloc) => bloc && bloc.aVolonte && bloc.activityId === activityId)) return false;
   if (typeof peutGeste === 'function' && !peutGeste('deplacer', r.date)) return false;
   const droit = activityId === 'bowling' ? 'planning.bowling' : activityId === 'laser_game' ? 'planning.laser' : '';
   return !droit || typeof canUseStaffPermission !== 'function' || canUseStaffPermission(droit);
@@ -33791,7 +33907,10 @@ function preparerModificationEdition(options = {}) {
   // nom. Sans changement, le dossier tel qu il est.
   const formuleChangee = formuleChangeeEdition();
   const dossierFormule = dossierPourFormule(state.selectedRes);
-  const requiresLanes = reservationNeedsLanes(dossierFormule.type, dossierFormule.formuleId);
+  // (une formule gardee au catalogue du centre, l acces illimite compris, n est pas dans FORMULES :
+  // son bowling se lit sur sa carte, sinon le dossier partait sans pistes et la base le refusait)
+  const requiresLanes = reservationNeedsLanes(dossierFormule.type, dossierFormule.formuleId)
+    || (dossierFormule.type === 'formule' && Boolean(resolveDisplayFormule(dossierFormule.formuleId)?.hasBowling));
   const requiredCount = requiresLanes ? getEditBowlingCapacityNeed(dossierFormule, es).requiredCount : 0;
   const duration = Number(es.duration);
   const pax = Number(es.pax);
@@ -33843,7 +33962,9 @@ function preparerModificationEdition(options = {}) {
   // FORMULE ADAPTEE A CE DOSSIER : on envoie un PROGRAMME. Le serveur le
   // renormalise et replanifie (program est dans REPLAN_FIELDS) ; le catalogue
   // n est pas touche. Le nom d origine est conserve, suivi de « adaptee ».
-  const programmeModifie = peutAdapterFormule() && editProgramAChange();
+  // (un acces illimite qui redevient un programme normal part avec son programme, meme intact)
+  const versProgrammeNormal = Boolean(es.versProgrammeNormal) && peutAdapterFormule();
+  const programmeModifie = peutAdapterFormule() && (editProgramAChange() || versProgrammeNormal);
   let programme = null;
   let libelleAdapte = '';
   if (programmeModifie) {
@@ -33875,7 +33996,7 @@ function preparerModificationEdition(options = {}) {
   // reste chiffre ici : pour le serveur, une heure n est pas du contenu.
   const estimeEcran = getEditPrixEstime();
   const prixSuivi = !es.prixFige && Boolean(estimeEcran && estimeEcran.utilisable) && editionChangeLePrix()
-    && (formuleChangee || poseEditionChange() || editProgramAChange() || Number(es.pax) !== Number(state.selectedRes.pax));
+    && (formuleChangee || versProgrammeNormal || poseEditionChange() || editProgramAChange() || Number(es.pax) !== Number(state.selectedRes.pax));
   // Les extras partent s ils ont change (nourriture, boissons, le reste).
   const extrasNouveaux = peutAdapterFormule() && editExtrasAChange() ? extrasDepuisLignes(es.extrasEdites, es.pax) : null;
   // Lus ici, une fois : `appliquer` se rejoue quand l etat d edition peut ne
@@ -33930,6 +34051,20 @@ function preparerModificationEdition(options = {}) {
       // Un groupe qui grandit fait suivre ses activites (suivreLeGroupe) : le
       // programme part, mais le dossier ne devient pas « adapté » pour autant.
       if (programmeAdapte) updated.label = libelleAdapte;
+    }
+    // L ACCES ILLIMITE REDEVENU UN PROGRAMME NORMAL (2026-11-19) : une visite de ses activites, sans
+    // formule ; le serveur la nomme, la planifie et la chiffre ligne par ligne, comme une creation.
+    if (versProgrammeNormal && programme) {
+      updated.type = 'visite';
+      updated.formuleId = '';
+      updated.label = '';
+      updated.opsPlan = null; // le serveur la replanifie
+      // Le bowling a l arrivee, le laser juste apres : des heures que le moteur sait poser (sans elles,
+      // « Choisissez une heure pour Bowling. ») ; chacune se change ensuite dans Modifier.
+      const ids = programme.items.map((item) => item.activityId);
+      const bowling = programme.items.find((item) => item.activityId === 'bowling');
+      const apres = numToTime(timeToNum(updated.startTime) + (bowling ? (Number(bowling.duration) || 1) : 0));
+      updated.preference = { activityOrder: ids, preferredTimes: { ...(bowling ? { bowling: updated.startTime } : {}), ...(ids.includes('laser_game') ? { laser_game: apres } : {}) }, ...(ids.includes('laser_game') ? { laserGameTimes: [apres], laserPlacement: 'scheduled' } : {}) };
     }
     if (prixEcran !== null) updated.price = prixEcran;
     return updated;
@@ -36330,9 +36465,66 @@ function rvNomFormule(f) {
 // Ce que la formule contient, en mots courts et dans l ordre du plan.
 function rvResumeFormule(f) {
   if (!f) return '';
-  if (f.illimite && Number(f.illimite.minutes) > 0) return `Toutes les activités, ${rvHeuresLabel(Number(f.illimite.minutes) / 60)}`;
+  if (estFormuleIllimitee(f) && Number(f.illimite.minutes) > 0) return phraseDeLIllimite(f).titre;
   const prog = buildEditProgramFromReservation({ formuleId: f.id });
   return rvIdsDeComposition(prog).map((id) => (id === 'laser_game' ? rvPluriel(Number(prog.laser_game && prog.laser_game.games) || 1, 'laser') : rvNomBref(id))).join(', ');
+}
+
+// ── L ACCES ILLIMITE, MIS EN EVIDENCE ET DIT EN CLAIR (2026-11-19) ───────────
+// Ansar, le 19/11 : « le truc illimité est super mal expliqué [...] le illimité est mal mis en
+// évidence, on capte pas du tout ». Une formule illimitee (lib/formule-comptoir.js) a sa porte dans
+// Reserver (rsPorteIllimiteHtml) et sa page (rsIllimiteHtml) au lieu d une tuile parmi neuf, et
+// une phrase simple partout ou elle se lit : la porte, l heure, le ticket, la fiche, le planning
+// et Modifier. Sur un plan, la phrase est celle du serveur (assets/pinlane-a-volonte.js, ce que
+// le plan garde vraiment) ; avant l heure, celle de la formule (phraseDeLIllimite).
+function estFormuleIllimitee(f) {
+  return Boolean(f && f.illimite && Array.isArray(f.illimite.activites) && f.illimite.activites.length);
+}
+
+function rvFormuleIllimitee() {
+  const s = quickBookState;
+  const f = s && s.type === 'formule' && s.formuleId ? rvFormule() : null;
+  return estFormuleIllimitee(f) ? f : null;
+}
+
+function rsIllimitees() {
+  return rvFormulesTriees().filter(estFormuleIllimitee);
+}
+
+// Ce que la formule promet, avant toute heure : « Toutes les activités à volonté pendant 3 h »,
+// ce qui est garde, ce qui se joue une fois, le minimum de joueurs, et la phrase entiere.
+function phraseDeLIllimite(f) {
+  if (!estFormuleIllimitee(f)) return { titre: '', garde: '', minimum: '', texte: '' };
+  const ill = f.illimite;
+  const centre = typeof getQuickBookActivityChoices === 'function' ? getQuickBookActivityChoices().map((c) => c.id) : [];
+  const toutes = centre.length > 0 && centre.every((id) => ill.activites.includes(id));
+  const nombre = ill.activites.length;
+  const aVolonte = Array.isArray(ill.aVolonte) ? ill.aVolonte : [];
+  const porte = (id) => ill.activites.includes(id);
+  const titre = `${toutes ? 'Toutes les activités' : `${nombre} activité${nombre > 1 ? 's' : ''}`} à volonté pendant ${rvHeuresLabel(Number(ill.minutes) / 60)}`;
+  const gardes = [
+    porte('bowling') && aVolonte.includes('bowling') ? 'pistes de bowling gardées toute la visite' : '',
+    porte('laser_game') && aVolonte.includes('laser_game') ? 'armes de laser gardées à chaque départ' : '',
+  ].filter(Boolean);
+  const uneFois = [
+    porte('bowling') && !aVolonte.includes('bowling') ? 'bowling 1 h' : '',
+    porte('laser_game') && !aVolonte.includes('laser_game') ? '1 partie de laser' : '',
+  ].filter(Boolean);
+  const garde = [gardes.join(', '), uneFois.length ? `${uneFois.join(' et ')} à l’heure réservée` : ''].filter(Boolean).join(', ');
+  const min = Number(f.minPax) || 1;
+  const minimum = min > 1 ? `à partir de ${min} joueurs` : '';
+  const majuscule = (texte) => (texte ? texte.charAt(0).toUpperCase() + texte.slice(1) : '');
+  return { titre, garde: majuscule(garde), minimum, texte: [`${titre}.`, garde ? `${majuscule(garde)}.` : '', minimum ? `${majuscule(minimum)}.` : ''].filter(Boolean).join(' ') };
+}
+
+// Ce que le plan d un dossier comprend et garde, lu par la regle commune (assets/pinlane-a-volonte.js).
+function accesIllimiteDuDossier(r) {
+  if (!r || !r.formuleId || !r.opsPlan || typeof window === 'undefined' || !window.PinlaneAVolonte) return null;
+  const f = resolveDisplayFormule(r.formuleId);
+  if (!estFormuleIllimitee(f)) return null;
+  const items = r.program && Array.isArray(r.program.items) && !illimiteDeSaCarte(r) ? r.program.items.map((item) => item && item.activityId).filter(Boolean) : f.illimite.activites;
+  const centre = typeof getQuickBookActivityChoices === 'function' ? getQuickBookActivityChoices().map((c) => c.id) : [];
+  return window.PinlaneAVolonte.resume(r.opsPlan, { minutes: Number(f.illimite.minutes) || 0, toutes: centre.length > 0 && centre.every((id) => items.includes(id)) });
 }
 
 // LE CRENEAU A VERIFIER : ce que la visite occupe vraiment, comme au serveur. Une formule a
@@ -37236,7 +37428,7 @@ function renderQuickBookInner() {
   rvPlanifierSimulation();
   rsPlanifierVerif();
   if (b.q === 'activites') rsPlanifierPrixTuiles();
-  const formule = s.type === 'formule' && rvActivites().length && (b.q === 'formules' || (b.q === 'autres' && b.quandDe === 'formule'));
+  const formule = s.type === 'formule' && rvActivites().length && (b.q === 'formules' || b.q === 'illimite' || (b.q === 'autres' && b.quandDe === 'formule'));
   if (s.horloge) rvChargerCandidats(s.horloge.id, s.horloge.partie);
   else if (formule) rvChargerCandidats(rvActivites()[0], 0);
   else if (b.q === 'autres' && b.quandPartie) rvChargerCandidats('laser_game', b.quandPartie);
@@ -38553,7 +38745,8 @@ function rsFormuleHtml(f, commun) {
   // Le minimum se dit une fois en tete quand il est le meme partout. Une ligne ne le
   // porte que s il differe, ou que le groupe est trop petit pour elle.
   const dit = min > 1 && (min !== commun || (tropPetit && rsEtat().faits.combien));
-  return `<button type="button" class="rs-f${on ? ' is-on' : ''}${f.available ? '' : ' is-hors'}" id="rsF-${escapeHtml(f.id)}" data-formule="${escapeHtml(f.id)}" aria-pressed="${on}" onclick="rsFormule(this.dataset.formule)"><b>${escapeHtml(rvNomFormule(f))}</b><span>${escapeHtml(`${dit ? `dès ${min}, ` : ''}${contenu}`)}</span><em>${escapeHtml(rsEuros(f.price))}${f.type === 'per_lane' ? '<small> la piste</small>' : ''}</em></button>`;
+  // (« dès 2 » se lisait mal, Ansar le 19/11 : « à partir de 2 joueurs »)
+  return `<button type="button" class="rs-f${on ? ' is-on' : ''}${f.available ? '' : ' is-hors'}" id="rsF-${escapeHtml(f.id)}" data-formule="${escapeHtml(f.id)}" aria-pressed="${on}" onclick="rsFormule(this.dataset.formule)"><b>${escapeHtml(rvNomFormule(f))}</b><span>${escapeHtml(`${dit ? `à partir de ${min} joueurs, ` : ''}${contenu}`)}</span><em>${escapeHtml(rsEuros(f.price))}${f.type === 'per_lane' ? '<small> la piste</small>' : ''}</em></button>`;
 }
 
 // ── L ECRAN PRINCIPAL ────────────────────────────────────────────────────────
@@ -39052,7 +39245,8 @@ async function rsChiffrerTuiles() {
 // sont les offres d un autre jour.
 function rsFormulesDuJour() {
   const s = quickBookState;
-  const toutes = rvFormulesTriees();
+  // L acces illimite a sa porte et sa page (rsIllimiteHtml) : il n est plus une tuile parmi d autres.
+  const toutes = rvFormulesTriees().filter((f) => !estFormuleIllimitee(f));
   const valables = toutes.filter((f) => f.available || (Number(s.pax) || 1) < (Number(f.minPax) || 1));
   return { valables, autres: toutes.filter((f) => !valables.includes(f)) };
 }
@@ -39119,14 +39313,14 @@ function rsRetour() {
   if (!b) return;
   const { quandDe, retourLigne } = b;
   rsGeste(() => {
-    rsVersQuestion(quandDe === 'formule' ? 'formules' : retourLigne ? 'ligne' : 'activites');
+    rsVersQuestion(quandDe === 'formule' ? rsPageDesFormules() : retourLigne ? 'ligne' : 'activites');
     b.ligne = retourLigne;
   });
 }
 
 function rsRetourHtml(droite = '') {
   const b = rsEtat();
-  const mot = b.quandDe === 'formule' ? 'Formules' : b.retourLigne === 'formule' ? 'Formule' : b.retourLigne ? rsNomCourt(b.retourLigne) : 'Activités';
+  const mot = b.quandDe === 'formule' ? (rvFormuleIllimitee() ? 'Accès illimité' : 'Formules') : b.retourLigne === 'formule' ? 'Formule' : b.retourLigne ? rsNomCourt(b.retourLigne) : 'Activités';
   return `<div class="rs-fs-e"><button type="button" class="rs-retour" id="rsRetour" onclick="rsRetour()">‹ ${escapeHtml(mot)}</button>${droite ? `<span class="rs-actions">${droite}</span>` : ''}</div>`;
 }
 
@@ -39946,7 +40140,7 @@ function rsFormulesHtml() {
   const dit = commun > 1 && nombre > 1 ? commun : 0;
   const mot = autres.length > 1 ? `${autres.length} autres offres` : '1 autre offre';
   const offres = autres.length ? `<button type="button" class="rs-lien is-fort" id="rsOffres" aria-expanded="${Boolean(b.offres)}" onclick="rsOffres()">${b.offres ? 'Masquer les offres' : escapeHtml(mot)} <span aria-hidden="true">${b.offres ? '‹' : '›'}</span></button>` : '';
-  const droite = `<span class="rs-note-e">${escapeHtml(dit ? `Par joueur, dès ${dit} joueurs` : 'Par joueur')}</span>`;
+  const droite = `<span class="rs-note-e">${escapeHtml(dit ? `Par joueur, à partir de ${dit} joueurs` : 'Par joueur')}</span>`;
   return `${rsRetourHtml(droite)}
     <div class="rs-fs-g" role="group" aria-label="Formules">${liste.map((f) => rsFormuleHtml(f, dit)).join('')}</div>
     ${offres}
@@ -40011,7 +40205,11 @@ function rsBlocFormuleHtml() {
   const f = s.type === 'formule' ? rvFormule() : null;
   if (!f) return '<section class="rs-seance is-vide" aria-label="À quelle heure ?"><div class="rs-s-n"><b>À quelle heure ?</b><small>Touchez une formule, ses heures s’affichent ici.</small></div></section>';
   const nom = rvNomFormule(f);
-  const duree = rsDureeFormule();
+  // L acces illimite dit ce que l heure donne (2026-11-19) : « Toutes les activités à volonté de
+  // 15:30 à 18:30 », lu sur le plan du serveur, et avant lui ce que la formule promet.
+  const acces = estFormuleIllimitee(f) ? ((rvPlanCourant() || {}).acces || null) : null;
+  const duree = estFormuleIllimitee(f) ? (acces ? acces.phrase : `${phraseDeLIllimite(f).titre}.`) : rsDureeFormule();
+  const question = estFormuleIllimitee(f) ? `${nom} : à quelle heure arrive le groupe ?` : `${nom} à quelle heure ?`;
   const { liste, lue } = rsListeFormule();
   const choisie = s.startTime;
   const vues = rsFenetre(liste, choisie);
@@ -40025,7 +40223,7 @@ function rsBlocFormuleHtml() {
     return `<button type="button" class="rs-h${on ? ' is-on' : ''}${on && coince ? ' is-ko' : ''}${coince && !on ? ' is-coince' : ''}${gris ? ' is-efface' : ''}" data-heure="${heure}" aria-pressed="${on}"${rsDitLHeure(heure, x, mot, id)} onclick="rsHeureFormule('${heure}')">${rsDedansHeure(x, heure, mot)}</button>`;
   }).join('');
   return `<section class="rs-seance is-on" aria-label="${escapeHtml(`${nom}, à quelle heure ?`)}">
-    <div class="rs-s-t"><div class="rs-s-n"><b>${escapeHtml(`${nom} à quelle heure ?`)}</b>${duree ? `<small>${escapeHtml(duree)}</small>` : ''}</div>${rvActivites().includes('bowling') && rsEtat().faits.combien ? rsCompteurPistesHtml() : ''}</div>
+    <div class="rs-s-t"><div class="rs-s-n"><b>${escapeHtml(question)}</b>${duree ? `<small id="rsDureeFormule">${escapeHtml(duree)}</small>` : ''}</div>${rvActivites().includes('bowling') && rsEtat().faits.combien ? rsCompteurPistesHtml() : ''}</div>
     <div class="rs-s-h"><div class="rs-s-l is-formule" data-verifie="${lue ? '1' : '0'}">${cles || '<p class="rs-texte">Plus de départ ce jour-là.</p>'}<button type="button" class="rs-h rs-h-autres" onclick="rsAutres('formule')">Autres</button></div></div>
   </section>`;
 }
@@ -40227,7 +40425,7 @@ function rsHeureFormule(heure, retour = false) {
     if (quoi === 'refus') return;
     rvChoisirHeure(id, 0, heure);
     rsForcerApres(quoi, x, dejaForce);
-    if (retour) rsVersQuestion('formules');
+    if (retour) rsVersQuestion(rsPageDesFormules());
   });
 }
 
@@ -40983,10 +41181,12 @@ function rsLigneIci() {
 
 // Une ligne du ticket : elle ouvre sa page, sa croix la retire (`retirer`, l action). La
 // colonne de la croix reste la meme sans elle : les prix restent alignes.
-function rsLigne({ cle, action, icone = '', nom, detail = '', plus = '', apres = '', prix = '', data = '', aria = '', ko = false, retirer = '', bouge = '' }) {
+function rsLigne({ cle, action, icone = '', nom, detail = '', plus = '', apres = '', prix = '', data = '', aria = '', ko = false, retirer = '', bouge = '', lignes = [] }) {
   const marquee = rsLigneIci() === cle;
   const croix = retirer ? `<button type="button" class="rs-tk-x" id="rsSuppr-${escapeHtml(cle)}" ${data} aria-label="${escapeHtml(`Retirer ${nom}`)}" onclick="${retirer}">×</button>` : '<span class="rs-tk-x" aria-hidden="true"></span>';
-  return `<div class="rs-tk-ligne"><button type="button" class="rs-tk-a${marquee ? ' is-ici' : ''}${bouge ? ' is-deplacee' : ''}" id="rsL-${escapeHtml(cle)}" ${data} ${marquee ? 'aria-current="step"' : ''} ${aria ? `aria-label="${escapeHtml(aria)}"` : ''} onclick="${action}"><span class="rs-tk-i">${icone}</span><span class="rs-tk-n"><b>${escapeHtml(nom)}</b>${bouge ? `<small class="is-deplace" id="rsDeplace">${escapeHtml(bouge)}</small>` : ''}${detail ? `<small${ko ? ' class="is-ko" id="rvRefus"' : ''}>${escapeHtml(detail)}</small>` : ''}${plus ? `<small class="is-att">${escapeHtml(plus)}</small>` : ''}${apres ? `<small class="is-apres">${escapeHtml(apres)}</small>` : ''}</span><em>${escapeHtml(prix)}</em></button>${croix}</div>`;
+  // (`lignes` : ce qu un acces illimite comprend et garde, une phrase par ligne)
+  const enPlus = (lignes || []).filter(Boolean).map((ligne) => `<small class="is-garde">${escapeHtml(ligne)}</small>`).join('');
+  return `<div class="rs-tk-ligne"><button type="button" class="rs-tk-a${marquee ? ' is-ici' : ''}${bouge ? ' is-deplacee' : ''}" id="rsL-${escapeHtml(cle)}" ${data} ${marquee ? 'aria-current="step"' : ''} ${aria ? `aria-label="${escapeHtml(aria)}"` : ''} onclick="${action}"><span class="rs-tk-i">${icone}</span><span class="rs-tk-n"><b>${escapeHtml(nom)}</b>${bouge ? `<small class="is-deplace" id="rsDeplace">${escapeHtml(bouge)}</small>` : ''}${detail ? `<small${ko ? ' class="is-ko" id="rvRefus"' : ''}>${escapeHtml(detail)}</small>` : ''}${enPlus}${plus ? `<small class="is-att">${escapeHtml(plus)}</small>` : ''}${apres ? `<small class="is-apres">${escapeHtml(apres)}</small>` : ''}</span><em>${escapeHtml(prix)}</em></button>${croix}</div>`;
 }
 
 function rsPrixDeLigne(id) {
@@ -41020,12 +41220,20 @@ function rsLignesActivites() {
     const choix = !s.adaptee && s.formuleChoix && Array.isArray(formule.choices) ? formule.choices.find((c) => c.id === s.formuleChoix) : null;
     const refus = rvRefusDuPlan();
     const ko = !s.adaptee && (etapes.find((x) => x.ko) || (refus ? { d: refus.raison } : null));
-    const detail = ko ? rsPhrase(ko.d) : s.adaptee ? '' : [rsDetailFormule(etapes), choix ? choix.label : ''].filter(Boolean).join(', ');
+    // L ACCES ILLIMITE SE DIT EN CLAIR AU TICKET (2026-11-19) : la visite, ce qui est garde, ce qui
+    // se joue une fois a son heure, ce qui est compris. Le plan du serveur fait foi.
+    const illimite = estFormuleIllimitee(formule) && !s.adaptee;
+    const acces = illimite ? ((rvPlanCourant() || {}).acces || null) : null;
+    const detail = ko ? rsPhrase(ko.d) : illimite ? (acces ? acces.phrase : `${phraseDeLIllimite(formule).titre}.`) : s.adaptee ? '' : [rsDetailFormule(etapes), choix ? choix.label : ''].filter(Boolean).join(', ');
+    const detailsAcces = illimite && !ko ? [
+      ...(acces ? [...acces.gardes.map((g) => g.courte), ...acces.uneFois.map((u) => u.phrase)] : [phraseDeLIllimite(formule).garde ? `${phraseDeLIllimite(formule).garde}.` : '']),
+      rsComprisDeLIllimite(formule),
+    ].filter(Boolean) : [];
     const prixF = montant > 0 && combien ? rsEuros(montant) : '';
     const verdictF = !ko && !s.adaptee ? rsVerdictDesCandidats(ids[0], 0, s.startTime) : null;
     const resteF = verdictF && verdictF.statut !== 'ko' ? rsResteDuPlan(verdictF.prend) : [];
     const apresF = rsIlRestera(resteF);
-    lignes.push(rsLigne({ cle: 'a-formule', action: "rsOuvrirLigne('formule')", icone: rsIcone(ids[0] || ''), nom: nomF, detail, apres: apresF, ko: Boolean(ko), prix: prixF, aria: rsAriaLigne(nomF, [detail, apresF].filter(Boolean).join(', '), prixF), retirer: 'rsSansFormule()' }));
+    lignes.push(rsLigne({ cle: 'a-formule', action: "rsOuvrirLigne('formule')", icone: rsIcone(ids[0] || ''), nom: nomF, detail, lignes: detailsAcces, apres: apresF, ko: Boolean(ko), prix: prixF, aria: rsAriaLigne(nomF, [detail, ...detailsAcces, apresF].filter(Boolean).join(', '), prixF), retirer: 'rsSansFormule()' }));
     if (!s.adaptee) return lignes.join('');
   }
   // La formule du comptoir en tete : son nom, son prix. Les lignes dessous sont ce qu elle comprend.
@@ -41242,7 +41450,7 @@ function rsCreer() {
 // ── LA COQUILLE ET LA PEINTURE ───────────────────────────────────────────────
 function rsCorpsHtml() {
   const b = rsEtat();
-  const pages = { formules: rsFormulesHtml, mesure: rsMesureHtml, autres: rsAutresHtml, ligne: rsLigneHtml, total: rsTotalHtml, client: rsQuiHtml };
+  const pages = { formules: rsFormulesHtml, illimite: rsIllimiteHtml, mesure: rsMesureHtml, autres: rsAutresHtml, ligne: rsLigneHtml, total: rsTotalHtml, client: rsQuiHtml };
   return (pages[b.q] || rsActivitesHtml)();
 }
 
@@ -41806,7 +42014,71 @@ function rsPeindreActivites() {
   // Formules, Toutes les activites, Sur mesure : la grille a autant de colonnes que de portes.
   const toutes = rsToutesHtml();
   const portes = 1 + (toutes ? 1 : 0) + (rsNiveau('surmesure') === 'non' ? 0 : 1);
-  rsPoser('rsZ-portes', `<div class="rs-portes${portes === 1 ? ' is-seule' : portes === 3 ? ' is-trois' : ''}">${rsPortesHtml(toutes)}</div>`);
+  // L acces illimite (2026-11-19) : sa propre porte, sur toute la largeur, au-dessus des autres.
+  const acces = rsPorteIllimiteHtml();
+  rsPoser('rsZ-portes', `${acces ? `<div class="rs-portes is-seule is-acces">${acces}</div>` : ''}<div class="rs-portes${portes === 1 ? ' is-seule' : portes === 3 ? ' is-trois' : ''}">${rsPortesHtml(toutes)}</div>`);
+}
+
+// LA PORTE DE L ACCES ILLIMITE : son nom, ce qu il promet en une phrase, son prix. Plusieurs
+// formules illimitees : combien, et de quel prix a quel prix.
+function rsPorteIllimiteHtml() {
+  const s = quickBookState;
+  const liste = s ? rsIllimitees() : [];
+  if (!liste.length) return '';
+  const on = Boolean(rvFormuleIllimitee());
+  const seule = liste.length === 1 ? liste[0] : null;
+  const prix = liste.map((f) => Number(f.price)).filter(Number.isFinite);
+  const dit = seule ? phraseDeLIllimite(seule) : null;
+  const detail = seule ? [dit.titre, dit.minimum].filter(Boolean).join(', ')
+    : `${liste.length} formules${!prix.length ? '' : Math.min(...prix) === Math.max(...prix) ? `, ${rsEuros(prix[0])} par joueur` : `, de ${rsEuros(Math.min(...prix))} à ${rsEuros(Math.max(...prix))} par joueur`}`;
+  const montant = seule && Number.isFinite(Number(seule.price)) ? `<em>${escapeHtml(rsEuros(seule.price))}<small> par joueur</small></em>` : '';
+  return `<button type="button" class="rs-porte rs-illimite${on ? ' is-on' : ''}" id="rsIllimite" aria-pressed="${on}" aria-label="${escapeHtml(['Accès illimité', seule ? dit.texte : detail, seule ? `${rsEuros(seule.price)} par joueur` : ''].filter(Boolean).join(' '))}" onclick="rsOuvrirIllimite()"><b>Accès illimité</b><span class="rs-porte-l">${escapeHtml(detail)}</span>${montant}<span class="rs-fl" aria-hidden="true">›</span></button>`;
+}
+
+// Toucher la porte : la page de l acces illimite ; une seule formule s y choisit d office.
+function rsOuvrirIllimite() {
+  const s = quickBookState;
+  const b = rsEtat();
+  if (!s || !b) return;
+  const liste = rsIllimitees();
+  rsGeste(() => {
+    rsVersQuestion('illimite');
+    if (liste.length === 1 && !(s.type === 'formule' && s.formuleId === liste[0].id)) {
+      s.error = '';
+      s.formuleChoix = '';
+      if (s.type !== 'formule') rvModeFormule();
+      rvChoisirFormule(liste[0].id);
+      rsDemanderLesJoueurs();
+    }
+  });
+}
+
+// La page des formules d ou vient la formule au ticket : celle de l acces illimite pour lui.
+function rsPageDesFormules() {
+  return rvFormuleIllimitee() ? 'illimite' : 'formules';
+}
+
+// « Compris : Bowling, Laser Game, Minigolf... » dans l ordre du catalogue du centre.
+function rsComprisDeLIllimite(f) {
+  if (!estFormuleIllimitee(f)) return '';
+  const noms = getQuickBookActivityChoices().filter((c) => f.illimite.activites.includes(c.id)).map((c) => c.label || rvNomActivite(c.id));
+  return noms.length ? `Compris : ${noms.join(', ')}.` : '';
+}
+
+// LA PAGE DE L ACCES ILLIMITE : ce qu il comprend et garde, dit en clair, puis ses heures.
+function rsIllimiteHtml() {
+  const liste = rsIllimitees();
+  const f = rvFormuleIllimitee();
+  const tuiles = liste.length > 1 ? `<div class="rs-fs-g" role="group" aria-label="Accès illimité">${liste.map((x) => rsFormuleHtml(x, 0)).join('')}</div>` : '';
+  const choisie = f || (liste.length === 1 ? liste[0] : null);
+  const dit = choisie ? phraseDeLIllimite(choisie) : null;
+  const explication = choisie ? `<div class="rs-acces" id="rsAcces">
+      <p class="rs-acces-t"><b>${escapeHtml(rvNomFormule(choisie))}</b><span>${escapeHtml(`${rsEuros(choisie.price)} par joueur`)}</span></p>
+      <p class="rs-acces-p">${escapeHtml(dit.texte)}</p>
+      <p class="rs-acces-c">${escapeHtml(rsComprisDeLIllimite(choisie))}</p>
+    </div>` : '';
+  const heures = f ? rsBlocFormuleHtml() : `<section class="rs-seance is-vide" aria-label="À quelle heure ?"><div class="rs-s-n"><b>À quelle heure ?</b><small>${liste.length ? 'Touchez un accès illimité, ses heures s’affichent ici.' : 'Ce centre n’a pas encore d’accès illimité : il se crée dans Tarifs &amp; formules.'}</small></div></section>`;
+  return `${rsRetourHtml()}${tuiles}${explication}${heures}`;
 }
 
 function rsEchap() {

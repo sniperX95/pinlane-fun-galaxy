@@ -9731,22 +9731,47 @@
     const reste = minutes % 60;
     return `${Math.floor(minutes / 60)} h${reste ? ` ${String(reste).padStart(2, '0')}` : ''}`;
   }
+  // TOUT A VOLONTE, BOWLING ET LASER COMPRIS (2026-11-19, Ansar : « pour illimité on peut choisir
+  // absolument toutes les activités en illimité, on peut choisir quoi et tout »). Les activites du
+  // centre sont toutes cochees, le gerant decoche celles qu il ne vend pas ; pour le bowling et le
+  // laser, il choisit a volonte (le groupe garde ses pistes toute la visite, ses armes a chaque
+  // depart : lib/a-volonte.js) ou une fois, a l heure reservee. Le serveur relit les activites
+  // cochees contre son catalogue (lib/formule-comptoir.js).
+  const CEV_A_VOLONTE = [['bowling', 'Bowling'], ['laser_game', 'Laser']];
+  // Ce que la formule donnera, en clair, recalcule a chaque case touchee.
+  function cevIlDit(f, activites) {
+    const choisies = activites.filter((a) => (f.activites || []).includes(a.id));
+    if (!activites.length) return 'Ce centre n’a encore aucune activité à vendre.';
+    if (!choisies.length) return 'Cochez au moins une activité.';
+    const aVolonte = f.aVolonte || {};
+    const porte = (id) => choisies.some((a) => a.id === id);
+    const nombre = choisies.length;
+    return [
+      `${nombre === activites.length ? 'Toutes les activités' : `${nombre} activité${nombre > 1 ? 's' : ''}`} à volonté pendant ${cevDureeDite(Number(f.dureeMinutes) || 180)}.`,
+      porte('bowling') ? (aVolonte.bowling ? 'Bowling : le groupe garde ses pistes toute la visite.' : 'Bowling : 1 h, à l’heure réservée.') : '',
+      porte('laser_game') ? (aVolonte.laser_game ? 'Laser : ses armes lui sont gardées à chaque départ, autant que de joueurs.' : 'Laser : 1 partie, à l’heure réservée.') : '',
+    ].filter(Boolean).join(' ');
+  }
   function cevIllimiteHtml() {
     const f = catalogEditor.fields || {};
     const activites = cevActivitesDuCentre();
-    const aHeure = activites.filter((a) => a.id === 'bowling' || a.id === 'laser_game');
-    const libres = activites.filter((a) => a.id !== 'bowling' && a.id !== 'laser_game');
-    const dit = [
-      aHeure.length ? `${aHeure.map((a) => (a.id === 'bowling' ? 'Bowling 1 h' : '1 partie de laser')).join(' et ')} à l’heure réservée : pistes et arène retenues.` : '',
-      libres.length ? `À volonté pendant la visite : ${libres.map((a) => a.nom).join(', ')}.` : '',
-    ].filter(Boolean).join(' ');
+    const coche = (id) => (f.activites || []).includes(id);
+    // Le choix « a volonte ou une fois », pour le bowling et le laser coches.
+    const choix = CEV_A_VOLONTE.filter(([id]) => coche(id)).map(([id, nom]) => {
+      const oui = Boolean((f.aVolonte || {})[id]);
+      const radio = (valeur, mot) => `<label class="cev-day"><input type="radio" name="cevIlV-${id}" id="cevIlV-${id}-${valeur ? 'oui' : 'non'}" data-cev-il-v="${esc(id)}"${oui === valeur ? ' checked' : ''} onchange="cevIlVolonte(this.dataset.cevIlV, ${valeur})"><span>${mot}</span></label>`;
+      return `<div class="cev-volonte" role="radiogroup" aria-label="${esc(nom)}"><span class="cev-volonte-n">${esc(nom)}</span>${radio(true, 'À volonté (gardé toute la visite)')}${radio(false, 'Une fois, à l’heure réservée')}</div>`;
+    }).join('');
+    const cases = `<div class="cev-days" role="group" aria-label="Activités de la formule">${activites.map((a) => `<label class="cev-day"><input type="checkbox" data-cev-il-activite="${esc(a.id)}"${coche(a.id) ? ' checked' : ''} onchange="cevIlActivite(this.dataset.cevIlActivite, this.checked)"><span>${esc(a.nom)}</span></label>`).join('')}</div>`;
     const contenu = f.illimite
-      ? `<p class="cev-illimite-dit" id="cevIlDit">${esc(dit || 'Ce centre n’a encore aucune activité à vendre.')}</p>
+      ? `${cases}
+        ${choix}
+        <p class="cev-illimite-dit" id="cevIlDit" role="status">${esc(cevIlDit(f, activites))}</p>
         <div class="field">
           <label for="cevIlDuree">Durée de la visite</label>
           <select id="cevIlDuree" onchange="cevIlChamp('dureeMinutes', this.value)">${CEV_DUREES_ILLIMITE.map((m) => `<option value="${m}"${Number(f.dureeMinutes) === m ? ' selected' : ''}>${esc(cevDureeDite(m))}</option>`).join('')}</select>
         </div>`
-      : `<div class="cev-days" role="group" aria-label="Activités de la formule">${activites.map((a) => `<label class="cev-day"><input type="checkbox" data-cev-il-activite="${esc(a.id)}"${(f.activites || []).includes(a.id) ? ' checked' : ''} onchange="cevIlActivite(this.dataset.cevIlActivite, this.checked)"><span>${esc(a.nom)}</span></label>`).join('')}</div>`;
+      : cases;
     const qui = (clients, id, mot) => `<label class="cev-day"><input type="radio" name="cevIlQui" id="${id}"${Boolean(f.clients) === clients ? ' checked' : ''} onchange="cevIlChamp('clients', ${clients})"><span>${mot}</span></label>`;
     return `<p class="cev-form-legend">Formule</p>
       <div class="field">
@@ -9754,7 +9779,7 @@
         <input id="cevIlNom" type="text" maxlength="80" value="${esc(f.name == null ? '' : f.name)}" data-autofocus oninput="cevIlChamp('name', this.value)">
       </div>
       <p class="cev-form-legend">Activités</p>
-      <label class="cev-inline-check"><input id="cevIlToutes" type="checkbox"${f.illimite ? ' checked' : ''} onchange="cevIlChamp('illimite', this.checked)"><span>Toutes les activités (illimité)</span></label>
+      <label class="cev-inline-check"><input id="cevIlToutes" type="checkbox"${f.illimite ? ' checked' : ''} onchange="cevIlChamp('illimite', this.checked)"><span>Accès illimité : tout à volonté pendant la visite</span></label>
       ${contenu}
       <p class="cev-form-legend">Tarif</p>
       <div class="pev-grid2">
@@ -9772,19 +9797,26 @@
   }
   window.cevOpenIllimite = function () {
     if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('pricing.manage')) { pevToast('Créer une formule demande le droit « Tarifs ».'); return; }
-    catalogEditor.fields = { name: 'Accès illimité', illimite: true, activites: [], dureeMinutes: 180, priceValue: null, minPax: 1, clients: false };
+    // Toutes les activites cochees, bowling et laser a volonte : le gerant decoche ce qu il ne vend pas.
+    catalogEditor.fields = { name: 'Accès illimité', illimite: true, activites: cevActivitesDuCentre().map((a) => a.id), aVolonte: { bowling: true, laser_game: true }, dureeMinutes: 180, priceValue: null, minPax: 1, clients: false };
     catalogEditor.steps = null;
     catalogEditor.error = '';
     catalogEditor.saving = false;
     catalogEditor.modal = { mode: 'illimite', formuleId: null };
     cevSyncModal();
   };
+  // La phrase « ce que la formule donnera » suit chaque case, sans redessiner la fenetre.
+  function cevIlRedire() {
+    const zone = document.getElementById('cevIlDit');
+    if (zone && catalogEditor.fields) zone.textContent = cevIlDit(catalogEditor.fields, cevActivitesDuCentre());
+  }
   window.cevIlChamp = function (cle, valeur) {
     const f = catalogEditor.fields;
     if (!f) return;
     if (cle === 'illimite') { f.illimite = Boolean(valeur); cevRefreshBody(); return; }
     if (cle === 'clients') { f.clients = valeur === true; return; }
     f[cle] = valeur == null ? '' : String(valeur);
+    if (cle === 'dureeMinutes') cevIlRedire();
   };
   window.cevIlActivite = function (id, coche) {
     const f = catalogEditor.fields;
@@ -9792,6 +9824,14 @@
     const liste = new Set(f.activites || []);
     if (coche) liste.add(String(id)); else liste.delete(String(id));
     f.activites = cevActivitesDuCentre().map((a) => a.id).filter((x) => liste.has(x));
+    // Le bowling ou le laser coche ou decoche : son choix « a volonte » apparait ou part.
+    if (f.illimite && (id === 'bowling' || id === 'laser_game')) cevRefreshBody(); else cevIlRedire();
+  };
+  window.cevIlVolonte = function (id, oui) {
+    const f = catalogEditor.fields;
+    if (!f || !CEV_A_VOLONTE.some(([x]) => x === id)) return;
+    f.aVolonte = { ...(f.aVolonte || {}), [id]: oui === true };
+    cevIlRedire();
   };
   function cevSaveIllimite() {
     const f = catalogEditor.fields || {};
@@ -9802,8 +9842,13 @@
     if (!Number.isFinite(prix) || prix < 0 || prix > 1000) { cevFail(`Indiquez un prix par joueur entre 0 et 1000 ${signeMonnaie()}.`); return; }
     const formule = { nom, prixParPersonne: prix, minPax: Math.trunc(Number(f.minPax) || 1), clients: f.clients === true };
     if (f.illimite) {
+      const cochees = cevActivitesDuCentre().filter((a) => (f.activites || []).includes(a.id)).map((a) => a.id);
+      if (!cochees.length) { cevFail('Cochez au moins une activité.'); return; }
       formule.illimite = true;
       formule.dureeMinutes = Number(f.dureeMinutes) || 180;
+      // Les identifiants seuls : le serveur les relit a son catalogue (lib/formule-comptoir.js).
+      formule.activites = cochees;
+      formule.aVolonte = { bowling: Boolean((f.aVolonte || {}).bowling), laser_game: Boolean((f.aVolonte || {}).laser_game) };
     } else {
       const choisies = cevActivitesDuCentre().filter((a) => (f.activites || []).includes(a.id));
       if (!choisies.length) { cevFail('Cochez au moins une activité, ou toutes.'); return; }

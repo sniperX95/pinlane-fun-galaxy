@@ -21,7 +21,7 @@
 <link rel="preload" href="/assets/fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/assets/fonts/geist-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/assets/pinlane.css?v=20261110focus">
-<link rel="stylesheet" href="/assets/pinlane-staff.css?v=20261118privatisation">
+<link rel="stylesheet" href="/assets/pinlane-staff.css?v=20261119avolonte">
 <link rel="stylesheet" href="/assets/pinlane-planning-global.css?v=20261118notes">
 <link rel="stylesheet" href="/assets/pinlane-charts.css?v=20261110focus">
 <link rel="stylesheet" href="/assets/pinlane-daterange.css?v=20260721a">
@@ -36,6 +36,9 @@
 <!-- La regle qui choisit les pistes quand Pinlane choisit, la meme que le
      serveur (lib/ops-engine.js, lib/database.js) : charge avant app-main. -->
 <script defer src="/assets/pinlane-pistes.js?v=20261118attribution"></script>
+<!-- Ce qu un acces illimite comprend et garde, dit en clair, la meme phrase que le
+     serveur (lib/reserver-fenetre.js) : charge avant app-main. -->
+<script defer src="/assets/pinlane-a-volonte.js?v=20261119avolonte"></script>
 <!-- La marque d'un centre a partir d'UNE couleur (derivation + mesure de
      contraste WCAG). Charge avant app-main et founder-clients-platform : les
      deux ecrans de saisie (Etablissement, Nouveau client) l'interrogent. -->
@@ -67,8 +70,8 @@
 <!-- Le planning global (la feuille du jour) : le module qui pose
      renderGlobalPlanning, que la console appelle a chaque rendu de l onglet.
      Charge avant app-main, le premier rendu le trouve deja la. -->
-<script defer src="/assets/pinlane-planning-global.js?v=20261118notes"></script>
-<script defer src="/assets/app-main.js?v=20261118privatisation"></script>
+<script defer src="/assets/pinlane-planning-global.js?v=20261119avolonte"></script>
+<script defer src="/assets/app-main.js?v=20261119avolonte"></script>
 <!-- OPS-07 : declarations inertes, chargees dans cet ordre par le loader C14.
      Les src restent lisibles par le detecteur de mise a jour. -->
 <script type="text/plain" data-staff-console src="/assets/ops-progress.js?v=20260925f"></script>
@@ -85,7 +88,7 @@
 <script type="text/plain" data-staff-console src="/assets/staff-menu.js?v=20261117centre"></script>
 <script type="text/plain" data-staff-console src="/assets/pinlane-fx.js?v=20260728e"></script>
 <script type="text/plain" data-staff-console src="/assets/pinlane-sur-mesure-settings.js?v=20261118centres"></script>
-<script type="text/plain" data-staff-console src="/assets/staff-pages-v2.js?v=20261118illimite"></script>
+<script type="text/plain" data-staff-console src="/assets/staff-pages-v2.js?v=20261119avolonte"></script>
 <script type="text/plain" data-staff-console src="/assets/pinlane-charts.js?v=20261118centres"></script>
 <script type="text/plain" data-staff-console src="/assets/pinlane-daterange.js?v=20260925i"></script>
 <script type="text/plain" data-staff-console src="/assets/pinlane-analytics-board.js?v=20261118centres"></script>

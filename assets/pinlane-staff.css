@@ -9889,6 +9889,8 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 /* L ACCES ILLIMITE (2026-11-19, Ansar : « mal mis en évidence ») : sa propre porte, sur toute la
    largeur, encadree de bleu ; ce qu il promet en une ligne, son prix a droite. Pas d icone. */
 .qb-modal.rv.rs .rs-portes.is-acces { margin-bottom: 6px; }
+/* (Modifier, sous un acces illimite a volonte : la rangee dit ce qui est garde, sans reglage) */
+.fm-act-volonte { margin: 4px 0 0; font-size: 14px; line-height: 1.4; color: var(--text); }
 .qb-modal.rv.rs .rs-porte.rs-illimite { padding: 0 14px; box-shadow: inset 0 0 0 1.5px var(--accent); }
 .qb-modal.rv.rs .rs-porte.rs-illimite b { color: var(--accent-strong); }
 .qb-modal.rv.rs .rs-porte.rs-illimite em { flex: none; font-style: normal; font-size: 15px; font-weight: 600; color: var(--text); }

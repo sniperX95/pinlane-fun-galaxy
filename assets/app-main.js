@@ -32331,6 +32331,25 @@ function renderEditIllimiteChoix() {
   return `<div class="fm-acces is-propose">${illimitees.map((f) => `<button type="button" class="fm-acces-btn" data-formule="${escapeHtml(f.id)}" onclick="passerEnIllimiteEdition(this.dataset.formule)"><b>Passer en ${escapeHtml(rvNomFormule(f))}</b><span>${escapeHtml(`${phraseDeLIllimite(f).titre}, ${formatMontant(f.price)} par joueur`)}</span></button>`).join('')}</div>`;
 }
 
+// SOUS UN ACCES ILLIMITE A VOLONTE (2026-11-19) : le bowling et le laser ne se reglent ni en heure ni en
+// parties, ils sont gardes toute la visite. Leurs rangees le disent (« Bowling à volonté, pistes gardées
+// de 15:30 à 18:30 », « Laser à volonté, 10 armes à chaque départ »), lu sur le plan du serveur (son
+// verdict, sinon le dossier tel qu enregistre), et en mots generaux tant qu il n a rien dit.
+function gardeAVolonteEdition(r) {
+  const e = state.editState;
+  if (!e || e.versProgrammeNormal) return null;
+  const f = String(e.type || '') === 'formule' && e.formuleId ? resolveDisplayFormule(e.formuleId) : null;
+  const voulues = estFormuleIllimitee(f) && Array.isArray(f.illimite.aVolonte) ? f.illimite.aVolonte : [];
+  if (!voulues.length) return null;
+  const ecrit = dossierEcritDuVerdict() || (formuleChangeeEdition() ? null : r);
+  const acces = ecrit ? accesIllimiteDuDossier(ecrit) : null;
+  const garde = (id) => (acces ? acces.gardes.find((g) => g.activite === id) : null);
+  const dit = {};
+  if (voulues.includes('bowling')) { const g = garde('bowling'); dit.bowling = g ? `Bowling à volonté, pistes gardées de ${g.debut} à ${g.fin}` : 'Bowling à volonté, pistes gardées toute la visite'; }
+  if (voulues.includes('laser_game')) { const g = garde('laser_game'); dit.laser_game = g ? `Laser à volonté, ${g.armes} arme${g.armes > 1 ? 's' : ''} à chaque départ` : 'Laser à volonté, armes gardées à chaque départ'; }
+  return dit;
+}
+
 // Les formules gardees (dont l acces illimite) ne sont lues qu a l ouverture de Reserver : Modifier
 // ouvert d abord les lit une fois par centre, puis se repeint.
 let formulesGardeesLuesPourModifier = '';
@@ -32541,6 +32560,7 @@ function renderEditFormuleBloc(r, formule, lignes, controls = {}) {
   const heures = ecritVerdict ? heuresDuProgrammeEnregistre(ecritVerdict) : formuleChangee ? new Map() : heuresDuProgrammeEnregistre(r);
   const plus = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
   const ajouts = [];
+  const volonte = gardeAVolonteEdition(r);
   const rangees = [...choix, ...supplement].map((choice, rang) => {
     const estBowling = choice.id === 'bowling';
     const estLaser = choice.id === 'laser_game';
@@ -32550,11 +32570,13 @@ function renderEditFormuleBloc(r, formule, lignes, controls = {}) {
       return '';
     }
     let options = '';
-    if (estBowling) {
+    if ((estBowling || estLaser) && volonte && volonte[choice.id]) {
+      options = `<p class="fm-act-volonte" data-a-volonte="${escapeHtml(choice.id)}">${escapeHtml(volonte[choice.id])}</p>`;
+    } else if (estBowling) {
       options = controls.bowlingDuration || `<div class="dossier-activity-setting"><span class="lbl">Durée bowling</span><div class="dossier-options">${DURATION_OPTIONS.map(opt => `<button type="button" class="qb-dur-btn dossier-option ${Number(programme.bowling.duration) === Number(opt.value) ? 'active' : ''}" onclick="setEditBowlingDuration(${opt.value})">${opt.label}</button>`).join('')}</div></div>`;
     }
     if (choice.id === 'arcade_time') options = renderStaffArcadeOptions(getCenterActivity(choice.id), programme.othersOptions[choice.id] || {}, participantsLigneProgramme(programme.othersOptions[choice.id] || {}, state.editState.pax), 'edit');
-    if (estLaser) {
+    if (estLaser && !(volonte && volonte.laser_game)) {
       options = `<div class="dossier-activity-setting"><span class="lbl">Parties par joueur</span><div class="dossier-options" role="group" aria-label="Nombre de parties Laser Game">${[1, 2, 3].map(games => `<button type="button" class="qb-dur-btn dossier-option ${Number(programme.laser_game.games) === games ? 'active' : ''}" aria-pressed="${Number(programme.laser_game.games) === games}" onclick="setEditLaserGames(${games})">${games} partie${games > 1 ? 's' : ''}</button>`).join('')}</div></div>`;
       const extra = programme.laser_game.extraLaser;
       if (extra) options += `<small class="fm-act-note">+ ${extra.games - programme.laser_game.games} partie pour ${extra.participants} joueurs · ${escapeHtml(formatMoneyCentimes(extra.price))}${Number(extra.discountAmount) > 0 ? ` · remise ${escapeHtml(formatMoneyCentimes(extra.discountAmount))}` : ''}</small>`;
@@ -33271,6 +33293,9 @@ function peindreVerdictEdition() {
   // L acces illimite dit ce que le serveur gardera (pistes, armes, heures), des qu il l a dit.
   const acces = document.getElementById('editAcces');
   if (acces) acces.outerHTML = renderEditIllimiteChoix();
+  // (et les rangees du bowling et du laser, gardes a volonte, disent les heures et les armes du serveur)
+  const volonte = gardeAVolonteEdition(r);
+  document.querySelectorAll('#posOverlay .fm-act-volonte[data-a-volonte]').forEach((p) => { const texte = volonte && volonte[p.dataset.aVolonte]; if (texte) p.textContent = texte; });
 }
 
 // Les colonnes des heures et les parties en mots, en place. Les champs d heure
@@ -40425,7 +40450,10 @@ function rsListeFormule() {
     x.verdict = lue ? c.resultats.get(x.heure) || null : null;
     x.restes = x.verdict && x.verdict.statut !== 'ko' ? rsResteDuPlan(x.verdict.prend) : [];
   });
-  return { lue, liste: rsFormuleMemo.liste };
+  // UNE HEURE QUE LE SERVEUR NE JUGE PAS N EST PAS PROPOSEE (2026-11-19) : hors de sa fenetre
+  // (getScheduleWindow, la duree que le moteur estime pour la visite), il la refuserait « hors
+  // horaires »). Son mot fait la regle (lib/reserver-simulation.js), ce poste n en garde pas de copie.
+  return { lue, liste: lue ? rsFormuleMemo.liste.filter((x) => !(x.verdict && x.verdict.statut === 'ko' && x.verdict.court === 'hors horaires')) : rsFormuleMemo.liste };
 }
 
 function rsDureeDite(minutes) {

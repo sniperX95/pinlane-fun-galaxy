@@ -115,6 +115,8 @@ const MUTATIONS = [
   { nom: 'modifier-sans-pistes', lettre: 'I', cible: '[I] enregistre : le dossier en acces illimite', fichier: APP, de: "    || (dossierFormule.type === 'formule' && Boolean(resolveDisplayFormule(dossierFormule.formuleId)?.hasBowling));", vers: ';' },
   { nom: 'verdict-pas-repeint', lettre: 'I', cible: '[I] le verdict du serveur dit ce qui sera garde', fichier: APP, de: '  if (acces) acces.outerHTML = renderEditIllimiteChoix();', vers: '' },
   { nom: 'retour-sans-heures', lettre: 'I', cible: '[I] « Revenir à un programme normal » : une visite de ses activites', fichier: APP, de: '      updated.preference = { activityOrder: ids, preferredTimes:', vers: '      updated.preferenceOubliee = { activityOrder: ids, preferredTimes:' },
+  { nom: 'rangees-une-heure', lettre: 'I', cible: '[I] sous l acces illimite, les rangees disent ce qui est garde', fichier: APP, de: '  const volonte = gardeAVolonteEdition(r);\n  const rangees = [...choix, ...supplement].map((choice, rang) => {', vers: '  const volonte = null;\n  const rangees = [...choix, ...supplement].map((choice, rang) => {' },
+  { nom: 'heure-refusee-proposee', lettre: 'D', cible: '[D] la derniere arrivee proposee, le serveur l accepte', fichier: APP, de: "  return { lue, liste: lue ? rsFormuleMemo.liste.filter((x) => !(x.verdict && x.verdict.statut === 'ko' && x.verdict.court === 'hors horaires')) : rsFormuleMemo.liste };", vers: '  return { lue, liste: rsFormuleMemo.liste };' },
   { nom: 'planning-muet', lettre: 'D', cible: '[D] le planning montre les pistes et les armes gardees', fichier: 'assets/pinlane-planning-global.js', de: "        if (e.aVolonte) bulle = 'Laser à volonté · départ de '", vers: "        if (false) bulle = 'Laser à volonté · départ de '" },
   { nom: 'retour-sans-programme', lettre: 'I', cible: '[I] « Revenir à un programme normal »', fichier: APP, de: "    if (versProgrammeNormal && programme) {\n      updated.type = 'visite';", vers: "    if (false) {\n      updated.type = 'visite';" },
 ];
@@ -497,9 +499,15 @@ async function scenarioD(browser) {
     const compris = `Compris : ${await page.evaluate(() => getQuickBookActivityChoices().map((c) => c.label || rvNomActivite(c.id)).join(', '))}.`;
     ok(/Accès illimité/.test(acces) && /32\s€ par joueur/.test(acces) && /À partir de 2 joueurs\./.test(acces) && acces.includes('Toutes les activités à volonté pendant 3 h. Pistes de bowling gardées toute la visite, armes de laser gardées à chaque départ.') && acces.includes(compris), '[D] sa page dit ce qui est compris et garde, en clair', { acces, compris });
     await page.waitForSelector('.rs-s-l.is-formule .rs-h[data-heure="15:30"]', { timeout: 10000 });
-    // La derniere arrivee proposee : la fermeture (minuit) moins les 3 h de la visite.
-    const heures = await page.evaluate(() => rsHeuresDeLaFormule());
-    ok(heures[heures.length - 1] === '21:00', '[D] la derniere arrivee proposee laisse les 3 h de la visite', heures.slice(-3));
+    // La derniere arrivee proposee : une heure que le serveur accepte ; la demi-heure d apres, il la
+    // refuse « hors horaires », et le comptoir ne la propose pas (sa regle est celle du serveur).
+    await page.waitForSelector('.rs-s-l.is-formule[data-verifie="1"]', { timeout: 15000 }).catch(() => {});
+    const heures = await page.evaluate(() => rsListeFormule().liste.map((x) => x.heure));
+    const derniere = heures[heures.length - 1] || '';
+    const apres = derniere ? `${String(Math.floor((enMin(derniere) + 30) / 60)).padStart(2, '0')}:${String((enMin(derniere) + 30) % 60).padStart(2, '0')}` : '';
+    const blancDerniere = derniere ? await reserverIllimite('Essai', JOUEURS, derniere, ID_ILLIMITEE, { dryRun: true }) : null;
+    const blancApres = apres ? await reserverIllimite('Essai', JOUEURS, apres, ID_ILLIMITEE, { dryRun: true }) : null;
+    ok(derniere && blancDerniere && (blancDerniere.json.plan || {}).disponible === true && blancApres && /hors horaires/.test(String((blancApres.json.plan || {}).refus || '')) && !heures.includes(apres), '[D] la derniere arrivee proposee, le serveur l accepte ; la suivante, il la refuse et le comptoir ne la propose pas', { fin: heures.slice(-3), derniere: blancDerniere && blancDerniere.json.plan && blancDerniere.json.plan.disponible, apres, refus: blancApres && blancApres.json.plan && blancApres.json.plan.refus });
     await page.locator('.rs-s-l.is-formule .rs-h[data-heure="15:30"]').click();
     await C.pret(page);
     await page.waitForTimeout(400);
@@ -664,6 +672,13 @@ async function scenarioI(browser) {
     await verdictPose(page);
     const choisi = await page.evaluate(() => ((document.getElementById('editAcces') || {}).innerText || '').replace(/\s+/g, ' ').trim());
     ok(/^Accès illimité Toutes les activités à volonté de 16:00 à 19:00\. Bowling : pistes? [\d ,et]+ gardées? toute la visite\. Laser : 10 armes à chaque départ\./.test(choisi) && /Revenir au programme d’avant/.test(choisi), '[I] le verdict du serveur dit ce qui sera garde, et le chemin du retour', choisi);
+    // Les rangees du bowling et du laser disent ce qui est garde, plus « 1 heure / 1 partie » de la carte.
+    const rangees = await page.evaluate(() => {
+      const t = (sel) => ((document.querySelector(sel) || {}).textContent || '').trim();
+      const reglages = Array.from(document.querySelectorAll('#posOverlay [data-edit-activity="bowling"] .dossier-option, #posOverlay [data-edit-activity="laser_game"] .dossier-option, #posOverlay [data-edit-activity="bowling"] select, #posOverlay [data-edit-activity="laser_game"] select')).map((b) => b.textContent.replace(/\s+/g, ' ').trim());
+      return { bowling: t('#posOverlay [data-a-volonte="bowling"]'), laser: t('#posOverlay [data-a-volonte="laser_game"]'), reglages };
+    });
+    ok(rangees.bowling === 'Bowling à volonté, pistes gardées de 16:00 à 19:00' && rangees.laser === `Laser à volonté, ${JOUEURS} armes à chaque départ` && rangees.reglages.length === 0, '[I] sous l acces illimite, les rangees disent ce qui est garde, plus « 1 heure / 1 partie »', rangees);
     await photo(page, 'modifier-passer', '#posOverlay .edit-modal');
     await enregistrerEdition(page);
     const passe = B.base.reservations.get(ID);

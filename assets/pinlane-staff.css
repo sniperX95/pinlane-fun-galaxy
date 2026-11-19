@@ -20212,6 +20212,14 @@ body:is(.staff-mode, .admin-mode) .ordre-carte .ordre-phrase { font-weight: 600;
 body:is(.staff-mode, .admin-mode) .ordre-carte .ordre-refus { color: var(--danger); font-weight: 600; }
 body:is(.staff-mode, .admin-mode) .ordre-carte.is-calcul { background: var(--subtle); box-shadow: none; color: var(--muted); }
 .qb-modal.rv.rs .rs-verdict .ordre-carte { margin: 8px 0 4px; }
+/* Au telephone, le bandeau de la demande a valider (2026-11-19) : « Proposer un autre ordre » sur
+   toute la largeur sous la phrase, puis « Appeler » et « Valider » cote a cote ; « Valider » ne
+   tombe plus seul sur une ligne. */
+@media (max-width: 760px) {
+  body:is(.staff-mode, .admin-mode) .fx-modal .fz-bandeau-gestes.avec-ordre { flex: 1 1 100%; align-items: stretch; }
+  body:is(.staff-mode, .admin-mode) .fx-modal .fz-bandeau-gestes.avec-ordre > * { flex: 1 1 0; min-width: 0; }
+  body:is(.staff-mode, .admin-mode) .fx-modal .fz-bandeau-gestes.avec-ordre > .fz-autre-ordre { flex-basis: 100%; }
+}
 /* Elle arrive (une fois : un nouveau dessin de la fiche ne la rejoue pas). */
 body:is(.staff-mode, .admin-mode) .attr-carte.is-entree { animation: attr-entree 180ms cubic-bezier(.23, 1, .32, 1); }
 @keyframes attr-entree { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }

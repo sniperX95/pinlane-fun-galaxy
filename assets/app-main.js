@@ -30049,9 +30049,12 @@ function ficheBandeau(r, moment, droits) {
   const ordre = autreOrdrePossible(r, droits)
     ? `<button type="button" class="fz-bouton fz-autre-ordre" id="ficheAutreOrdre${id}" aria-expanded="${autresOrdresFiche.has(id)}" aria-controls="ficheOrdre${id}" data-pl-focus="fiche.ordre.${id}" onclick="proposerAutreOrdre(${id}, event)">Proposer un autre ordre</button>`
     : '';
+  // « Proposer un autre ordre » d abord, puis « Appeler » et « Valider » : l ordre du travail
+  // (proposer, appeler le client, valider). Au telephone, il prend toute la ligne et les deux
+  // autres partagent la suivante (.avec-ordre) : « Valider » ne reste jamais seul.
   return `<section class="fz-bandeau is-verifier" role="status">
       <p class="fx-moment is-verifier"><span>${escapeHtml(phrase)}</span></p>
-      <div class="fz-bandeau-gestes">${ficheAppeler(r)}${ordre}${droits.valider ? renderReservationFirstStatusButton(r, { fiche: true, suivant: true }) : ''}</div>
+      <div class="fz-bandeau-gestes${ordre ? ' avec-ordre' : ''}">${ordre}${ficheAppeler(r)}${droits.valider ? renderReservationFirstStatusButton(r, { fiche: true, suivant: true }) : ''}</div>
     </section>${ordre ? autreOrdreCarteFiche(r) : ''}`;
 }
 
@@ -30128,7 +30131,7 @@ function appliquerAutreOrdre(id, ev) {
   })).then((payload) => {
     autresOrdresFiche.delete(cle);
     if (payload && payload.reservation) {
-      markReservationMutation(cle, payload.reservation, ['startTime', 'program', 'opsPlan', 'lanes']);
+      markReservationMutation(cle, payload.reservation, ['startTime', 'program', 'opsPlan', 'lanes', 'notes']);
       const peint = applyOptimisticReservation(payload.reservation, { preserveEditState: true }) || {};
       if (!peint.fiche && state.selectedRes && Number(state.selectedRes.id) === cle) renderPos();
     } else renderPos();

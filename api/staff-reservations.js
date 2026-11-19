@@ -45,7 +45,7 @@ const { getCenter, refreshCenterOverrides } = require('../lib/ops-knowledge');
 const { refreshFormuleOverrides } = require('../lib/booking-config');
 const { refreshCatalog } = require('../lib/catalog-store');
 const { getPool } = require('../lib/database');
-const { exigerLesDroits, finDeLaVisite, planifierPourLaFenetre, simulerAutres } = require('../lib/reserver-fenetre');
+const { exigerLesDroits, finDeLaVisite, notesSansLaNoteAPlacer, planifierPourLaFenetre, simulerAutres } = require('../lib/reserver-fenetre');
 // La creation elle-meme vit dans lib/reserver-creation.js : la reservation en un clic d une demande
 // sur mesure (api/ops.js customRequestBook) prend le meme chemin.
 const { creerDepuisLaFenetre } = require('../lib/reserver-creation');
@@ -1100,6 +1100,10 @@ const traiter = async (req, res) => {
         // Les pistes lues voyagent : le moteur les reprend si elles sont toujours libres.
         const pistes = [...new Set(proposition.trouve.etapes.flatMap((etape) => etape.pistes || []))];
         Object.assign(body, proposition.trouve.modification, { opsPlan: null, lanes: pistes });
+        // Place sans conflit (tout ou rien, plus bas) : la note « À placer : créé malgré le
+        // conflit… » ne dit plus vrai et part dans la meme ecriture.
+        const notesPlacees = notesSansLaNoteAPlacer(current);
+        if (notesPlacees !== null) body.notes = notesPlacees;
         autreOrdreApplique = proposition.trouve;
       }
 

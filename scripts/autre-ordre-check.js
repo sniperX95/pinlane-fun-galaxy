@@ -22,6 +22,8 @@
 //        bougent pas ; la fin dite est 17:30 (rien ne se compte deux fois) ; il reste a
 //        valider (valider est un autre geste) ;
 //   [A4] redemande apres : « l ordre actuel tient » ;
+//   [A5] la note « À placer : créé malgré le conflit… » part dans la meme ecriture (le dossier
+//        est place sans conflit) ; la note du dossier reste ;
 //   [B1] les droits : sans le droit de modifier, ni proposition ni application (403) ;
 //   [B2] une proposition qui a change entre-temps ne s applique pas (409), rien ne s ecrit ;
 //   [B3] tout ou rien : une piste prise entre la lecture et le clic, rien ne s ecrit ;
@@ -49,6 +51,9 @@
 //   [D3] rien ne tient (les huit pistes prises l apres-midi) : la carte de la fiche dit
 //        « Aucun ordre ne tient en gardant l’arrivée à 15:15. » et ce qui bloque, seul
 //        « Fermer » reste ;
+//   [D4] apres « Appliquer », aucun texte faux : la note « À placer » et « Hors piste » (vus
+//        avant) disparaissent, l en-tete dit les pistes ; « À vérifier » reste, comme en base
+//        (le dossier n est pas valide) ;
 //   [E1] Reserver (vraie console) : bowling, minigolf, arcades a 15:30, le bowling plein :
 //        a cote de « Prendre 16:30 », la carte « Ou gardez 15:30 en changeant l’ordre » ;
 //        « Prendre cet ordre » remet les lignes dans cet ordre, le plan tient, « Créer »
@@ -57,6 +62,10 @@
 //   [F1] au telephone (375 px) et a 1280 px : rien ne deborde, la carte se lit en entier (sa
 //        phrase va a la ligne au lieu de sortir du cadre), ses boutons se touchent au doigt,
 //        elle ne cache ni « Appliquer » ni « Créer » ;
+//   [F2] le bandeau de la demande a valider : a 1280 px, « Proposer un autre ordre »,
+//        « Appeler », « Valider » sur une ligne ; a 375 px, « Proposer un autre ordre » sur
+//        toute la largeur puis « Appeler » et « Valider » cote a cote (« Valider » jamais seul),
+//        44 px au doigt ; « Valider » en bleu plein, les deux autres encadres ;
 //   [J1] aucune erreur JS.
 // Les calculs, les creations et les PATCH partent au VRAI handler api/staff-reservations.js,
 // sur la base en memoire de scripts/reserver-banc.js (aucune base reelle, aucun reseau).
@@ -189,8 +198,10 @@ async function scenarioMarius() {
   const a1630 = (await blanc(corpsVisite({ jour, heure: '16:30', ids: IDS, pax: 10 }))).json.plan || {};
   ok(a1515.disponible === false && a1530.disponible === false && /Pas assez de pistes libres à 15:30 : il en faut 2/.test(a1530.refus || '') && a1630.disponible === true,
     '[A1] aujourd hui, le bowling d abord : refuse a 15:15 et a 15:30 (« il en faut 2 »), seule la visite decalee a 16:30 tient', { a1515: a1515.refus, a1530: a1530.refus, a1630: a1630.disponible });
-  const marius = await creer(serveur, { ...corpsVisite({ jour, nom: 'Famille Lambert', heure: '15:15', ids: IDS, pax: 10 }), forcer: true });
+  const marius = await creer(serveur, { ...corpsVisite({ jour, nom: 'Famille Lambert', heure: '15:15', ids: IDS, pax: 10 }), notes: 'Gâteau à 16:30', forcer: true });
   const avant = enBase(marius.id);
+  const notesDe = (id) => String((B.base.reservations.get(Number(id)) || {}).notes || '');
+  const notesAvant = notesDe(marius.id);
   ok(avant && avant.validation === 'staff_review' && avant.aPlacer && avant.heure === '15:15',
     '[A1] cree quand meme, il part « a valider », a placer, a 15:15', avant);
 
@@ -234,6 +245,9 @@ async function scenarioMarius() {
   const { finDeLaVisite } = require(path.join(ROOT, FENETRE));
   const ecrit = applique.json.reservation || {};
   ok(finDeLaVisite(ecrit.opsPlan, ecrit) === '17:30', '[A3] la fin dite est 17:30 : le minigolf et les arcades ne se comptent pas deux fois', finDeLaVisite(ecrit.opsPlan, ecrit));
+  const notesApres = notesDe(marius.id);
+  ok(/À placer : créé malgré le conflit\./.test(notesAvant) && !/À placer : créé malgré/.test(notesApres) && /Gâteau à 16:30/.test(notesApres),
+    '[A5] la note « À placer : créé malgré le conflit… » part avec le conflit, la note du dossier reste', { avant: notesAvant, apres: notesApres });
 
   // [A4] Redemande : l ordre actuel tient.
   const encore = ((await serveur.appeler('POST', '/api/staff-reservations', { dryRun: true, autreOrdre: { id: marius.id } })).json.autreOrdre || {}).trouve || {};
@@ -415,7 +429,41 @@ function lireFiche() {
     programme: Array.from(document.querySelectorAll('#posOverlay .fx-programme .gc-step, #posOverlay .fx-programme [data-etape], #posOverlay .fx-programme li')).map((n) => texte(n)).filter(Boolean).slice(0, 8),
     statut: texte(document.querySelector('#posOverlay .dossier-status')),
     toast: texte(document.getElementById('toast')),
+    // [D4] ce que l en-tete et la fiche disent du placement.
+    tete: texte(document.querySelector('#posOverlay .edit-modal-head')),
+    noteAPlacer: /À placer : créé malgré/.test(texte(modal)),
+    // [F2] les gestes du bandeau, ligne par ligne (centres a moins de 8 px : la meme ligne).
+    bandeau: (() => {
+      const g = document.querySelector('#posOverlay .fz-bandeau-gestes');
+      if (!g) return null;
+      const nom = (b) => (b.classList.contains('fz-autre-ordre') ? 'ordre' : b.classList.contains('fx-appel') ? 'appeler' : b.classList.contains('res-status-btn') ? 'valider' : b.tagName);
+      const boutons = Array.from(g.children).filter((b) => b.getBoundingClientRect().width > 0);
+      const lignes = [];
+      boutons.forEach((b) => {
+        const x = b.getBoundingClientRect();
+        const centre = x.top + x.height / 2;
+        const ligne = lignes.find((l) => Math.abs(l.centre - centre) < 8);
+        if (ligne) ligne.noms.push(nom(b)); else lignes.push({ centre, noms: [nom(b)] });
+      });
+      const parNom = Object.fromEntries(boutons.map((b) => [nom(b), b]));
+      const fond = (b) => (b ? getComputedStyle(b).backgroundColor : '');
+      const bord = (b) => (b ? parseFloat(getComputedStyle(b).borderTopWidth) || 0 : 0);
+      return {
+        lignes: lignes.sort((a, b) => a.centre - b.centre).map((l) => l.noms.join('+')).join('|'),
+        ordrePlein: Boolean(parNom.ordre) && Math.round(parNom.ordre.getBoundingClientRect().width) >= Math.round(g.getBoundingClientRect().width) - 1,
+        hauteurs: boutons.map((b) => Math.round(b.getBoundingClientRect().height)),
+        fonds: { ordre: fond(parNom.ordre), appeler: fond(parNom.appeler), valider: fond(parNom.valider) },
+        bords: { ordre: bord(parNom.ordre), appeler: bord(parNom.appeler) },
+      };
+    })(),
   };
+}
+
+// « Valider » en bleu plein (opaque, le bleu domine), les deux autres encadres et d un autre fond.
+function boutonsALaRegle(b) {
+  const rgba = (texte) => (/rgba?\(([^)]+)\)/.exec(texte || '') || [null, ''])[1].split(',').map((x) => Number(x.trim()));
+  const [r, v, bl, a = 1] = rgba(b.fonds.valider);
+  return a === 1 && bl > r && bl > v && b.fonds.valider !== b.fonds.ordre && b.fonds.valider !== b.fonds.appeler && b.bords.ordre >= 1 && b.bords.appeler >= 1;
 }
 
 async function scenarioFiche(browser) {
@@ -427,6 +475,12 @@ async function scenarioFiche(browser) {
       await page.waitForTimeout(250);
       const ouverture = await page.evaluate(lireFiche);
       ok(ouverture.bouton === 'Proposer un autre ordre' && ouverture.carte === '', `[D1] ${appareil} : « Proposer un autre ordre » dans la demande a valider, aucune carte avant le geste`, ouverture);
+      // (le temoin de [D4] : avant « Appliquer », la note et « Hors piste » se lisent bien)
+      ok(ouverture.noteAPlacer && /Hors piste/.test(ouverture.tete) && /À vérifier/.test(ouverture.tete), `[D4] ${appareil} : avant « Appliquer », la note « À placer » et « Hors piste » sont a l ecran`, { tete: ouverture.tete, note: ouverture.noteAPlacer });
+      const telephone = appareil === 'telephone-375';
+      const b = ouverture.bandeau || { lignes: '', hauteurs: [] };
+      ok((telephone ? b.lignes === 'ordre|appeler+valider' && b.ordrePlein && b.hauteurs.every((h) => h >= 44) : b.lignes === 'ordre+appeler+valider') && boutonsALaRegle(b),
+        `[F2] ${appareil} : le bandeau tient ses trois gestes (${telephone ? '« Proposer un autre ordre » sur toute la largeur, puis « Appeler » et « Valider » cote a cote' : 'sur une ligne'}), « Valider » en bleu plein`, b);
       await page.locator(`#ficheAutreOrdre${c.marius.id}`).scrollIntoViewIfNeeded();
       await page.click(`#ficheAutreOrdre${c.marius.id}`);
       await page.waitForFunction((id) => { const k = document.getElementById(`ficheOrdre${id}`); return k && !k.classList.contains('is-calcul'); }, c.marius.id, { timeout: 15000 });
@@ -445,27 +499,29 @@ async function scenarioFiche(browser) {
       const ferme = await page.evaluate(lireFiche);
       const baseAvant = enBase(c.marius.id);
       ok(ferme.carte === '' && c.patchs.length === 0 && baseAvant.aPlacer && baseAvant.heure === '15:15', `[D1] ${appareil} : « Fermer » ne change rien (aucun PATCH, le dossier reste a placer)`, { ferme: ferme.carte, patchs: c.patchs.length, base: baseAvant });
+      // « Appliquer » : un seul PATCH autreOrdre, la base et la fiche suivent.
+      await page.click(`#ficheAutreOrdre${c.marius.id}`);
+      await page.waitForFunction((id) => { const k = document.getElementById(`ficheOrdre${id}`); return k && k.querySelector('[data-ordre-geste="appliquer"]'); }, c.marius.id, { timeout: 15000 });
+      await page.click(`#ficheOrdre${c.marius.id} [data-ordre-geste="appliquer"]`);
+      await page.waitForFunction(() => !document.querySelector('[data-ordre-geste="appliquer"]'), null, { timeout: 15000 }).catch(() => null);
+      await page.waitForTimeout(400);
+      const applique = await page.evaluate(lireFiche);
+      const base = enBase(c.marius.id);
+      const patch = c.patchs[0] || {};
+      ok(c.patchs.length === 1 && Object.keys(patch).sort().join() === 'autreOrdre,baseUpdatedAt,centerId,id' && base.heure === '15:15' && /^minigolf_blacklight@15:15-16:00 arcade_time@16:00-16:30 bowling@16:30-17:30$/.test(base.etapes) && !base.aPlacer,
+        `[D1] ${appareil} : « Appliquer » : un seul PATCH autreOrdre (rien d autre), le dossier garde 15:15, minigolf, arcades, bowling a 16:30, en base`, { patchs: c.patchs, base });
+      ok(applique.carte === '' && /Nouvel ordre enregistré\. La réservation reste à valider\./.test(applique.toast) && applique.bouton === 'Proposer un autre ordre',
+        `[D1] ${appareil} : apres, la carte se ferme, le toast dit « Nouvel ordre enregistré. La réservation reste à valider. »`, applique);
+      ok(!applique.noteAPlacer && !/Hors piste/.test(applique.tete) && /Pistes \d, \d/.test(applique.tete) && /À vérifier/.test(applique.tete) && base.validation === 'staff_review',
+        `[D4] ${appareil} : apres « Appliquer », plus de note « À placer » ni de « Hors piste », l en-tete dit les pistes, « À vérifier » comme en base`, { tete: applique.tete, note: applique.noteAPlacer, validation: base.validation });
+      await page.evaluate(() => setTab('details'));
+      await page.waitForTimeout(200);
+      await photo(page, `fiche-apres-application-${appareil}`, '#posOverlay .edit-modal');
+      const programme = await page.evaluate(() => Array.from(document.querySelectorAll('#posOverlay .fx-programme')).map((n) => n.textContent.replace(/\s+/g, ' ').trim()).join(' '));
+      const iMini = programme.indexOf('Minigolf');
+      const iBowl = programme.indexOf('Bowling');
+      ok(iMini >= 0 && iBowl > iMini && /15:15/.test(programme) && /16:30/.test(programme), `[D1] ${appareil} : la fiche montre le programme dans le nouvel ordre (minigolf a 15:15 avant le bowling de 16:30)`, programme.slice(0, 400));
       if (appareil === 'portable') {
-        // « Appliquer » : un seul PATCH autreOrdre, la base et la fiche suivent.
-        await page.click(`#ficheAutreOrdre${c.marius.id}`);
-        await page.waitForFunction((id) => { const k = document.getElementById(`ficheOrdre${id}`); return k && k.querySelector('[data-ordre-geste="appliquer"]'); }, c.marius.id, { timeout: 15000 });
-        await page.click(`#ficheOrdre${c.marius.id} [data-ordre-geste="appliquer"]`);
-        await page.waitForFunction(() => !document.querySelector('[data-ordre-geste="appliquer"]'), null, { timeout: 15000 }).catch(() => null);
-        await page.waitForTimeout(400);
-        const applique = await page.evaluate(lireFiche);
-        const base = enBase(c.marius.id);
-        const patch = c.patchs[0] || {};
-        ok(c.patchs.length === 1 && Object.keys(patch).sort().join() === 'autreOrdre,baseUpdatedAt,centerId,id' && base.heure === '15:15' && /^minigolf_blacklight@15:15-16:00 arcade_time@16:00-16:30 bowling@16:30-17:30$/.test(base.etapes) && !base.aPlacer,
-          '[D1] « Appliquer » : un seul PATCH autreOrdre (rien d autre), le dossier garde 15:15, minigolf, arcades, bowling a 16:30, en base', { patchs: c.patchs, base });
-        ok(applique.carte === '' && /Nouvel ordre enregistré\. La réservation reste à valider\./.test(applique.toast) && applique.bouton === 'Proposer un autre ordre',
-          '[D1] apres : la carte se ferme, le toast dit « Nouvel ordre enregistré. La réservation reste à valider. »', applique);
-        await page.evaluate(() => setTab('details'));
-        await page.waitForTimeout(200);
-        await photo(page, 'fiche-apres-application-portable', '#posOverlay .edit-modal');
-        const programme = await page.evaluate(() => Array.from(document.querySelectorAll('#posOverlay .fx-programme')).map((n) => n.textContent.replace(/\s+/g, ' ').trim()).join(' '));
-        const iMini = programme.indexOf('Minigolf');
-        const iBowl = programme.indexOf('Bowling');
-        ok(iMini >= 0 && iBowl > iMini && /15:15/.test(programme) && /16:30/.test(programme), '[D1] la fiche montre le programme dans le nouvel ordre (minigolf a 15:15 avant le bowling de 16:30)', programme.slice(0, 400));
         // [D2] Pas de bouton sur un dossier confirme.
         await page.evaluate((id) => { closePos(); openPos(id); }, c.confirme.id);
         await page.waitForTimeout(200);
@@ -644,6 +700,16 @@ const MUTATIONS = [
     { fichier: JS, de: "  if (!r || !droits.modifier || r.formuleId || r.status === 'cancelled') return false;", vers: "  if (!r || !droits.modifier || r.status === 'cancelled') return false;" }] },
   { nom: 'refus-sans-sa-raison', lettre: 'D3', scenarios: ['fiche'], editions: [
     { fichier: JS, de: "escapeHtml(reponse.raison || 'Aucun ordre ne tient.')", vers: "escapeHtml('Aucun ordre ne tient.')" }] },
+  { nom: 'note-a-placer-gardee', lettre: 'A5', scenarios: ['marius'], editions: [
+    { fichier: API, serveur: true, de: '        if (notesPlacees !== null) body.notes = notesPlacees;\n', vers: '' }] },
+  { nom: 'note-a-placer-gardee-a-l-ecran', lettre: 'D4', scenarios: ['fiche'], editions: [
+    { fichier: API, serveur: true, de: '        if (notesPlacees !== null) body.notes = notesPlacees;\n', vers: '' }] },
+  { nom: 'fiche-pas-repeinte', lettre: 'D4', scenarios: ['fiche'], editions: [
+    { fichier: JS, de: 'const peint = applyOptimisticReservation(payload.reservation, { preserveEditState: true }) || {};', vers: 'const peint = {};' }] },
+  { nom: 'valider-seul-au-telephone', lettre: 'F2', scenarios: ['fiche'], editions: [
+    { fichier: JS, de: "<div class=\"fz-bandeau-gestes${ordre ? ' avec-ordre' : ''}\">", vers: '<div class="fz-bandeau-gestes">' }] },
+  { nom: 'ordre-pas-sur-sa-ligne', lettre: 'F2', scenarios: ['fiche'], editions: [
+    { fichier: CSS, de: '  body:is(.staff-mode, .admin-mode) .fx-modal .fz-bandeau-gestes.avec-ordre > .fz-autre-ordre { flex-basis: 100%; }\n', vers: '' }] },
   { nom: 'phrase-sur-une-seule-ligne', lettre: 'F1', scenarios: ['fiche'], editions: [
     { fichier: CSS, de: 'body:is(.staff-mode, .admin-mode) .ordre-carte .ordre-phrase { font-weight: 600; }', vers: 'body:is(.staff-mode, .admin-mode) .ordre-carte .ordre-phrase { font-weight: 600; white-space: nowrap; }' }] },
   // Reserver (assets/app-main.js).

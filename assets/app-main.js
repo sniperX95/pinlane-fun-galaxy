@@ -2423,9 +2423,12 @@ function envoyerModificationReservation(avant, appliquer, overrides = {}) {
     const envoyer = (version, reservation) => {
       const options = { ...optionsPour(reservation) };
       delete options.prixSuivi;
+      // (la raison choisie dans Modifier, sinon celle d office)
+      const raison = String(options.prixRaison || '').trim();
+      delete options.prixRaison;
       const corps = {
         ...buildReservationApiPayload(reservation, options),
-        ...(prixSuivi ? {} : { prixRaison: RAISON_PRIX_PAR_DEFAUT }),
+        ...(prixSuivi ? {} : { prixRaison: raison || RAISON_PRIX_PAR_DEFAUT }),
         ...(version ? { baseUpdatedAt: version } : {})
       };
       if (prixSuivi) delete corps.price;
@@ -32542,6 +32545,85 @@ function majEditPrixEstime() {
   const detail = document.querySelector('#posOverlay .dossier-price-detail .edit-prix-detail');
   if (detail && estime) detail.innerHTML = lignesDetailPrixHtml(estime);
   peindreEtatPrix(estime);
+  peindreRaisonPrixEdition();
+  majModifsEdition();
+}
+
+// LA RAISON D UN PRIX CHANGE A LA MAIN (2026-11-20, Ansar : « modifier tout complet », comme Reserver) :
+// les raisons de Reserver en un toucher, une autre a taper, et le plafond du role dit avant le refus.
+// Elle part avec le prix (prixRaison) ; sans elle, la raison d office (« Prix revu au comptoir »). Le
+// serveur juge l ecart au niveau du role et ecrit la note (jugerPrixDeModification).
+function referencePrixEdition() {
+  const estime = getEditPrixEstime();
+  return estime && estime.utilisable && Number.isFinite(Number(estime.total)) ? Number(estime.total) : Number(state.selectedRes && state.selectedRes.price) || 0;
+}
+
+function prixAjusteEdition() {
+  const e = state.editState;
+  if (!e || !e.prixFige || niveauStaff('prix') === 'non') return false;
+  const prix = Number(getEditPriceValue());
+  if (!Number.isFinite(prix)) return false;
+  return Math.abs(Math.round(prix * 100) - Math.round(prixSuiviEdition(getEditPrixEstime()) * 100)) > Math.round(PRIX_AJUSTE_SEUIL_EUR * 100);
+}
+
+function raisonPrixEdition() {
+  const e = state.editState;
+  return e ? [e.prixRaison, String(e.prixRaisonLibre || '').trim()].filter(Boolean).join(' · ').slice(0, 200) : '';
+}
+
+// Le plafond du role, comme rsPlafondHtml : un niveau en pourcentage, jamais « libre » ni « non ».
+function plafondPrixEdition() {
+  const part = Number(niveauStaff('prix'));
+  if (!Number.isFinite(part)) return null;
+  const reference = Math.round(referencePrixEdition() * 100);
+  if (!(reference > 0)) return { texte: 'Sans prix de référence, il faut un responsable pour fixer ce prix.', ko: true };
+  const marge = Math.floor((reference * part) / 100);
+  const prix = Math.round((Number(getEditPriceValue()) || 0) * 100);
+  if (prix > reference + marge) return { texte: `Au-dessus de ${formatMoneyCentimes((reference + marge) / 100)}, il faut un responsable.`, ko: true };
+  if (prix < reference - marge) return { texte: `En dessous de ${formatMoneyCentimes((reference - marge) / 100)}, il faut un responsable.`, ko: true };
+  return { texte: `Remise jusqu’à ${part} %, soit ${formatMoneyCentimes((reference - marge) / 100)} au moins.`, ko: false };
+}
+
+function raisonPrixEditionHtml() {
+  const e = state.editState;
+  if (!e || niveauStaff('prix') === 'non') return '';
+  const plafond = plafondPrixEdition();
+  return `<div class="fm-raison" id="editRaisonPrix"${prixAjusteEdition() ? '' : ' hidden'}>
+      <span class="lbl" id="editRaisonTitre">Raison</span>
+      <div class="dossier-options" role="group" aria-labelledby="editRaisonTitre">${RV_RAISONS_PRIX.map((raison) => `<button type="button" class="qb-dur-btn dossier-option${e.prixRaison === raison ? ' active' : ''}" aria-pressed="${e.prixRaison === raison}" data-raison="${escapeHtml(raison)}" onclick="choisirRaisonPrixEdition(this.dataset.raison)">${escapeHtml(raison)}</button>`).join('')}</div>
+      <input class="input" id="editRaisonLibre" maxlength="120" placeholder="Autre raison" aria-label="Autre raison du prix" value="${escapeHtml(e.prixRaisonLibre || '')}" oninput="setEditRaisonLibre(this.value)">
+      ${plafond ? `<p class="fm-plafond${plafond.ko ? ' is-ko' : ''}" id="editPlafond" role="status">${escapeHtml(plafond.texte)}</p>` : ''}
+    </div>`;
+}
+
+function peindreRaisonPrixEdition() {
+  const bloc = document.getElementById('editRaisonPrix');
+  if (!bloc) return;
+  bloc.hidden = !prixAjusteEdition();
+  const ligne = document.getElementById('editPlafond');
+  const plafond = plafondPrixEdition();
+  if (ligne && plafond) {
+    if (ligne.textContent !== plafond.texte) ligne.textContent = plafond.texte;
+    ligne.classList.toggle('is-ko', plafond.ko);
+  }
+}
+
+function choisirRaisonPrixEdition(raison) {
+  const e = state.editState;
+  if (!e) return;
+  e.prixRaison = e.prixRaison === raison ? '' : String(raison || '');
+  document.querySelectorAll('#editRaisonPrix [data-raison]').forEach((bouton) => {
+    const on = bouton.dataset.raison === e.prixRaison;
+    bouton.classList.toggle('active', on);
+    bouton.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+  majModifsEdition();
+}
+
+function setEditRaisonLibre(valeur) {
+  const e = state.editState;
+  if (!e) return;
+  e.prixRaisonLibre = String(valeur ?? '');
   majModifsEdition();
 }
 
@@ -33251,6 +33333,7 @@ function renderEditPrix(r) {
     </div>
     <p class="fm-prix-etat" id="editPrixEstime"${etat ? '' : ' hidden'}>${escapeHtml(etat)}</p>
     <button type="button" class="edit-adapter-btn fm-recalculer" id="editRecalculer" onclick="recalculerEditPrix()"${state.editState.prixFige ? '' : ' hidden'}>Recalculer avec les tarifs</button>
+    ${raisonPrixEditionHtml()}
     ${detailHtml ? `<details class="dossier-price-detail"><summary>Détail du calcul</summary>${detailHtml}</details>` : ''}
   </section>`;
 }
@@ -33858,7 +33941,7 @@ function corpsModificationEdition(envoi) {
   const base = envoi.versionDeBase;
   const corps = {
     ...buildReservationApiPayload(envoi.appliquer(base), { requiresLanes: envoi.requiresLanes, allowPastStart: true }),
-    ...(envoi.prixSuivi ? {} : { prixRaison: RAISON_PRIX_PAR_DEFAUT }),
+    ...(envoi.prixSuivi ? {} : { prixRaison: raisonPrixEdition() || RAISON_PRIX_PAR_DEFAUT }),
     ...(base.updatedAt ? { baseUpdatedAt: base.updatedAt } : {})
   };
   if (envoi.prixSuivi) delete corps.price;
@@ -34692,7 +34775,7 @@ async function enregistrerHeuresEdition() {
     }
     let changeEntreTemps = '';
     if (envoi) {
-      const payload = await envoyerModificationReservation(derniere, envoi.appliquer, { requiresLanes: envoi.requiresLanes, prixSuivi: envoi.prixSuivi, allowPastStart: true });
+      const payload = await envoyerModificationReservation(derniere, envoi.appliquer, { requiresLanes: envoi.requiresLanes, prixSuivi: envoi.prixSuivi, prixRaison: raisonPrixEdition(), allowPastStart: true });
       derniere = payload.reservation;
       changeEntreTemps = payload.changeEntreTemps || '';
     }
@@ -35283,7 +35366,7 @@ async function saveEdit(e) {
     // client venait de cesser de l'ecraser. Sans override, le calcul par
     // defaut de buildReservationApiPayload fait exactement ce qu'il faut :
     // max(pistes envoyees, minimum requis).
-    const payload = await envoyerModificationReservation(versionDeBase, appliquer, { requiresLanes, prixSuivi, allowPastStart: true });
+    const payload = await envoyerModificationReservation(versionDeBase, appliquer, { requiresLanes, prixSuivi, prixRaison: raisonPrixEdition(), allowPastStart: true });
     applyOptimisticReservation(payload.reservation, { preserveEditState: true });
     state.selectedRes = payload.reservation;
     setEditError('');

@@ -50,6 +50,9 @@
 //   [G1] un laser a plusieurs parties a son espacement (30 min, 1 h, 1 h 30, + Pause), le sien choisi ;
 //   [G2] « 1h » pose la 2e partie a 16:30 (son champ, la barre du bas) et « Enregistrer » la deplace ;
 //   [G3] « + Pause » repousse la derniere partie de 30 min, les autres restent ;
+//   [R1] un prix tape a la main demande sa raison : les raisons de Reserver et une autre a taper ;
+//   [R2] la raison choisie part avec le prix et s ecrit dans la note du serveur ;
+//   [R3] le plafond du role (10 %) se lit sous les raisons, et le dit avant le refus ;
 //   [J1] aucune erreur JS.
 // --contre-preuves : chaque regle retiree (au code servi, en memoire ; le disque n est jamais
 // touche) fait rougir sa lettre.
@@ -627,6 +630,60 @@ async function scenarioEspacement(browser) {
 }
 
 // ---------------------------------------------------------------------------
+// [R1] [R2] [R3] LA RAISON D UN PRIX CHANGE A LA MAIN.
+// ---------------------------------------------------------------------------
+async function scenarioRaison(browser) {
+  semer();
+  const serveur = B.monter({ mutations: mutation ? mutation.editions.filter((ed) => ed.serveur) : [], session: B.sessionDuRole('manager', { nom: 'Rachel' }) });
+  const { ctx, page, erreurs, journal } = await monter(browser, serveur);
+  const lire = () => page.evaluate(() => {
+    const bloc = document.getElementById('editRaisonPrix');
+    const ligne = document.getElementById('editPlafond');
+    return {
+      visible: Boolean(bloc && !bloc.hidden),
+      raisons: bloc ? Array.from(bloc.querySelectorAll('[data-raison]')).map((b) => `${b.textContent.trim()}${b.classList.contains('active') ? '*' : ''}`) : [],
+      autre: Boolean(document.getElementById('editRaisonLibre')),
+      plafond: ligne ? `${ligne.textContent.trim()}${ligne.classList.contains('is-ko') ? ' [ko]' : ''}` : '',
+    };
+  });
+  try {
+    await ouvrirModifier(page);
+    // (le poste joue un role a 10 % de remise : le plafond se lit ; le serveur, lui, garde le Manager a 20 %)
+    await page.evaluate(() => {
+      const avant = window.niveauStaff;
+      window.niveauStaff = (cle) => (cle === 'prix' ? '10' : avant(cle));
+      renderPos();
+    });
+    const a = await lire();
+    ok(a && !a.visible, '[R1] sans prix tape, pas de raison a donner', a);
+    await page.fill('#editPriceInput', '150');
+    await page.waitForTimeout(150);
+    const b = await lire();
+    ok(b.visible && b.raisons.join() === 'Geste commercial,Client fidèle,Groupe,Erreur de tarif' && b.autre,
+      '[R1] un prix tape demande sa raison : les raisons de Reserver et une autre a taper', b);
+    ok(/Remise jusqu’à 10 %, soit 149,40 € au moins\./.test(b.plafond) && !/\[ko\]/.test(b.plafond), '[R3] le plafond du role se lit sous les raisons', b.plafond);
+    await page.fill('#editPriceInput', '140');
+    await page.waitForTimeout(150);
+    const c = await lire();
+    ok(/En dessous de 149,40 €, il faut un responsable\./.test(c.plafond) && /\[ko\]/.test(c.plafond), '[R3] sous le plafond, la ligne le dit avant le refus', c.plafond);
+    await page.fill('#editPriceInput', '150');
+    await page.click('#posOverlay #editRaisonPrix [data-raison="Client fidèle"]');
+    await page.fill('#posOverlay #editRaisonLibre', 'habitué');
+    await page.waitForTimeout(150);
+    const envois = await enregistrer(page, journal);
+    const r = envois.length ? envois[envois.length - 1] : null;
+    const row = B.base.reservations.get(NOEL) || {};
+    const notes = String(row.notes || '').split('\n').filter((l) => l.startsWith('[equipe] ')).map((l) => { try { return JSON.parse(l.slice(9)); } catch (e) { return null; } }).filter(Boolean);
+    const prix = notes.find((n) => n.type === 'prix') || {};
+    ok(r && r.statut === 200 && r.corps.prixRaison === 'Client fidèle · habitué' && Number(row.price) === 150 && prix.prix && prix.prix.raison === 'Client fidèle · habitué',
+      '[R2] la raison choisie part avec le prix et s ecrit dans la note du serveur', { statut: r && r.statut, raison: r && r.corps.prixRaison, prix: row.price, note: prix, json: r && r.statut !== 200 ? r.json : '' });
+    ok(erreurs.length === 0, '[J1] aucune erreur JS (raison)', erreurs.slice(0, 3));
+  } finally {
+    await ctx.close();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // LES CONTRE-PREUVES : une regle retiree, sa lettre rougit.
 // ---------------------------------------------------------------------------
 const FORMULE = ['formule'];
@@ -634,6 +691,7 @@ const SERVICE = ['service'];
 const NOTES_E = ['notes'];
 const TELEPHONE = ['telephone'];
 const ESPACEMENT = ['espacement'];
+const RAISON = ['raison'];
 const CSS = 'assets/pinlane-staff.css';
 const LIBRE = ['libre'];
 const CATALOGUE = ['catalogue'];
@@ -682,6 +740,10 @@ const MUTATIONS = [
   { nom: 'espacement-absent', lettre: 'G1', scenarios: ESPACEMENT, editions: [{ fichier: JS, de: '${areneEditionHtml()}${espacementLaserEditionHtml(r)}', vers: '${areneEditionHtml()}' }] },
   { nom: 'espacement-sans-effet', lettre: 'G2', scenarios: ESPACEMENT, editions: [{ fichier: JS, de: 'debuts[0].debut + k * minutes]', vers: 'debuts[0].debut + k * 30]' }] },
   { nom: 'pause-ailleurs', lettre: 'G3', scenarios: ESPACEMENT, editions: [{ fichier: JS, de: '  const derniere = debuts[debuts.length - 1];', vers: '  const derniere = debuts[1];' }] },
+  // La raison d un prix : absente, pas envoyee, le plafond muet.
+  { nom: 'raison-absente', lettre: 'R1', scenarios: RAISON, editions: [{ fichier: JS, de: '    ${raisonPrixEditionHtml()}\n', vers: '' }] },
+  { nom: 'raison-pas-envoyee', lettre: 'R2', scenarios: RAISON, editions: [{ fichier: JS, de: '{ requiresLanes, prixSuivi, prixRaison: raisonPrixEdition(), allowPastStart: true }', vers: '{ requiresLanes, prixSuivi, allowPastStart: true }' }] },
+  { nom: 'plafond-muet', lettre: 'R3', scenarios: RAISON, editions: [{ fichier: JS, de: '  if (prix < reference - marge) return {', vers: '  if (false) return {' }] },
   { nom: 'serveur-pose-l-existant', lettre: 'H3', scenarios: HEURE, editions: [{ fichier: API, serveur: true, de: '.filter((posee) => !dejaAuDossier(posee.activityId) && proposedItems', vers: '.filter((posee) => proposedItems' }] },
 ];
 
@@ -695,6 +757,7 @@ async function jouer(browser, noms) {
     if (nom === 'notes') await scenarioNotes(browser);
     if (nom === 'telephone') await scenarioTelephoneFiche(browser);
     if (nom === 'espacement') await scenarioEspacement(browser);
+    if (nom === 'raison') await scenarioRaison(browser);
   }
 }
 
@@ -704,7 +767,7 @@ async function main() {
   const t0 = Date.now();
   try {
     if (!process.argv.includes('--contre-preuves')) {
-      await jouer(browser, ['libre', 'catalogue', 'heure', 'formule', 'service', 'notes', 'telephone', 'espacement']);
+      await jouer(browser, ['libre', 'catalogue', 'heure', 'formule', 'service', 'notes', 'telephone', 'espacement', 'raison']);
     } else {
       console.log('[K] contre-preuves : chaque regle retiree fait rougir sa lettre');
       for (const m of MUTATIONS.filter((x) => !process.env.MC_MUTATIONS || liste(process.env.MC_MUTATIONS).includes(x.nom))) {

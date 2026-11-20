@@ -14,13 +14,22 @@
 
    Elle se lit sur le plan du dossier, jamais sur une copie : les pistes que la
    base a finalement attribuees, les heures d un dossier deplace au planning.
-     - « Toutes les activités à volonté de 15:30 à 18:30. »
-     - « Bowling : pistes 3 et 4 gardées toute la visite. »
-       (en long : « Bowling à volonté : pistes 3 et 4 gardées de 15:30 à 18:30 »)
-     - « Laser : 10 armes à chaque départ. »
-       (en long : « Laser à volonté : 10 armes à chaque départ de 15:30 à 18:00 »)
+     - « Tout à volonté de 15:30 à 18:30. » (« 6 activités à volonté de 15:30
+       à 18:30. » quand le gerant en a decoche)
+     - « Bowling, pistes 3 et 4 gardées toute la visite. »
+       (en long : « Bowling à volonté, pistes 3 et 4 gardées de 15:30 à 18:30 »)
+     - « Laser, 10 armes gardées à chaque départ. »
+       (en long : « Laser à volonté, 10 armes gardées à chaque départ de 15:30
+       à 18:00 »)
      - une activite jouee une fois a son heure : « Bowling 1 h à 15:30,
        pistes 3 et 4. », « Laser, 1 partie à 16:30. »
+   UN SEUL MOT, UNE SEULE FORME (2026-11-20, Ansar : « pour les activités
+   illimité on comprend rien, un truc bcp plus simple à comprendre »). Le
+   produit s appelle « Accès illimité » partout ; sa phrase commence toujours
+   par « Tout à volonté », puis dit ce qui est garde ou joue une fois, sans
+   deux-points au milieu. Chaque activite a aussi son etiquette courte
+   (`etiquettes` : « à volonté », « 1 h à 15:30 », « 1 partie à 16:30 ») pour
+   les photos de la fenetre Reserver.
 
    Double vie : global navigateur (window.PinlaneAVolonte) et module CommonJS,
    comme assets/pinlane-pistes.js.
@@ -79,7 +88,8 @@
   // CE QUE L ACCES COMPREND ET GARDE. `plan` : le plan du dossier (opsPlan). Options : `minutes`,
   // la duree vendue (la visite ne finit pas avant) ; `toutes`, le dossier comprend toutes les
   // activites du centre. Rend null sans plan lisible.
-  function resume(plan, { minutes = 0, toutes = true } = {}) {
+  // `nombre` : combien d activites le dossier comprend, quand ce ne sont pas toutes celles du centre.
+  function resume(plan, { minutes = 0, toutes = true, nombre = 0 } = {}) {
     if (!plan || typeof plan !== 'object') return null;
     const blocs = Array.isArray(plan.resourceBlocks) ? plan.resourceBlocks : [];
     const etapes = Array.isArray(plan.timeline) ? plan.timeline : [];
@@ -101,8 +111,10 @@
         pistes,
         debut: heureDe(de),
         fin: heureDe(a),
-        courte: `Bowling : ${pistesDites(pistes)} ${gardees} toute la visite.`,
-        longue: `Bowling à volonté : ${pistesDites(pistes)} ${gardees} de ${heureDe(de)} à ${heureDe(a)}`,
+        courte: `Bowling, ${pistesDites(pistes)} ${gardees} toute la visite.`,
+        longue: `Bowling à volonté, ${pistesDites(pistes)} ${gardees} de ${heureDe(de)} à ${heureDe(a)}`,
+        etiquette: 'à volonté',
+        precision: pistes.length ? pistesDites(pistes) : '',
       });
     }
     const departs = blocsDe(plan, 'laser_arena', true);
@@ -117,8 +129,10 @@
         departs: heures.length,
         debut: premier,
         fin: dernier,
-        courte: `Laser : ${pluriel(armes, 'arme')} à chaque départ.`,
-        longue: `Laser à volonté : ${pluriel(armes, 'arme')} à chaque départ ${heures.length > 1 ? `de ${premier} à ${dernier}` : `à ${premier}`}`,
+        courte: `Laser, ${pluriel(armes, 'arme')} ${armes > 1 ? 'gardées' : 'gardée'} à chaque départ.`,
+        longue: `Laser à volonté, ${pluriel(armes, 'arme')} ${armes > 1 ? 'gardées' : 'gardée'} à chaque départ ${heures.length > 1 ? `de ${premier} à ${dernier}` : `à ${premier}`}`,
+        etiquette: 'à volonté',
+        precision: armes > 0 ? pluriel(armes, 'arme') : '',
       });
     }
     // Ce qui se joue une fois, a son heure.
@@ -128,7 +142,7 @@
       const de = Math.min(...pistesUneFois.map((bloc) => bornes(bloc).debut).filter((m) => m !== null));
       const duree = pistesUneFois.reduce((total, bloc) => { const b = bornes(bloc); return total + (b.debut !== null && b.fin !== null ? b.fin - b.debut : 0); }, 0);
       const pistes = [...new Set(pistesUneFois.flatMap((bloc) => (Array.isArray(bloc.lanes) ? bloc.lanes : []).map(Number)))].filter((n) => Number.isInteger(n) && n > 0).sort((a, b) => a - b);
-      uneFois.push({ activite: 'bowling', debut: heureDe(de), phrase: `Bowling ${dureeDite(duree)} à ${heureDe(de)}${pistes.length ? `, ${pistesDites(pistes)}` : ''}.` });
+      uneFois.push({ activite: 'bowling', debut: heureDe(de), phrase: `Bowling ${dureeDite(duree)} à ${heureDe(de)}${pistes.length ? `, ${pistesDites(pistes)}` : ''}.`, etiquette: `${dureeDite(duree)} à ${heureDe(de)}`, precision: pistes.length ? pistesDites(pistes) : '' });
     }
     const lasersUneFois = blocsDe(plan, 'laser_arena', false);
     if (lasersUneFois.length) {
@@ -139,18 +153,31 @@
         if (m !== null && (!parPartie.has(partie) || m < parPartie.get(partie))) parPartie.set(partie, m);
       });
       const heures = [...parPartie.values()].sort((x, y) => x - y).map(heureDe);
-      if (heures.length) uneFois.push({ activite: 'laser_game', debut: heures[0], phrase: `Laser, ${pluriel(heures.length, 'partie')} à ${heures.length > 1 ? `${heures.slice(0, -1).join(', ')} et ${heures[heures.length - 1]}` : heures[0]}.` });
+      const quand = heures.length > 1 ? `${heures.slice(0, -1).join(', ')} et ${heures[heures.length - 1]}` : heures[0];
+      if (heures.length) uneFois.push({ activite: 'laser_game', debut: heures[0], phrase: `Laser, ${pluriel(heures.length, 'partie')} à ${quand}.`, etiquette: `${pluriel(heures.length, 'partie')} à ${quand}`, precision: '' });
     }
-    const sauf = uneFois.map((ligne) => (ligne.activite === 'bowling' ? 'le bowling' : 'le laser'));
-    const phrase = `${toutes === false ? 'Les activités comprises' : 'Toutes les activités'} à volonté de ${heureDe(debut)} à ${heureDe(fin)}${sauf.length ? `, sauf ${sauf.join(' et ')} à l’heure réservée` : ''}.`;
+    // (ce qui se joue une fois suit la phrase : elle n a plus a dire « sauf »)
+    const phrase = `${tete({ toutes, nombre })} de ${heureDe(debut)} à ${heureDe(fin)}.`;
+    // L etiquette de chaque activite garde ou jouee une fois, pour sa photo.
+    const etiquettes = {};
+    [...gardes, ...uneFois].forEach((ligne) => { etiquettes[ligne.activite] = { etiquette: ligne.etiquette, precision: ligne.precision || '' }; });
     return {
       debut: heureDe(debut),
       fin: heureDe(fin),
       phrase,
       gardes,
       uneFois,
+      etiquettes,
       texte: [phrase, ...gardes.map((g) => g.courte), ...uneFois.map((u) => u.phrase)].join(' '),
     };
+  }
+
+  // LE DEBUT DE LA PHRASE, le meme avant toute heure (« Tout à volonté pendant 3 h ») et sur un plan
+  // (« Tout à volonté de 15:30 à 18:30 ») : toutes les activites du centre, sinon combien.
+  function tete({ toutes = true, nombre = 0 } = {}) {
+    if (toutes !== false) return 'Tout à volonté';
+    const n = Math.max(0, Math.trunc(Number(nombre) || 0));
+    return n > 0 ? `${pluriel(n, 'activité')} à volonté` : 'Les activités comprises à volonté';
   }
 
   // La phrase longue d un bloc garde, pour la carte du planning (son infobulle et sa lecture vocale).
@@ -161,5 +188,5 @@
     return garde ? garde.longue : '';
   }
 
-  return { resume, phraseDuBloc, gardeQuelqueChose };
+  return { resume, phraseDuBloc, gardeQuelqueChose, tete };
 }));

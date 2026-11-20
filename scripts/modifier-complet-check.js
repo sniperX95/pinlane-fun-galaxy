@@ -26,9 +26,9 @@
 //        la montre, rien n est ecrit ;
 //   [H3] le serveur ne pose une heure que sur une activite ajoutee : une heure envoyee pour le
 //        bowling deja au dossier ne le deplace pas ;
-//   [F1] un dossier a la carte (Famille Noel, bowling) a son menu « Formule », « À la carte » en tete ;
+//   [F1] un dossier a la carte (Famille Noel, bowling) a son menu « Formule », « Aucune formule » en tete ;
 //   [F2] choisir une formule du centre en fait une formule (indice, barre), « Enregistrer » l ecrit ;
-//   [F3] « À la carte » rend le dossier tel qu il etait : aucune modification ;
+//   [F3] « Aucune formule » rend le dossier tel qu il etait : aucune modification ;
 //   [D1] chaque extra dit son heure de service et sa note (les deux pizzas ne se ressemblent plus) ;
 //        une boisson du catalogue (heure: false) n a pas d heure ;
 //   [D2] l heure et la note se changent sur la ligne, la barre du bas le dit, la base les ecrit
@@ -36,6 +36,12 @@
 //   [D3] un nom du catalogue (« crêpe au sucre ») relie la ligne a l article : son prix de la carte,
 //        son id, sa categorie et son nom partent avec elle ;
 //   [D4] au telephone, rien ne deborde et l heure et la note se touchent au doigt (44 px) ;
+//   [E1] les notes de l equipe se relisent et se changent dans Modifier (qui et quand en etiquette),
+//        et une nouvelle se tape ;
+//   [E2] une note changee, une videe, une nouvelle : la barre du bas le dit, la base ecrit les deux
+//        signees de la session et retire la videe ;
+//   [E3] la trace d un prix revu ne se montre pas a changer, et elle reste telle quelle, le mot du
+//        dossier aussi ;
 //   [J1] aucune erreur JS.
 // --contre-preuves : chaque regle retiree (au code servi, en memoire ; le disque n est jamais
 // touche) fait rougir sa lettre.
@@ -114,8 +120,8 @@ function ligneDepuis(r) {
     amount_paid: r.amountPaid ?? null, discount_reason: r.discountReason || '', absent_at: r.absentAt ? new Date(r.absentAt) : null,
   };
 }
-function semer() {
-  B.semer(FIXTURE.staffState.reservations.map((r) => (r.id === NOEL ? { ...ligneDepuis(r), extras: JSON.parse(JSON.stringify(EXTRAS)), price: PRIX } : ligneDepuis(r))));
+function semer(plus = {}) {
+  B.semer(FIXTURE.staffState.reservations.map((r) => (r.id === NOEL ? { ...ligneDepuis(r), extras: JSON.parse(JSON.stringify(EXTRAS)), price: PRIX, ...plus } : ligneDepuis(r))));
 }
 function enBase(id) {
   const row = B.base.reservations.get(Number(id));
@@ -337,8 +343,8 @@ async function scenarioFormule(browser) {
       return m ? { valeur: m.value, premiere: m.options[0] ? [m.options[0].value, m.options[0].textContent.trim()] : null, formules: Array.from(m.options).filter((o) => o.value).map((o) => [o.value, o.textContent.trim()]), indice: h && !h.hidden ? h.textContent.trim() : '', barre: (document.getElementById('editModifs') || {}).textContent || '', type: state.editState.type, formuleId: state.editState.formuleId || '' } : null;
     });
     const a = await lireMenu();
-    ok(a && a.valeur === '' && a.premiere && a.premiere.join() === ',À la carte' && a.formules.length > 0 && a.indice === '',
-      '[F1] le bowling a la carte a son menu « Formule », « À la carte » choisi, rien de plus', a);
+    ok(a && a.valeur === '' && a.premiere && a.premiere.join() === ',Aucune formule' && a.formules.length > 0 && a.indice === '',
+      '[F1] le bowling a la carte a son menu « Formule », « Aucune formule » choisi, rien de plus', a);
     // CRAZY STUDENT STRIKE, du bowling a la piste : a 16:30 le laser est plein, une formule qui
     // en a ne passerait pas (le serveur le refuse, et il a raison).
     const choisie = a && (a.formules.find(([id]) => id === 'css') || a.formules[0]);
@@ -351,7 +357,7 @@ async function scenarioFormule(browser) {
     await page.waitForTimeout(250);
     const c = await lireMenu();
     ok(c && c.valeur === '' && c.type === 'bowling' && c.formuleId === '' && /Aucune modification/.test(c.barre) && c.indice === '',
-      '[F3] « À la carte » rend le dossier tel qu il etait : aucune modification', c);
+      '[F3] « Aucune formule » rend le dossier tel qu il etait : aucune modification', c);
     await page.selectOption('#posOverlay #editFormuleSelect', choisie ? choisie[0] : '');
     await page.waitForTimeout(250);
     const envois = await enregistrer(page, journal);
@@ -452,10 +458,67 @@ async function scenarioService(browser) {
 }
 
 // ---------------------------------------------------------------------------
+// [E1] [E2] [E3] LES NOTES DE L EQUIPE.
+// ---------------------------------------------------------------------------
+const NOTE = (o) => `[equipe] ${JSON.stringify(o)}`;
+const DEMO = (FIXTURE.staffState.reservations.find((r) => r.id === NOEL) || {}).notes || '';
+const TRACE = NOTE({ t: 'Prix 39 € → 35 €, geste', par: 'Lucas', le: '2026-11-19T09:00:00.000Z', type: 'prix', prix: { de: 39, a: 35, raison: 'geste' } });
+const NOTES = [DEMO, TRACE, NOTE({ t: 'Allergie arachides', par: 'Lucas', le: '2026-11-19T10:00:00.000Z' }), NOTE({ t: 'Gâteau apporté par les parents', par: 'Lucas', le: '2026-11-19T10:05:00.000Z' })].filter(Boolean).join('\n');
+function notesEnBase() {
+  const row = B.base.reservations.get(NOEL);
+  const lignes = String((row && row.notes) || '').split('\n');
+  const equipe = lignes.filter((l) => l.startsWith('[equipe] ')).map((l) => { try { return JSON.parse(l.slice(9)); } catch (e) { return null; } }).filter(Boolean);
+  return { lignes, equipe };
+}
+async function scenarioNotes(browser) {
+  semer({ notes: NOTES });
+  const serveur = B.monter({ mutations: mutation ? mutation.editions.filter((ed) => ed.serveur) : [], session: B.sessionDuRole('manager', { nom: 'Rachel' }) });
+  const { ctx, page, erreurs, journal } = await monter(browser, serveur);
+  try {
+    await page.evaluate(({ id, notes }) => {
+      const r = state.reservations.find((x) => x.id === id);
+      const servi = window.__FIXTURE__.jours[window.__FIXTURE__.jour].find((x) => x.id === id);
+      [r, servi].filter(Boolean).forEach((d) => { d.notes = notes; });
+    }, { id: NOEL, notes: NOTES });
+    await ouvrirModifier(page);
+    const lire = () => page.evaluate(() => {
+      const sec = document.querySelector('#posOverlay .fm-notes');
+      if (!sec) return null;
+      return {
+        champs: Array.from(sec.querySelectorAll('textarea')).map((n) => [(document.querySelector(`label[for="${n.id}"]`) || {}).textContent || '', n.value]),
+        barre: (document.getElementById('editModifs') || {}).textContent || '',
+      };
+    });
+    const a = await lire();
+    ok(a && a.champs.length === 3 && a.champs[0][1] === 'Allergie arachides' && /Lucas/.test(a.champs[0][0]) && a.champs[1][1] === 'Gâteau apporté par les parents' && a.champs[2][0] === 'Nouvelle note' && a.champs[2][1] === '',
+      '[E1] les notes de l equipe se relisent dans Modifier, qui et quand en etiquette, et une nouvelle se tape', a);
+    ok(a && !a.champs.some(([, v]) => /Prix 39/.test(v)), '[E3] la trace d un prix revu ne se montre pas en note a changer', a && a.champs);
+
+    await page.fill('#posOverlay .fm-notes textarea >> nth=0', 'Allergie arachides et noix');
+    await page.fill('#posOverlay .fm-notes textarea >> nth=1', '');
+    await page.fill('#posOverlay #editNoteNouvelle', 'Table près de la piste 6');
+    await page.waitForTimeout(150);
+    const b = await lire();
+    ok(b && /Note modifiée/.test(b.barre) && /Note retirée/.test(b.barre) && /Note ajoutée/.test(b.barre), '[E2] la barre du bas dit la note modifiee, retiree et ajoutee', b && b.barre);
+    const envois = await enregistrer(page, journal);
+    const r = envois.length ? envois[envois.length - 1] : null;
+    const n = notesEnBase();
+    const textes = n.equipe.filter((x) => x.type !== 'prix').map((x) => `${x.t}|${x.par}`);
+    ok(r && r.statut === 200 && pareil(textes, ['Allergie arachides et noix|Rachel', 'Table près de la piste 6|Rachel']),
+      '[E2] en base, la note changee et la nouvelle sont signees de la session, la note videe est partie', r ? { statut: r.statut, json: r.statut === 200 ? '' : r.json, textes } : 'aucun envoi');
+    ok(n.lignes.includes(TRACE) && (!DEMO || n.lignes.includes(DEMO)), '[E3] la trace du prix et le mot du dossier restent tels quels', n.lignes);
+    ok(erreurs.length === 0, '[J1] aucune erreur JS (notes)', erreurs.slice(0, 3));
+  } finally {
+    await ctx.close();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // LES CONTRE-PREUVES : une regle retiree, sa lettre rougit.
 // ---------------------------------------------------------------------------
 const FORMULE = ['formule'];
 const SERVICE = ['service'];
+const NOTES_E = ['notes'];
 const CSS = 'assets/pinlane-staff.css';
 const LIBRE = ['libre'];
 const CATALOGUE = ['catalogue'];
@@ -479,7 +542,7 @@ const MUTATIONS = [
   { nom: 'heure-muette', lettre: 'H1', scenarios: HEURE, editions: [{ fichier: JS, de: "  Object.entries(heuresNouvellesEnvoyees() || {}).forEach(([id, heure]) => modifs.push(", vers: '  [].forEach(([id, heure]) => modifs.push(' }] },
   { nom: 'serveur-ignore-l-heure', lettre: 'H1', scenarios: HEURE, editions: [{ fichier: API, serveur: true, de: '    ops.opsPlan = pose.dossier.opsPlan;\n', vers: '' }] },
   { nom: 'refus-avale', lettre: 'H2', scenarios: HEURE, editions: [{ fichier: API, serveur: true, de: '    if (pose.refus) throw createHttpError(pose.refus.message, 422);\n', vers: '' }] },
-  // Le menu des formules reserve aux formules, sans « À la carte », sans retour.
+  // Le menu des formules reserve aux formules, sans « Aucune formule », sans retour.
   { nom: 'carte-sans-menu', lettre: 'F1', scenarios: FORMULE, editions: [{ fichier: JS, de: "  if (!origine || e.versProgrammeNormal) return '';", vers: "  if (!origine || !formuleDOrigineEdition(origine) || e.versProgrammeNormal) return '';" }] },
   { nom: 'sans-a-la-carte', lettre: 'F1', scenarios: FORMULE, editions: [{ fichier: JS, de: '  const aLaCarte = !formuleDOrigineEdition(origine) ?', vers: '  const aLaCarte = false ?' }] },
   { nom: 'retour-impossible', lettre: 'F3', scenarios: FORMULE, editions: [{ fichier: JS, de: "  if (!e || !r || !origine || (!formule && String(id || '') !== '')) return;", vers: '  if (!e || !r || !origine || !formule) return;' }] },
@@ -490,6 +553,12 @@ const MUTATIONS = [
   { nom: 'barre-muette-service', lettre: 'D2', scenarios: SERVICE, editions: [{ fichier: JS, de: "    if (heure !== (depart.heure || '')) changes.push(", vers: '    if (false) changes.push(' }] },
   { nom: 'sans-catalogue', lettre: 'D3', scenarios: SERVICE, editions: [{ fichier: JS, de: "  if (cle === 'choix') relierArticleExtra(groupe, i, ligne);\n", vers: '' }] },
   { nom: 'telephone-petit', lettre: 'D4', scenarios: SERVICE, editions: [{ fichier: CSS, de: '  body:is(.staff-mode, .admin-mode) .fx-modal .fm .fm-x-opts .input { min-height: 44px; height: 44px; font-size: 16px; }\n', vers: '' }] },
+  // Les notes de l equipe : absentes, pas envoyees, muettes, la trace montree, la note videe gardee.
+  { nom: 'notes-absentes', lettre: 'E1', scenarios: NOTES_E, editions: [{ fichier: JS, de: '          ${notesEquipeEditionHtml(r)}\n', vers: '' }] },
+  { nom: 'notes-pas-envoyees', lettre: 'E2', scenarios: NOTES_E, editions: [{ fichier: JS, de: '    if (notesChangees !== null) updated.notes = notesChangees;', vers: '    if (false) updated.notes = notesChangees;' }] },
+  { nom: 'barre-muette-notes', lettre: 'E2', scenarios: NOTES_E, editions: [{ fichier: JS, de: '  modifs.push(...modifsNotesEdition());\n', vers: '' }] },
+  { nom: 'note-videe-gardee', lettre: 'E2', scenarios: NOTES_E, editions: [{ fichier: JS, de: '    if (sans.has(n.le)) return null;\n', vers: '' }] },
+  { nom: 'trace-montree', lettre: 'E3', scenarios: NOTES_E, editions: [{ fichier: JS, de: '  return notesEquipeEcrites(departsEdition().get(e)?.origine || r).filter((n) => n && n.le);', vers: '  return getReservationNotesEquipe(departsEdition().get(e)?.origine || r).filter((n) => n && n.le);' }] },
   { nom: 'serveur-pose-l-existant', lettre: 'H3', scenarios: HEURE, editions: [{ fichier: API, serveur: true, de: '.filter((posee) => !dejaAuDossier(posee.activityId) && proposedItems', vers: '.filter((posee) => proposedItems' }] },
 ];
 
@@ -500,6 +569,7 @@ async function jouer(browser, noms) {
     if (nom === 'heure') await scenarioHeure(browser);
     if (nom === 'formule') await scenarioFormule(browser);
     if (nom === 'service') await scenarioService(browser);
+    if (nom === 'notes') await scenarioNotes(browser);
   }
 }
 
@@ -509,7 +579,7 @@ async function main() {
   const t0 = Date.now();
   try {
     if (!process.argv.includes('--contre-preuves')) {
-      await jouer(browser, ['libre', 'catalogue', 'heure', 'formule', 'service']);
+      await jouer(browser, ['libre', 'catalogue', 'heure', 'formule', 'service', 'notes']);
     } else {
       console.log('[K] contre-preuves : chaque regle retiree fait rougir sa lettre');
       for (const m of MUTATIONS.filter((x) => !process.env.MC_MUTATIONS || liste(process.env.MC_MUTATIONS).includes(x.nom))) {

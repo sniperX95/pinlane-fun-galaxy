@@ -32803,9 +32803,9 @@ function optionsFormuleEditionHtml() {
   const e = state.editState;
   const origine = departsEdition().get(e)?.origine;
   const liste = formulesProposeesEdition();
-  // UN DOSSIER A LA CARTE PREND UNE FORMULE (2026-11-20, Ansar : « modifier tout complet ») : « À la
-  // carte » en tete, et le choisir rend le dossier tel qu il etait.
-  const aLaCarte = !formuleDOrigineEdition(origine) ? `<option value=""${formuleChangeeEdition() ? '' : ' selected'}>À la carte</option>` : '';
+  // UN DOSSIER A LA CARTE PREND UNE FORMULE (2026-11-20, Ansar : « modifier tout complet ») : « Aucune
+  // formule » en tete (l en-tete du dossier dit deja « À la carte »), et le choisir rend le dossier tel qu il etait.
+  const aLaCarte = !formuleDOrigineEdition(origine) ? `<option value=""${formuleChangeeEdition() ? '' : ' selected'}>Aucune formule</option>` : '';
   const option = (f) => {
     const dispo = String(f.id) === String(origine?.formuleId) ? { ok: true } : disponibiliteFormuleEdition(f);
     const texte = `${rvNomFormule(f)} · ${formatMontant(f.price)}${f.type === 'per_lane' ? ' la piste' : ''}${dispo.ok ? '' : ` · ${dispo.message}`}`;
@@ -32870,7 +32870,7 @@ function changerFormuleEdition(id) {
   const e = state.editState;
   const r = state.selectedRes;
   const origine = e && departsEdition().get(e)?.origine;
-  // (« À la carte », la valeur vide, rend le dossier a la carte tel qu il etait)
+  // (« Aucune formule », la valeur vide, rend le dossier a la carte tel qu il etait)
   const formule = String(id || '') === '' ? null : resolveDisplayFormule(id);
   if (!e || !r || !origine || (!formule && String(id || '') !== '')) return;
   if (state.editError) setEditError('');
@@ -33483,6 +33483,93 @@ function suivreLeGroupeExtras(valeur, reference) {
   if (!e.programmeEdite) e.groupeSuivi = groupe;
 }
 
+// LES NOTES DE L EQUIPE DANS MODIFIER (2026-11-20, Ansar : « modifier tout complet »). Chaque note
+// ecrite par l equipe se relit et se change ici ; videe, elle part ; une nouvelle s ajoute, comme
+// dans Reserver. Le serveur les signe (signerNotesEquipe) : l auteur et l heure sont ceux de la
+// session. Les traces du serveur (un prix revu, un compte a l arrivee) et le mot ecrit avec la
+// reservation ne bougent pas. Sans le droit de reecrire, les notes se lisent et une s ajoute.
+function notesEquipeEdition() {
+  const e = state.editState;
+  const r = state.selectedRes;
+  if (!e || !r) return [];
+  return notesEquipeEcrites(departsEdition().get(e)?.origine || r).filter((n) => n && n.le);
+}
+
+function setEditNoteEquipe(le, valeur) {
+  const e = state.editState;
+  if (!e || !le) return;
+  e.notesEquipe = { ...(e.notesEquipe || {}), [le]: String(valeur ?? '') };
+  majModifsEdition();
+}
+
+function setEditNoteNouvelle(valeur) {
+  const e = state.editState;
+  if (!e) return;
+  e.noteNouvelle = String(valeur ?? '');
+  majModifsEdition();
+}
+
+function changementsNotesEdition() {
+  const e = state.editState;
+  const vide = { modifiees: [], retirees: [], nouvelle: '' };
+  if (!e) return vide;
+  const changees = e.notesEquipe || {};
+  const droits = state.selectedRes ? ficheDroitsNotes(state.selectedRes) : { peutAjouter: false, peutReecrire: false };
+  notesEquipeEdition().forEach((n) => {
+    if (!droits.peutReecrire || !Object.prototype.hasOwnProperty.call(changees, n.le)) return;
+    const texte = String(changees[n.le]).trim().slice(0, 500);
+    if (texte === String(n.t).trim()) return;
+    (texte ? vide.modifiees : vide.retirees).push({ le: n.le, t: texte });
+  });
+  if (droits.peutAjouter) vide.nouvelle = String(e.noteNouvelle || '').trim().slice(0, 500);
+  return vide;
+}
+
+// Les notes qui partent, sur la version du dossier ou l action se joue : les lignes intactes
+// telles quelles (le serveur les reconnait), une note changee ou nouvelle sans auteur (il la signe).
+function notesEnvoyeesEdition(notes) {
+  const { modifiees, retirees, nouvelle } = changementsNotesEdition();
+  if (!modifiees.length && !retirees.length && !nouvelle) return null;
+  const parLe = new Map(modifiees.map((n) => [n.le, n.t]));
+  const sans = new Set(retirees.map((n) => n.le));
+  const lignes = String(notes || '').split('\n').map((ligne) => {
+    const n = lireNoteEquipeLigne(ligne);
+    if (!n || !n.le) return ligne;
+    if (sans.has(n.le)) return null;
+    return parLe.has(n.le) ? NOTE_EQUIPE_TAG + JSON.stringify({ t: parLe.get(n.le) }) : ligne;
+  }).filter((ligne) => ligne !== null);
+  if (nouvelle) lignes.push(NOTE_EQUIPE_TAG + JSON.stringify({ t: nouvelle }));
+  return lignes.join('\n');
+}
+
+function modifsNotesEdition() {
+  const { modifiees, retirees, nouvelle } = changementsNotesEdition();
+  return [
+    modifiees.length ? (modifiees.length > 1 ? `${modifiees.length} notes modifiées` : 'Note modifiée') : '',
+    retirees.length ? (retirees.length > 1 ? `${retirees.length} notes retirées` : 'Note retirée') : '',
+    nouvelle ? 'Note ajoutée' : '',
+  ].filter(Boolean);
+}
+
+function notesEquipeEditionHtml(r) {
+  const droits = ficheDroitsNotes(r);
+  if (!droits.peutAjouter) return '';
+  const e = state.editState;
+  const changees = (e && e.notesEquipe) || {};
+  const champs = notesEquipeEdition().map((n, i) => {
+    const valeur = Object.prototype.hasOwnProperty.call(changees, n.le) ? changees[n.le] : n.t;
+    const qui = [n.par, formatNoteEquipeQuand(n.le)].filter(Boolean).join(', ') || 'Note';
+    return droits.peutReecrire
+      ? `<div class="fm-champ fm-note"><label class="lbl" for="editNoteEquipe-${i}">${escapeHtml(qui)}</label><textarea id="editNoteEquipe-${i}" class="input" rows="2" maxlength="500" data-note-le="${escapeHtml(n.le)}" oninput="setEditNoteEquipe(this.dataset.noteLe, this.value)">${escapeHtml(valeur)}</textarea></div>`
+      : `<div class="fm-champ fm-note"><span class="lbl">${escapeHtml(qui)}</span><p class="fm-note-texte">${escapeHtml(n.t)}</p></div>`;
+  }).join('');
+  return `<div class="fm-notes" role="group" aria-labelledby="fmNotesTitre">
+            <h5 class="fm-notes-titre" id="fmNotesTitre">Notes pour l’équipe</h5>
+            ${champs}
+            <div class="fm-champ fm-note"><label class="lbl" for="editNoteNouvelle">Nouvelle note</label><textarea id="editNoteNouvelle" class="input" rows="2" maxlength="500" placeholder="Jamais envoyée au client" oninput="setEditNoteNouvelle(this.value)">${escapeHtml((e && e.noteNouvelle) || '')}</textarea></div>
+          </div>`;
+}
+
 // L occasion du dossier : un choix, ou aucun (un second clic le retire).
 function setEditOccasion(valeur) {
   const e = state.editState;
@@ -33543,6 +33630,7 @@ function resumeModifsEdition() {
   modifs.push(...modifsHeuresEdition());
   // (l heure tapee sur une activite ajoutee : « Laser Game à 17:30 »)
   Object.entries(heuresNouvellesEnvoyees() || {}).forEach(([id, heure]) => modifs.push(`${nomActiviteHeureEdition(id)} à ${heure}`));
+  modifs.push(...modifsNotesEdition());
   if (areneChangeeEdition()) modifs.push(areneEdition() === 'seuls' ? 'Arène : pour vous seuls' : 'Arène : partagée si besoin');
   if (Number(e.pax) > 0 && Number(e.pax) !== Number(origine.pax)) modifs.push(`Joueurs ${Number(origine.pax)} → ${Number(e.pax)}`);
   const accompagnants = (d) => Math.max(0, Math.trunc(Number(d.companions) || 0));
@@ -34773,6 +34861,7 @@ ${!adapte || (!isLaserRes && !editNeedsLanes && String(rf.type || '') !== 'formu
                 <button type="button" class="es-step staff-stepper-btn" aria-label="Un accompagnant de plus" onclick="editAccompagnantsPas(1)">${signe(true)}</button>
               </div>
             </div>` : ''}
+          ${notesEquipeEditionHtml(r)}
           </section>
           ${droits.annuler ? `<details class="dossier-other-actions fm-autres"><summary>Annuler ou supprimer</summary>
             <div class="edit-actions-destructive">
@@ -34982,6 +35071,9 @@ function preparerModificationEdition(options = {}) {
     else if (pistesALaMainDuDossier(origine)) updated.pistesALaMain = 0;
     if (extrasNouveaux) updated.extras = extrasNouveaux;
     if (heuresPoseesNouvelles) updated.heuresPosees = heuresPoseesNouvelles;
+    // (les notes de l equipe changees ici, posees sur la version ou l action se joue)
+    const notesChangees = notesEnvoyeesEdition(dossier.notes);
+    if (notesChangees !== null) updated.notes = notesChangees;
     // LA NOUVELLE FORMULE SE JOUE DEPUIS SA CARTE : sans programme (celui de
     // l ancienne, adaptee ou non, ne la suit pas) et sans plan (ses ancres et
     // la variante de l ancienne non plus). Le serveur la planifie a partir de

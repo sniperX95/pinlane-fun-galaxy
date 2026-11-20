@@ -20186,6 +20186,12 @@ body:is(.staff-mode, .admin-mode) .fx-modal .fm-x-opts { grid-column: 1 / -1; di
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-x-opt { min-height: 32px; padding: 0 12px; border: 1px solid var(--line); border-radius: 8px; background: transparent; font-size: 13px; font-weight: 500; color: var(--muted); cursor: pointer; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-x-opt.is-on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-x-opt:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 2px; }
+/* LES NOTES DE L EQUIPE DANS MODIFIER (2026-11-20), dans la section Client : un champ par note, celui
+   d une nouvelle en dernier ; qui l a ecrite et quand, en etiquette. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-notes { display: grid; gap: 12px; margin-top: 16px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-notes-titre { margin: 0; font-size: 14px; font-weight: 600; color: var(--text); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-notes textarea.input { min-height: 64px; height: auto; padding: 10px 12px; font-size: 14px; line-height: 1.4; resize: vertical; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-note-texte { margin: 0; font-size: 14px; line-height: 1.4; white-space: pre-line; }
 /* L HEURE DE SERVICE ET LA NOTE D UN EXTRA (2026-11-20) : des champs de la console sur la rangee
    des options, rien de plus. Au telephone, la note prend la largeur et les champs le doigt. */
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-x-opts { align-items: center; }

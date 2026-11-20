@@ -401,6 +401,7 @@
     "test:modifier-verdict": "node scripts/modifier-verdict-check.js && node scripts/modifier-verdict-check.js --contre-preuves",
     "test:heure-activite-dossier": "node scripts/heure-activite-dossier-check.js && node scripts/heure-activite-dossier-check.js --contre-preuves",
     "test:programme-complet": "node scripts/programme-complet-check.js && node scripts/programme-complet-check.js --contre-preuves",
+    "test:reserver-heure-activite": "node scripts/reserver-heure-activite-check.js && node scripts/reserver-heure-activite-check.js --contre-preuves",
     "test:attribution-visible": "node scripts/attribution-visible-check.js && node scripts/attribution-visible-check.js --contre-preuves",
     "test:modifier-complet": "node scripts/modifier-complet-check.js && node scripts/modifier-complet-check.js --contre-preuves",
     "test:compte-arrivee": "node scripts/compte-arrivee-check.js && node scripts/compte-arrivee-check.js --contre-preuves",

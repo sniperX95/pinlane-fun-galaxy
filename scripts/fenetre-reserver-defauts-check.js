@@ -10,11 +10,13 @@
 
    [F1] UNE HEURE PENDANT L AUTRE ACTIVITE DU GROUPE LE DIT, avant le toucher.
         Le laser a 17:00, le bowling « juste après » (17:30 a 18:30) : la touche
-        18:00 du laser dit « décale le bowling », dans le ton d avis (elle reste
-        touchable, le bowling suivra). Elle disait « reste 8 ».
-   [F2] CE QUI BOUGE TOUT SEUL SE DIT. Le laser deplace a 18:00, le bowling part
-        a 18:30 : sa ligne du ticket dit « Déplacé de 17:30 à 18:30 ». Rien ne le
-        disait.
+        18:00 du laser dit « pendant le bowling », dans le ton du refus. Elle
+        disait « reste 8 ». Depuis le 2026-11-20 (le gerant : « ça ne doit pas
+        faire suivre »), le bowling ne suit plus : « décale le bowling » n existe
+        plus.
+   [F2] RIEN NE BOUGE TOUT SEUL (2026-11-20, rvHeureSansSuivre). Le laser pris a
+        18:00 : le bowling reste a 17:30, aucun « Déplacé de » ; sa ligne du
+        ticket dit qu il est en meme temps que le laser.
    [F3] PENDANT UNE ACTIVITE FIXEE, LE TON DU REFUS. Le bowling pose a la main a
         22:30 : les touches 22:30 et 23:00 du laser disent « pendant le bowling »
         en rouge (le plan les refusera : « se chevauchent »).
@@ -73,9 +75,9 @@ const lf = (t) => String(t).split('\r\n').join('\n');
 
 // LE CODE D AVANT, une regle a la fois. `cible` : la lettre qui doit rougir.
 const MUTATIONS = [
-  { nom: 'pendant-muet', cible: 'F1', fichier: APP, de: '  if (!plages || !heure || !RV_ANCRABLES.includes(id)) return null;', vers: '  return null;' },
-  { nom: 'deplacement-muet', cible: 'F2', fichier: APP, de: '  if (id) s.deplace = { id, avant: avant.lignes[id].heure, apres: apres[id].heure };', vers: '' },
-  { nom: 'fixe-en-avis', cible: 'F3', fichier: APP, de: "${pendant ? (pendant.suit ? ' is-pendant' : ' is-coince') : ''}${gris ? ' is-efface' : ''}\"${on ? ` id=\"rvHeure-${escapeHtml(id)}\"` : ''}", vers: "${pendant ? ' is-pendant' : ''}${gris ? ' is-efface' : ''}\"${on ? ` id=\"rvHeure-${escapeHtml(id)}\"` : ''}" },
+  { nom: 'pendant-muet', cible: 'F1', fichier: APP, de: '  if (!plages || !heure || !(RV_ANCRABLES.includes(id) || rvPosable(id, plages.ids))) return null;', vers: '  return null;' },
+  { nom: 'le-bowling-suit', cible: 'F2', fichier: APP, de: 'function rvHeureSansSuivre(id, heure) {\n  const s = quickBookState;\n', vers: 'function rvHeureSansSuivre(id, heure) {\n  const s = null;\n' },
+  { nom: 'fixe-dit-groupe-occupe', cible: 'F3', fichier: APP, de: "  if (court === 'groupe occupé') return pendant ? rsMotPendant(pendant.activite) : court;", vers: '  if (court === \'groupe occupé\') return court;' },
   { nom: 'mot-coupe', cible: 'F4', fichier: CSS, de: '.qb-modal.rv.rs .rs-h small { font-size: 12px; font-weight: 400; line-height: 1.2; color: var(--muted); max-width: 100%; overflow-wrap: break-word; text-wrap: balance; }', vers: '.qb-modal.rv.rs .rs-h small { font-size: 12px; font-weight: 400; line-height: 1.2; color: var(--muted); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }' },
   { nom: 'question-absente', cible: 'F5', fichier: APP, de: '  b.demandeJoueurs = true;\n  b.focusQuestionJoueurs = true;\n', vers: '' },
   { nom: 'nombre-devine', cible: 'F6', fichier: APP, de: '  if (prefill.pax != null) rsEtat(quickBookState).faits.combien = !prefill.paxIndicatif;', vers: '  if (prefill.pax != null) rsEtat(quickBookState).faits.combien = true;' },
@@ -205,7 +207,7 @@ async function scenarioChevauchement(browser, lettres) {
     ok(monte, '[F1] montage : le laser a 17:00, le bowling juste apres (17:30, a la suite)', l1);
     if (lettres.includes('F1')) {
       const t = await lireTouche(page, 'laser_game', '18:00');
-      ok(Boolean(t) && t.pendant && !t.coince && t.mot === 'décale le bowling' && /Pendant le bowling de 17:30 à 18:30/.test(t.titre), '[F1] la touche 18:00 du laser dit « décale le bowling », en avis, et le survol ce qui se passera', t);
+      ok(Boolean(t) && !t.pendant && t.coince && t.mot === 'pendant le bowling', '[F1] la touche 18:00 du laser dit « pendant le bowling », dans le ton du refus (le bowling ne suivra pas)', t);
     }
     if (lettres.includes('F4')) {
       const mots = await page.evaluate(() => Array.from(document.querySelectorAll('.rs-s-l .rs-h small')).filter((s) => s.getClientRects().length).map((s) => ({ mot: s.textContent.trim(), coupe: s.scrollWidth > s.clientWidth + 1 })));
@@ -213,13 +215,13 @@ async function scenarioChevauchement(browser, lettres) {
       ok(longs.length >= 2, '[F4] montage : des mots longs sous les heures (« manque 2 armes », « pendant le bowling »)', mots.map((x) => x.mot).slice(0, 12));
       ok(longs.length >= 2 && !mots.some((x) => x.coupe), '[F4] aucun mot d heure coupe a la largeur de sa touche', mots.filter((x) => x.coupe).map((x) => x.mot));
     }
-    // Le laser deplace sur l heure du bowling : le bowling suit, le ticket le dit.
+    // Le laser pris sur l heure du bowling : rien ne suit (2026-11-20), le ticket dit le chevauchement.
     await touche(page, 'laser_game', '18:00');
     const l2 = await lignes(page);
     if (lettres.includes('F2')) {
-      const dit = await page.evaluate(() => { const d = document.getElementById('rsDeplace'); const l = d && d.closest('[data-activite]'); return { dit: d ? d.textContent.trim() : '', ligne: l ? l.dataset.activite : '', visible: Boolean(d && d.getClientRects().length) }; });
-      ok(l2.laser_game.heure === '18:00' && l2.bowling.heure === '18:30', '[F2] montage : le laser a 18:00, le bowling a suivi a 18:30', l2);
-      ok(dit.visible && dit.ligne === 'bowling' && dit.dit === 'Déplacé de 17:30 à 18:30', '[F2] la ligne du bowling dit « Déplacé de 17:30 à 18:30 »', dit);
+      const dit = await page.evaluate(() => ({ deplace: Boolean(document.getElementById('rsDeplace')), bowling: ((document.getElementById('rsL-a-bowling') || {}).textContent || '').replace(/\s+/g, ' ') }));
+      ok(l2.laser_game.heure === '18:00' && l2.bowling.heure === '17:30', '[F2] le laser a 18:00, le bowling reste a 17:30 : rien ne suit', l2);
+      ok(!dit.deplace && /en même temps que le laser/.test(dit.bowling), '[F2] aucun « Déplacé de » : la ligne du bowling dit qu il est en meme temps que le laser', dit);
     }
     if (lettres.includes('F3')) {
       // Le bowling pose a la main a 22:30 (pas la suite) : il ne suivra plus.

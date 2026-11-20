@@ -267,6 +267,7 @@
     "test:fiche-modifier",
     "test:heure-activite-dossier",
     "test:programme-complet",
+    "test:reserver-heure-activite",
     "test:resa-lisible",
     "test:attribution-visible",
     "test:modifier-complet",

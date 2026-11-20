@@ -322,6 +322,7 @@ async function scenarioHeure(browser) {
     await page.waitForTimeout(150);
     const barre = await page.evaluate(() => (document.getElementById('editModifs') || {}).textContent || '');
     ok(/Minigolf[^,]* à 18:00/.test(barre), '[H1] la barre du bas dit « Minigolf … à 18:00 »', barre);
+    ok(/Ajout : Minigolf Blacklight à 18:00/.test(barre) && (barre.match(/Minigolf/g) || []).length === 1, '[H1] la barre dit l ajout une seule fois, avec son heure', barre);
     const envois = await enregistrer(page, journal);
     const r1 = envois.length ? envois[envois.length - 1] : null;
     ok(r1 && r1.statut === 200 && pareil(r1.corps.heuresPosees, { [GOLF]: '18:00' }) && (r1.corps.program && r1.corps.program.items || []).some((i) => i.activityId === GOLF),
@@ -766,7 +767,8 @@ const MUTATIONS = [
   // L heure d une activite ajoutee : pas de champ, pas d envoi, pas de pose, pas de refus, et le serveur qui pose aussi l existant.
   { nom: 'heure-sans-champ', lettre: 'H1', scenarios: HEURE, editions: [{ fichier: JS, de: '${champHeureEditionHtml(choice.id)}${champHeureNouvelleHtml(choice.id)}', vers: '${champHeureEditionHtml(choice.id)}' }] },
   { nom: 'heure-pas-envoyee', lettre: 'H1', scenarios: HEURE, editions: [{ fichier: JS, de: '    if (heuresPoseesNouvelles) updated.heuresPosees = heuresPoseesNouvelles;\n', vers: '' }] },
-  { nom: 'heure-muette', lettre: 'H1', scenarios: HEURE, editions: [{ fichier: JS, de: "  Object.entries(heuresNouvellesEnvoyees() || {}).forEach(([id, heure]) => modifs.push(", vers: '  [].forEach(([id, heure]) => modifs.push(' }] },
+  { nom: 'heure-muette', lettre: 'H1', scenarios: HEURE, editions: [{ fichier: JS, de: "map(id => (heures[id] ? `${nom(id)} à ${heures[id]}` : nom(id)))", vers: 'map(nom)' }] },
+  { nom: 'ajout-redit', lettre: 'H1', scenarios: HEURE, editions: [{ fichier: JS, de: '  modifs.push(...modifsNotesEdition());\n', vers: "  Object.entries(heuresNouvellesEnvoyees() || {}).forEach(([id, heure]) => modifs.push(`${nomActiviteHeureEdition(id)} à ${heure}`));\n  modifs.push(...modifsNotesEdition());\n" }] },
   { nom: 'serveur-ignore-l-heure', lettre: 'H1', scenarios: HEURE, editions: [{ fichier: API, serveur: true, de: '    ops.opsPlan = pose.dossier.opsPlan;\n', vers: '' }] },
   { nom: 'refus-avale', lettre: 'H2', scenarios: HEURE, editions: [{ fichier: API, serveur: true, de: '    if (pose.refus) throw createHttpError(pose.refus.message, 422);\n', vers: '' }] },
   // Le menu des formules reserve aux formules, sans « Aucune formule », sans retour.

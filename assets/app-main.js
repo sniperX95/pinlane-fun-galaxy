@@ -33803,7 +33803,10 @@ function modifsProgrammeEdition() {
     return JSON.stringify(brut);
   };
   const ids = [...new Set(['bowling', 'laser_game', ...Object.keys(avant.others || {}), ...Object.keys(apres.others || {})])];
-  const ajouts = ids.filter(id => !actif(avant, id) && actif(apres, id)).map(nom);
+  // (l heure tapee sur une activite ajoutee se dit avec elle, une seule fois : « Ajout : Laser
+  // Game à 17:30 », plus « Laser Game à 17:30 · Ajout : Laser Game »)
+  const heures = heuresNouvellesEnvoyees() || {};
+  const ajouts = ids.filter(id => !actif(avant, id) && actif(apres, id)).map(id => (heures[id] ? `${nom(id)} à ${heures[id]}` : nom(id)));
   const retraits = ids.filter(id => actif(avant, id) && !actif(apres, id)).map(nom);
   const regles = ids.filter(id => actif(avant, id) && actif(apres, id) && reglages(avant, id, Number(origine && origine.pax) || 0) !== reglages(apres, id, Number(e.pax) || 0)).map(nom);
   const modifs = [
@@ -33825,8 +33828,6 @@ function resumeModifsEdition() {
   if (change('date') && e.date) modifs.push(`Jour ${jourCourt(origine.date)} → ${jourCourt(e.date)}`);
   if (change('startTime') && e.startTime) modifs.push(`Arrivée ${origine.startTime} → ${e.startTime}`);
   modifs.push(...modifsHeuresEdition());
-  // (l heure tapee sur une activite ajoutee : « Laser Game à 17:30 »)
-  Object.entries(heuresNouvellesEnvoyees() || {}).forEach(([id, heure]) => modifs.push(`${nomActiviteHeureEdition(id)} à ${heure}`));
   modifs.push(...modifsNotesEdition());
   if (areneChangeeEdition()) modifs.push(areneEdition() === 'seuls' ? 'Arène : pour vous seuls' : 'Arène : partagée si besoin');
   if (Number(e.pax) > 0 && Number(e.pax) !== Number(origine.pax)) modifs.push(`Joueurs ${Number(origine.pax)} → ${Number(e.pax)}`);

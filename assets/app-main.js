@@ -1593,6 +1593,10 @@ function refreshEditPreview() {
 function debutBowlingEdition(r, e) {
   const changee = e && e.heuresActivites && typeof e.heuresActivites === 'object' ? String(e.heuresActivites.bowling || '') : '';
   if (/^\d{2}:\d{2}$/.test(changee)) return timeToNum(changee);
+  // (l heure tapee d un bowling que le plan ne place pas encore, le dossier 1953 : ses pistes se
+  // cherchent a cette heure, pas a l arrivee du dossier)
+  const tapee = e && e === state.editState ? heureNouvelleTapee('bowling') : '';
+  if (tapee) return timeToNum(tapee);
   const arrivee = timeToNum((e && e.startTime) || r.startTime);
   const fenetres = getBowlingWindowsFromReservation(r);
   if (!fenetres.length) return arrivee;
@@ -28979,8 +28983,9 @@ function renderGroupeEtapes(r, moment, options = {}) {
   return `<ol class="gc-steps">${etapes.map((etape, index) => {
     if (enLigne && etape.libre) return etape === libres[0] ? ligneLibres() : '';
     const phase = phases[index];
+    // (un service, « 2 cruches boissons », n a pas de duree : son heure se dit une fois, 2026-11-20)
     const quand = etape.start !== null && etape.start !== undefined
-      ? `<span class="gc-step-time">${formatClockDisplay(etape.start)}<small>${formatClockDisplay(etape.end)}</small></span>`
+      ? `<span class="gc-step-time">${formatClockDisplay(etape.start)}${etape.end !== null && etape.end !== undefined && formatClockDisplay(etape.end) !== formatClockDisplay(etape.start) ? `<small>${formatClockDisplay(etape.end)}</small>` : ''}</span>`
       : `<span class="gc-step-time is-free">${etape.aPlacer ? '--:--' : 'Libre'}</span>`;
     const details = [etape.quoi, etape.ou, etape.groupe].filter(Boolean).join(' · ');
     const montant = prix && prix.has(etape.cle) ? `<span class="gc-step-price">${escapeHtml(prix.get(etape.cle))}</span>` : '';
@@ -33211,6 +33216,8 @@ function renderEditFormuleBloc(r, formule, lignes, controls = {}) {
   // connait (le dossier que le serveur ecrirait) ; sans lui, celles d avant.
   const ecritVerdict = dossierEcritDuVerdict();
   const heures = ecritVerdict ? heuresDuProgrammeEnregistre(ecritVerdict) : formuleChangee ? new Map() : heuresDuProgrammeEnregistre(r);
+  // (« 13:55 → 14:25 » des le rendu, pas seulement quand le verdict repeint la colonne)
+  const contexteHeures = state.editState ? contexteColonnesEdition() : null;
   const plus = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
   const ajouts = [];
   const volonte = gardeAVolonteEdition(r);
@@ -33252,7 +33259,7 @@ function renderEditFormuleBloc(r, formule, lignes, controls = {}) {
     // activite libre le dit ; une activite ajoutee ici n a pas encore d heure
     // (le serveur la place a l enregistrement).
     const etapesHeure = heures.get(choice.id) || [];
-    const heureHtml = heuresActiviteHtml(etapesHeure, choice.id);
+    const heureHtml = heuresActiviteHtml(etapesHeure, choice.id, contexteHeures);
     // LE PROGRAMME SE LIT DANS L ORDRE DES HEURES (2026-11-18), une heure changee
     // comprise ; une activite sans heure vient apres, dans l ordre du catalogue.
     const premiere = etapesHeure.find(etape => etape.start !== null && etape.start !== undefined);
@@ -33855,6 +33862,10 @@ function resumeModifsEdition() {
   const pistesApres = parseLaneInput(e.lanesStr);
   if (pistesApres.length && JSON.stringify(pistesAvant) !== JSON.stringify(pistesApres)) modifs.push(`Pistes ${pistesAvant.length ? joindrePistes(pistesAvant) : 'aucune'} → ${joindrePistes(pistesApres)}`);
   modifs.push(...modifsProgrammeEdition());
+  // (une heure donnee a un bowling que le programme portait sans que le plan le place, le dossier
+  // 1953 : « Bowling à 18:30 » ; une activite ajoutee dit deja la sienne dans « Ajout »)
+  const auDossier = new Set((Array.isArray(r.program) ? r.program : (r.program && r.program.items) || []).map((item) => item && item.activityId));
+  Object.entries(heuresNouvellesEnvoyees() || {}).filter(([id]) => auDossier.has(id)).forEach(([id, heure]) => modifs.push(`${nomActiviteHeureEdition(id)} à ${heure}`));
   modifs.push(...modifsExtrasEdition());
   const prix = getEditPriceValue();
   if (prix != null && Math.round(prix * 100) !== Math.round((Number(origine.price) || 0) * 100)) modifs.push(`Prix ${formatMoneyCentimes(origine.price)} → ${formatMoneyCentimes(prix)}`);
@@ -33987,6 +33998,10 @@ function demanderVerdictEdition() {
     if (Object.keys(heuresChangeesEdition()).length) {
       envoi = preparerDeplacementsEdition();
       corps = envoi.erreur ? null : corpsDeplacementsEdition(envoi);
+      // (et le reste avec elles : les deplacements puis la modification, dans l ordre de « Enregistrer »)
+      const reste = !envoi.erreur && resumeModifsEdition().length > modifsHeuresEdition().length ? preparerModificationEdition({ aBlanc: true }) : null;
+      if (reste && reste.erreur) envoi = { ...envoi, erreur: reste.erreur };
+      else if (reste) { envoi.reste = reste; corps = { ...corpsModificationEdition(reste), deplacements: corps.activityMoves }; }
       cle = envoi.erreur ? `refus:${envoi.erreur}` : JSON.stringify(['heures', corps]);
     } else if (resumeModifsEdition().length) {
       envoi = preparerModificationEdition({ aBlanc: true });
@@ -34009,12 +34024,18 @@ function demanderVerdictEdition() {
     let reponse = null;
     const heures = Boolean(envoi.deplacements);
     try {
-      reponse = heures
+      reponse = heures && !envoi.reste
         ? await apiRequest(API_ENDPOINTS.staffReservations, { method: 'POST', body: JSON.stringify({ dryRun: true, centerId: corps.centerId, deplacement: corps }) })
         : await apiRequest(API_ENDPOINTS.staffReservations, { method: 'POST', body: JSON.stringify({ dryRun: true, centerId: corps.centerId, modification: corps }) });
     } catch (erreur) { reponse = null; }
     if (jeton !== v.jeton || state.editState !== e) return;
     v.enCours = false;
+    if (heures && envoi.reste) {
+      v.resultat = lireVerdictHeuresEtReste(reponse, envoi);
+      if (v.resultat && v.resultat.ecrit && v.resultat.prixSuivi) majEditPrixEstime();
+      peindreVerdictEdition();
+      return;
+    }
     if (heures) {
       // (sans reponse du serveur, la fenetre dit encore ce qu elle sait seule)
       v.resultat = lireVerdictDeplacement(reponse, envoi);
@@ -34064,6 +34085,19 @@ function lireVerdictEdition(reponse, envoi) {
       : `Déjà encaissé ${formatMoneyCentimes(paye)} : ${formatMoneyCentimes(-ecart)} à rendre au client.`);
   }
   return { refus: '', lignes, ecrit, prixSuivi: envoi.prixSuivi === true };
+}
+
+// Le verdict des heures ET du reste (2026-11-20) : une heure refusee se lit a son activite, comme
+// celui des heures seules ; un reste refuse, dans la barre du bas ; sinon le dossier que les deux
+// ecriraient, ses heures dans le programme et ses lignes.
+function lireVerdictHeuresEtReste(reponse, envoi) {
+  const refusDe = (d, phrase, suggestions) => ({ refus: `${d.point.nom} à ${d.heure}.`, lignes: [], ecrit: null, prixSuivi: false, silencieux: true, heureRefusee: { cle: d.cle, phrase, suggestions: (suggestions || []).slice(0, 2) } });
+  const plancher = envoi.deplacements.find(d => d.plancher);
+  if (plancher) return refusDe(plancher, plancher.plancher, []);
+  if (!reponse || reponse.modification !== true) return null;
+  const d = reponse.refus && Number.isInteger(reponse.refus.rang) ? envoi.deplacements[reponse.refus.rang] : null;
+  if (d) return refusDe(d, phraseHeureRefus(reponse.refus.message) || 'Cette heure ne va pas.', reponse.refus.suggestions);
+  return lireVerdictEdition(reponse, envoi.reste);
 }
 
 // QUI TIENT DEJA UNE PISTE A L HEURE DU BOWLING (2026-11-15) : la piste prise se
@@ -34223,6 +34257,7 @@ function peindreVerdictEdition() {
   if (!programme || !r) return;
   const ecrit = dossierEcritDuVerdict();
   programme.classList.toggle('a-verdict', Boolean(ecrit));
+  programme.classList.toggle('a-refus', verdictRefuseEdition());
   const heures = ecrit ? heuresDuProgrammeEnregistre(ecrit) : formuleChangeeEdition() ? new Map() : heuresDuProgrammeEnregistre(dossierPourFormule(r));
   peindreColonnesHeuresEdition(heures);
   // L acces illimite dit ce que le serveur gardera (pistes, armes, heures), des qu il l a dit.
@@ -34238,11 +34273,12 @@ function peindreVerdictEdition() {
 function peindreColonnesHeuresEdition(heures) {
   const programme = document.querySelector('#posOverlay .fm-programme');
   if (!programme) return;
+  const contexte = contexteColonnesEdition();
   programme.querySelectorAll('.fm-act[data-edit-activity]').forEach((rangee) => {
     const id = rangee.dataset.editActivity;
     const etapes = heures.get(id) || [];
     const colonne = rangee.querySelector('.fm-heures');
-    if (colonne) colonne.innerHTML = heuresActiviteHtml(etapes, id);
+    if (colonne) colonne.innerHTML = heuresActiviteHtml(etapes, id, contexte);
     const parties = rangee.querySelector('.fm-act-parties');
     if (parties) parties.innerHTML = partiesActiviteHtml(etapes, id);
   });
@@ -34255,7 +34291,35 @@ function peindreColonnesHeuresEdition(heures) {
 // s y lit tout de suite, en couleur. Les autres parties d un laser (les groupes
 // d un bowling) se disent en mots dans la rangee (partiesActiviteHtml) : deux
 // heures nues l une sous l autre ne disaient pas laquelle etait celle du laser.
-function heuresActiviteHtml(etapes, activityId = '') {
+// UNE HEURE QUE LE PLANNING RECALCULE NE SE LIT JAMAIS BARREE SEULE (2026-11-20,
+// le minigolf « 13:55 » barre du dossier 1953) : le verdict connait la nouvelle,
+// l ancienne se dit avant elle (« 13:55 → 14:25 »). Pendant le calcul, l heure
+// d avant reste barree sous « Les heures seront recalculées » ; un verdict qui
+// refuse ne bouge rien, elle se relit normalement (a-refus). Une heure tapee ne
+// se barre jamais.
+function contexteColonnesEdition() {
+  const r = state.selectedRes;
+  const ecrit = dossierEcritDuVerdict();
+  const replan = Boolean(state.editState) && editionReplanifie();
+  return { avant: ecrit && replan && r && !formuleChangeeEdition() ? heuresDuProgrammeEnregistre(dossierPourFormule(r)) : null };
+}
+
+// Le verdict refuse et n ecrit rien : les heures d avant tiennent.
+function verdictRefuseEdition() {
+  return !dossierEcritDuVerdict() && etatVerdictEdition().ton === 'refus';
+}
+
+function heuresActiviteHtml(etapes, activityId = '', contexte = null) {
+  const html = heureActiviteSeuleHtml(etapes, activityId);
+  if (!contexte || !contexte.avant) return html;
+  const tapee = Object.keys(heuresChangeesEdition()).some(cle => cle === activityId || cle.startsWith(`${activityId}:`)) || Boolean(heureNouvelleTapee(activityId));
+  const lue = (liste) => { const placee = (liste || []).find(etape => etape.start !== null && etape.start !== undefined); return placee ? formatClockDisplay(placee.start) : (liste || []).some(etape => etape.libre) ? 'Libre' : ''; };
+  if (tapee) return html;
+  const avant = lue(contexte.avant.get(activityId));
+  return avant && avant !== lue(etapes) ? `<span class="fm-heure-avant"><s>${escapeHtml(avant)}</s> →</span>${html}` : html;
+}
+
+function heureActiviteSeuleHtml(etapes, activityId = '') {
   const placees = etapes.filter(etape => etape.start !== null && etape.start !== undefined);
   if (!placees.length) {
     // (2026-11-19) Une activite Libre se touche aussi : elle recoit une heure, comme les autres.
@@ -34264,6 +34328,9 @@ function heuresActiviteHtml(etapes, activityId = '') {
     if (libre && activityId && peutChangerHeureEdition(state.selectedRes, activityId) && pointsHeureEdition(state.selectedRes).has(activityId)) {
       return boutonHeureEditionHtml(activityId, nouvelleLibre && nouvelleLibre !== 'libre' ? nouvelleLibre : 'Libre', `fm-heure${nouvelleLibre ? ' is-changee' : ' is-vide'}`, nomActiviteHeureEdition(activityId), `fiche.edit.heure.${activityId}`);
     }
+    // (une activite ajoutee dont l heure est choisie la dit ici, a la place de « --:-- »)
+    const choisie = heureNouvelleTapee(activityId);
+    if (choisie) return `<span class="fm-heure is-changee">${escapeHtml(choisie)}</span>`;
     return `<span class="fm-heure is-vide">${libre ? 'Libre' : '--:--'}</span>`;
   }
   const etape = placees[0];
@@ -34323,10 +34390,12 @@ function partiesActiviteHtml(etapes, activityId) {
 // touche (la premiere a gauche, toutes en mots dans la rangee) et ne deplace
 // qu elle ; le pli « Changer l heure des parties » reste pour placer une partie
 // a placer ou la retirer du planning. Une activite « Libre », la table
-// d anniversaire et les boissons n ont pas d heure a changer ici. Une heure
-// s enregistre seule, ou avec le nom, le telephone, l e-mail et l occasion : le
-// jour, l arrivee, les joueurs, les pistes ou le programme recalculent les
-// heures, ils partent dans un second temps.
+// d anniversaire et les boissons n ont pas d heure a changer ici. Les heures
+// partent avec le reste d un seul « Enregistrer » (2026-11-20, dossier 1953 de
+// Gembloux : « Enregistrez d’abord l’heure, puis le reste » bloquait une Formule 5
+// dont on changeait le laser, les joueurs, le bowling et le prix) : chaque heure
+// d abord, par son chemin, puis le reste sur le dossier qu elles ont ecrit
+// (enregistrerHeuresEdition), et le calcul a blanc joue la meme suite.
 // ---------------------------------------------------------------------------
 let heureOuverteEdition = '';
 let heuresEnregistrementEnCours = false;
@@ -34464,6 +34533,10 @@ function champHeureEditionHtml(activityId) {
 function activiteAjouteeEdition(r, id) {
   if (!r || !id || id === 'party_table' || id === 'arcade_credit' || /^service_/.test(id)) return false;
   const items = Array.isArray(r.program) ? r.program : Array.isArray(r.program && r.program.items) ? r.program.items : [];
+  // (un bowling au programme que le PLAN ne place pas, le dossier 1953 : il recoit son heure ici,
+  // comme un bowling ajoute, et le serveur le place a cette heure. Ses pistes et l arrivee du
+  // dossier n en font pas un bowling place : la fiche le dessinait a 13:00, le plan ne l avait pas.)
+  if (id === 'bowling' && items.some((item) => item && item.activityId === id)) return !((r.opsPlan && Array.isArray(r.opsPlan.resourceBlocks) ? r.opsPlan.resourceBlocks : []).some((bloc) => bloc && bloc.resourceType === 'bowling_lane'));
   if (items.some((item) => item && item.activityId === id)) return false;
   const plan = r.opsPlan || {};
   const blocs = Array.isArray(plan.resourceBlocks) ? plan.resourceBlocks : [];
@@ -34493,7 +34566,17 @@ function poserHeureNouvelle(activityId, valeur) {
   else delete heures[activityId];
   e.heuresNouvelles = heures;
   if (state.editError) setEditError('');
+  // (l heure tapee se lit aussi a gauche, a la place de « --:-- »)
+  const ecrit = dossierEcritDuVerdict();
+  peindreColonnesHeuresEdition(ecrit ? heuresDuProgrammeEnregistre(ecrit) : formuleChangeeEdition() ? new Map() : heuresDuProgrammeEnregistre(dossierPourFormule(state.selectedRes)));
   majModifsEdition();
+}
+
+// L heure tapee pour une activite ajoutee, telle qu elle partira (sinon '').
+function heureNouvelleTapee(activityId) {
+  const e = state.editState;
+  const heure = e && e.heuresNouvelles ? e.heuresNouvelles[activityId] : '';
+  return heure && Number.isFinite(minutesHeureEdition(heure)) && activiteAjouteeEdition(state.selectedRes, activityId) ? String(heure) : '';
 }
 
 // Celles qui partent : une activite encore au programme, et que le dossier n a pas encore.
@@ -34634,19 +34717,6 @@ function ordreHeuresEdition(cles) {
   return cles.slice().sort((a, b) => rang(a) - rang(b) || a.localeCompare(b));
 }
 
-// Ce qui ne part pas avec une heure : ce qui recalcule les heures (le jour,
-// l arrivee, les joueurs, la duree, le programme, la formule), les pistes, les
-// extras et le prix.
-function modifsQuiEmpechentLesHeures() {
-  const e = state.editState;
-  const origine = e && departsEdition().get(e)?.origine;
-  if (!e || !origine) return false;
-  if (editionReplanifie() || editExtrasAChange() || e.prixFige) return true;
-  if (JSON.stringify(parseLaneInput(e.lanesStr)) !== JSON.stringify(parseLaneInput((origine.lanes || []).join(',')))) return true;
-  const prix = getEditPriceValue();
-  return prix != null && Math.round(prix * 100) !== Math.round((Number(origine.price) || 0) * 100);
-}
-
 // Une phrase du serveur, sans ce qui ne vaut que pour le glisser du planning.
 function phraseHeureRefus(message) {
   return String(message || '').replace(/\s*(Cet horaire reste inchangé|Les autres horaires restent inchangés)\.\s*$/, '').trim();
@@ -34663,7 +34733,6 @@ function preparerDeplacementsEdition() {
   const origine = (edition && edition.origine) || r;
   const versionDeBase = [edition && edition.base, origine].find(dossier => dossier && dossier.updatedAt) || r;
   const changees = heuresChangeesEdition();
-  if (modifsQuiEmpechentLesHeures()) return { heures: true, erreur: 'Une heure d’activité s’enregistre seule, ou avec le nom, le téléphone, l’e-mail et l’occasion. Enregistrez d’abord l’heure, puis le reste.' };
   const points = pointsHeureEdition(r);
   // Le groupe n est pas la avant son arrivee : ni avant l heure d arrivee du
   // dossier, ni avant sa premiere activite a heure quand elle commence plus tot.
@@ -34765,7 +34834,9 @@ function suggestionsConnuesEdition(cle) {
 }
 
 // L ENREGISTREMENT DES HEURES : un deplacement apres l autre, chacun sur la
-// version que le precedent a ecrite, puis le contact s il a change. Un refus
+// version que le precedent a ecrite, puis tout le reste (joueurs, programme,
+// prix, contact) sur la derniere (2026-11-20). Le nouveau calcul du planning qui
+// replace une heure tapee la voit reprendre la sienne, par son chemin. Un refus
 // laisse la saisie a l ecran, son champ en rouge avec sa phrase, et la barre du
 // bas le resume ; ce qui est deja passe le reste, et la barre le dit.
 async function enregistrerHeuresEdition() {
@@ -34782,27 +34853,45 @@ async function enregistrerHeuresEdition() {
   const reste = resumeModifsEdition().length > modifsHeuresEdition().length;
   const envoi = reste ? preparerModificationEdition() : null;
   if (envoi && envoi.erreur) { noterHeuresEdition({ ton: 'refus', texte: `Pas enregistré : ${envoi.erreur}` }); return; }
+  // (le reste en mots, tel que la barre du bas le dit : « Joueurs 6 → 7, Ajout : Bowling à 12:00 »)
+  const resteEnMots = envoi ? resumeModifsEdition().filter(m => !modifsHeuresEdition().includes(m)).join(', ') : '';
   const { es, origine, versionDeBase, deplacements } = prep;
   const id = versionDeBase.id;
   heuresEnregistrementEnCours = true;
   let derniere = null;
   const faits = [];
+  let resteFait = false;
+  let reprise = null;
   const dit = (liste) => liste.map(d => (d.move && d.move.libre ? `${d.point.nom} en accès libre` : `${d.point.nom} à ${d.heure}`)).join(', ');
+  // (une heure rendue libre se confirme libre, une heure par son heure)
+  const tenue = (dossier, d) => {
+    const apres = pointsHeureEdition(dossier).get(d.cle);
+    return d.move && d.move.libre ? Boolean(apres && apres.libre) : Boolean(apres) && Math.round(apres.start * 60) === minutesHeureEdition(d.heure);
+  };
   try {
     for (const d of deplacements) {
       const payload = await envoyerDeplacementActivite(derniere || versionDeBase, d.move);
-      const apres = pointsHeureEdition(payload.reservation).get(d.cle);
-      // (une heure rendue libre se confirme libre, une heure par son heure)
-      const confirmee = d.move && d.move.libre ? Boolean(apres && apres.libre) : Boolean(apres) && Math.round(apres.start * 60) === minutesHeureEdition(d.heure);
-      if (!confirmee) throw new Error('Le serveur n’a pas confirmé cette heure. Actualisez le planning.');
+      if (!tenue(payload.reservation, d)) throw new Error('Le serveur n’a pas confirmé cette heure. Actualisez le planning.');
       derniere = payload.reservation;
       faits.push(d);
     }
     let changeEntreTemps = '';
+    let planNonRefait = '';
     if (envoi) {
       const payload = await envoyerModificationReservation(derniere, envoi.appliquer, { requiresLanes: envoi.requiresLanes, prixSuivi: envoi.prixSuivi, prixRaison: raisonPrixEdition(), allowPastStart: true });
       derniere = payload.reservation;
+      resteFait = true;
       changeEntreTemps = payload.changeEntreTemps || '';
+      planNonRefait = payload.planNonRefait || '';
+      // Une heure tapee que le nouveau calcul a replacee reprend la sienne (un bowling garde ses pistes).
+      for (const d of faits.filter(f => !tenue(derniere, f))) {
+        reprise = d;
+        const pistes = d.point.activityId === 'bowling' ? [...new Set(getBowlingWindowsFromReservation(derniere).flatMap(fenetre => fenetre.lanes || []))].map(Number).sort((a, b) => a - b) : null;
+        const repris = await envoyerDeplacementActivite(derniere, pistes ? { ...d.move, lanes: pistes } : d.move);
+        if (!tenue(repris.reservation, d)) throw new Error('Le serveur n’a pas confirmé cette heure. Actualisez le planning.');
+        derniere = repris.reservation;
+      }
+      reprise = null;
     }
     markReservationMutation(id, derniere, ['lanes', 'opsPlan']);
     applyOptimisticReservation(derniere, { preserveEditState: true });
@@ -34813,7 +34902,8 @@ async function enregistrerHeuresEdition() {
     closePos();
     // Le planning, la liste et les cartes suivent tout de suite.
     renderStaffData();
-    const phrase = `${faits.length > 1 ? 'Heures changées' : 'Heure changée'} : ${dit(faits)}.`;
+    // (le reste se dit avec ses mots, et un planning qui n a pas suivi le nombre de joueurs aussi)
+    const phrase = `${faits.length > 1 ? 'Heures changées' : 'Heure changée'} : ${dit(faits)}.${resteEnMots ? ` ${resteEnMots} : enregistré${planNonRefait ? `, mais le planning n’a pas suivi : ${String(planNonRefait).replace(/\.$/, '')}` : ''}.` : ''}`;
     toast(changeEntreTemps ? `${phrase} Modifié entre-temps et conservé : ${changeEntreTemps}.` : phrase);
   } catch (error) {
     if (derniere) {
@@ -34821,12 +34911,16 @@ async function enregistrerHeuresEdition() {
       markReservationMutation(id, derniere, ['lanes', 'opsPlan']);
       departsEdition().set(es, { origine: { ...derniere }, base: { ...derniere } });
       const restantes = { ...heuresChangeesEdition() };
-      faits.forEach(d => { delete restantes[d.cle]; });
+      faits.filter(d => d !== reprise).forEach(d => { delete restantes[d.cle]; });
       es.heuresActivites = restantes;
       applyOptimisticReservation(derniere);
       renderStaffData();
+      // (la barre du bas ne garde que ce qui reste a enregistrer : l heure passee n y est plus)
+      const barre = document.getElementById('editModifs');
+      if (barre) { barre.innerHTML = resumeModifsEditionHtml(); barre.classList.toggle('is-vide', !resumeModifsEdition().length); }
     }
-    const deja = faits.length ? `${dit(faits)} : enregistré. ` : '';
+    const enregistres = [dit(faits.filter(d => d !== reprise)), resteFait ? resteEnMots : ''].filter(Boolean).join(', ');
+    const deja = enregistres ? `${enregistres} : enregistré. ` : '';
     if (error.conflit && error.reservation) {
       // Un autre poste a ecrit avant : rien de ce deplacement n est parti. Sa
       // version devient la base de la fiche, la saisie reste a l ecran.
@@ -34839,6 +34933,11 @@ async function enregistrerHeuresEdition() {
     const motif = phraseHeureRefus(error.message) || 'Cette heure n’a pas été enregistrée.';
     if (d && faits.length < deplacements.length) {
       noterHeuresEdition({ ton: 'refus', texte: `${deja}Pas enregistré : ${d.point.nom} à ${d.heure}.`, refus: { cle: d.cle, phrase: motif, suggestions: suggestionsConnuesEdition(d.cle) } });
+    } else if (reprise) {
+      noterHeuresEdition({ ton: 'refus', texte: `${deja}Pas enregistré : ${reprise.point.nom} à ${reprise.heure}.`, refus: { cle: reprise.cle, phrase: motif, suggestions: [] } });
+    } else if (envoi && !resteFait) {
+      // Les heures sont passees, le reste non : la barre du bas garde ce qui reste a enregistrer.
+      noterHeuresEdition({ ton: 'refus', texte: `${deja}Pas enregistré : ${resteEnMots}. ${String(error.message || 'Le serveur n’a pas donné de motif.').trim()}` });
     } else {
       noterHeuresEdition({ ton: 'refus', texte: `${deja}Pas enregistré : ${motif}` });
     }
@@ -35030,7 +35129,7 @@ ${!adapte || (!isLaserRes && !editNeedsLanes && String(rf.type || '') !== 'formu
             </div>
             ${autreJour ? `<p class="field-hint fm-indice" id="editJourHint">Nouveau jour : ${escapeHtml(jourLong)}. Les pistes et le laser y sont replacés à l’enregistrement.</p>` : ''}
           </section>
-          <section class="fm-programme${editionReplanifie() ? ' is-replan' : ''}${dossierEcritDuVerdict() ? ' a-verdict' : ''}" aria-labelledby="fmProgrammeTitre">
+          <section class="fm-programme${editionReplanifie() ? ' is-replan' : ''}${dossierEcritDuVerdict() ? ' a-verdict' : ''}${verdictRefuseEdition() ? ' a-refus' : ''}" aria-labelledby="fmProgrammeTitre">
             <h4 class="fm-titre" id="fmProgrammeTitre">Programme</h4>
             ${contenuBloc}${!peutAdapterLeProgramme(r) ? pistesBloc : ''}
             ${!peutAdapterLeProgramme(r) && !autreJour ? renderDossierLaserEditor(r) : ''}
@@ -35271,8 +35370,9 @@ function preparerModificationEdition(options = {}) {
     && (formuleChangee || versProgrammeNormal || poseEditionChange() || editProgramAChange() || Number(es.pax) !== Number(state.selectedRes.pax));
   // Les extras partent s ils ont change (nourriture, boissons, le reste).
   const extrasNouveaux = peutAdapterFormule() && editExtrasAChange() ? extrasDepuisLignes(es.extrasEdites, es.pax) : null;
-  // L heure tapee sur une activite ajoutee part avec le programme (heuresNouvellesEnvoyees).
-  const heuresPoseesNouvelles = programme ? heuresNouvellesEnvoyees() : null;
+  // L heure tapee sur une activite ajoutee part avec le programme (heuresNouvellesEnvoyees), et
+  // celle d un bowling que le programme porte sans que le plan le place, programme intact (1953).
+  const heuresPoseesNouvelles = heuresNouvellesEnvoyees();
   // Lus ici, une fois : `appliquer` se rejoue quand l etat d edition peut ne
   // plus etre celui de ce dossier (le compte a l arrivee le rend aussitot).
   const devisActivites = getEditPrixActivites();

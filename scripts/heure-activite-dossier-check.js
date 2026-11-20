@@ -45,8 +45,9 @@
 //   [C1] un autre poste a modifie le dossier entre-temps : le PATCH est refuse
 //        (409), la barre le dit, rien n est ecrit, la note du collegue reste ;
 //        la saisie reste, et un second « Enregistrer » passe sur sa version ;
-//   [M1] une heure ne part pas avec les joueurs (ils recalculent les heures) :
-//        refusee avant le clic, rien ne part ; avec le telephone, les deux partent ;
+//   [M1] une heure part avec tout le reste d un seul « Enregistrer » (2026-11-20,
+//        le dossier 1953) : le deplacement, puis le dossier ; avec le telephone
+//        comme avec les joueurs, qui recalculent les heures ;
 //   [D1] au telephone et sur tablette : rien ne deborde, chaque heure, chaque
 //        champ et chaque heure proposee se touche au doigt ;
 //   [V1] le calcul a blanc des heures n ecrit rien ;
@@ -495,10 +496,12 @@ async function scenarioRefus(browser) {
   const ks = await jouerCas(browser, { id: LINA, geste: suite(heure('minigolf_blacklight', '16:30'), proposee('minigolf_blacklight', '18:00')), blocs: [bloc], nom: 'suggestion-touchee', cle: 'minigolf_blacklight' });
   ok(ks.avant.champ.includes('minigolf_blacklight=18:00') && ks.avant.verdict === '' && !ks.avant.rouges.length && ks.apres && ks.apres.fermee && ks.base.heures.minigolf_blacklight === '18:00',
     '[S1] l heure proposee touchee remplit le champ, se revérifie sans bruit, et « Enregistrer » la pose', { champ: ks.avant.champ, verdict: ks.avant.verdict, rouges: ks.avant.rouges, base: ks.base.heures });
-  // Une heure et les joueurs : refuse avant le clic, rien ne part.
+  // Une heure et les joueurs (2026-11-20, le dossier 1953) : un seul « Enregistrer », le deplacement
+  // puis le dossier ; aucun refus avant le clic, et la nouvelle heure tient apres le nouveau calcul.
   const j = await jouerCas(browser, { id: LINA, geste: suite(heure('minigolf_blacklight', '16:30'), champ('#editPaxInput', '12')) });
-  ok(j.avant.ton === 'refus' && /s’enregistre seule/.test(j.avant.verdict) && j.patchs.length === 0 && !j.ecrit,
-    '[M1] une heure et les joueurs : refuse avant le clic, rien ne part', { verdict: j.avant.verdict, patchs: j.patchs.length });
+  ok(j.avant.ton !== 'refus' && !/s’enregistre seule/.test(j.avant.verdict) && j.patchs.length >= 2 && j.patchs[0].activityMove && !j.patchs[1].activityMove
+    && j.base.heures.minigolf_blacklight === '16:30' && j.base.pax === 12,
+  '[M1] une heure et les joueurs : les deux partent d un seul « Enregistrer », le minigolf a 16:30 et 12 joueurs', { verdict: j.avant.verdict, patchs: j.patchs.map((p) => Object.keys(p).filter((k) => /activityMove|pax/.test(k)).join('|')), base: j.base });
   ok([c, m, g, a, p, f, x, s, k, ks, j].every((y) => !y.erreurs.length), '[J1] aucune erreur JS (refus)', [c, m, g, a, p, f, x, s, k, ks, j].flatMap((y) => y.erreurs).slice(0, 3));
 }
 
@@ -582,7 +585,7 @@ const MUTATIONS = [
   { nom: 'fermeture-floue', lettre: 'R4', scenarios: REFUS, editions: [{ fichier: MOVE, serveur: true, de: '  if (tard) reject(`Hors des horaires d’ouverture : l’activité finirait à ${lisible(end(tard))}, le centre ferme à ${lisible(Math.round(schedule.close * 60))} ce jour-là.`);', vers: "  if (tard) reject('Cette activité ne tient pas dans les horaires d’ouverture.');" }] },
   { nom: 'blocages-ignores', lettre: 'R5', scenarios: REFUS, editions: [{ fichier: API, serveur: true, de: "      blocs = resolveBlocksForDate(await loadAvailabilityBlocks(require('../lib/database').getPool(), centre), current.date);", vers: '      blocs = [];' }] },
   { nom: 'passe-ignore', lettre: 'R6', scenarios: REFUS, editions: [{ fichier: JS, de: '    const plancher = maintenant !== null && minutes < maintenant', vers: '    const plancher = false && minutes < maintenant' }] },
-  { nom: 'melange-permis', lettre: 'M1', scenarios: REFUS, editions: [{ fichier: JS, de: '  if (modifsQuiEmpechentLesHeures()) return { heures: true, erreur:', vers: '  if (false) return { heures: true, erreur:' }] },
+  { nom: 'melange-refuse', lettre: 'M1', scenarios: REFUS, editions: [{ fichier: JS, de: '  const changees = heuresChangeesEdition();\n  const points = pointsHeureEdition(r);\n', vers: "  const changees = heuresChangeesEdition();\n  if (resumeModifsEdition().length > modifsHeuresEdition().length) return { heures: true, erreur: 'Une heure d’activité s’enregistre seule.' };\n  const points = pointsHeureEdition(r);\n" }] },
   { nom: 'conflit-mal-repris', lettre: 'C1', scenarios: ['conflit'], editions: [{ fichier: JS, de: '    if (error.conflit && error.reservation) {\n      // Un autre poste a ecrit avant', vers: '    if (false) {\n      // Un autre poste a ecrit avant' }] },
   { nom: 'doigt-trop-petit', lettre: 'D1', scenarios: ['appareils'], editions: [{ fichier: CSS, de: '  body:is(.staff-mode, .admin-mode) .fx-modal .fm-heure-suggestion { min-height: 44px; min-width: 72px; }\n', vers: '' }] },
   { nom: 'blanc-sans-porte', lettre: 'P1', scenarios: ['porte'], editions: [{ fichier: API, serveur: true, de: '        if (!(await requireAnyStaffSession(req, res))) return;\n        await warmCenterKnowledge();\n        const blanc = await deplacerABlanc(', vers: '        await warmCenterKnowledge();\n        const blanc = await deplacerABlanc(' }] },

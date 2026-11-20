@@ -20293,9 +20293,15 @@ body:is(.staff-mode, .admin-mode) .fx-modal .fm-verdict.is-ok { color: var(--suc
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-verdict:is(.is-attention, .is-refus) { padding: 8px 12px; border-radius: 8px; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-verdict.is-attention { background: var(--warning-soft); color: var(--text); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-verdict.is-refus { background: var(--danger-soft); color: var(--danger); }
-/* Le verdict a jour donne les heures du planning : elles ne sont plus barrees. */
-body:is(.staff-mode, .admin-mode) .fx-modal .fm-programme.a-verdict .fm-replan { display: none; }
-body:is(.staff-mode, .admin-mode) .fx-modal .fm-programme.a-verdict.is-replan .fm-heure:not(.is-vide) { color: inherit; text-decoration: none; }
+/* Le verdict a jour donne les heures du planning : elles ne sont plus barrees. Un verdict qui
+   refuse (a-refus, 2026-11-20) ne bouge rien : les heures d avant tiennent, sans barre. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-programme:is(.a-verdict, .a-refus) .fm-replan { display: none; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-programme:is(.a-verdict, .a-refus).is-replan .fm-heure:not(.is-vide) { color: inherit; text-decoration: none; }
+/* Une heure tapee ne se barre jamais, recalcul ou pas : c est celle que le comptoir a choisie. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-programme.is-replan .fm-heure.is-changee { color: var(--console-selected); text-decoration: none; }
+/* « 13:55 → 14:25 » (2026-11-20) : l heure d avant, petite et barree, au-dessus de la nouvelle. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-heure-avant { font-family: var(--font-ui); font-size: 11.5px; font-weight: 500; line-height: 1.2; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-heure-avant s { text-decoration-thickness: 1px; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-heures { display: contents; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-modifs { flex: 1 1 280px; min-width: 0; margin: 0; font-size: 13px; line-height: 1.5; color: var(--text); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-modifs.is-vide { color: var(--muted); }

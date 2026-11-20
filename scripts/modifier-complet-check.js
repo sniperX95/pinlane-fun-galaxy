@@ -56,6 +56,20 @@
 //   [I1] sans le droit « Ajouter du sur mesure », « Ajouter » se voit eteint, une ligne nomme le droit ;
 //   [I2] sans le droit « Ajuster un prix », « Offert » se voit eteint sur chaque ligne, une ligne le dit ;
 //   [I3] sans le droit « Adapter une formule », le programme d une formule se lit, une ligne le dit ;
+// LE DOSSIER 1953 (2026-11-20) : une Formule 5 de Gembloux (une seule piste) prend un Bowling.
+//   [W1] une heure (le minigolf a 14:30), les joueurs (6 -> 7) et un Bowling a 15:30 partent d un
+//        seul « Enregistrer » : aucun refus avant le clic, le deplacement puis le reste, tout en base ;
+//   [W2] le plan, Infos et Modifier disent les memes activites aux memes heures, fin de visite 16:30 ;
+//   [W3] le chemin en deux fois (l heure, puis le Bowling) donne le meme dossier ;
+//   [W4] la piste unique prise : le verdict le dit avant le clic, rien du Bowling ne s ecrit ;
+//   [W5] un Bowling sans heure : le verdict demande son heure, rien ne s ecrit ;
+//   [W6] la piste prise entre le verdict et le clic : la barre dit ce qui est enregistre et ce
+//        qui ne l est pas, et « À enregistrer » ne garde que le reste ;
+//   [W7] un dossier deja casse (ecrit par l ancien serveur : le programme porte un Bowling que son
+//        plan n a pas) se repare dans Modifier : une heure au Bowling et « Enregistrer » ;
+//   [L1] une heure recalculee se lit « 13:55 → 14:25 » ; l heure choisie d un Bowling ajoute se lit a
+//        gauche ; sous un verdict qui refuse, rien n est barre ; dans Infos, les deux cruches disent
+//        14:40 une fois ;
 //   [J1] aucune erreur JS.
 // --contre-preuves : chaque regle retiree (au code servi, en memoire ; le disque n est jamais
 // touche) fait rougir sa lettre.
@@ -147,10 +161,12 @@ function enBase(id) {
 // ---------------------------------------------------------------------------
 // DANS LA PAGE.
 // ---------------------------------------------------------------------------
-async function monter(browser, serveur, { appareil = 'ordinateur', theme = 'dark' } = {}) {
+// `blanc` : le calcul a blanc du vrai handler (le verdict avant le clic) ; `heure` : l heure de la page.
+async function monter(browser, serveur, { appareil = 'ordinateur', theme = 'dark', blanc = false, heure = '15:10' } = {}) {
   const journal = [];
+  const blancs = [];
   const m = await FX.monter(browser, {
-    fixture: 'pic', appareil, theme, port: PORT, heure: '15:10',
+    fixture: 'pic', appareil, theme, port: PORT, heure,
     avantChargement: async (page) => {
       await page.exposeFunction('__fixtureLecture', async (chemin) => lectureCatalogue(chemin));
       await page.exposeFunction('__fixtureServeur', async (corps) => {
@@ -158,9 +174,10 @@ async function monter(browser, serveur, { appareil = 'ordinateur', theme = 'dark
         journal.push({ corps, statut: rep.statut, json: rep.json });
         return rep;
       });
+      if (blanc) await page.exposeFunction('__fixtureBlanc', async (corps) => { const rep = await serveur.appeler('POST', '/api/staff-reservations', corps); blancs.push({ corps, statut: rep.statut, json: rep.json }); return rep; });
     },
   });
-  return { ...m, journal };
+  return { ...m, journal, blancs };
 }
 
 // Le dossier de Noel porte ses extras dans la page aussi (la journee servie comprise : le
@@ -738,6 +755,290 @@ async function scenarioDroits(browser) {
 }
 
 // ---------------------------------------------------------------------------
+// [W1] .. [W7], [L1] LE DOSSIER 1953 (2026-11-20) : une Formule 5 de Gembloux (2 parties de
+// laser 13:00 et 13:30, un minigolf 13:55, deux cruches 14:40, 6 joueurs ; une seule piste de
+// bowling) prend un Bowling dans Modifier. Le dossier est cree par le vrai handler, la page le
+// lit, ses PATCH et son calcul a blanc partent au vrai handler.
+// ---------------------------------------------------------------------------
+const JOUR_FX = FIXTURE.staffState.date;
+const SESSION_GEMBLOUX = () => B.sessionDuRole('manager', { nom: 'Rachel', centre: 'gembloux' });
+function unePiste(oui) {
+  B.base.centers = oui ? [{ id: 'gembloux', name: 'Fun Galaxy Gembloux', status: 'active', timezone: 'Europe/Brussels', settings: { config: { resources: { bowling: { laneCount: 1 } } } } }] : [];
+  require(path.join(ROOT, 'lib/ops-knowledge.js')).getCenter('gembloux').resources.bowling.laneCount = oui ? 1 : 8;
+}
+async function creerGembloux(serveur, champs) {
+  const rep = await serveur.appeler('POST', '/api/staff-reservations', B.corpsStaff({ centerId: 'gembloux', date: JOUR_FX, status: 'confirmed', ...champs }));
+  if (rep.statut !== 201 || !rep.json.reservation) throw new Error(`dossier pas cree : ${rep.statut} ${JSON.stringify(rep.json).slice(0, 200)}`);
+  return rep.json.reservation;
+}
+const formule5 = (serveur) => creerGembloux(serveur, { type: 'formule', formuleId: 'f5', pax: 6, duration: 1.5, startTime: '13:00', name: 'Dossier 1953', phone: '0470195300' });
+const pistePrise = (serveur, debut) => creerGembloux(serveur, { type: 'bowling', pax: 4, duration: 1, startTime: debut, lanes: [1], laneCount: 1, requiresLanes: true, name: 'Piste prise', phone: '0470195301' });
+const enApi = (id) => require(path.join(ROOT, 'lib/database.js')).mapReservation(B.base.reservations.get(Number(id)));
+// Ce que la base porte : le programme, et les heures que le plan donne a chaque activite.
+function dossierEnBase(id) {
+  const row = B.base.reservations.get(Number(id));
+  if (!row) return null;
+  const lire = (v) => (typeof v === 'string' ? JSON.parse(v) : v);
+  const plan = lire(row.ops_plan) || {};
+  const prog = lire(row.program);
+  const hm = (x) => String((x && x.startTime) || '').slice(0, 5);
+  const blocs = plan.resourceBlocks || [];
+  return {
+    pax: Number(row.pax),
+    items: ((prog && prog.items) || []).map((i) => i.activityId).sort(),
+    bowling: blocs.filter((b) => b.resourceType === 'bowling_lane').map((b) => `${hm(b)}|${(b.lanes || []).join('+')}`),
+    laser: blocs.filter((b) => b.resourceType === 'laser_arena').map(hm),
+    golf: (plan.timeline || []).filter((e) => e && e.type === 'activity' && e.activityId === GOLF && e.flexible !== true).map(hm),
+  };
+}
+async function ouvrirDossier(page, r, onglet) {
+  await page.evaluate(({ r: d, onglet: o }) => {
+    const jour = window.__FIXTURE__.jours[window.__FIXTURE__.jour];
+    [jour, state.reservations].forEach((liste) => { const i = liste.findIndex((x) => x.id === d.id); if (i >= 0) liste[i] = { ...d }; else liste.push({ ...d }); });
+    closePos(); openPos(d.id); setTab(o);
+  }, { r, onglet });
+  await page.waitForTimeout(300);
+}
+// La fiche rouverte telle que la page la tient apres un enregistrement.
+async function rouvrir(page, id, onglet) {
+  await page.evaluate(({ id: i, onglet: o }) => { closePos(); openPos(i); setTab(o); }, { id, onglet });
+  await page.waitForTimeout(300);
+}
+async function verdictPose(page) {
+  await page.waitForTimeout(150);
+  await page.waitForFunction(() => { const z = document.getElementById('editVerdict'); return Boolean(z) && !z.classList.contains('is-calcul') && !verdictEdition().enCours; }, null, { timeout: 15000 }).catch(() => null);
+  await page.waitForTimeout(200);
+}
+const toucherHeure = async (page, cle, valeur) => {
+  await page.locator(`#posOverlay [data-heure-cle="${cle}"]`).first().click();
+  await page.fill(`#posOverlay [data-heure-champ="${cle}"]`, valeur);
+  await verdictPose(page);
+};
+async function ajouterBowling(page, heure) {
+  await page.click('#posOverlay .fm-ajouts .fm-ajout[onclick*="\'bowling\'"]');
+  await page.waitForSelector('#posOverlay [data-heure-nouvelle="bowling"]', { timeout: 5000 });
+  if (heure) await page.fill('#posOverlay [data-heure-nouvelle="bowling"]', heure);
+  await verdictPose(page);
+}
+// « Enregistrer » : chaque PATCH part au vrai handler ; une fenetre de confirmation se valide.
+async function enregistrerTout(page, journal) {
+  const avant = journal.length;
+  await page.click('#posOverlay .es-save');
+  const t = Date.now();
+  let vu = -1;
+  while (Date.now() - t < 20000) {
+    await page.waitForTimeout(200);
+    const confirmer = page.locator('.staff-confirm [data-role="confirm-ok"]');
+    if (await confirmer.count()) await confirmer.first().click();
+    const fini = await page.evaluate(() => !heuresEnregistrementEnCours);
+    if (fini && journal.length === vu) break;
+    vu = journal.length;
+  }
+  await page.waitForTimeout(300);
+  return journal.slice(avant);
+}
+const verdictLu = (page) => page.evaluate(() => { const z = document.getElementById('editVerdict'); return z && z.getClientRects().length ? { ton: z.className, texte: z.textContent.trim() } : { ton: '', texte: '' }; });
+// Modifier : une rangee par activite, et ce que sa colonne de gauche montre (visible).
+const modifierLu = (page) => page.evaluate(() => Array.from(document.querySelectorAll('#posOverlay .fm-act[data-edit-activity]')).map((rangee) => {
+  const c = rangee.querySelector('.fm-heures');
+  const vus = c ? Array.from(c.children).filter((e) => e.getClientRects().length) : [];
+  const avant = c && c.querySelector('.fm-heure-avant s');
+  return { id: rangee.dataset.editActivity, heure: vus.map((e) => e.textContent.replace(/\s+/g, ' ').trim()).join(' '), barree: avant ? avant.textContent.trim() : '', champ: Boolean(rangee.querySelector('[data-heure-nouvelle]')) };
+}));
+// Infos : le Programme, une ligne par etape (son heure, sa fin si elle en a une, son nom) et la fin de visite.
+const infosLu = (page) => page.evaluate(() => {
+  const etapes = Array.from(document.querySelectorAll('#posOverlay .fx-programme .gc-step')).filter((li) => li.getClientRects().length).map((li) => {
+    const t = li.querySelector('.gc-step-time');
+    const fin = t && t.querySelector('small');
+    const nom = li.querySelector('.gc-step-what b');
+    return { heure: t ? (fin ? t.textContent.slice(0, t.textContent.length - fin.textContent.length) : t.textContent).trim() : '', fin: fin ? fin.textContent.trim() : '', nom: nom ? nom.textContent.trim() : '' };
+  });
+  const span = getStaffTerrainSpan(state.selectedRes);
+  return { etapes, fin: formatClockDisplay(span.end) };
+});
+// Le plan, Infos et Modifier disent la meme chose : les memes activites ; pour chacune, l heure du
+// plan (sa premiere), sinon « Libre », est celle de Infos et de Modifier ; jamais « --:-- », jamais
+// une seconde ligne « Libre » pour une activite qui a son heure (la 5e ligne du dossier 1953).
+const NOMS = { bowling: 'Bowling', laser_game: 'Laser Game', [GOLF]: 'Minigolf Blacklight' };
+function memeLecture(modif, infos, base) {
+  const ids = modif.map((m) => m.id).filter((id) => NOMS[id]).sort();
+  const vus = [...new Set(infos.etapes.map((e) => Object.keys(NOMS).find((id) => NOMS[id] === e.nom)).filter(Boolean))].sort();
+  const auPlan = { bowling: (base.bowling[0] || '').slice(0, 5), laser_game: base.laser[0] || '', [GOLF]: base.golf[0] || '' };
+  const heures = ids.every((id) => {
+    const lignes = infos.etapes.filter((e) => e.nom === NOMS[id]);
+    const m = modif.find((x) => x.id === id);
+    const voulue = auPlan[id] || 'Libre';
+    return m && lignes.length && m.heure === voulue && lignes[0].heure === voulue && lignes.slice(1).every((l) => /^\d\d:\d\d$/.test(l.heure));
+  });
+  return JSON.stringify(ids) === JSON.stringify(vus) && heures && !infos.etapes.some((e) => e.heure === '--:--');
+}
+
+// Le dossier 1953 tel que l ancien serveur l ecrivait : l heure du Bowling posee apres le moteur
+// (qui refusait « Choisissez une heure pour Bowling. »), et le programme ecrit quand meme sur l ancien plan.
+const ANCIEN_SERVEUR = [
+  { fichier: 'api/staff-reservations.js', de: '  const ancres = ancresDuMoteur(heuresAPoser);\n', vers: '  const ancres = {};\n' },
+  { fichier: 'api/staff-reservations.js', de: '  if (shouldReplan && ops.planAvailable === false && patch.program && (heuresAPoser.length || !memesActivites(current, proposedItems))) {\n', vers: '  if (false) {\n' },
+];
+const ADAPTEE = (r, heure) => ({ ...r, program: { items: [{ activityId: 'bowling', duration: 1, pax: 6, participants: 6 }, { activityId: 'laser_game', games: 2, pax: 6, participants: 6 }, { activityId: GOLF, pax: 6, participants: 6 }] },
+  label: 'FORMULE 5 (adaptée)', heuresPosees: { bowling: heure }, lanes: [], laneCount: 0, requiresLanes: false, channel: 'staff', allowPastStart: true, baseUpdatedAt: r.updatedAt, prixSuivi: true, price: undefined });
+
+async function scenarioGembloux(browser) {
+  unePiste(true);
+  B.semer([]);
+  const ancien = B.monter({ mutations: ANCIEN_SERVEUR, session: SESSION_GEMBLOUX() });
+  unePiste(true);
+  const casse = await formule5(ancien);
+  const ecrit = await ancien.appeler('PATCH', '/api/staff-reservations', ADAPTEE(casse, '15:30'));
+  const serveur = B.monter({ mutations: mutation ? mutation.editions.filter((ed) => ed.serveur) : [], session: SESSION_GEMBLOUX() });
+  unePiste(true);
+  const { ctx, page, erreurs, journal } = await monter(browser, serveur, { theme: 'light', blanc: true, heure: '10:00' });
+  // (la page lit la configuration de Libramont : Gembloux n a qu une piste, la console aussi)
+  const pistesPage = await page.evaluate(() => { const b = centerScheduleConfig && centerScheduleConfig.resources && centerScheduleConfig.resources.bowling; if (b) b.laneCount = 1; return getTotalLanes(); });
+  if (pistesPage !== 1) throw new Error(`la page compte ${pistesPage} pistes`);
+  // Chaque cas sur une journee de Gembloux a lui (la base et la page) : ni la journee de Libramont de la
+  // fixture, ni les dossiers du cas d avant ne prennent la piste ou l arene.
+  const vider = async (garder = []) => {
+    [...B.base.reservations.keys()].filter((id) => !garder.includes(Number(id))).forEach((id) => B.base.reservations.delete(id));
+    await page.evaluate((g) => { const jour = window.__FIXTURE__.jours[window.__FIXTURE__.jour]; jour.splice(0, jour.length, ...jour.filter((x) => g.includes(x.id))); state.reservations = state.reservations.filter((x) => g.includes(x.id)); closePos(); }, garder);
+  };
+  await vider([Number(casse.id)]);
+  const photo = async (nom) => { if (!mutation && process.env.MC_CAPTURES) await page.screenshot({ path: path.join(process.env.MC_CAPTURES, `${nom}.png`) }); };
+  try {
+    // [L1] Infos d une Formule 5 : les deux cruches disent 14:40 une fois.
+    const f5 = await formule5(serveur);
+    await ouvrirDossier(page, f5, 'details');
+    const i0 = await infosLu(page);
+    const cruches = i0.etapes.filter((e) => /cruche|boisson/i.test(e.nom));
+    ok(cruches.length > 0 && cruches.every((e) => e.heure === '14:40' && e.fin === ''), '[L1] dans Infos, un service dit son heure une fois (« 14:40 », pas « 14:40 / 14:40 »)', i0.etapes);
+
+    // [L1] L arrivee 13:00 -> 13:30 : le planning recalcule ; l heure d avant se lit a cote de la nouvelle.
+    await rouvrir(page, f5.id, 'modifier');
+    await page.fill('#editStartInput', '13:30');
+    await verdictPose(page);
+    const m0 = await modifierLu(page);
+    const golf0 = m0.find((x) => x.id === GOLF) || {};
+    ok(golf0.barree === '13:55' && /^13:55 → \d\d:\d\d$/.test(golf0.heure) && golf0.heure !== '13:55 → 13:55', '[L1] une heure recalculee se lit « 13:55 → <nouvelle> », jamais barree seule', m0);
+    await photo('1953-arrivee-recalculee');
+    await page.fill('#editStartInput', '13:00');
+    await verdictPose(page);
+
+    // [W1] Tout en une fois : le minigolf a 14:30, 7 joueurs, un Bowling a 15:30.
+    await toucherHeure(page, GOLF, '14:30');
+    await page.fill('#editPaxInput', '7');
+    await verdictPose(page);
+    await ajouterBowling(page, '15:30');
+    const v1 = await verdictLu(page);
+    const m1 = await modifierLu(page);
+    ok(!/s’enregistre seule|Enregistrez d’abord/.test(v1.texte) && !/is-refus/.test(v1.ton), '[W1] une heure, les joueurs et un Bowling ensemble : aucun refus avant le clic', v1);
+    ok((m1.find((x) => x.id === 'bowling') || {}).heure === '15:30', '[L1] le Bowling ajoute montre son heure choisie a gauche (« 15:30 », pas « --:-- »)', m1);
+    await photo('1953-tout-en-une-fois');
+    const e1 = await enregistrerTout(page, journal);
+    const b1 = dossierEnBase(f5.id);
+    ok(e1.length >= 2 && e1.every((x) => x.statut === 200), '[W1] « Enregistrer » part en une fois : le deplacement, puis le reste', e1.map((x) => `${x.statut} ${Object.keys(x.corps).filter((k) => /activityMove|heuresPosees|program|pax/.test(k)).join('+')}`));
+    ok(b1 && b1.pax === 7 && b1.items.includes('bowling') && pareil(b1.bowling, ['15:30|1']) && pareil(b1.golf, ['14:30']) && pareil(b1.laser, ['13:00', '13:30']),
+      '[W1] en base : 7 joueurs, le Bowling a 15:30 sur la piste 1, le minigolf a 14:30, le laser a ses heures', b1);
+    // [W2] Infos et Modifier se lisent pareil, la fin de visite est celle du bowling.
+    await rouvrir(page, f5.id, 'details');
+    const i1 = await infosLu(page);
+    await rouvrir(page, f5.id, 'modifier');
+    const m1b = await modifierLu(page);
+    ok(memeLecture(m1b, i1, b1) && i1.fin === '16:30', '[W2] apres l enregistrement, le plan, Infos et Modifier disent les memes activites aux memes heures, fin 16:30', { infos: i1, modifier: m1b, base: b1 });
+    await rouvrir(page, f5.id, 'details');
+    await photo('1953-infos-apres');
+
+    // [W3] Le chemin en deux fois : l heure seule, puis le Bowling.
+    await vider([Number(casse.id)]);
+    const g = await formule5(serveur);
+    await ouvrirDossier(page, g, 'modifier');
+    await toucherHeure(page, GOLF, '14:30');
+    const e3a = await enregistrerTout(page, journal);
+    await rouvrir(page, g.id, 'modifier');
+    await ajouterBowling(page, '15:30');
+    const e3b = await enregistrerTout(page, journal);
+    const b3 = dossierEnBase(g.id);
+    await rouvrir(page, g.id, 'details');
+    const i3 = await infosLu(page);
+    await rouvrir(page, g.id, 'modifier');
+    const m3 = await modifierLu(page);
+    ok([...e3a, ...e3b].every((x) => x.statut === 200) && b3.items.includes('bowling') && pareil(b3.bowling, ['15:30|1']) && pareil(b3.golf, ['14:30']) && memeLecture(m3, i3, b3) && i3.fin === '16:30',
+      '[W3] en deux fois, le Bowling garde son heure et Infos et Modifier se lisent pareil', { base: b3, infos: i3, modifier: m3, statuts: [...e3a, ...e3b].map((x) => x.statut) });
+
+    // [W7] Un dossier deja casse (le programme porte un Bowling que son plan n a pas, comme 1953) se
+    // repare dans Modifier : le Bowling y a son champ « Heure », une heure et « Enregistrer ».
+    await vider([Number(casse.id)]);
+    const c = casse;
+    const b7a = dossierEnBase(c.id);
+    await ouvrirDossier(page, enApi(c.id), 'details');
+    const i7a = await infosLu(page);
+    await rouvrir(page, c.id, 'modifier');
+    const m7a = await modifierLu(page);
+    ok(ecrit.statut === 200 && /Choisissez une heure pour Bowling/.test(ecrit.json.planNonRefait || '') && b7a.items.includes('bowling') && !b7a.bowling.length && !memeLecture(m7a, i7a, b7a),
+      '[W7] l ancien serveur ecrivait le programme avec le Bowling sur un plan qui ne l a pas (« Choisissez une heure pour Bowling. ») : le plan, Infos et Modifier se lisent autrement (le defaut du 1953)', { ecrit: [ecrit.statut, ecrit.json.planNonRefait], modifier: m7a, infos: i7a, base: b7a });
+    ok((m7a.find((x) => x.id === 'bowling') || {}).champ === true, '[W7] le Bowling sans heure au planning a son champ « Heure » dans Modifier', { modifier: m7a, infos: i7a });
+    await page.fill('#posOverlay [data-heure-nouvelle="bowling"]', '15:30');
+    await verdictPose(page);
+    const v7 = await verdictLu(page);
+    const e7 = await enregistrerTout(page, journal);
+    const b7 = dossierEnBase(c.id);
+    await rouvrir(page, c.id, 'details');
+    const i7 = await infosLu(page);
+    await rouvrir(page, c.id, 'modifier');
+    const m7 = await modifierLu(page);
+    ok(e7.length && e7.every((x) => x.statut === 200) && pareil(b7.bowling, ['15:30|1']) && memeLecture(m7, i7, b7) && i7.fin === '16:30',
+      '[W7] une heure tapee au Bowling repare le dossier : son plan le place, Infos et Modifier se lisent pareil, fin 16:30', { avant: i7a, verdict: v7, base: b7, infos: i7, modifier: m7, statuts: e7.map((x) => [x.statut, x.json && x.json.message]) });
+
+    // [W4] La piste unique prise a 15:30 : le verdict le dit avant le clic, rien du Bowling ne s ecrit.
+    await vider();
+    const p = await formule5(serveur);
+    await pistePrise(serveur, '15:30');
+    await ouvrirDossier(page, p, 'modifier');
+    await toucherHeure(page, GOLF, '14:30');
+    await ajouterBowling(page, '15:30');
+    const v4 = await verdictLu(page);
+    const m4 = await modifierLu(page);
+    const barres4 = await page.evaluate(() => Array.from(document.querySelectorAll('#posOverlay .fm-act .fm-heure')).filter((e) => e.getClientRects().length && /line-through/.test(getComputedStyle(e).textDecorationLine)).map((e) => e.textContent.trim()));
+    ok((m4.find((x) => x.id === 'bowling') || {}).heure === '15:30' && barres4.length === 0, '[L1] sous un verdict qui refuse, l heure choisie du Bowling se lit (« 15:30 ») et aucune heure n est barree : rien ne bougera', { modifier: m4, barrees: barres4 });
+    await photo('1953-piste-prise');
+    const e4 = await enregistrerTout(page, journal);
+    const b4 = dossierEnBase(p.id);
+    ok(/is-refus/.test(v4.ton) && /Ne passera pas : .*Pas assez de pistes libres à 15:30/.test(v4.texte), '[W4] un Bowling qui ne tient pas sur la piste unique : le verdict le dit avant le clic', v4);
+    ok(!b4.items.includes('bowling') && b4.bowling.length === 0, '[W4] rien du Bowling ne s ecrit : ni au programme, ni au plan', { base: b4, statuts: e4.map((x) => [x.statut, x.json && x.json.message]) });
+
+    // [W5] Un Bowling ajoute sans heure : le verdict demande l heure, rien ne s ecrit.
+    await vider();
+    const s = await formule5(serveur);
+    await ouvrirDossier(page, s, 'modifier');
+    await ajouterBowling(page, '');
+    const v5 = await verdictLu(page);
+    const e5 = await enregistrerTout(page, journal);
+    const b5 = dossierEnBase(s.id);
+    ok(/is-refus/.test(v5.ton) && /heure pour Bowling/.test(v5.texte) && !b5.items.includes('bowling') && b5.bowling.length === 0,
+      '[W5] un Bowling sans heure : le verdict demande son heure, rien ne s ecrit', { verdict: v5, base: b5, statuts: e5.map((x) => x.statut) });
+
+    // [W6] A moitie : la piste se prend entre le verdict et le clic. L heure passe, le reste non, et la
+    // barre dit les deux.
+    await vider();
+    const h = await formule5(serveur);
+    await ouvrirDossier(page, h, 'modifier');
+    await toucherHeure(page, GOLF, '14:30');
+    await ajouterBowling(page, '15:30');
+    await pistePrise(serveur, '15:30');
+    const e6 = await enregistrerTout(page, journal);
+    const v6 = await verdictLu(page);
+    const b6 = dossierEnBase(h.id);
+    ok(pareil(b6.golf, ['14:30']) && !b6.items.includes('bowling') && /Minigolf Blacklight à 14:30 : enregistré\. Pas enregistré : .*Bowling à 15:30/.test(v6.texte),
+      '[W6] une partie refusee : la barre dit ce qui est enregistre et ce qui ne l est pas', { verdict: v6, base: b6, statuts: e6.map((x) => x.statut) });
+    const reste6 = await page.evaluate(() => (document.getElementById('editModifs') || {}).textContent || '');
+    ok(!/Minigolf/.test(reste6) && /Bowling à 15:30/.test(reste6), '[W6] « À enregistrer » ne garde que ce qui reste : le Bowling, plus le minigolf deja enregistre', reste6);
+    await photo('1953-a-moitie');
+    ok(erreurs.length === 0, '[J1] aucune erreur JS (1953)', erreurs.slice(0, 3));
+  } finally {
+    await ctx.close();
+    unePiste(false);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // LES CONTRE-PREUVES : une regle retiree, sa lettre rougit.
 // ---------------------------------------------------------------------------
 const FORMULE = ['formule'];
@@ -752,7 +1053,25 @@ const LIBRE = ['libre'];
 const CATALOGUE = ['catalogue'];
 const HEURE = ['heure'];
 const API = 'api/staff-reservations.js';
+const GEMBLOUX = ['gembloux'];
 const MUTATIONS = [
+  // [W*] [L1] le dossier 1953 : chaque garde retiree fait rougir sa lettre.
+  { nom: 'heure-seule-encore', lettre: 'W1', scenarios: GEMBLOUX, editions: [{ fichier: JS, de: '  const changees = heuresChangeesEdition();\n  const points = pointsHeureEdition(r);\n', vers: "  const changees = heuresChangeesEdition();\n  if (resumeModifsEdition().length > modifsHeuresEdition().length) return { heures: true, erreur: 'Une heure d’activité s’enregistre seule. Enregistrez d’abord l’heure, puis le reste.' };\n  const points = pointsHeureEdition(r);\n" }] },
+  { nom: 'reste-oublie', lettre: 'W1', scenarios: GEMBLOUX, editions: [{ fichier: JS, de: '  const envoi = reste ? preparerModificationEdition() : null;', vers: '  const envoi = null;' }] },
+  { nom: 'ancre-oubliee', lettre: 'W1', scenarios: GEMBLOUX, editions: [{ fichier: API, serveur: true, de: '  const ancres = ancresDuMoteur(heuresAPoser);\n', vers: '  const ancres = {};\n' }] },
+  { nom: 'deplace-sans-marque', lettre: 'W2', scenarios: GEMBLOUX, editions: [{ fichier: 'lib/reservation-activity-move.js', serveur: true, de: '    replacement = block => ({ ...timed(block, start(block) + delta), heurePosee: true });', vers: '    replacement = block => timed(block, start(block) + delta);' }] },
+  { nom: 'posee-perdue-au-recalcul', lettre: 'W3', scenarios: GEMBLOUX, editions: [{ fichier: 'lib/reservation-ops.js', serveur: true, de: '      ...(tenue.heurePosee === true ? { heurePosee: true } : {}),\n', vers: '' }] },
+  { nom: 'programme-sans-plan', lettre: 'W4', scenarios: GEMBLOUX, editions: [{ fichier: API, serveur: true, de: '  if (shouldReplan && ops.planAvailable === false && patch.program && (heuresAPoser.length || !memesActivites(current, proposedItems))) {\n', vers: '  if (false) {\n' }] },
+  { nom: 'verdict-sans-reste', lettre: 'W4', scenarios: GEMBLOUX, editions: [{ fichier: JS, de: '      const reste = !envoi.erreur && resumeModifsEdition().length > modifsHeuresEdition().length ? preparerModificationEdition({ aBlanc: true }) : null;', vers: '      const reste = null;' }] },
+  { nom: 'barre-perimee', lettre: 'W6', scenarios: GEMBLOUX, editions: [{ fichier: JS, de: "      if (barre) { barre.innerHTML = resumeModifsEditionHtml(); barre.classList.toggle('is-vide', !resumeModifsEdition().length); }\n", vers: '' }] },
+  { nom: 'partiel-muet', lettre: 'W6', scenarios: GEMBLOUX, editions: [{ fichier: JS, de: "    const enregistres = [dit(faits.filter(d => d !== reprise)), resteFait ? resteEnMots : ''].filter(Boolean).join(', ');", vers: "    const enregistres = '';" }] },
+  { nom: 'bowling-du-programme-sans-champ', lettre: 'W7', scenarios: GEMBLOUX, editions: [{ fichier: JS, de: "  if (id === 'bowling' && items.some((item) => item && item.activityId === id)) return !((r.opsPlan", vers: '  if (false) return !((r.opsPlan' }] },
+  { nom: 'heure-du-programme-pas-envoyee', lettre: 'W7', scenarios: GEMBLOUX, editions: [{ fichier: JS, de: '  const heuresPoseesNouvelles = heuresNouvellesEnvoyees();', vers: '  const heuresPoseesNouvelles = programme ? heuresNouvellesEnvoyees() : null;' }] },
+  { nom: 'serveur-bowling-deja-la', lettre: 'W7', scenarios: GEMBLOUX, editions: [{ fichier: API, serveur: true, de: "(id === 'bowling' ? false : itemsAvant.some((item) => item && item.activityId === id))", vers: 'itemsAvant.some((item) => item && item.activityId === id)' }] },
+  { nom: 'fleche-absente', lettre: 'L1', scenarios: GEMBLOUX, editions: [{ fichier: JS, de: '  return avant && avant !== lue(etapes) ? `<span class="fm-heure-avant">', vers: '  return false ? `<span class="fm-heure-avant">' }] },
+  { nom: 'tapee-muette', lettre: 'L1', scenarios: GEMBLOUX, editions: [{ fichier: JS, de: '    if (choisie) return `<span class="fm-heure is-changee">${escapeHtml(choisie)}</span>`;\n', vers: '' }] },
+  { nom: 'refus-barre', lettre: 'L1', scenarios: GEMBLOUX, editions: [{ fichier: JS, de: "  programme.classList.toggle('a-refus', verdictRefuseEdition());", vers: "  programme.classList.toggle('a-refus', false);" }] },
+  { nom: 'service-deux-fois', lettre: 'L1', scenarios: GEMBLOUX, editions: [{ fichier: JS, de: ' && formatClockDisplay(etape.end) !== formatClockDisplay(etape.start) ? `<small>', vers: ' ? `<small>' }] },
   // Les lignes refaites a chaque envoi, comme avant : le serveur ne reconnait plus rien.
   { nom: 'lignes-refaites', lettre: 'X2', scenarios: LIBRE, editions: [{ fichier: JS, de: '      if (intacte) {\n', vers: '      if (false) {\n' }] },
   { nom: 'lignes-refaites-catalogue', lettre: 'X4', scenarios: CATALOGUE, editions: [{ fichier: JS, de: '      if (intacte) {\n', vers: '      if (false) {\n' }] },
@@ -821,6 +1140,7 @@ async function jouer(browser, noms) {
     if (nom === 'espacement') await scenarioEspacement(browser);
     if (nom === 'raison') await scenarioRaison(browser);
     if (nom === 'droits') await scenarioDroits(browser);
+    if (nom === 'gembloux') await scenarioGembloux(browser);
   }
 }
 
@@ -830,7 +1150,7 @@ async function main() {
   const t0 = Date.now();
   try {
     if (!process.argv.includes('--contre-preuves')) {
-      await jouer(browser, ['libre', 'catalogue', 'heure', 'formule', 'service', 'notes', 'telephone', 'espacement', 'raison', 'droits']);
+      await jouer(browser, liste(process.env.MC_SCENARIOS) || ['libre', 'catalogue', 'heure', 'formule', 'service', 'notes', 'telephone', 'espacement', 'raison', 'droits', 'gembloux']);
     } else {
       console.log('[K] contre-preuves : chaque regle retiree fait rougir sa lettre');
       for (const m of MUTATIONS.filter((x) => !process.env.MC_MUTATIONS || liste(process.env.MC_MUTATIONS).includes(x.nom))) {

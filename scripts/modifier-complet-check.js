@@ -26,6 +26,9 @@
 //        la montre, rien n est ecrit ;
 //   [H3] le serveur ne pose une heure que sur une activite ajoutee : une heure envoyee pour le
 //        bowling deja au dossier ne le deplace pas ;
+//   [F1] un dossier a la carte (Famille Noel, bowling) a son menu « Formule », « À la carte » en tete ;
+//   [F2] choisir une formule du centre en fait une formule (indice, barre), « Enregistrer » l ecrit ;
+//   [F3] « À la carte » rend le dossier tel qu il etait : aucune modification ;
 //   [J1] aucune erreur JS.
 // --contre-preuves : chaque regle retiree (au code servi, en memoire ; le disque n est jamais
 // touche) fait rougir sa lettre.
@@ -312,8 +315,52 @@ async function scenarioHeure(browser) {
 }
 
 // ---------------------------------------------------------------------------
+// [F1] [F2] [F3] UN DOSSIER A LA CARTE PREND UNE FORMULE.
+// ---------------------------------------------------------------------------
+async function scenarioFormule(browser) {
+  semer();
+  const serveur = B.monter({ mutations: mutation ? mutation.editions.filter((ed) => ed.serveur) : [], session: B.sessionDuRole('manager', { nom: 'Rachel' }) });
+  const { ctx, page, erreurs, journal } = await monter(browser, serveur);
+  try {
+    await ouvrirModifier(page);
+    const lireMenu = () => page.evaluate(() => {
+      const m = document.querySelector('#posOverlay #editFormuleSelect');
+      const h = document.getElementById('editFormuleHint');
+      return m ? { valeur: m.value, premiere: m.options[0] ? [m.options[0].value, m.options[0].textContent.trim()] : null, formules: Array.from(m.options).filter((o) => o.value).map((o) => [o.value, o.textContent.trim()]), indice: h && !h.hidden ? h.textContent.trim() : '', barre: (document.getElementById('editModifs') || {}).textContent || '', type: state.editState.type, formuleId: state.editState.formuleId || '' } : null;
+    });
+    const a = await lireMenu();
+    ok(a && a.valeur === '' && a.premiere && a.premiere.join() === ',À la carte' && a.formules.length > 0 && a.indice === '',
+      '[F1] le bowling a la carte a son menu « Formule », « À la carte » choisi, rien de plus', a);
+    // CRAZY STUDENT STRIKE, du bowling a la piste : a 16:30 le laser est plein, une formule qui
+    // en a ne passerait pas (le serveur le refuse, et il a raison).
+    const choisie = a && (a.formules.find(([id]) => id === 'css') || a.formules[0]);
+    await page.selectOption('#posOverlay #editFormuleSelect', choisie ? choisie[0] : '');
+    await page.waitForTimeout(250);
+    const b = await lireMenu();
+    ok(b && b.valeur === (choisie && choisie[0]) && b.type === 'formule' && b.formuleId === (choisie && choisie[0]) && b.indice !== '' && !/Aucune modification/.test(b.barre),
+      `[F2] choisir ${choisie && choisie[1]} en fait une formule, l indice et la barre le disent`, b);
+    await page.selectOption('#posOverlay #editFormuleSelect', '');
+    await page.waitForTimeout(250);
+    const c = await lireMenu();
+    ok(c && c.valeur === '' && c.type === 'bowling' && c.formuleId === '' && /Aucune modification/.test(c.barre) && c.indice === '',
+      '[F3] « À la carte » rend le dossier tel qu il etait : aucune modification', c);
+    await page.selectOption('#posOverlay #editFormuleSelect', choisie ? choisie[0] : '');
+    await page.waitForTimeout(250);
+    const envois = await enregistrer(page, journal);
+    const r = envois.length ? envois[envois.length - 1] : null;
+    const row = B.base.reservations.get(NOEL);
+    ok(r && r.statut === 200 && r.corps.type === 'formule' && r.corps.formuleId === (choisie && choisie[0]) && row && row.type === 'formule' && String(row.formule_id) === String(choisie && choisie[0]),
+      '[F2] « Enregistrer » ecrit la formule au dossier', r ? { statut: r.statut, json: r.statut === 200 ? '' : r.json, type: row && row.type, formule: row && row.formule_id } : 'aucun envoi');
+    ok(erreurs.length === 0, '[J1] aucune erreur JS (formule)', erreurs.slice(0, 3));
+  } finally {
+    await ctx.close();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // LES CONTRE-PREUVES : une regle retiree, sa lettre rougit.
 // ---------------------------------------------------------------------------
+const FORMULE = ['formule'];
 const LIBRE = ['libre'];
 const CATALOGUE = ['catalogue'];
 const HEURE = ['heure'];
@@ -336,6 +383,10 @@ const MUTATIONS = [
   { nom: 'heure-muette', lettre: 'H1', scenarios: HEURE, editions: [{ fichier: JS, de: "  Object.entries(heuresNouvellesEnvoyees() || {}).forEach(([id, heure]) => modifs.push(", vers: '  [].forEach(([id, heure]) => modifs.push(' }] },
   { nom: 'serveur-ignore-l-heure', lettre: 'H1', scenarios: HEURE, editions: [{ fichier: API, serveur: true, de: '    ops.opsPlan = pose.dossier.opsPlan;\n', vers: '' }] },
   { nom: 'refus-avale', lettre: 'H2', scenarios: HEURE, editions: [{ fichier: API, serveur: true, de: '    if (pose.refus) throw createHttpError(pose.refus.message, 422);\n', vers: '' }] },
+  // Le menu des formules reserve aux formules, sans « À la carte », sans retour.
+  { nom: 'carte-sans-menu', lettre: 'F1', scenarios: FORMULE, editions: [{ fichier: JS, de: "  if (!origine || e.versProgrammeNormal) return '';", vers: "  if (!origine || !formuleDOrigineEdition(origine) || e.versProgrammeNormal) return '';" }] },
+  { nom: 'sans-a-la-carte', lettre: 'F1', scenarios: FORMULE, editions: [{ fichier: JS, de: '  const aLaCarte = !formuleDOrigineEdition(origine) ?', vers: '  const aLaCarte = false ?' }] },
+  { nom: 'retour-impossible', lettre: 'F3', scenarios: FORMULE, editions: [{ fichier: JS, de: "  if (!e || !r || !origine || (!formule && String(id || '') !== '')) return;", vers: '  if (!e || !r || !origine || !formule) return;' }] },
   { nom: 'serveur-pose-l-existant', lettre: 'H3', scenarios: HEURE, editions: [{ fichier: API, serveur: true, de: '.filter((posee) => !dejaAuDossier(posee.activityId) && proposedItems', vers: '.filter((posee) => proposedItems' }] },
 ];
 
@@ -344,6 +395,7 @@ async function jouer(browser, noms) {
     if (nom === 'libre') await scenarioLibre(browser);
     if (nom === 'catalogue') await scenarioCatalogue(browser);
     if (nom === 'heure') await scenarioHeure(browser);
+    if (nom === 'formule') await scenarioFormule(browser);
   }
 }
 
@@ -353,7 +405,7 @@ async function main() {
   const t0 = Date.now();
   try {
     if (!process.argv.includes('--contre-preuves')) {
-      await jouer(browser, ['libre', 'catalogue', 'heure']);
+      await jouer(browser, ['libre', 'catalogue', 'heure', 'formule']);
     } else {
       console.log('[K] contre-preuves : chaque regle retiree fait rougir sa lettre');
       for (const m of MUTATIONS.filter((x) => !process.env.MC_MUTATIONS || liste(process.env.MC_MUTATIONS).includes(x.nom))) {

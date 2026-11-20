@@ -32272,20 +32272,29 @@ function optionsFormuleEditionHtml() {
   const e = state.editState;
   const origine = departsEdition().get(e)?.origine;
   const liste = formulesProposeesEdition();
+  // UN DOSSIER A LA CARTE PREND UNE FORMULE (2026-11-20, Ansar : « modifier tout complet ») : « À la
+  // carte » en tete, et le choisir rend le dossier tel qu il etait.
+  const aLaCarte = !formuleDOrigineEdition(origine) ? `<option value=""${formuleChangeeEdition() ? '' : ' selected'}>À la carte</option>` : '';
   const option = (f) => {
     const dispo = String(f.id) === String(origine?.formuleId) ? { ok: true } : disponibiliteFormuleEdition(f);
     const texte = `${rvNomFormule(f)} · ${formatMontant(f.price)}${f.type === 'per_lane' ? ' la piste' : ''}${dispo.ok ? '' : ` · ${dispo.message}`}`;
     return `<option value="${escapeHtml(f.id)}"${String(f.id) === String(e.formuleId) ? ' selected' : ''}>${escapeHtml(texte)}</option>`;
   };
   const familles = [...new Set(liste.map(f => f.family || ''))];
-  return familles.length > 1
+  return aLaCarte + (familles.length > 1
     ? familles.map(famille => `<optgroup label="${escapeHtml(famille || 'Autres formules')}">${liste.filter(f => (f.family || '') === famille).map(option).join('')}</optgroup>`).join('')
-    : liste.map(option).join('');
+    : liste.map(option).join(''));
+}
+
+// Le dossier etait-il une formule a l ouverture ?
+function formuleDOrigineEdition(origine) {
+  return Boolean(origine && String(origine.type || '') === 'formule' && origine.formuleId);
 }
 
 // Sous le menu : ce que le changement fait, et une formule hors regles le dit.
 function indiceFormuleEdition() {
-  if (!formuleChangeeEdition()) return { texte: 'Changer une activité ne vaut que pour cette visite.', hors: false };
+  // (a la carte, rien a dire tant qu aucune formule n est choisie)
+  if (!formuleChangeeEdition()) return { texte: formuleDOrigineEdition(departsEdition().get(state.editState)?.origine) ? 'Changer une activité ne vaut que pour cette visite.' : '', hors: false };
   const formule = resolveDisplayFormule(state.editState.formuleId);
   const dispo = formule ? disponibiliteFormuleEdition(formule) : { ok: true };
   return dispo.ok
@@ -32296,12 +32305,14 @@ function indiceFormuleEdition() {
 function renderEditFormuleChoix() {
   const e = state.editState;
   const origine = e && departsEdition().get(e)?.origine;
-  if (!origine || String(origine.type || '') !== 'formule' || !origine.formuleId || e.versProgrammeNormal) return '';
+  if (!origine || e.versProgrammeNormal) return '';
+  // (a la carte, le menu ne se montre pas par-dessus un acces illimite choisi : il a sa carte, renderEditIllimiteChoix)
+  if (!formuleDOrigineEdition(origine) && formuleChangeeEdition() && !formulesProposeesEdition().some((f) => String(f.id) === String(e.formuleId))) return '';
   const indice = indiceFormuleEdition();
   return `<div class="fm-champ fm-formule">
       <label class="lbl" for="editFormuleSelect">Formule</label>
       <select id="editFormuleSelect" class="input" data-pl-focus="fiche.edit.formule" aria-describedby="editFormuleHint" onchange="changerFormuleEdition(this.value)">${optionsFormuleEditionHtml()}</select>
-      <p class="field-hint${indice.hors ? ' is-hors' : ''}" id="editFormuleHint">${escapeHtml(indice.texte)}</p>
+      <p class="field-hint${indice.hors ? ' is-hors' : ''}" id="editFormuleHint"${indice.texte ? '' : ' hidden'}>${escapeHtml(indice.texte)}</p>
     </div>`;
 }
 
@@ -32314,6 +32325,7 @@ function peindreFormuleEdition() {
   if (!zone) return;
   const indice = indiceFormuleEdition();
   zone.textContent = indice.texte;
+  zone.hidden = !indice.texte;
   zone.classList.toggle('is-hors', indice.hors);
 }
 
@@ -32325,10 +32337,11 @@ function changerFormuleEdition(id) {
   const e = state.editState;
   const r = state.selectedRes;
   const origine = e && departsEdition().get(e)?.origine;
-  const formule = resolveDisplayFormule(id);
-  if (!e || !r || !origine || !formule) return;
+  // (« À la carte », la valeur vide, rend le dossier a la carte tel qu il etait)
+  const formule = String(id || '') === '' ? null : resolveDisplayFormule(id);
+  if (!e || !r || !origine || (!formule && String(id || '') !== '')) return;
   if (state.editError) setEditError('');
-  const retour = String(formule.id) === String(origine.formuleId || '');
+  const retour = !formule || String(formule.id) === String(origine.formuleId || '');
   e.type = retour ? origine.type : 'formule';
   e.formuleId = retour ? origine.formuleId : formule.id;
   e.label = retour ? origine.label : formule.name;

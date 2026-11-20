@@ -31909,7 +31909,7 @@ function renderCommCenter() {
 // Vrai a la PREMIERE peinture d une fiche seulement : l animation d entree
 // ne se joue pas sur le re-rendu d une fiche deja ouverte.
 let posSheetAnimate = true;
-function posSheetClass() { return `pos-sheet${posSheetAnimate ? ' fade-in' : ''}`; }
+function posSheetClass() { return 'pos-sheet'; } // (plus de .fade-in : la fenêtre s'anime seule, pinlane-mouvement.js ouvrirFenetre)
 
 // L editeur de prix de la fiche : ouvert/ferme par dossier, remis a zero a
 // chaque ouverture de fiche (openPos).

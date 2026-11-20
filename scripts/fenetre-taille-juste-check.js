@@ -22,8 +22,11 @@ const BROWSER_PATH = process.env.E2E_BROWSER_PATH || 'C:\\Program Files (x86)\\M
 const PORT = Number(process.env.PINLANE_FENETRE_TAILLE_PORT || 5262);
 const CONTRE = process.argv.includes('--contre-preuves');
 
-const ENTREE_JUSTE = "surface.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, easing: SORTIE });";
-const ENTREE_ANCIENNE = "surface.animate([{ opacity: 0, transform: 'translateY(8px) scale(0.97)' }, { opacity: 1, transform: 'none' }], { duration: 240, easing: SORTIE });";
+const ENTREE_JUSTE = "telephone ? [{ opacity: 0 }, { opacity: 1 }] :";
+const ENTREE_ANCIENNE = "telephone ? [{ opacity: 0, transform: 'translateY(8px) scale(0.97)' }, { opacity: 1, transform: 'none' }] :";
+// Sur grand ecran la fenetre grandit de 0,98 a 1 (20/11, la fiche « pas fluide » : le gerant) :
+// sa boite lue tout de suite differe de 2,5 % au plus. Au telephone elle ne bouge pas, au demi-pixel.
+const tolerance = (appareil, b) => (appareil === 'ordinateur' && b ? 0.025 * Math.max(b.w, b.h) : 0.5);
 
 let echecs = 0;
 function ok(cond, label, detail) {
@@ -103,7 +106,7 @@ async function scenario(navigateur, appareil, port, { seulementFicheTelephone = 
       });
       if (!ok(Boolean(cible), 'ordinateur : une case vide du planning est a l ecran pour ouvrir la fiche')) return { res, erreurs };
       await page.mouse.click(cible.x, cible.y);
-      const a = await page.evaluate(() => ({ l: window.__lireFenetre(), vol: Boolean(document.querySelector('.pl-vol')) }));
+      const a = await page.evaluate(() => ({ l: window.__lireFenetre(), vol: document.querySelector('#posOverlay .edit-modal').getAnimations().length > 0 }));
       await F.repos(page, 600);
       const b = await page.evaluate(LIRE);
       res.push({ nom: 'ordinateur, fiche ouverte depuis sa ligne', joue: a.vol, ecart: ecart(a.l.fiche, b.fiche), photo: 0, avant: a.l.fiche, apres: b.fiche });
@@ -126,8 +129,8 @@ async function main() {
           const { res, erreurs } = await scenario(navigateur, appareil, PORT);
           for (const r of res) {
             ok(r.joue, `${r.nom} : l entree a bien joue (sinon la mesure ne prouverait rien)`);
-            ok(r.ecart <= 0.5, `${r.nom} : la fenetre a sa vraie boite des la premiere image (ecart ${Number.isFinite(r.ecart) ? r.ecart.toFixed(2) : 'aucune boite'} px)`, { avant: r.avant, apres: r.apres });
-            if (r.nom.includes('fiche') && r.nom.includes('sans origine')) ok(r.photo <= 0.5, `${r.nom} : la photo de l activite a sa vraie taille tout de suite (ecart ${Number.isFinite(r.photo) ? r.photo.toFixed(2) : 'aucune photo'} px)`);
+            ok(r.ecart <= tolerance(appareil, r.apres), `${r.nom} : la fenetre a sa vraie boite des la premiere image (ecart ${Number.isFinite(r.ecart) ? r.ecart.toFixed(2) : 'aucune boite'} px)`, { avant: r.avant, apres: r.apres });
+            if (r.nom.includes('fiche') && r.nom.includes('sans origine')) ok(r.photo <= tolerance(appareil, { w: 40, h: 40 }), `${r.nom} : la photo de l activite a sa vraie taille tout de suite (ecart ${Number.isFinite(r.photo) ? r.photo.toFixed(2) : 'aucune photo'} px)`);
           }
           ok(erreurs.length === 0, `${appareil} : aucune erreur JavaScript`, erreurs.slice(0, 2));
         }

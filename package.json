@@ -402,6 +402,7 @@
     "test:heure-activite-dossier": "node scripts/heure-activite-dossier-check.js && node scripts/heure-activite-dossier-check.js --contre-preuves",
     "test:programme-complet": "node scripts/programme-complet-check.js && node scripts/programme-complet-check.js --contre-preuves",
     "test:attribution-visible": "node scripts/attribution-visible-check.js && node scripts/attribution-visible-check.js --contre-preuves",
+    "test:modifier-complet": "node scripts/modifier-complet-check.js && node scripts/modifier-complet-check.js --contre-preuves",
     "test:compte-arrivee": "node scripts/compte-arrivee-check.js && node scripts/compte-arrivee-check.js --contre-preuves",
     "test:planning-recherche": "node scripts/planning-recherche-check.js && node scripts/planning-recherche-check.js --contre-preuves",
     "test:heures-du-dossier": "node scripts/heures-du-dossier-check.js && node scripts/heures-du-dossier-check.js --contre-preuves",

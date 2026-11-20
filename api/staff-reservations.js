@@ -46,6 +46,7 @@ const { refreshFormuleOverrides } = require('../lib/booking-config');
 const { refreshCatalog } = require('../lib/catalog-store');
 const { getPool } = require('../lib/database');
 const { exigerLesDroits, finDeLaVisite, notesSansLaNoteAPlacer, planifierPourLaFenetre, simulerAutres } = require('../lib/reserver-fenetre');
+const { heureDuPlan, lireHeuresPosees, poserLesHeures } = require('../lib/heures-posees');
 // La creation elle-meme vit dans lib/reserver-creation.js : la reservation en un clic d une demande
 // sur mesure (api/ops.js customRequestBook) prend le meme chemin.
 const { creerDepuisLaFenetre } = require('../lib/reserver-creation');
@@ -743,6 +744,18 @@ async function calculerLaModification({ body, current, session, requestedCenterI
   if (proposedItems.some((item) => Number(item.participants) > Number(patch.pax ?? current.pax))) {
     throw createHttpError('Le nombre de joueurs d’une activité dépasse le nombre de personnes du groupe.', 422);
   }
+  // L HEURE D UNE ACTIVITE AJOUTEE (2026-11-20, Ansar : « modifier tout complet »). Modifier ajoute une
+  // activite au dossier ; le comptoir peut lui donner son heure avant d enregistrer, comme Reserver
+  // (lib/heures-posees.js) : apres le moteur, par le chemin du glisser (buildActivityMove puis
+  // validateActivityMoveResources sur la journee relue, ce dossier mis a part), memes controles, memes
+  // phrases. Seule une activite que le dossier n a pas encore et que le programme envoye porte se pose
+  // ici : l heure d une activite deja au dossier se deplace par son propre chemin (activityMove), et une
+  // heure restee sur une copie de la fiche ne rejoue rien. Un corps forge est refuse (lireHeuresPosees).
+  const itemsAvant = Array.isArray(current.program) ? current.program : Array.isArray(current.program?.items) ? current.program.items : [];
+  const dejaAuDossier = (id) => itemsAvant.some((item) => item && item.activityId === id) || Number.isFinite(heureDuPlan(current, id));
+  const heuresAPoser = lireHeuresPosees(patch.heuresPosees)
+    .filter((posee) => !dejaAuDossier(posee.activityId) && proposedItems.some((item) => item && item.activityId === posee.activityId));
+  delete patch.heuresPosees;
   // LE NOMBRE DE PISTES POSE A LA MAIN (2026-11-05). Il suit le dossier : une heure ou un
   // nom change sans qu on le redemande. Le poser, le changer ou le retirer replanifie, et
   // descendre sous le conseil du centre demande le niveau forcer, juge ici.
@@ -774,6 +787,14 @@ async function calculerLaModification({ body, current, session, requestedCenterI
   const ops = shouldReplan
     ? await prepareReservationOps(operationalRequest, 'staff', { ignoreReservationId: Number(patch.id), heureEnregistree: current.startTime })
     : {};
+  if (heuresAPoser.length && shouldReplan && ops.opsPlan && ops.planAvailable !== false) {
+    const jour = String(patch.date ?? current.date);
+    const lu = await readStaffState(jour, requestedCenterId, { avecBlocages: true, avecFermetures: true });
+    const autres = (Array.isArray(lu.reservations) ? lu.reservations : []).filter((row) => Number(row.id) !== Number(current.id));
+    const pose = poserLesHeures({ ...operationalRequest, ...ops }, heuresAPoser, { reservations: autres, laneStatuses: lu.laneStatuses || {}, blocks: lu.blocks || [], date: jour });
+    if (pose.refus) throw createHttpError(pose.refus.message, 422);
+    ops.opsPlan = pose.dossier.opsPlan;
+  }
   if (shouldReplan && JSON.stringify((patch.lanes ?? current.lanes ?? []).map(Number))
     === JSON.stringify((current.lanes || []).map(Number))) {
     const allocated = (ops.opsPlan?.resourceBlocks || []).filter((block) => block.resourceType === 'bowling_lane')

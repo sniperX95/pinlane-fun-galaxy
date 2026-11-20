@@ -364,8 +364,8 @@ async function extrasEtOccasion(page, ou) {
   // [O1]
   ok(/Occasion Entreprise → Anniversaire/.test(d.modifs), `[O1] ${label} : l occasion se change en un clic, la barre le dit`, d.modifs);
   const e1 = await enregistrer();
-  // [E3]
-  ok(e1 && Number(e1.price) === 304 && Number(e1.basePrice) === 238 && JSON.stringify((e1.extras || []).map((x) => [x.name, x.price])) === JSON.stringify([['Pizza × 3', 30], ['Cruche Bière × 2', 36]]),
+  // [E3] (depuis le 2026-11-20, les deux cruches qu on n a pas touchees repartent telles que le dossier les porte : le serveur les reconnait, scripts/modifier-complet-check.js [X2])
+  ok(e1 && Number(e1.price) === 304 && Number(e1.basePrice) === 238 && JSON.stringify((e1.extras || []).map((x) => [x.name, x.price])) === JSON.stringify([['Pizza × 3', 30], ['Cruche Bière', 18], ['Cruche Bière', 18]]),
     `[E3] ${label} : l enregistrement envoie les extras et le total affiches, la base reste 238 €`, e1 ? { price: e1.price, basePrice: e1.basePrice, extras: e1.extras } : 'aucun envoi');
   ok(e1 && e1.occasion === 'anniversaire', `[O1] ${label} : l occasion part avec le dossier`, e1 ? e1.occasion : 'aucun envoi');
   await fermer();
@@ -606,7 +606,7 @@ const MUTATIONS = [
   { nom: 'telephone-oublie', lettre: 'M8', scenarios: GESTES, editions: [{ fichier: JS, de: `oninput="setEditField('phone', this.value)"`, vers: 'oninput="majModifsEdition()"' }] },
   { nom: 'ajuste-sans-extras', lettre: 'P2', scenarios: GESTES, editions: [{ fichier: JS, de: '  const etat = getReservationPriceState(r);\n  if (etat.ajuste)', vers: '  const etat = { ajuste: Number(r.basePrice) > 0 && Math.round(Number(r.basePrice) * 100) !== Math.round((Number(r.price) || 0) * 100), reference: Number(r.basePrice) };\n  if (etat.ajuste)' }] },
   { nom: 'extras-absents', lettre: 'E1', scenarios: GESTES, editions: [{ fichier: JS, de: "          ${adapte ? renderEditExtras(r) : ''}\n", vers: '' }] },
-  { nom: 'cruches-separees', lettre: 'E1', scenarios: GESTES, editions: [{ fichier: JS, de: '    if (meme) meme.qte += qte;\n    else modele[groupe].push({ choix, qte, prix, ...(parPersonne', vers: '    modele[groupe].push({ choix, qte, prix, ...(parPersonne' }] },
+  { nom: 'cruches-separees', lettre: 'E1', scenarios: GESTES, editions: [{ fichier: JS, de: '    if (meme) {\n      meme.qte += qte;', vers: '    if (false) {\n      meme.qte += qte;' }] },
   { nom: 'ajout-muet', lettre: 'E2', scenarios: GESTES, editions: [{ fichier: JS, de: '  modifs.push(...modifsExtrasEdition());\n', vers: '' }] },
   { nom: 'extras-hors-prix', lettre: 'E2', scenarios: GESTES, editions: [{ fichier: JS, de: '  const ecartExtras = editExtrasAChange() ?', vers: '  const ecartExtras = false ?' }] },
   { nom: 'extras-non-envoyes', lettre: 'E3', scenarios: GESTES, editions: [{ fichier: JS, de: '    if (extrasNouveaux) updated.extras = extrasNouveaux;\n', vers: '' }] },

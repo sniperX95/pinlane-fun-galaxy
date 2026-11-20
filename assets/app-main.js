@@ -1569,6 +1569,7 @@ function refreshEditPreview() {
   const adviceEl = document.getElementById('editLanesHint');
   if (adviceEl) adviceEl.textContent = editLaneAdvice(dossierPourFormule(state.selectedRes), e);
   peindrePistesPrises();
+  if (typeof peindreVaguesLaserEdition === 'function') peindreVaguesLaserEdition();
   peindreFormuleEdition();
   if (paxEl) paxEl.textContent = e.pax || 0;
   if (durationEl) durationEl.textContent = formatDurationLabel(e.duration || 0);
@@ -1637,31 +1638,37 @@ function syncEditLaneAssignment() {
 // phrase sous les pastilles, souvent hors de l ecran) ; les joueurs d une
 // activite du Programme ne les recalculaient pas avant l enregistrement ; un
 // groupe qui redescendait gardait les pistes ajoutees pour lui.
-// Maintenant, ou que le nombre change (le haut, le Programme, la duree du
-// bowling, une activite ajoutee, les joueurs d une partie) :
+// LA CARTE EST PARTIE, LES PASTILLES SONT LA REPONSE (2026-11-20, Ansar : « ça
+// montre fait trop ia [...] ça nous redirige vers un autre truc ça nous sort et
+// tout nn faut tout direct »). Plus de quille, de phrase « 8 joueurs : pistes 3
+// et 4 (avant : piste 3) », de « Modifier » ni de « OK ». Ou que le nombre
+// change (le haut, le Programme, la duree du bowling, une activite ajoutee, les
+// joueurs d une partie) :
 //   - les pistes suivent tout de suite (syncEditLaneAssignment) : celles que le
 //     dossier a et qui sont libres restent, la regle commune choisit celles qui
 //     manquent (assets/pinlane-pistes.js, sa graine) ;
-//   - une petite carte le dit au-dessus de « Enregistrer », une fois la frappe
-//     calmee (taper 1 puis 8 pour 18 ne montre jamais « 1 piste ») :
-//     « 8 joueurs : pistes 3 et 4 (avant : piste 3) », au laser « 24 joueurs :
-//     2 vagues de 12 armes ». Ce qu elle dit est deja applique : « OK » la
-//     ferme, « Modifier » ouvre les pastilles des pistes (ou les parties du
-//     laser). Elle ne prend pas le focus et ne cache rien ;
+//   - les pastilles « Pistes 1…8 » de la rangee du bowling se remettent en place,
+//     et celle qui arrive comme celle qui part s eclairent un instant
+//     (eclairerPastillesEdition : transform et opacity, 260 ms, rien en
+//     mouvement reduit). Pendant une frappe, elles attendent qu elle se calme :
+//     taper 1 puis 8 pour 18 ne montre jamais une piste. Une pastille se touche
+//     toujours pour ajouter ou retirer une piste ;
 //   - un groupe qui baisse rend ses pistes en trop tout seul (2026-11-19, la
 //     decision d Ansar apres Gembloux) : il garde le meilleur bloc parmi les
-//     siennes, la carte dit celles qui sont libérées, « Modifier » en remet ;
-//   - le serveur a le dernier mot : des que son calcul a blanc arrive
-//     (demanderVerdictEdition), la carte montre ses pistes.
-// Rien ne s affiche quand le nombre de pistes ou de vagues ne change pas, ni
-// pour des pistes posees a la main (« Seulement ces pistes, à la main »).
-// L heure du bowling changee dans sa rangee deplace la fenetre des pistes
-// (debutBowlingEdition) : une piste prise a la nouvelle heure, la carte
-// propose les pistes que la regle prendrait, sans les imposer (le refus du
-// serveur reste le premier mot, avec ses heures libres).
+//     siennes ;
+//   - le serveur a le dernier mot : son calcul a blanc (demanderVerdictEdition)
+//     dit dans la barre du bas les pistes qu il ecrira si ce ne sont pas celles-ci ;
+//   - au laser, une ligne de sa rangee dit les vagues (« 2 vagues de 12 armes »).
+// Rien ne bouge pour des pistes posees a la main (« Seulement ces pistes, à la
+// main »). L heure du bowling changee dans sa rangee deplace la fenetre des
+// pistes (debutBowlingEdition) : une piste prise a la nouvelle heure, les pistes
+// que la regle prendrait partent avec le bowling deplace, tout de suite (le
+// refus du serveur reste, avec ses heures libres, quand aucune ne l est).
 // ---------------------------------------------------------------------------
-const ATTRIBUTION_CALME_MS = 600;
-let attributionEdition = { pour: null, base: null, minuterie: 0, carte: null, entree: false };
+const PISTES_CALME_MS = 600;
+// Le groupe avant le geste (`base` : ses joueurs et ses pistes au bowling), repris
+// une fois la frappe calmee.
+let repereGroupeEdition = { pour: null, base: null, minuterie: 0 };
 
 // La regle commune, sur les pistes de CE dossier (parmi : les pistes ou
 // choisir ; graine : celles a garder).
@@ -1686,13 +1693,15 @@ function joueursBowlingEdition(e) {
   return programme && programme.bowling && programme.bowling.on ? participantsLigneProgramme(programme.bowling, e.pax) : Math.max(1, Math.trunc(Number(e && e.pax) || 1));
 }
 
-// LE GROUPE AVANT CE GESTE : la photo de la carte (prise a l ouverture de
-// Modifier, puis a chaque frappe calmee et a chaque geste de la main) ; un etat
-// d edition que Modifier n a pas dessine (le compte a l arrivee) part du dossier.
+// LE GROUPE AVANT CE GESTE : le repere (pris a l ouverture de Modifier, puis a
+// chaque frappe calmee et a chaque geste de la main) ; la bulle du compte pose
+// le sien (`referencePistes` : les pistes qu on y a touchees, et pour combien) ;
+// sinon un etat d edition que Modifier n a pas dessine part du dossier.
 function referencePistesEdition() {
   const e = state.editState;
   if (!e) return null;
-  const a = attributionEdition;
+  if (e.referencePistes && Array.isArray(e.referencePistes.pistes)) return { joueurs: e.referencePistes.joueurs, pistes: e.referencePistes.pistes.slice() };
+  const a = repereGroupeEdition;
   if (a.pour === e && a.base && a.base.bowling) return { joueurs: a.base.bowling.joueurs, pistes: a.base.bowling.pistes.slice() };
   const origine = departsEdition().get(e)?.origine;
   if (!origine) return null;
@@ -1736,21 +1745,25 @@ function pistesDeDepartEdition(requis, debut, duree) {
   return formatLaneInput(ref.pistes);
 }
 
-// Les pistes du dossier qu un groupe plus petit peut rendre : celles que la
-// regle ne garderait pas. Une piste touchee a la main : aucune proposition.
-function pistesLiberablesEdition(pistes, requis) {
-  const e = state.editState;
-  if (!e || e.pistesALaMain || !(requis > 0) || pistes.length <= requis) return [];
-  const touchees = (e.pistesTouchees || []).map(Number);
-  if (pistes.some((piste) => touchees.includes(Number(piste)))) return [];
-  const garder = choisirPistesEdition(requis, [], pistes) || pistes.slice(0, requis);
-  return pistes.filter((piste) => !garder.includes(piste));
+// « 2 vagues de 12 armes », « 1 vague de 14 armes », « 2 vagues de 13 et 12
+// armes » : les vagues d un groupe au laser, la ligne de sa rangee dans Modifier
+// et celle de la bulle du compte. Toujours des armes.
+function vaguesLaserEnMots(joueurs) {
+  const n = Math.max(1, Math.trunc(Number(joueurs) || 1));
+  const vagues = getLaserWaveCount(n);
+  const tailles = getBalancedLaserWaveSizes(n);
+  if (vagues < 2 || tailles.length < 2) return `1 vague de ${n} arme${n > 1 ? 's' : ''}`;
+  const dites = [...new Set(tailles)].length === 1 ? String(tailles[0]) : enEnumeration(tailles.map(String));
+  return `${vagues} vagues de ${dites} armes`;
 }
 
-// Les armes d un groupe au laser : ses vagues et la taille de chacune.
-function photoLaserAttribution(joueurs) {
-  const n = Math.max(1, Math.trunc(Number(joueurs) || 1));
-  return { joueurs: n, vagues: getLaserWaveCount(n), tailles: getBalancedLaserWaveSizes(n), armes: getLaserArenaCapacity() };
+// Les joueurs du laser d un etat d edition : ceux de sa rangee dans le
+// Programme, sinon le groupe d une session laser. Null sans laser.
+function joueursLaserEdition(e, r) {
+  const laser = e && e.programmeEdite && e.programmeEdite.laser_game;
+  if (laser && laser.on) return participantsLigneProgramme(laser, e.pax);
+  if (e && !e.programmeEdite && r && String(r.type || '') === 'laser') return Math.max(1, Math.trunc(Number(e.pax) || 1));
+  return null;
 }
 
 // L HEURE DU BOWLING CHANGEE : les pistes du dossier prises a la nouvelle
@@ -1770,83 +1783,44 @@ function heureDuBowlingEdition(r, e, dossier) {
   return { heure, prises, proposees: proposees && proposees.length === actuelles.length ? [...proposees].sort((a, b) => a - b) : null };
 }
 
-// CE QUE LE GROUPE TIENT DANS MODIFIER, en une photo : ses pistes, ce qu il en
-// faut, ses vagues au laser.
-function photoAttributionEdition() {
+// LES PISTES DE LA NOUVELLE HEURE, TOUT DE SUITE (2026-11-20) : une piste du
+// dossier prise a l heure tapee, les pistes que la regle prendrait partent avec
+// le bowling deplace (pistesDuDeplacementBowling), et les pastilles le montrent.
+// Elles restent libres : rien a changer. Aucune n est libre : rien non plus, le
+// refus du serveur le dit avec ses heures libres. Des pistes posees a la main ne
+// bougent pas.
+function pistesDeLHeureEdition() {
+  const e = state.editState;
+  const r = state.selectedRes;
+  if (!e || !r) return;
+  delete e.pistesDeLHeure;
+  const dossier = dossierPourFormule(r);
+  if (e.pistesALaMain || !reservationNeedsLanes(dossier.type, dossier.formuleId) || (e.date && e.date !== r.date)) return;
+  const heure = heureDuBowlingEdition(r, e, dossier);
+  if (heure && heure.prises.length && heure.proposees) e.pistesDeLHeure = { heure: heure.heure, pistes: heure.proposees.slice() };
+}
+
+// CE QUE LE GROUPE TIENT AU BOWLING, en une photo : ses joueurs et ses pistes
+// (rien quand il ne joue pas au bowling ce jour-la).
+function photoGroupeEdition() {
   const e = state.editState;
   const r = state.selectedRes;
   if (!e || !r) return null;
   const dossier = dossierPourFormule(r);
   const programme = e.programmeEdite;
-  const photo = { bowling: null, laser: null };
   const bowlingAuProgramme = !programme || Boolean(programme.bowling && programme.bowling.on);
-  if (bowlingAuProgramme && reservationNeedsLanes(dossier.type, dossier.formuleId) && !(e.date && e.date !== r.date)) {
-    const besoin = getEditBowlingCapacityNeed(dossier, e);
-    const capacite = besoin.bowlingCapacity || {};
-    const requis = Number(besoin.requiredCount) || 0;
-    const pistes = parseLaneInput(e.lanesStr);
-    const touchees = (e.pistesTouchees || []).map(Number);
-    photo.bowling = {
-      joueurs: programme && programme.bowling && programme.bowling.on ? participantsLigneProgramme(programme.bowling, e.pax) : Math.max(1, Math.trunc(Number(e.pax) || 1)),
-      requis,
-      pistes,
-      aLaMain: Boolean(e.pistesALaMain),
-      urgence: Boolean(capacite.emergency),
-      message: capacite.emergency ? bowlingCapacityMessage(capacite) : '',
-      manque: pistes.length < requis,
-      main: pistes.filter((piste) => touchees.includes(piste)),
-      liberables: pistesLiberablesEdition(pistes, requis),
-      heure: heureDuBowlingEdition(r, e, dossier),
-    };
-  }
-  const laser = programme && programme.laser_game;
-  if ((laser && laser.on) || (!programme && String(r.type || '') === 'laser')) {
-    photo.laser = photoLaserAttribution(laser && laser.on ? participantsLigneProgramme(laser, e.pax) : e.pax);
-  }
-  return photo;
+  if (!bowlingAuProgramme || !reservationNeedsLanes(dossier.type, dossier.formuleId) || (e.date && e.date !== r.date)) return { bowling: null };
+  return { bowling: { joueurs: joueursBowlingEdition(e), pistes: parseLaneInput(e.lanesStr) } };
 }
 
-// LA DECISION, UNE SEULE FOIS, pour Modifier et pour Reserver : ce que la
-// carte dit, d apres deux photos du groupe (celle d avant le geste, celle
-// d apres la frappe calmee). Pure : elle ne lit que ses deux photos.
-// Rien quand le nombre de pistes ou de vagues ne bouge pas, ni pour des
-// pistes posees a la main ; une piste qui manque se dit ailleurs (le conseil
-// sous les pastilles, le verdict du serveur).
-function proposerAttribution(avant, apres) {
-  const lignes = [];
-  const a = avant && avant.bowling;
-  const b = apres && apres.bowling;
-  if (a && b && !a.aLaMain && !b.aLaMain && !b.manque) {
-    const enTrop = b.pistes.length > b.requis ? b.pistes.filter((piste) => (b.main || []).includes(piste)) : [];
-    if (b.pistes.length !== a.pistes.length) {
-      lignes.push({
-        activite: 'bowling', motif: b.pistes.length > a.pistes.length ? 'monte' : 'descend', joueurs: b.joueurs,
-        avant: a.pistes, apres: b.pistes, ajoutees: b.pistes.filter((piste) => !a.pistes.includes(piste)),
-        retirees: a.pistes.filter((piste) => !b.pistes.includes(piste)), liberables: b.liberables || [], requis: b.requis, aLaMain: enTrop,
-      });
-    } else if (b.requis < a.requis && (b.liberables || []).length) {
-      lignes.push({ activite: 'bowling', motif: 'liberer', joueurs: b.joueurs, avant: a.pistes, apres: b.pistes, liberables: b.liberables, requis: b.requis, aLaMain: [] });
-    } else if (b.urgence && !a.urgence) {
-      lignes.push({ activite: 'bowling', motif: 'urgence', joueurs: b.joueurs, avant: a.pistes, apres: b.pistes, message: b.message, liberables: [], aLaMain: [] });
-    } else if (b.heure && b.heure.prises.length && b.heure.proposees
-      && !(a.heure && a.heure.heure === b.heure.heure && a.heure.prises.length)) {
-      lignes.push({ activite: 'bowling', motif: 'heure', joueurs: b.joueurs, heure: b.heure.heure, prises: b.heure.prises, proposees: b.heure.proposees, avant: a.pistes, apres: b.pistes, liberables: [], aLaMain: [] });
-    }
-  }
-  const l = avant && avant.laser;
-  const m = apres && apres.laser;
-  if (l && m && m.vagues !== l.vagues) lignes.push({ activite: 'laser_game', motif: 'vagues', joueurs: m.joueurs, vagues: m.vagues, tailles: m.tailles, armes: m.armes, avant: l.vagues });
-  return lignes.length ? { lignes } : null;
-}
-
-// Les pistes par suites : trois qui se suivent ou plus se disent « de … a … »
-// (« 1 à 5 »), les autres une par une. `pareil` coupe une suite (les pistes
-// neuves d une carte restent en couleur).
-function suitesDePistes(liste, pareil = () => true) {
+// « pistes 3 et 4 », « piste 3 », « pistes 1 à 5 », « pistes 1 à 3 et 6 »,
+// « aucune piste » : les pistes par suites, trois qui se suivent ou plus « de …
+// a … ».
+function suitesDePistes(liste) {
   const suites = [];
   liste.forEach((piste) => {
     const s = suites[suites.length - 1];
-    if (s && piste === s[s.length - 1] + 1 && pareil(piste, s[0])) s.push(piste);
+    if (s && piste === s[s.length - 1] + 1) s.push(piste);
     else suites.push([piste]);
   });
   return suites;
@@ -1856,7 +1830,6 @@ function enEnumeration(morceaux) {
   return morceaux.length > 1 ? `${morceaux.slice(0, -1).join(', ')} et ${morceaux[morceaux.length - 1]}` : morceaux[0];
 }
 
-// « pistes 3 et 4 », « piste 3 », « pistes 1 à 5 », « pistes 1 à 3 et 6 », « aucune piste ».
 function pistesEnMots(pistes) {
   const liste = [...new Set((pistes || []).map(Number))].sort((a, b) => a - b);
   if (!liste.length) return 'aucune piste';
@@ -1864,228 +1837,59 @@ function pistesEnMots(pistes) {
   return `${liste.length > 1 ? 'pistes' : 'piste'} ${enEnumeration(morceaux)}`;
 }
 
-// « Piste 7 libérée. », « Pistes 6 et 7 libérées. »
+// « Piste 7 libérée. », « Pistes 6 et 7 libérées. » (le toast du compte a l arrivee)
 function pistesLibereesEnMots(pistes) {
   const liste = [...new Set((pistes || []).map(Number))];
   return `${pistesEnMots(liste).replace(/^p/, 'P')} ${liste.length > 1 ? 'libérées' : 'libérée'}.`;
 }
 
-// Les pistes en pastilles (celles qui arrivent en couleur), dans la phrase.
-function pistesEnPastillesHtml(pistes, neuves = []) {
-  const liste = [...new Set((pistes || []).map(Number))].sort((a, b) => a - b);
-  if (!liste.length) return 'aucune piste';
-  const neuve = (piste) => neuves.includes(piste);
-  const pastille = (piste) => `<span class="attr-piste${neuve(piste) ? ' is-neuve' : ''}">${piste}</span>`;
-  const morceaux = suitesDePistes(liste, (piste, debut) => neuve(piste) === neuve(debut))
-    .flatMap((s) => (s.length >= 3 ? [`${pastille(s[0])} à ${pastille(s[s.length - 1])}`] : s.map(pastille)));
-  return `${liste.length > 1 ? 'pistes' : 'piste'} ${enEnumeration(morceaux)}`;
-}
-
-// UNE LIGNE DE LA CARTE, en mots simples (Modifier, le compte a l arrivee, Reserver).
-// `serveur` : les pistes que le calcul a blanc du serveur ecrira, quand il est la.
-// `dossier` : un dossier existe (Modifier, le compte), ses pistes rendues se disent
-// « libérées » ; Reserver n a encore rien pris.
-function ligneAttributionHtml(ligne, serveur = null, { dossier = true } = {}) {
-  const joueurs = `<b>${ligne.joueurs} joueur${ligne.joueurs > 1 ? 's' : ''}</b>`;
-  if (ligne.activite === 'laser_game') {
-    const tailles = [...new Set(ligne.tailles)].length === 1 ? String(ligne.tailles[0]) : `${ligne.tailles.slice(0, -1).join(', ')} et ${ligne.tailles[ligne.tailles.length - 1]}`;
-    const vagues = ligne.vagues > 1 ? `${ligne.vagues} vagues de ${tailles} armes` : `1 vague de ${ligne.tailles[0]} arme${ligne.tailles[0] > 1 ? 's' : ''}`;
-    return `${joueurs} au laser : ${escapeHtml(vagues)} <span class="attr-avant">(avant : ${ligne.avant} vague${ligne.avant > 1 ? 's' : ''}, l’arène a ${ligne.armes} armes)</span>`;
-  }
-  if (ligne.motif === 'heure') {
-    const libres = pistesEnPastillesHtml(ligne.proposees, ligne.proposees.filter((piste) => !ligne.avant.includes(piste)));
-    return `<b>Bowling à ${escapeHtml(ligne.heure)}</b> : ${ligne.prises.length > 1 ? `les ${pistesEnMots(ligne.prises)} sont prises` : `la ${pistesEnMots(ligne.prises)} est prise`} à cette heure. ${ligne.proposees.length > 1 ? `Les ${libres} sont libres` : `La ${libres} est libre`}.`;
-  }
-  const apres = serveur && serveur.length ? serveur : ligne.apres;
-  const neuves = apres.filter((piste) => !ligne.avant.includes(piste));
-  if (ligne.motif === 'urgence') return `${joueurs} : ${pistesEnPastillesHtml(apres)}. ${escapeHtml(ligne.message)}`;
-  // (au telephone, « avant » se tait : la barre du bas le dit deja, « Pistes 3 → 3, 4 »)
-  const avant = `<span class="attr-avant is-pistes">(avant : ${pistesEnMots(ligne.avant)})</span>`;
-  // (une phrase de plus va a la ligne : « (avant : …) » ne la colle pas sans point)
-  const main = (ligne.aLaMain || []).length ? ` <span class="attr-note">${escapeHtml(`${pistesEnMots(ligne.aLaMain).replace(/^p/, 'P')} ${ligne.aLaMain.length > 1 ? 'gardées' : 'gardée'} à la main.`)}</span>` : '';
-  const offre = (ligne.liberables || []).length ? ` <span class="attr-note">${ligne.requis} piste${ligne.requis > 1 ? 's' : ''} ${ligne.requis > 1 ? 'suffisent' : 'suffit'}.</span>` : '';
-  if (ligne.motif === 'liberer') return `${joueurs} : ${ligne.requis} piste${ligne.requis > 1 ? 's' : ''} ${ligne.requis > 1 ? 'suffisent' : 'suffit'}, vous gardez les ${pistesEnPastillesHtml(apres)}.`;
-  const rendues = dossier && ligne.motif === 'descend' ? ligne.avant.filter((piste) => !apres.includes(piste)) : [];
-  const liberees = rendues.length ? ` <span class="attr-note">${escapeHtml(pistesLibereesEnMots(rendues))}</span>` : '';
-  return `${joueurs} : ${pistesEnPastillesHtml(apres, neuves)} ${avant}${offre}${liberees}${main}`;
-}
-
-// Les gestes de la carte : une offre (liberer, prendre) se refuse ; un
-// changement deja fait se garde (OK) ou s ajuste (Modifier).
-function gestesAttributionHtml(carte, faire) {
-  const liberer = carte.lignes.find((ligne) => (ligne.liberables || []).length);
-  const heure = carte.lignes.find((ligne) => ligne.motif === 'heure');
-  if (heure) return `<button type="button" class="attr-b is-fort" data-attr-geste="prendre" onclick="${faire.prendre}">${escapeHtml(`Prendre les ${pistesEnMots(heure.proposees)}`.replace('les piste ', 'la piste '))}</button><button type="button" class="attr-b" data-attr-geste="non" onclick="${faire.fermer}">Non</button>`;
-  if (liberer) return `<button type="button" class="attr-b is-fort" data-attr-geste="liberer" onclick="${faire.liberer}">${escapeHtml(`Libérer la ${pistesEnMots(liberer.liberables)}`.replace('la pistes', 'les pistes'))}</button><button type="button" class="attr-b" data-attr-geste="garder" onclick="${faire.fermer}">Garder</button>`;
-  return `<button type="button" class="attr-b" data-attr-geste="modifier" onclick="${faire.modifier}">Modifier</button><button type="button" class="attr-b is-fort" data-attr-geste="ok" onclick="${faire.fermer}">OK</button>`;
-}
-
-// La carte de Modifier (vide sans carte : la zone reste, pour le lecteur
-// d ecran qui annonce ce qui y arrive).
-function attributionEditionHtml() {
-  const a = attributionEdition;
-  const carte = a.pour === state.editState ? a.carte : null;
-  if (!carte) return '';
-  const ecrit = dossierEcritDuVerdict();
-  const serveur = ecrit && Array.isArray(ecrit.lanes) ? ecrit.lanes.map(Number).sort((x, y) => x - y) : null;
-  const lignes = carte.lignes.map((ligne) => `<p class="attr-ligne" data-attr-activite="${escapeHtml(ligne.activite)}" data-attr-motif="${escapeHtml(ligne.motif)}">${ligneAttributionHtml(ligne, ligne.activite === 'bowling' && ['monte', 'descend'].includes(ligne.motif) ? serveur : null)}</p>`).join('');
-  const gestes = gestesAttributionHtml(carte, { modifier: 'modifierAttributionEdition()', fermer: 'fermerAttributionEdition()', liberer: 'libererPistesEdition()', prendre: 'prendrePistesHeureEdition()' });
-  return `<div class="attr-carte">${iconeAttributionHtml(carte)}<div class="attr-lignes">${lignes}</div><div class="attr-gestes">${gestes}</div></div>`;
-}
-
-// Une quille pour les pistes, une cible pour les armes du laser.
-function iconeAttributionHtml(carte) {
-  const laser = carte.lignes.every((ligne) => ligne.activite === 'laser_game');
-  return laser
-    ? '<svg class="attr-icone" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>'
-    : '<svg class="attr-icone" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.5c-1.6 0-2.4 1.3-2.4 2.8 0 1.2.6 2 .6 2.9 0 .8-1.9 3.4-1.9 7 0 3.4 1.3 6.3 3.7 6.3s3.7-2.9 3.7-6.3c0-3.6-1.9-6.2-1.9-7 0-.9.6-1.7.6-2.9 0-1.5-.8-2.8-2.4-2.8Z"/><path d="M10.4 9.4h3.2"/></svg>';
-}
-
-// La zone de la carte, repeinte en place : le formulaire n est pas re-rendu (le
-// champ qu on tape garde son focus et son curseur).
-function peindreAttributionEdition() {
-  const zone = document.getElementById('editAttribution');
-  if (!zone) return;
-  const html = attributionEditionHtml();
-  const entree = attributionEdition.entree;
-  attributionEdition.entree = false;
-  if (zone.attrPeint === html && !entree) return;
-  // (un geste de la carte qui avait le focus le retrouve apres le repeint)
-  const geste = zone.contains(document.activeElement) ? document.activeElement.getAttribute('data-attr-geste') : '';
-  zone.innerHTML = html;
-  zone.attrPeint = html;
-  if (entree && zone.firstElementChild) zone.firstElementChild.classList.add('is-entree');
-  const retrouve = geste ? zone.querySelector(`[data-attr-geste="${geste}"]`) : null;
-  if (retrouve) retrouve.focus({ preventScroll: true });
-}
-
-// La photo de reference, prise quand Modifier se dessine pour un etat
-// d edition : la carte compare a elle. Un etat d edition que Modifier n a pas
-// dessine (le compte a l arrivee le prete le temps d un calcul) n a pas de carte.
-function baseAttributionEdition() {
-  const a = attributionEdition;
+// Le repere, pris quand Modifier se dessine pour un etat d edition. Un etat
+// d edition que Modifier n a pas dessine (le compte a l arrivee le prete le
+// temps d un calcul) n en a pas.
+function repererGroupeEdition() {
+  const a = repereGroupeEdition;
   if (a.pour === state.editState) return;
   clearTimeout(a.minuterie);
   a.pour = state.editState;
-  a.base = state.editState ? photoAttributionEdition() : null;
-  a.carte = null;
+  a.base = state.editState ? photoGroupeEdition() : null;
   a.minuterie = 0;
-  a.entree = false;
 }
 
-// Un geste a change le groupe (ou l heure du bowling) : la carte se decide une
-// fois la frappe calmee.
-function planifierAttributionEdition() {
-  const a = attributionEdition;
+// Un geste a change le groupe : le repere se reprend une fois la frappe calmee
+// (taper 1 puis 2 pour 12 repart toujours du groupe d avant la frappe).
+function planifierRepereEdition() {
+  const a = repereGroupeEdition;
   if (!state.editState || a.pour !== state.editState) return;
   clearTimeout(a.minuterie);
-  a.minuterie = setTimeout(deciderAttributionEdition, ATTRIBUTION_CALME_MS);
+  a.minuterie = setTimeout(reprendreRepereEdition, PISTES_CALME_MS);
 }
 
-function deciderAttributionEdition() {
-  const a = attributionEdition;
+function reprendreRepereEdition() {
+  const a = repereGroupeEdition;
   a.minuterie = 0;
-  if (!state.editState || a.pour !== state.editState || !state.selectedRes || state.activeTab !== 'modifier') return;
-  const photo = photoAttributionEdition();
-  const carte = proposerAttribution(a.base, photo);
-  a.base = photo;
-  // (une frappe sans changement efface la carte d avant : elle decrivait un autre groupe)
-  a.carte = carte;
-  a.entree = Boolean(carte);
-  peindreAttributionEdition();
+  if (!state.editState || a.pour !== state.editState || !state.selectedRes) return;
+  a.base = photoGroupeEdition();
 }
 
 // Les pistes ou les joueurs d une activite ont change dans Modifier : les pistes
-// suivent tout de suite, la carte le dira.
-function suivreAttributionEdition() {
+// suivent tout de suite, le repere se reprend la frappe calmee.
+function suivrePistesEdition() {
   syncEditLaneAssignment();
-  planifierAttributionEdition();
+  planifierRepereEdition();
 }
 
-// La main a parle (une piste touchee, des pistes posees a la main) : la carte
-// se tait et la photo repart d ici.
-function oublierAttributionEdition() {
-  const a = attributionEdition;
+// La main a parle (une piste touchee, des pistes posees a la main) : le repere
+// repart d ici.
+function repartirDIciEdition() {
+  const a = repereGroupeEdition;
   if (a.pour !== state.editState) return;
   clearTimeout(a.minuterie);
   a.minuterie = 0;
-  a.carte = null;
-  a.base = photoAttributionEdition();
-  peindreAttributionEdition();
+  a.base = photoGroupeEdition();
 }
 
-// « OK », « Garder », « Non » : la carte se ferme, rien d autre ne change. Le
-// focus qui etait dans la carte passe a « Enregistrer ».
-function fermerAttributionEdition() {
-  const zone = document.getElementById('editAttribution');
-  const avaitLeFocus = Boolean(zone && zone.contains(document.activeElement));
-  attributionEdition.carte = null;
-  peindreAttributionEdition();
-  if (avaitLeFocus) {
-    const enregistrer = document.querySelector('#posOverlay .fm .es-save');
-    if (enregistrer) enregistrer.focus({ preventScroll: true });
-  }
-}
-
-// « Modifier » : les pastilles des pistes (ou les parties du laser) sous les
-// yeux, la premiere choisie prete au doigt et au clavier.
-function modifierAttributionEdition() {
-  const carte = attributionEdition.carte;
-  attributionEdition.carte = null;
-  peindreAttributionEdition();
-  const premiere = carte && carte.lignes[0];
-  const laser = premiere && premiere.activite === 'laser_game';
-  const overlay = document.getElementById('posOverlay');
-  if (!overlay) return;
-  const rangeeLaser = overlay.querySelector('.fm-act[data-edit-activity="laser_game"]');
-  const pli = laser && rangeeLaser ? rangeeLaser.querySelector('details.dossier-laser-schedule') : null;
-  if (pli) pli.open = true;
-  const cible = laser
-    ? (pli || (rangeeLaser && rangeeLaser.querySelector('.fm-act-reglages')) || overlay.querySelector('#editDurationInput'))
-    : overlay.querySelector('.fm .lane-picker');
-  if (!cible) return;
-  const reduit = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  cible.scrollIntoView({ block: 'center', behavior: reduit ? 'auto' : 'smooth' });
-  const touche = laser
-    ? (pli ? pli.querySelector('summary') : cible.matches('select, input') ? cible : cible.querySelector('button:not([disabled]), select, input'))
-    : (cible.querySelector('.lane-chip.is-on:not([disabled])') || cible.querySelector('.lane-chip:not([disabled])'));
-  if (touche) touche.focus({ preventScroll: true });
-  cible.classList.remove('attr-repere');
-  void cible.offsetWidth;
-  cible.classList.add('attr-repere');
-  setTimeout(() => cible.classList.remove('attr-repere'), 1600);
-}
-
-// « Libérer la piste 4 » : le groupe plus petit rend les pistes que la carte
-// propose ; celles touchees a la main ne sont jamais dans l offre.
-function libererPistesEdition() {
-  const e = state.editState;
-  const carte = attributionEdition.carte;
-  const ligne = carte && carte.lignes.find((x) => (x.liberables || []).length);
-  if (!e || !ligne) { fermerAttributionEdition(); return; }
-  if (state.editError) setEditError('');
-  e.lanesStr = formatLaneInput(getEditLaneNumbers().filter((piste) => !ligne.liberables.includes(piste)));
-  fermerAttributionEdition();
-  attributionEdition.base = photoAttributionEdition();
-  refreshEditPreview();
-}
-
-// « Prendre les pistes 7 et 8 » : le bowling deplace part sur elles (le
-// deplacement garde le nombre de pistes ; preparerDeplacementsEdition).
-function prendrePistesHeureEdition() {
-  const e = state.editState;
-  const carte = attributionEdition.carte;
-  const ligne = carte && carte.lignes.find((x) => x.motif === 'heure');
-  if (!e || !ligne) { fermerAttributionEdition(); return; }
-  e.pistesDeLHeure = { heure: ligne.heure, pistes: ligne.proposees.slice() };
-  fermerAttributionEdition();
-  attributionEdition.base = photoAttributionEdition();
-  peindrePistesPrises();
-  majModifsEdition();
-}
-
-// Les pistes que le bowling deplace emporte : celles prises dans la carte pour
-// CETTE heure, sinon les siennes.
+// Les pistes que le bowling deplace emporte : celles de la regle pour CETTE
+// heure (pistesDeLHeureEdition), sinon les siennes.
 function pistesDuDeplacementBowling(lanes) {
   const e = state.editState;
   const prises = e && e.pistesDeLHeure;
@@ -2140,8 +1944,9 @@ function setEditField(field, value, syncLanes = false) {
   }
   if (syncLanes) syncEditLaneAssignment();
   else refreshEditPreview();
-  // (le groupe, la duree ou l arrivee changent les pistes : la carte le dira)
-  if (syncLanes && typeof planifierAttributionEdition === 'function') planifierAttributionEdition();
+  // (le groupe, la duree ou l arrivee changent les pistes : les pastilles suivent,
+  // le repere du groupe se reprend la frappe calmee)
+  if (syncLanes) planifierRepereEdition();
   if (field === 'pax' && state.editState.programmeEdite) {
     // Refresh derived activity limits without replacing the input being typed.
     document.querySelectorAll('.dossier-activity[data-edit-activity]').forEach(row => {
@@ -2173,27 +1978,19 @@ function getEditLaneNumbers() {
 function toggleEditLane(lane) {
   if (!state.editState) return;
   if (state.editError) setEditError('');
-  const choisies = new Set(getEditLaneNumbers());
+  // (la pastille touchee part de ce que les pastilles montrent : les pistes de la
+  // nouvelle heure du bowling, quand elles remplacent les siennes)
+  const choisies = new Set(pistesDuDeplacementBowling(getEditLaneNumbers()));
   if (choisies.has(lane)) choisies.delete(lane);
   else choisies.add(lane);
   state.editState.lanesStr = [...choisies].sort((a, b) => a - b).join(',');
-  // UNE PISTE TOUCHEE A LA MAIN (2026-11-18) : la carte ne propose pas de la
-  // liberer, et la photo du groupe repart d ici (oublierAttributionEdition). Un
-  // groupe qui baisse rend ses pistes en trop, celle-ci comprise : seul
-  // « Seulement ces pistes, à la main » les fige (2026-11-19). Les pistes prises
-  // pour une heure changee cedent la place a ce choix.
-  const touchees = new Set((state.editState.pistesTouchees || []).map(Number));
-  if (choisies.has(lane)) touchees.add(lane);
-  else touchees.delete(lane);
-  state.editState.pistesTouchees = [...touchees].sort((a, b) => a - b);
+  // UNE PISTE TOUCHEE A LA MAIN (2026-11-18) : le repere du groupe repart d ici
+  // (repartirDIciEdition). Un groupe qui baisse rend ses pistes en trop,
+  // celle-ci comprise : seul « Seulement ces pistes, à la main » les fige
+  // (2026-11-19). Les pistes prises pour une heure changee cedent la place a ce
+  // choix.
   delete state.editState.pistesDeLHeure;
-  if (typeof oublierAttributionEdition === 'function') oublierAttributionEdition();
-  const bouton = document.querySelector(`.lane-picker .lane-chip[onclick="toggleEditLane(${lane})"]`);
-  if (bouton) {
-    const actif = choisies.has(lane);
-    bouton.classList.toggle('is-on', actif);
-    bouton.setAttribute('aria-pressed', actif ? 'true' : 'false');
-  }
+  repartirDIciEdition();
   refreshEditPreview();
 }
 window.toggleEditLane = toggleEditLane;
@@ -2211,8 +2008,10 @@ function basculerPistesALaMainEdition() {
     bouton.setAttribute('aria-pressed', e.pistesALaMain ? 'true' : 'false');
   }
   if (!e.pistesALaMain) syncEditLaneAssignment();
-  // (le nombre pose a la main ne se commente pas : la carte se tait)
-  if (typeof oublierAttributionEdition === 'function') oublierAttributionEdition();
+  // (des pistes posees a la main ne bougent plus : le repere repart d ici, et une
+  // heure de bowling deja changee garde ses pistes)
+  if (e.pistesALaMain) delete e.pistesDeLHeure;
+  repartirDIciEdition();
   const hint = document.getElementById('editLanesHint');
   if (hint && state.selectedRes) hint.textContent = editLaneAdvice(dossierPourFormule(state.selectedRes), e);
   refreshEditPreview();
@@ -32646,8 +32445,8 @@ function toggleEditActivity(id) {
   else { programme.others[id] = !programme.others[id]; if (id === 'arcade_time' && programme.others[id] && !programme.othersOptions[id]) programme.othersOptions[id] = defaultArcadeOptions(getCenterActivity(id)); }
   // (un bowling remis au programme reprend ses pistes tout de suite ; retire, il
   // garde celles d avant, que l enregistrement ne demande plus)
-  if (id === 'bowling' && programme.bowling.on && typeof suivreAttributionEdition === 'function') suivreAttributionEdition();
-  else if (typeof planifierAttributionEdition === 'function') planifierAttributionEdition();
+  if (id === 'bowling' && programme.bowling.on && typeof suivrePistesEdition === 'function') suivrePistesEdition();
+  else if (typeof planifierRepereEdition === 'function') planifierRepereEdition();
   renderPos();
 }
 
@@ -32657,7 +32456,7 @@ function setEditBowlingDuration(valeur) {
   programme.bowling.on = true;
   programme.bowling.duration = Number(valeur) || 1;
   // (une partie plus longue peut demander d autres pistes : elles suivent)
-  if (typeof suivreAttributionEdition === 'function') suivreAttributionEdition();
+  if (typeof suivrePistesEdition === 'function') suivrePistesEdition();
   renderPos();
 }
 
@@ -32672,7 +32471,7 @@ function setEditLaserGames(nombre) {
   programme.laser_game.games = Math.max(1, Math.min(plafond, Math.trunc(Number(nombre) || 1)));
   if (Array.isArray(programme.laser_game.joueursParPartie)) rsPartiesAuNombre(programme.laser_game, programme.laser_game.games, state.editState.pax);
   if (state.selectedRes?.type === 'laser') state.editState.duration = programme.laser_game.games * 0.5;
-  if (typeof planifierAttributionEdition === 'function') planifierAttributionEdition();
+  if (typeof planifierRepereEdition === 'function') planifierRepereEdition();
   renderPos();
 }
 
@@ -33002,20 +32801,29 @@ function optionsFormuleEditionHtml() {
   const e = state.editState;
   const origine = departsEdition().get(e)?.origine;
   const liste = formulesProposeesEdition();
+  // UN DOSSIER A LA CARTE PREND UNE FORMULE (2026-11-20, Ansar : « modifier tout complet ») : « À la
+  // carte » en tete, et le choisir rend le dossier tel qu il etait.
+  const aLaCarte = !formuleDOrigineEdition(origine) ? `<option value=""${formuleChangeeEdition() ? '' : ' selected'}>À la carte</option>` : '';
   const option = (f) => {
     const dispo = String(f.id) === String(origine?.formuleId) ? { ok: true } : disponibiliteFormuleEdition(f);
     const texte = `${rvNomFormule(f)} · ${formatMontant(f.price)}${f.type === 'per_lane' ? ' la piste' : ''}${dispo.ok ? '' : ` · ${dispo.message}`}`;
     return `<option value="${escapeHtml(f.id)}"${String(f.id) === String(e.formuleId) ? ' selected' : ''}>${escapeHtml(texte)}</option>`;
   };
   const familles = [...new Set(liste.map(f => f.family || ''))];
-  return familles.length > 1
+  return aLaCarte + (familles.length > 1
     ? familles.map(famille => `<optgroup label="${escapeHtml(famille || 'Autres formules')}">${liste.filter(f => (f.family || '') === famille).map(option).join('')}</optgroup>`).join('')
-    : liste.map(option).join('');
+    : liste.map(option).join(''));
+}
+
+// Le dossier etait-il une formule a l ouverture ?
+function formuleDOrigineEdition(origine) {
+  return Boolean(origine && String(origine.type || '') === 'formule' && origine.formuleId);
 }
 
 // Sous le menu : ce que le changement fait, et une formule hors regles le dit.
 function indiceFormuleEdition() {
-  if (!formuleChangeeEdition()) return { texte: 'Changer une activité ne vaut que pour cette visite.', hors: false };
+  // (a la carte, rien a dire tant qu aucune formule n est choisie)
+  if (!formuleChangeeEdition()) return { texte: formuleDOrigineEdition(departsEdition().get(state.editState)?.origine) ? 'Changer une activité ne vaut que pour cette visite.' : '', hors: false };
   const formule = resolveDisplayFormule(state.editState.formuleId);
   const dispo = formule ? disponibiliteFormuleEdition(formule) : { ok: true };
   return dispo.ok
@@ -33026,12 +32834,14 @@ function indiceFormuleEdition() {
 function renderEditFormuleChoix() {
   const e = state.editState;
   const origine = e && departsEdition().get(e)?.origine;
-  if (!origine || String(origine.type || '') !== 'formule' || !origine.formuleId || e.versProgrammeNormal) return '';
+  if (!origine || e.versProgrammeNormal) return '';
+  // (a la carte, le menu ne se montre pas par-dessus un acces illimite choisi : il a sa carte, renderEditIllimiteChoix)
+  if (!formuleDOrigineEdition(origine) && formuleChangeeEdition() && !formulesProposeesEdition().some((f) => String(f.id) === String(e.formuleId))) return '';
   const indice = indiceFormuleEdition();
   return `<div class="fm-champ fm-formule">
       <label class="lbl" for="editFormuleSelect">Formule</label>
       <select id="editFormuleSelect" class="input" data-pl-focus="fiche.edit.formule" aria-describedby="editFormuleHint" onchange="changerFormuleEdition(this.value)">${optionsFormuleEditionHtml()}</select>
-      <p class="field-hint${indice.hors ? ' is-hors' : ''}" id="editFormuleHint">${escapeHtml(indice.texte)}</p>
+      <p class="field-hint${indice.hors ? ' is-hors' : ''}" id="editFormuleHint"${indice.texte ? '' : ' hidden'}>${escapeHtml(indice.texte)}</p>
     </div>`;
 }
 
@@ -33044,6 +32854,7 @@ function peindreFormuleEdition() {
   if (!zone) return;
   const indice = indiceFormuleEdition();
   zone.textContent = indice.texte;
+  zone.hidden = !indice.texte;
   zone.classList.toggle('is-hors', indice.hors);
 }
 
@@ -33055,10 +32866,11 @@ function changerFormuleEdition(id) {
   const e = state.editState;
   const r = state.selectedRes;
   const origine = e && departsEdition().get(e)?.origine;
-  const formule = resolveDisplayFormule(id);
-  if (!e || !r || !origine || !formule) return;
+  // (« À la carte », la valeur vide, rend le dossier a la carte tel qu il etait)
+  const formule = String(id || '') === '' ? null : resolveDisplayFormule(id);
+  if (!e || !r || !origine || (!formule && String(id || '') !== '')) return;
   if (state.editError) setEditError('');
-  const retour = String(formule.id) === String(origine.formuleId || '');
+  const retour = !formule || String(formule.id) === String(origine.formuleId || '');
   e.type = retour ? origine.type : 'formule';
   e.formuleId = retour ? origine.formuleId : formule.id;
   e.label = retour ? origine.label : formule.name;
@@ -33244,6 +33056,9 @@ function renderEditFormuleBloc(r, formule, lignes, controls = {}) {
       const extra = programme.laser_game.extraLaser;
       if (extra) options += `<small class="fm-act-note">+ ${extra.games - programme.laser_game.games} partie pour ${extra.participants} joueurs · ${escapeHtml(formatMoneyCentimes(extra.price))}${Number(extra.discountAmount) > 0 ? ` · remise ${escapeHtml(formatMoneyCentimes(extra.discountAmount))}` : ''}</small>`;
       if (Number(programme.laser_game.games) > 1) options += renderDossierJoueursDesParties(programme.laser_game, state.editState.pax);
+      // LES VAGUES DU LASER, EN UNE LIGNE (2026-11-20) : elles suivent le groupe en place
+      // (peindreVaguesLaserEdition), sans carte ni bouton.
+      options += `<p class="fm-act-vagues" data-laser-vagues>${escapeHtml(vaguesLaserEnMots(joueursLaserEdition(state.editState, r)))}</p>`;
     }
     const item = !estBowling && !estLaser && choice.id !== 'arcade_time' ? getEditProgramItems().find(line => line.activityId === choice.id) : null;
     // Readonly presentation retains stored units/day metadata that is not edited here.
@@ -33267,7 +33082,7 @@ function renderEditFormuleBloc(r, formule, lignes, controls = {}) {
       <div class="fm-act-heure"><span class="visually-hidden">Heure prévue : </span><span class="fm-heures">${heureHtml}</span>${ficheVisuelActivite(r, { activityId: choice.id, nom: choice.label })}</div>
       <div class="fm-act-corps">
         <div class="fm-act-tete"><h5>${escapeHtml(choice.label)}</h5>${detail ? `<span class="fm-act-detail">${escapeHtml(detail)}</span>` : ''}<span class="fm-act-parties" data-parties-activite="${escapeHtml(choice.id)}">${partiesActiviteHtml(etapesHeure, choice.id)}</span><button type="button" class="dossier-remove-activity fm-retirer" aria-label="Retirer ${escapeHtml(choice.label)} de cette visite" onclick="toggleEditActivity('${escapeJsString(choice.id)}')">Retirer</button></div>
-        <div class="fm-act-reglages">${champHeureEditionHtml(choice.id)}${renderActivityParticipantsControl(choice.id, 'edit', 'ecart')}${options}</div>
+        <div class="fm-act-reglages">${champHeureEditionHtml(choice.id)}${champHeureNouvelleHtml(choice.id)}${renderActivityParticipantsControl(choice.id, 'edit', 'ecart')}${options}</div>
         ${estBowling ? controls.lanes || '' : ''}
         ${estLaser && !formuleChangee ? renderDossierLaserEditor(r) : ''}
       </div>
@@ -33386,6 +33201,20 @@ function groupeExtraDossier(extra, nom) {
   return 'autres';
 }
 
+// CE QU UNE LIGNE PORTE EN PLUS DE SON NOM ET DE SON PRIX (2026-11-20, le P0 de l audit de
+// Modifier) : l article du catalogue, sa categorie, l heure de service, la note, son id et son
+// auteur. Toucher un seul extra renvoyait toutes les lignes refaites, sans rien de tout ca : le
+// serveur les prenait pour neuves (cleDeLigne), une ligne changee perdait son article, son heure
+// et sa note, et au niveau catalogue une ancienne ligne hors de la carte faisait tout refuser.
+// Chaque ligne editee garde donc les lignes du dossier dont elle vient (`garde.lignes`) et ce
+// qu elle valait a l ouverture (`garde.depart`) : intacte, elle les renvoie telles quelles ;
+// changee, elle part avec leur article (meme nom), leur categorie, leur heure et leur note
+// (extrasDepuisLignes). Deux lignes ne se lisent « × 2 » que si rien ne les separe.
+const EXTRA_GARDE = ['articleId', 'categorie'];
+function texteDeLExtra(valeur) {
+  return valeur === undefined || valeur === null ? '' : String(valeur).trim();
+}
+
 function extrasEditionDepuis(extras, pax) {
   const modele = { arcades: null, nourriture: [], boissons: [], autres: [] };
   const centimes = (v) => Math.round(v * 100) / 100;
@@ -33403,13 +33232,27 @@ function extrasEditionDepuis(extras, pax) {
     }
     const multiple = nom.match(/^(.*\S)\s*×\s*(\d+)$/);
     const choix = multiple ? multiple[1] : (nom || 'Extra');
-    const qte = multiple ? Math.max(1, Math.trunc(Number(multiple[2]))) : 1;
+    // (la quantite du libelle, sinon celle que la ligne porte)
+    const qteLue = Math.trunc(Number(extra.qte));
+    const qte = multiple ? Math.max(1, Math.trunc(Number(multiple[2]))) : (qteLue >= 1 ? qteLue : 1);
     const prix = String(centimes(montant / qte));
     const groupe = groupeExtraDossier(extra, choix);
     const parPersonne = extra.parPersonne === true;
-    const meme = !parPersonne && !offert && modele[groupe].find((l) => l.choix === choix && l.prix === prix && !l.parPersonne && !l.offert);
-    if (meme) meme.qte += qte;
-    else modele[groupe].push({ choix, qte, prix, ...(parPersonne ? { parPersonne: true } : {}), ...(offert ? { offert: true } : {}) });
+    const heure = texteDeLExtra(extra.heure);
+    const note = texteDeLExtra(extra.note);
+    const garde = { id: texteDeLExtra(extra.id) };
+    EXTRA_GARDE.forEach((cle) => { if (texteDeLExtra(extra[cle])) garde[cle] = texteDeLExtra(extra[cle]); });
+    const meme = !parPersonne && !offert && modele[groupe].find((l) => l.choix === choix && l.prix === prix && !l.parPersonne && !l.offert
+      && (l.heure || '') === heure && (l.note || '') === note && EXTRA_GARDE.every((cle) => (l.garde[cle] || '') === (garde[cle] || '')));
+    if (meme) {
+      meme.qte += qte;
+      meme.garde.depart.qte += qte;
+      meme.garde.lignes.push({ ...extra });
+      return;
+    }
+    const ligne = { choix, qte, prix, ...(heure ? { heure } : {}), ...(note ? { note } : {}), ...(parPersonne ? { parPersonne: true } : {}), ...(offert ? { offert: true } : {}) };
+    ligne.garde = { ...garde, depart: { choix, qte, prix, heure, note, parPersonne, offert }, lignes: [{ ...extra }] };
+    modele[groupe].push(ligne);
   });
   return modele;
 }
@@ -33647,6 +33490,8 @@ function resumeModifsEdition() {
   if (change('date') && e.date) modifs.push(`Jour ${jourCourt(origine.date)} → ${jourCourt(e.date)}`);
   if (change('startTime') && e.startTime) modifs.push(`Arrivée ${origine.startTime} → ${e.startTime}`);
   modifs.push(...modifsHeuresEdition());
+  // (l heure tapee sur une activite ajoutee : « Laser Game à 17:30 »)
+  Object.entries(heuresNouvellesEnvoyees() || {}).forEach(([id, heure]) => modifs.push(`${nomActiviteHeureEdition(id)} à ${heure}`));
   if (areneChangeeEdition()) modifs.push(areneEdition() === 'seuls' ? 'Arène : pour vous seuls' : 'Arène : partagée si besoin');
   if (Number(e.pax) > 0 && Number(e.pax) !== Number(origine.pax)) modifs.push(`Joueurs ${Number(origine.pax)} → ${Number(e.pax)}`);
   const accompagnants = (d) => Math.max(0, Math.trunc(Number(d.companions) || 0));
@@ -33878,14 +33723,33 @@ function occupantPisteEdition(piste) {
 // L heure ou la duree changent sans re-rendu : les pistes prises se relisent en
 // place, et les touches cochees suivent celles que la console propose (une
 // heure changee retirait la piste 6 du dossier, sa touche restait bleue).
-function peindrePistesPrises() {
-  // (un bowling deplace sur les pistes prises dans la carte montre celles-la)
+// LES PASTILLES SONT LA REPONSE (2026-11-20) : le groupe change, elles se
+// remettent en place et celles qui bougent s eclairent (eclairerPastillesEdition).
+// Pendant une frappe dans « Joueurs » ou dans l heure du bowling, les pastilles
+// cochees attendent qu elle se calme (PISTES_CALME_MS) : taper 1 puis 8 pour 18
+// ne montre jamais une piste. L etat, lui, suit chaque touche (le prix, la barre
+// du bas, « Enregistrer »).
+let pastillesEdition = { pour: null, montrees: null, minuterie: 0 };
+
+function frappeDansLesPistesEdition() {
+  const actif = document.activeElement;
+  return Boolean(actif && actif.closest && actif.closest('#posOverlay') && (actif.id === 'editPaxInput' || actif.getAttribute('data-heure-champ') === 'bowling'));
+}
+
+function peindrePistesPrises({ calmee = false } = {}) {
+  // (un bowling deplace sur les pistes de sa nouvelle heure montre celles-la)
   const choisies = new Set(typeof pistesDuDeplacementBowling === 'function' ? pistesDuDeplacementBowling(getEditLaneNumbers()) : getEditLaneNumbers());
+  const p = pastillesEdition;
+  const retenir = !calmee && p.pour === state.editState && frappeDansLesPistesEdition();
+  clearTimeout(p.minuterie);
+  p.minuterie = retenir ? setTimeout(() => { p.minuterie = 0; peindrePistesPrises({ calmee: true }); }, PISTES_CALME_MS) : 0;
   document.querySelectorAll('#posOverlay .fm .lane-picker .lane-chip').forEach((bouton) => {
     if (bouton.disabled) return;
     const piste = Number(bouton.textContent);
-    bouton.classList.toggle('is-on', choisies.has(piste));
-    bouton.setAttribute('aria-pressed', choisies.has(piste) ? 'true' : 'false');
+    if (!retenir) {
+      bouton.classList.toggle('is-on', choisies.has(piste));
+      bouton.setAttribute('aria-pressed', choisies.has(piste) ? 'true' : 'false');
+    }
     const occupant = occupantPisteEdition(piste);
     bouton.classList.toggle('is-prise', Boolean(occupant));
     if (occupant) {
@@ -33896,6 +33760,58 @@ function peindrePistesPrises() {
       bouton.removeAttribute('aria-label');
     }
   });
+  if (!retenir) eclairerPastillesEdition();
+}
+
+// LA PISTE QUI ARRIVE ET CELLE QUI PART S ECLAIRENT UN INSTANT (2026-11-20).
+// Compare les pastilles cochees a celles que la fiche montrait (un rendu entier
+// les refait : la memoire survit au rendu). Une pastille qui arrive monte de 82 %
+// a sa taille, une qui part revient de la transparence : transform et opacity,
+// 260 ms, sur la pastille elle-meme ; rien n attend le mouvement, rien en
+// mouvement reduit. Le lecteur d ecran entend les pistes (editPistesDites).
+// L eclat part a l image suivante, sur les pastilles de l ecran : un geste du
+// Programme les repeint en place puis redessine toute la fiche, et l eclat pose
+// sur les anciennes disparaissait avec elles.
+function eclairerPastillesEdition() {
+  const e = state.editState;
+  const zone = document.querySelector('#posOverlay .fm .lane-picker');
+  const montrees = zone ? Array.from(zone.querySelectorAll('.lane-chip.is-on')).map((b) => Number(b.textContent)) : null;
+  const avant = pastillesEdition.pour === e ? pastillesEdition.montrees : null;
+  pastillesEdition.pour = e;
+  pastillesEdition.montrees = montrees;
+  if (!zone || !avant) return;
+  const arrivees = montrees.filter((piste) => !avant.includes(piste));
+  const parties = avant.filter((piste) => !montrees.includes(piste));
+  if (!arrivees.length && !parties.length) return;
+  requestAnimationFrame(() => {
+    if (state.editState !== e) return;
+    document.querySelectorAll('#posOverlay .fm .lane-picker .lane-chip').forEach((bouton) => {
+      const piste = Number(bouton.textContent);
+      if (arrivees.includes(piste)) eclatPastille(bouton, true);
+      else if (parties.includes(piste)) eclatPastille(bouton, false);
+    });
+    const dites = document.getElementById('editPistesDites');
+    if (dites) dites.textContent = pistesEnMots(montrees).replace(/^[pa]/, (lettre) => lettre.toUpperCase());
+  });
+}
+
+// Les vagues du laser, en place : le groupe tape ne redessine pas la fiche.
+function peindreVaguesLaserEdition() {
+  const ligne = document.querySelector('#posOverlay .fm [data-laser-vagues]');
+  const joueurs = ligne ? joueursLaserEdition(state.editState, state.selectedRes) : null;
+  if (joueurs === null) return;
+  const texte = vaguesLaserEnMots(joueurs);
+  if (ligne.textContent !== texte) ligne.textContent = texte;
+}
+
+function eclatPastille(bouton, arrive) {
+  const mouvement = window.PlMouvement;
+  if (!bouton || typeof bouton.animate !== 'function' || !mouvement || mouvement.reduit()) return;
+  const etapes = arrive
+    ? [{ transform: 'scale(0.82)' }, { transform: 'scale(1.06)', offset: 0.55 }, { transform: 'scale(1)' }]
+    : [{ opacity: 0.25, transform: 'scale(0.92)' }, { opacity: 1, transform: 'scale(1)' }];
+  // (l id du mouvement : le nettoyage d un rendu, terminerAnimationsDuRendu, le laisse jouer)
+  bouton.animate(etapes, { id: 'pl-mouvement', duration: 260, easing: 'cubic-bezier(0.23, 1, 0.32, 1)' });
 }
 
 // Le dossier que le serveur ecrirait, quand le verdict vaut pour l etat a l ecran.
@@ -33942,8 +33858,6 @@ function peindreVerdictEdition() {
     zone.textContent = texte;
     zone.hidden = !texte;
   }
-  // La carte des pistes prend celles que le serveur ecrira, des qu il l a dit.
-  if (typeof peindreAttributionEdition === 'function') peindreAttributionEdition();
   // Le refus d une heure se lit a son activite (son champ en rouge, la phrase dessous).
   peindreRefusHeuresEdition();
   if (ton === 'calcul') return;
@@ -34185,6 +34099,59 @@ function champHeureEditionHtml(activityId) {
   }).join('');
 }
 
+// UNE ACTIVITE AJOUTEE ICI A SON HEURE AVANT D ENREGISTRER (2026-11-20, Ansar : « modifier tout
+// complet », comme Reserver). Vide, le planning la place ; tapee, elle part avec le programme
+// (heuresPosees) et le serveur la juge comme une heure deplacee : sa phrase et ses heures libres
+// reviennent par le verdict et par « Enregistrer ». Ni la table d anniversaire, ni le bar, ni les
+// jetons d arcades : rien ne s y joue a une heure.
+function activiteAjouteeEdition(r, id) {
+  if (!r || !id || id === 'party_table' || id === 'arcade_credit' || /^service_/.test(id)) return false;
+  const items = Array.isArray(r.program) ? r.program : Array.isArray(r.program && r.program.items) ? r.program.items : [];
+  if (items.some((item) => item && item.activityId === id)) return false;
+  const plan = r.opsPlan || {};
+  const blocs = Array.isArray(plan.resourceBlocks) ? plan.resourceBlocks : [];
+  if (id === 'bowling') return !blocs.some((bloc) => bloc && bloc.resourceType === 'bowling_lane');
+  if (id === 'laser_game') return !blocs.some((bloc) => bloc && bloc.resourceType === 'laser_arena');
+  return !(Array.isArray(plan.timeline) ? plan.timeline : []).some((etape) => etape && etape.activityId === id && etape.flexible !== true);
+}
+
+function champHeureNouvelleHtml(activityId) {
+  const r = state.selectedRes;
+  const e = state.editState;
+  if (!e || !activiteAjouteeEdition(r, activityId) || !peutChangerHeureEdition(r, activityId)) return '';
+  const valeur = (e.heuresNouvelles || {})[activityId] || '';
+  const id = `editHeureNouvelle-${activityId.replace(/[^a-z0-9]/gi, '-')}`;
+  return `<div class="fm-champ fm-heure-champ" data-heure-nouvelle-zone="${escapeHtml(activityId)}">
+            <label class="lbl" for="${id}">Heure</label>
+            <div class="fm-heure-saisie"><input id="${id}" class="input" type="time" step="${activityId === 'bowling' ? 1800 : 300}" value="${escapeHtml(valeur)}" data-heure-nouvelle="${escapeHtml(activityId)}" data-pl-focus="fiche.edit.heure-nouvelle.${escapeHtml(activityId)}" oninput="poserHeureNouvelle('${escapeJsString(activityId)}', this.value)"></div>
+          </div>`;
+}
+
+// La frappe ne re-rend pas la fiche : la barre du bas le dit et le serveur la juge.
+function poserHeureNouvelle(activityId, valeur) {
+  const e = state.editState;
+  if (!e) return;
+  const heures = { ...(e.heuresNouvelles || {}) };
+  if (Number.isFinite(minutesHeureEdition(valeur))) heures[activityId] = String(valeur);
+  else delete heures[activityId];
+  e.heuresNouvelles = heures;
+  if (state.editError) setEditError('');
+  majModifsEdition();
+}
+
+// Celles qui partent : une activite encore au programme, et que le dossier n a pas encore.
+function heuresNouvellesEnvoyees() {
+  const e = state.editState;
+  const r = state.selectedRes;
+  if (!e || !r || !e.heuresNouvelles) return null;
+  const auProgramme = new Set(getEditProgramItems().map((item) => item.activityId));
+  const heures = {};
+  Object.entries(e.heuresNouvelles).forEach(([id, heure]) => {
+    if (auProgramme.has(id) && activiteAjouteeEdition(r, id) && Number.isFinite(minutesHeureEdition(heure))) heures[id] = heure;
+  });
+  return Object.keys(heures).length ? heures : null;
+}
+
 // La phrase du refus, puis les heures libres les plus proches.
 function refusHeureHtml(cle, refus) {
   const libres = (refus.suggestions || []).filter(heure => /^\d{2}:\d{2}$/.test(heure));
@@ -34254,12 +34221,11 @@ function poserHeureActivite(cle, valeur) {
   const ecrit = dossierEcritDuVerdict();
   peindreColonnesHeuresEdition(ecrit ? heuresDuProgrammeEnregistre(ecrit) : heuresDuProgrammeEnregistre(dossierPourFormule(r)));
   // L HEURE DU BOWLING DEPLACE SES PISTES (2026-11-18) : les pastilles se lisent
-  // a la nouvelle heure, et la carte propose d autres pistes si les siennes y
-  // sont prises (la meme decision que pour les joueurs).
+  // a la nouvelle heure ; ses pistes y sont prises, celles que la regle prendrait
+  // partent avec lui, tout de suite (2026-11-20, pistesDeLHeureEdition).
   if (cle === 'bowling') {
-    if (e.pistesDeLHeure && e.pistesDeLHeure.heure !== changees.bowling) delete e.pistesDeLHeure;
+    if (typeof pistesDeLHeureEdition === 'function') pistesDeLHeureEdition();
     peindrePistesPrises();
-    if (typeof planifierAttributionEdition === 'function') planifierAttributionEdition();
   }
   majModifsEdition();
 }
@@ -34284,10 +34250,7 @@ function toucheHeureActivite(event, cle) {
     delete changees[cle];
     e.heuresActivites = changees;
   }
-  if (e && cle === 'bowling') {
-    delete e.pistesDeLHeure;
-    if (typeof planifierAttributionEdition === 'function') planifierAttributionEdition();
-  }
+  if (e && cle === 'bowling') delete e.pistesDeLHeure;
   heureOuverteEdition = '';
   noteHeuresEdition = null;
   renderPos();
@@ -34302,7 +34265,7 @@ function modifsHeuresEdition() {
   return ordreHeuresEdition(Object.keys(changees)).map((cle) => {
     const point = points.get(cle);
     if (!point) return '';
-    // (le bowling deplace sur les pistes prises dans la carte le dit aussi)
+    // (le bowling deplace sur les pistes de sa nouvelle heure le dit aussi)
     const prises = cle === 'bowling' && state.editState && state.editState.pistesDeLHeure && state.editState.pistesDeLHeure.heure === changees[cle] ? `, ${pistesEnMots(state.editState.pistesDeLHeure.pistes)}` : '';
     return `${point.nom} ${heurePointEdition(point)} → ${changees[cle] === 'libre' ? 'Libre' : changees[cle]}${prises}`;
   }).filter(Boolean);
@@ -34373,7 +34336,7 @@ function preparerDeplacementsEdition() {
       : point.activityId === 'laser_game'
         ? { activityId: 'laser_game', unitKey: point.unite, startTime: heure }
         : { activityId: point.activityId, startTime: heure };
-    // (les pistes prises dans la carte pour cette heure partent avec le bowling)
+    // (les pistes de la regle pour cette heure partent avec le bowling)
     if (point.activityId === 'bowling') move.lanes = pistesDuDeplacementBowling(move.lanes);
     deplacements.push({ cle, point, heure, move, plancher });
   }
@@ -34608,8 +34571,8 @@ let editContactOuvert = false;
 
 function renderPosEdit(r) {
   const e = state.editState;
-  // La photo des pistes et des armes a l ouverture : la carte compare a elle.
-  baseAttributionEdition();
+  // Le groupe a l ouverture : les pistes repartent de lui (referencePistesEdition).
+  repererGroupeEdition();
   // Le verdict suit ce qui vient de changer, avant que les heures se dessinent.
   demanderVerdictEdition();
   // Ce que CETTE reservation a reellement : une session laser n'occupe aucune
@@ -34669,6 +34632,7 @@ function renderPosEdit(r) {
             </div>
             ${niveauStaff('forcer') === 'oui' ? `<button type="button" class="lane-main${e.pistesALaMain ? ' is-on' : ''}" id="editPistesMain" aria-pressed="${e.pistesALaMain ? 'true' : 'false'}" onclick="basculerPistesALaMainEdition()">Seulement ces pistes, à la main</button>` : ''}
             <p class="field-hint" id="editLanesHint">${editLaneAdvice(rf, e)}</p>
+            <span class="visually-hidden" id="editPistesDites" role="status" aria-live="polite" aria-atomic="true"></span>
           </div>`;
   const durationControl = `<div class="fm-champ fm-duree">
               <label class="lbl" for="editDurationInput">${isLaserRes ? 'Parties Laser' : editNeedsLanes ? 'Durée bowling' : 'Durée'}</label>
@@ -34760,7 +34724,6 @@ ${!adapte || (!isLaserRes && !editNeedsLanes && String(rf.type || '') !== 'formu
       </div>
       <p class="edit-error" id="editError" role="alert" ${state.editError ? '' : 'hidden'}>${escapeHtml(state.editError || '')}</p>
       <div class="edit-actions es-actions dossier-actions fm-pied">
-        <div class="fm-attr" id="editAttribution" role="status" aria-live="polite" aria-atomic="true">${attributionEditionHtml()}</div>
         ${verdictEditionHtml()}
         <p class="fm-modifs${resumeModifsEdition().length ? '' : ' is-vide'}" id="editModifs">${resumeModifsEditionHtml()}</p>
         <div class="edit-actions-main">
@@ -34940,6 +34903,8 @@ function preparerModificationEdition(options = {}) {
     && (formuleChangee || versProgrammeNormal || poseEditionChange() || editProgramAChange() || Number(es.pax) !== Number(state.selectedRes.pax));
   // Les extras partent s ils ont change (nourriture, boissons, le reste).
   const extrasNouveaux = peutAdapterFormule() && editExtrasAChange() ? extrasDepuisLignes(es.extrasEdites, es.pax) : null;
+  // L heure tapee sur une activite ajoutee part avec le programme (heuresNouvellesEnvoyees).
+  const heuresPoseesNouvelles = programme ? heuresNouvellesEnvoyees() : null;
   // Lus ici, une fois : `appliquer` se rejoue quand l etat d edition peut ne
   // plus etre celui de ce dossier (le compte a l arrivee le rend aussitot).
   const devisActivites = getEditPrixActivites();
@@ -34956,6 +34921,7 @@ function preparerModificationEdition(options = {}) {
     if (es.pistesALaMain) updated.pistesALaMain = lanesFinales.length;
     else if (pistesALaMainDuDossier(origine)) updated.pistesALaMain = 0;
     if (extrasNouveaux) updated.extras = extrasNouveaux;
+    if (heuresPoseesNouvelles) updated.heuresPosees = heuresPoseesNouvelles;
     // LA NOUVELLE FORMULE SE JOUE DEPUIS SA CARTE : sans programme (celui de
     // l ancienne, adaptee ou non, ne la suit pas) et sans plan (ses ancres et
     // la variante de l ancienne non plus). Le serveur la planifie a partir de
@@ -35107,8 +35073,8 @@ async function saveEdit(e) {
       departsEdition().set(es, { origine, base: error.reservation });
       applyOptimisticReservation(error.reservation);
       // (la version du collegue a pu prendre ou rendre des pistes : celles de la
-      // saisie se relisent, et la carte dit ce qui change)
-      if (typeof suivreAttributionEdition === 'function' && state.editState === es) suivreAttributionEdition();
+      // saisie se relisent, les pastilles suivent)
+      if (typeof suivrePistesEdition === 'function' && state.editState === es) suivrePistesEdition();
       const libelles = libellesChampsReservation(error.champs);
       failEdit(libelles
         ? `La réservation a changé entre-temps (${libelles}). Votre saisie est gardée : enregistrez à nouveau pour l’appliquer.`
@@ -35166,8 +35132,11 @@ function nombreReserve(r) {
 // comme a l ouverture de l onglet (le programme, les extras, puis le prix du
 // champ), et le nombre change par le chemin de ses boutons − et + (editPaxPas).
 // Le temps du calcul, la fiche « est » ce dossier ; rien n est peint, tout
-// revient comme avant.
-function preparerCompte(r, n) {
+// revient comme avant. LES PISTES SE TOUCHENT DANS LA BULLE (2026-11-20) : celles
+// qu on y a touchees (`main` : les pistes, et pour combien de personnes) sont le
+// repere du groupe, comme une pastille touchee dans Modifier ; le nombre qui
+// change ensuite repart d elles (referencePistesEdition).
+function preparerCompte(r, n, main = null) {
   const avant = { selectedRes: state.selectedRes, editState: state.editState, editError: state.editError };
   state.selectedRes = r;
   state.editState = etatEditionDepuis(r);
@@ -35177,13 +35146,22 @@ function preparerCompte(r, n) {
     ensureEditProgram(dossierPourFormule(r));
     ensureEditExtras(r);
     e.price = String(prixSuiviEdition(getEditPrixEstime()));
-    // (la carte des pistes et des armes du compte : le groupe avant, puis apres)
-    const photoAvant = typeof photoAttributionEdition === 'function' ? photoAttributionEdition() : null;
+    if (main && Array.isArray(main.pistes)) {
+      e.referencePistes = { joueurs: main.pour, pistes: main.pistes.slice() };
+      e.lanesStr = formatLaneInput(main.pistes);
+    }
     setEditField('pax', n, true);
     const estime = getEditPrixEstime();
     e.price = String(prixSuiviEdition(estime));
-    const carte = photoAvant && typeof proposerAttribution === 'function' ? proposerAttribution(photoAvant, photoAttributionEdition()) : null;
-    return { ...preparerModificationEdition(), estime, prix: getEditPriceValue(), carte };
+    const envoi = preparerModificationEdition();
+    // Les pistes que « Enregistrer » enverra (completees par preparerModificationEdition),
+    // et qui tient les autres a cette heure ; les vagues du laser, en mots.
+    const groupe = photoGroupeEdition();
+    const pistes = groupe && groupe.bowling ? parseLaneInput(e.lanesStr) : null;
+    const occupees = {};
+    if (pistes) for (let piste = 1; piste <= getAvailabilityLaneCount(); piste += 1) { const qui = occupantPisteEdition(piste); if (qui) occupees[piste] = qui; }
+    const joueursLaser = joueursLaserEdition(e, r);
+    return { ...envoi, estime, prix: getEditPriceValue(), pistes, occupees, vagues: joueursLaser === null ? '' : vaguesLaserEnMots(joueursLaser) };
   } finally {
     state.selectedRes = avant.selectedRes;
     state.editState = avant.editState;
@@ -35195,9 +35173,10 @@ function preparerCompte(r, n) {
 // la feuille, le prochain depart laser, la fiche). Elle vit dans le body : la
 // feuille qui se repeint ne l emporte pas, elle se repose sur la nouvelle ancre.
 // (L etat se cree a la demande : une fonction est hissee, une constante ne
-// l est pas, et closePos le lit.)
+// l est pas, et closePos le lit.) `main` : les pistes touchees dans la bulle ;
+// `montrees` : celles que ses pastilles montrent (l eclat de celles qui bougent).
 function compteArrivee() {
-  if (!compteArrivee.etat) compteArrivee.etat = { id: 0, n: 0, dansFiche: false, enCours: false, erreur: '' };
+  if (!compteArrivee.etat) compteArrivee.etat = { id: 0, n: 0, dansFiche: false, enCours: false, erreur: '', main: null, montrees: null };
   return compteArrivee.etat;
 }
 
@@ -35217,6 +35196,8 @@ function ouvrirCompteArrivee(id, ancre, ev) {
   compteArrivee().dansFiche = Boolean(ancre && ancre.closest && ancre.closest('#posOverlay'));
   compteArrivee().enCours = false;
   compteArrivee().erreur = '';
+  compteArrivee().main = null;
+  compteArrivee().montrees = null;
   peindreCompteArrivee();
   document.addEventListener('pointerdown', compteArriveeDehors, true);
   document.addEventListener('keydown', compteArriveeClavier, true);
@@ -35237,6 +35218,8 @@ function fermerCompteArrivee(rendreFocus = true) {
   compteArrivee().id = 0;
   compteArrivee().enCours = false;
   compteArrivee().erreur = '';
+  compteArrivee().main = null;
+  compteArrivee().montrees = null;
   if (rendreFocus && ancre) ancre.focus({ preventScroll: true });
 }
 
@@ -35260,19 +35243,50 @@ function compteArriveePas(delta) {
   peindreCompteArrivee();
 }
 
+// UNE PASTILLE TOUCHEE DANS LA BULLE (2026-11-20, Ansar : « faut tout direct ») :
+// elle ajoute ou retire sa piste, sans quitter la bulle ; « Enregistrer » ecrit le
+// nombre et les pistes ensemble. Il en manque pour ce nombre : la regle commune
+// complete, comme l enregistrement de Modifier.
+function basculerPisteCompteArrivee(piste) {
+  const c = compteArrivee();
+  if (c.enCours || !Array.isArray(c.montrees)) return;
+  const choisies = new Set(c.montrees);
+  if (choisies.has(piste)) choisies.delete(piste);
+  else choisies.add(piste);
+  c.main = { pistes: [...choisies].sort((a, b) => a - b), pour: c.n };
+  c.erreur = '';
+  peindreCompteArrivee();
+}
+
+// LES PISTES DANS LA BULLE (2026-11-20) : les pastilles de Modifier, en petit, celles
+// du groupe pleines ; une piste prise par un autre groupe a cette heure en tirets.
+// Elles suivent − et + tout de suite ; celle qui arrive et celle qui part
+// s eclairent (eclatPastille). Le laser dit ses vagues en une ligne.
+function pistesCompteArriveeHtml(devis) {
+  if (!Array.isArray(devis.pistes)) return '';
+  const parc = getAvailabilityLaneCount();
+  const puces = Array.from({ length: parc }, (_, i) => i + 1).map((piste) => {
+    const on = devis.pistes.includes(piste);
+    const maintenance = state.laneStatuses[piste] === 'maintenance';
+    const prise = !maintenance && devis.occupees[piste];
+    const nom = maintenance ? `Piste ${piste}, en maintenance` : prise ? `Piste ${piste}, prise par ${prise} à cette heure` : `Piste ${piste}`;
+    return `<button type="button" class="lane-chip compte-pop__piste${on ? ' is-on' : ''}${prise ? ' is-prise' : ''}${maintenance ? ' is-off' : ''}" data-compte-piste="${piste}" data-compte-focus="piste-${piste}" aria-pressed="${on}" aria-label="${escapeHtml(nom)}"${maintenance ? ' disabled' : ` onclick="basculerPisteCompteArrivee(${piste})"`}>${piste}</button>`;
+  }).join('');
+  return `<div class="compte-pop__pistes" role="group" aria-labelledby="comptePopPistes"><span class="compte-pop__lib-pistes" id="comptePopPistes">Pistes</span><div class="compte-pop__puces">${puces}</div></div>`;
+}
+
 // Le contenu se reecrit a chaque pas (le prix suit) ; le bouton touche garde
 // le focus.
 function peindreCompteArrivee() {
   const r = findStaffReservationById(compteArrivee().id);
   if (!r) { fermerCompteArrivee(false); return; }
-  const devis = preparerCompte(r, compteArrivee().n);
+  const devis = preparerCompte(r, compteArrivee().n, compteArrivee().main);
   const pax = Math.trunc(Number(r.pax) || 0);
   const reserve = nombreReserve(r);
   const avant = Number(r.price) || 0;
   const connu = devis.prix !== null && (prixDossierConnu(r) || Boolean(devis.estime && devis.estime.utilisable));
   const ligne = devis.estime && devis.estime.lignes.length === 1 ? devis.estime.lignes[0] : null;
   const erreur = compteArrivee().erreur || devis.erreur || '';
-  const carteCompte = erreur ? '' : carteCompteArriveeHtml(devis.carte);
   const focus = document.activeElement && document.activeElement.closest && document.activeElement.closest('#comptePop') ? document.activeElement.getAttribute('data-compte-focus') : '';
   const signe = (plus) => `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="${plus ? 'M5 12h14M12 5v14' : 'M5 12h14'}"/></svg>`;
   let pop = document.getElementById('comptePop');
@@ -35294,9 +35308,10 @@ function peindreCompteArrivee() {
       </div>
     </div>
     <p class="compte-pop__ref">${reserve === compteArrivee().n ? 'Comme à la réservation' : `${reserve} à la réservation`}</p>
+    ${pistesCompteArriveeHtml(devis)}
+    ${devis.vagues ? `<p class="compte-pop__laser"><span>Laser</span><b>${escapeHtml(devis.vagues)}</b></p>` : ''}
     ${connu ? `<div class="compte-pop__prix"><span>${ligne ? `${escapeHtml(ligne.nom)}${ligne.detail ? ` · ${escapeHtml(ligne.detail)}` : ''}` : 'Total'}</span><b>${escapeHtml(formatMoneyCentimes(devis.prix))}</b></div>
     ${Math.round(devis.prix * 100) !== Math.round(avant * 100) ? `<p class="compte-pop__avant">avant ${escapeHtml(formatMoneyCentimes(avant))}</p>` : ''}` : '<div class="compte-pop__prix"><span>Prix au comptoir</span></div>'}
-    ${carteCompte}
     ${erreur ? `<p class="compte-pop__erreur" role="alert">${escapeHtml(erreur)}</p>` : ''}
     <div class="compte-pop__actions">
       <button type="button" class="compte-pop__annuler" data-compte-focus="annuler" onclick="fermerCompteArrivee()">Annuler</button>
@@ -35306,43 +35321,24 @@ function peindreCompteArrivee() {
   pop.classList.toggle('is-occupe', compteArrivee().enCours);
   // Le nombre reserve change d un geste : l ecart se lit sans compter.
   pop.classList.toggle('is-ecart', compteArrivee().n !== pax);
+  // Les pastilles qui ont bouge depuis la derniere image s eclairent.
+  const montreesAvant = compteArrivee().montrees;
+  compteArrivee().montrees = Array.isArray(devis.pistes) ? devis.pistes.slice() : null;
+  if (Array.isArray(montreesAvant) && Array.isArray(devis.pistes)) {
+    pop.querySelectorAll('[data-compte-piste]').forEach((bouton) => {
+      const piste = Number(bouton.getAttribute('data-compte-piste'));
+      const on = devis.pistes.includes(piste);
+      if (on !== montreesAvant.includes(piste)) eclatPastille(bouton, on);
+    });
+  }
   poserCompteArrivee();
   if (focus) { const cible = pop.querySelector(`[data-compte-focus="${focus}"]`); if (cible) cible.focus({ preventScroll: true }); }
 }
 
-// LA CARTE DES PISTES DANS LA BULLE DU COMPTE (2026-11-19, Ansar : « j'ai changé
-// à l'endroit où c'est une case orange »). Ce que le compte fait aux pistes et
-// aux vagues du laser, avant d enregistrer : « 6 joueurs : piste 2 (avant :
-// pistes 1 et 2). Piste 1 libérée. ». « Modifier » ouvre la fiche pour en remettre.
-function carteCompteArriveeHtml(carte) {
-  if (!carte || !carte.lignes || !carte.lignes.length) return '';
-  const lignes = carte.lignes.map((ligne) => `<p class="attr-ligne" data-attr-activite="${escapeHtml(ligne.activite)}" data-attr-motif="${escapeHtml(ligne.motif)}">${ligneAttributionHtml(ligne)}</p>`).join('');
-  return `<div class="compte-pop__attr attr-carte">${iconeAttributionHtml(carte)}<div class="attr-lignes">${lignes}</div><div class="attr-gestes"><button type="button" class="attr-b" data-compte-focus="pistes" onclick="modifierPistesCompteArrivee()">Modifier</button></div></div>`;
-}
-
-// « Modifier » dans la bulle : la fiche s ouvre sur Modifier, le nombre compte
-// pose par le chemin de ses boutons − et +, les pastilles des pistes sous les
-// yeux pour en remettre ; « Enregistrer » de la fiche enregistre.
-function modifierPistesCompteArrivee() {
-  const id = compteArrivee().id;
-  const n = compteArrivee().n;
-  fermerCompteArrivee(false);
-  if (!findStaffReservationById(id)) return;
-  closePos();
-  openPos(id);
-  setTab('modifier');
-  const champ = document.getElementById('editPaxInput');
-  if (champ) champ.value = n;
-  setEditField('pax', n, true);
-  const choix = document.querySelector('#posOverlay .fm .lane-picker');
-  if (!choix) return;
-  choix.scrollIntoView({ block: 'center' });
-  const touche = choix.querySelector('.lane-chip.is-on:not([disabled])') || choix.querySelector('.lane-chip:not([disabled])');
-  if (touche) touche.focus({ preventScroll: true });
-}
-
 // Sous l ancre, alignee sur son bord droit ; au-dessus si la place manque en
-// bas ; jamais hors de l ecran (16 px de marge).
+// bas ; jamais hors de l ecran (16 px de marge). Ni dessous ni dessus (la bulle
+// porte les pastilles des pistes, deux rangees au telephone) : elle se pose dans
+// l ecran du cote le plus large, et sa fleche se tait.
 function poserCompteArrivee() {
   const pop = document.getElementById('comptePop');
   const ancre = ancreCompteArrivee();
@@ -35351,10 +35347,15 @@ function poserCompteArrivee() {
   const largeur = pop.offsetWidth;
   const hauteur = pop.offsetHeight;
   const gauche = Math.max(16, Math.min(window.innerWidth - largeur - 16, a.right - largeur));
-  const enBas = a.bottom + 8 + hauteur <= window.innerHeight - 16 || a.top - 8 - hauteur < 16;
+  const plancher = window.innerHeight - 16;
+  const dessus = a.top - 8 - hauteur >= 16;
+  const enBas = a.bottom + 8 + hauteur <= plancher || (!dessus && window.innerHeight - a.bottom >= a.top);
+  const voulu = enBas ? a.bottom + 8 : a.top - 8 - hauteur;
+  const haut = Math.max(16, Math.min(plancher - hauteur, voulu));
   pop.style.left = `${Math.round(gauche)}px`;
-  pop.style.top = `${Math.round(enBas ? a.bottom + 8 : a.top - 8 - hauteur)}px`;
+  pop.style.top = `${Math.round(haut)}px`;
   pop.classList.toggle('is-dessus', !enBas);
+  pop.classList.toggle('is-sans-fleche', Math.round(haut) !== Math.round(voulu));
   pop.style.setProperty('--compte-fleche', `${Math.round(Math.max(18, Math.min(largeur - 18, a.left + a.width / 2 - gauche)))}px`);
 }
 
@@ -35364,9 +35365,11 @@ async function enregistrerCompteArrivee() {
   const n = compteArrivee().n;
   const r = findStaffReservationById(id);
   if (!r) { fermerCompteArrivee(false); return; }
-  // Le meme nombre : rien a envoyer.
-  if (n === Math.trunc(Number(r.pax) || 0)) { fermerCompteArrivee(); return; }
-  const envoi = preparerCompte(r, n);
+  // (le nombre et les pistes touchees dans la bulle partent ensemble)
+  const envoi = preparerCompte(r, n, compteArrivee().main);
+  const memesPistes = !Array.isArray(envoi.pistes) || envoi.pistes.join() === (r.lanes || []).map(Number).sort((a, b) => a - b).join();
+  // Le meme nombre sur les memes pistes : rien a envoyer.
+  if (n === Math.trunc(Number(r.pax) || 0) && memesPistes) { fermerCompteArrivee(); return; }
   if (envoi.erreur) { compteArrivee().erreur = envoi.erreur; peindreCompteArrivee(); toast(envoi.erreur); return; }
   compteArrivee().enCours = true;
   peindreCompteArrivee();
@@ -35838,8 +35841,6 @@ function setQuickVisitParticipants(id, nombre) {
   syncQuickBookDuration();
   // (les joueurs du bowling changent ses pistes, comme le groupe : setQuickPax)
   reconcileQuickLaneSelection();
-  // (et la carte des pistes et des armes le dira, la frappe calmee)
-  if (typeof planifierAttributionReserver === 'function') planifierAttributionReserver();
   renderQuickBook();
 }
 
@@ -35984,9 +35985,10 @@ function setEditActivityParticipants(id, nombre) {
   if (id === 'laser_game' && Array.isArray(options.joueursParPartie)) rsPartiesSuiventLaLigne(options, participants);
   options.participants = participants;
   // LES PISTES SUIVENT LES JOUEURS DU BOWLING (2026-11-18) : 5 puis 8 au
-  // Programme demande une piste de plus, tout de suite, et la carte le dit
-  // (les vagues du laser aussi). Avant : « complétée à l’enregistrement ».
-  if (typeof suivreAttributionEdition === 'function') suivreAttributionEdition();
+  // Programme demande une piste de plus, tout de suite, et ses pastilles le
+  // montrent (les vagues du laser, leur ligne). Avant : « complétée à
+  // l’enregistrement ».
+  if (typeof suivrePistesEdition === 'function') suivrePistesEdition();
   renderPos();
 }
 
@@ -36017,7 +36019,7 @@ function setEditJoueursPartie(k, n) {
   liste[k] = n;
   if (lg.extraLaser) { delete lg.extraLaser; toast('La partie supplémentaire est retirée : chaque partie a maintenant ses joueurs.'); }
   rsPoserJoueursDesParties(lg, liste, e.pax);
-  if (typeof planifierAttributionEdition === 'function') planifierAttributionEdition();
+  if (typeof planifierRepereEdition === 'function') planifierRepereEdition();
   renderPos();
 }
 
@@ -36117,7 +36119,6 @@ function setQuickPax(value) {
   quickBookState.pax = Math.max(1, Number(value) || 1);
   syncQuickBookDuration();
   reconcileQuickLaneSelection();
-  if (typeof planifierAttributionReserver === 'function') planifierAttributionReserver();
   renderQuickBook();
 }
 
@@ -36363,8 +36364,39 @@ function extrasDepuisLignes(e, pax, arcadesComprises = false) {
       const nom = String(ligne.choix || '').trim();
       const qte = ligne.parPersonne ? groupe : Math.max(1, Math.trunc(Number(ligne.qte) || 1));
       if (!nom) return;
-      const valeur = Math.round(prix(ligne.prix) * qte * 100) / 100;
-      lignes.push({ id: `${nomGroupe}-${i + 1}`, name: `${nom} × ${qte}`, price: ligne.offert ? 0 : valeur, ...(ligne.parPersonne ? { parPersonne: true } : {}), ...(ligne.offert ? { offert: true, valeur } : {}) });
+      const unitaire = prix(ligne.prix);
+      const valeur = Math.round(unitaire * qte * 100) / 100;
+      const heure = String(ligne.heure || '').trim();
+      const note = String(ligne.note || '').trim();
+      // (les lignes du dossier dont elle vient, et ce qu elle valait a l ouverture : extrasEditionDepuis)
+      const garde = ligne.garde && typeof ligne.garde === 'object' ? ligne.garde : null;
+      const depart = garde && garde.depart;
+      const intacte = Boolean(depart && Array.isArray(garde.lignes) && garde.lignes.length && nom === depart.choix && qte === depart.qte
+        && Math.round(unitaire * 100) === Math.round(prix(depart.prix) * 100)
+        && Boolean(ligne.parPersonne) === Boolean(depart.parPersonne) && Boolean(ligne.offert) === Boolean(depart.offert));
+      if (intacte) {
+        // Intacte, elle repart telle que le dossier la porte : le serveur la reconnait et la
+        // garde entiere, son auteur compris. Une heure ou une note changee voyage avec elle.
+        const memeService = heure === (depart.heure || '') && note === (depart.note || '');
+        garde.lignes.forEach((l) => lignes.push(memeService ? { ...l } : { ...l, heure, note }));
+        return;
+      }
+      // Changee, elle garde son id, son article tant qu elle garde son nom, sa categorie, son
+      // heure et sa note ; une ligne neuve part avec la sorte ou elle a ete ajoutee.
+      const memeArticle = Boolean(depart && nom === depart.choix);
+      lignes.push({
+        id: (garde && garde.id) || `${nomGroupe}-${i + 1}`,
+        name: `${nom} × ${qte}`,
+        price: ligne.offert ? 0 : valeur,
+        ...(memeArticle && garde.articleId ? { articleId: garde.articleId } : {}),
+        categorie: (memeArticle && garde.categorie) || nomGroupe,
+        qte,
+        prixUnitaire: unitaire,
+        ...(heure ? { heure } : {}),
+        ...(note ? { note } : {}),
+        ...(ligne.parPersonne ? { parPersonne: true } : {}),
+        ...(ligne.offert ? { offert: true, valeur } : {}),
+      });
     });
   });
   return lignes;
@@ -38320,7 +38352,6 @@ function rvCoquilleHtml() {
         <div class="rs-tk-lignes" id="rsLignes"></div>
         <div class="rs-tk-client" id="rsClient"></div>
       </div>
-      <div class="rs-attr-zone" id="rsAttrZone" role="status" aria-live="polite" aria-atomic="true"></div>
       <div class="rs-verdict" id="rvVerdict" aria-live="polite"></div>
       <div class="rs-tk-p" id="rvPied"></div>
     </aside>
@@ -38432,9 +38463,6 @@ function rvRepeindre({ sauf = [] } = {}) {
   rsPoser('rvPied', rvPiedHtml());
   rvPoser('rvCouche', rvCoucheHtml());
   rvPoser('rsQJZone', rsQuestionJoueursHtml());
-  // (la photo des pistes et des armes au premier dessin, puis la carte s il y en a une)
-  baseAttributionReserver();
-  rvPoser('rsAttrZone', attributionReserverHtml());
   rvPlacerHorloge();
   rsChercherLaProche();
   rvChargerAutreOrdre();
@@ -39657,7 +39685,7 @@ function rsNombre(n) {
     b.demandeJoueurs = false;
     // UN NOMBRE DE PISTES POSE A LA MAIN SURVIT AU GROUPE QUI CHANGE (2026-11-18) :
     // il s effacait ici, et le groupe repartait sur le conseil du centre sans un
-    // mot. La main a parle, elle garde la parole (la carte se tait pour lui).
+    // mot. La main a parle, elle garde la parole.
     setQuickPax(pax);
   });
 }
@@ -39699,111 +39727,10 @@ function rsQuestionJoueursHtml() {
     </div>`;
 }
 
-// LA CARTE DES PISTES ET DES ARMES DANS RESERVER (2026-11-18, la demande d Ansar
-// en tete de proposerAttribution) : la meme decision que Modifier. Le mode
-// « Auto » montre deja les pistes en direct (le ticket, le bloc du bowling) :
-// la carte ne parle que quand le nombre de pistes ou de vagues change, la
-// frappe calmee, dans le ticket au-dessus de « Créer », sans voile ni focus :
-// elle ne couvre rien de la colonne (posee en bas de la colonne, elle cachait
-// « Formules » et des heures). Un premier nombre
-// de joueurs (la question « Combien de joueurs ? ») n est pas un changement :
-// rien ne s affiche. Un nombre de pistes pose a la main non plus.
-let attributionReserver = { pour: null, base: null, minuterie: 0, carte: null };
-
-function rvPhotoAttribution() {
-  const s = quickBookState;
-  if (!s) return null;
-  const ids = rvActivites();
-  const photo = { connu: Boolean(rsEtat() && rsEtat().faits.combien), bowling: null, laser: null };
-  if (ids.includes('bowling')) {
-    const heure = (rvHeuresDesLignes(ids).bowling || {}).heure || s.startTime;
-    const besoin = rvBesoinPistes(heure);
-    const capacite = besoin.bowlingCapacity || {};
-    const requis = Math.max(1, Number(besoin.requiredCount) || 1);
-    const pistes = [...rvPistesDuBowling(heure).pistes].map(Number).sort((a, b) => a - b);
-    const main = (s.lanesALaMain || []).map(Number);
-    photo.bowling = {
-      joueurs: getQuickVisitParticipants('bowling'),
-      requis,
-      pistes,
-      aLaMain: Boolean(rvPistesALaMain()),
-      urgence: Boolean(capacite.emergency),
-      message: capacite.emergency ? bowlingCapacityMessage(capacite) : '',
-      manque: !heure || pistes.length < requis,
-      main: rvPlacementManuel() ? pistes.filter((piste) => main.includes(piste)) : [],
-      liberables: [],
-      heure: null,
-    };
-  }
-  if (ids.includes('laser_game')) photo.laser = photoLaserAttribution(getQuickVisitParticipants('laser_game'));
-  return photo;
-}
-
-// La photo de reference : celle de la fenetre a son premier dessin.
-function baseAttributionReserver() {
-  const a = attributionReserver;
-  if (a.pour === quickBookState) return;
-  clearTimeout(a.minuterie);
-  a.pour = quickBookState;
-  a.base = quickBookState ? rvPhotoAttribution() : null;
-  a.carte = null;
-  a.minuterie = 0;
-}
-
-function planifierAttributionReserver() {
-  const a = attributionReserver;
-  if (!quickBookState || a.pour !== quickBookState) return;
-  clearTimeout(a.minuterie);
-  a.minuterie = setTimeout(deciderAttributionReserver, ATTRIBUTION_CALME_MS);
-}
-
-function deciderAttributionReserver() {
-  const a = attributionReserver;
-  a.minuterie = 0;
-  if (!quickBookState || a.pour !== quickBookState) return;
-  const photo = rvPhotoAttribution();
-  a.carte = a.base && a.base.connu ? proposerAttribution(a.base, photo) : null;
-  a.base = photo;
-  rvPeindreAttribution();
-}
-
-function attributionReserverHtml() {
-  const a = attributionReserver;
-  const carte = a.pour === quickBookState ? a.carte : null;
-  if (!carte) return '';
-  const lignes = carte.lignes.map((ligne) => `<p class="attr-ligne" data-attr-activite="${escapeHtml(ligne.activite)}" data-attr-motif="${escapeHtml(ligne.motif)}">${ligneAttributionHtml(ligne, null, { dossier: false })}</p>`).join('');
-  const fermer = 'fermerAttributionReserver()';
-  return `<div class="attr-carte rs-attr">${iconeAttributionHtml(carte)}<div class="attr-lignes">${lignes}</div><div class="attr-gestes">${gestesAttributionHtml(carte, { modifier: 'modifierAttributionReserver()', fermer, liberer: fermer, prendre: fermer })}</div></div>`;
-}
-
-// La zone se repeint seule (le reste de la fenetre ne bouge pas).
-function rvPeindreAttribution() {
-  if (!quickBookState) return;
-  // (le ticket raccourcit ou s allonge : son fondu du bas suit, rsOmbreDuTicket)
-  if (rvPoser('rsAttrZone', attributionReserverHtml())) requestAnimationFrame(rsOmbreDuTicket);
-}
-
-// « OK » : la carte se ferme ; le focus qui y etait revient a la colonne.
-function fermerAttributionReserver() {
-  const zone = document.getElementById('rsAttrZone');
-  const avaitLeFocus = Boolean(zone && zone.contains(document.activeElement));
-  attributionReserver.carte = null;
-  rvPeindreAttribution();
-  if (avaitLeFocus) {
-    const colonne = document.getElementById('rsCol');
-    if (colonne) colonne.focus({ preventScroll: true });
-  }
-}
-
-// « Modifier » : la page de la ligne, ou se choisissent ses pistes (ou ses
-// parties et ses departs pour le laser).
-function modifierAttributionReserver() {
-  const carte = attributionReserver.carte;
-  attributionReserver.carte = null;
-  rvPeindreAttribution();
-  const premiere = carte && carte.lignes[0];
-  if (premiere) rsOuvrirLigne(premiere.activite);
-}
+// LA CARTE DES PISTES ET DES ARMES DANS RESERVER est partie (2026-11-20, la meme
+// demande qu a Modifier : « fait trop ia [...] faut tout direct ») : le ticket et le
+// bloc du bowling montrent deja les pistes en direct, la quille, la phrase et ses
+// « Modifier » / « OK » ne redisaient rien.
 
 function rsFormuleHtml(f, commun) {
   const s = quickBookState;
@@ -44831,6 +44758,9 @@ function renderPosInner() {
     </div>
   `;
   ficheFaitsPeints = getFicheFaitsSignature();
+  // (Modifier redessine : les pastilles des pistes qui ont bouge depuis la derniere
+  // image s eclairent, eclairerPastillesEdition)
+  if (isEdit && typeof eclairerPastillesEdition === 'function') eclairerPastillesEdition();
   if (!overlay.dataset.keyboardBound) {
     overlay.addEventListener('keydown', handlePosKeydown);
     overlay.dataset.keyboardBound = '1';

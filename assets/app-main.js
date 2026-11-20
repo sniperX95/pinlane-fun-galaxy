@@ -32097,6 +32097,14 @@ function peutAdapterFormule() {
   return typeof canUseStaffPermission === 'function' && canUseStaffPermission('reservations.edit');
 }
 
+// UN GESTE QUE LE ROLE N A PAS SE VOIT, ETEINT, AVEC LE DROIT QUI MANQUE (2026-11-20, Ansar : « modifier
+// tout complet ») : un bouton qui disparait laisse croire que Modifier ne sait pas le faire. Une ligne,
+// le nom du droit tel que l ecran des roles l ecrit (DROITS_NIVEAUX).
+function droitManquantHtml(cle, suite = '', id = '') {
+  const droit = (DROITS_NIVEAUX.find((d) => d.cle === cle) || {}).libelle || cle;
+  return `<p class="fm-droit"${id ? ` id="${id}"` : ''}>${escapeHtml(`Il faut le droit « ${droit} »${suite}.`)}</p>`;
+}
+
 // LE PROGRAMME D UNE FORMULE se change avec le niveau « Adapter une formule »
 // (exigerAdaptationDeFormule, lib/droits-reservation.js) : sans lui, il se lit
 // et ses pistes se reglent a part, comme pour qui ne modifie pas (2026-11-07).
@@ -33171,6 +33179,7 @@ function renderEditFormuleBloc(r, formule, lignes, controls = {}) {
   if (!peutAdapterLeProgramme(r)) {
     const items = Array.isArray(r.program?.items) ? r.program.items : [];
     return `<div class="fm-lecture dossier-program">
+      ${peutAdapterFormule() && typeof niveauStaff === 'function' && niveauStaff('formule') !== 'oui' ? droitManquantHtml('formule', ' pour changer le programme', 'fmDroitFormule') : ''}
       ${formule?.name ? `<p class="dossier-formula-origin">Formule <strong>${escapeHtml(formule.name)}</strong></p>` : ''}
       ${items.length ? `<ul class="dossier-program-summary">${items.map(item => `<li><span>${escapeHtml(nomActivite(item))}</span><strong>${participantsLigneProgramme(item, r.pax)} ${getCenterActivity(item.activityId) && activityCountsChildren(getCenterActivity(item.activityId)) ? 'enfants' : 'joueurs'}</strong></li>`).join('')}</ul>` : lignes.length ? `<ul class="edit-formule-list">${lignes.map(ligne => `<li>${escapeHtml(String(ligne))}</li>`).join('')}</ul>` : `<p class="field-hint">${escapeHtml(getReservationLabel(r))} · ${Number(r.pax) || 0} participants</p>`}
     </div>`;
@@ -33486,7 +33495,7 @@ function renderEditExtras(r) {
         <button type="button" class="fm-x-retirer" aria-label="Retirer ${escapeHtml(l.choix || 'cette ligne')}" onclick="retirerEditExtra('${groupe}',${i})">×</button>
         <span class="fm-x-opts">
           <button type="button" class="fm-x-opt${l.parPersonne ? ' is-on' : ''}" aria-pressed="${Boolean(l.parPersonne)}" onclick="basculerEditExtra('${groupe}',${i},'parPersonne')">Par personne</button>
-          ${niveauStaff('prix') === 'non' ? '' : `<button type="button" class="fm-x-opt${l.offert ? ' is-on' : ''}" aria-pressed="${Boolean(l.offert)}" onclick="basculerEditExtra('${groupe}',${i},'offert')">Offert</button>`}
+          ${niveauStaff('prix') === 'non' ? '<button type="button" class="fm-x-opt" disabled aria-describedby="fmxDroitPrix">Offert</button>' : `<button type="button" class="fm-x-opt${l.offert ? ' is-on' : ''}" aria-pressed="${Boolean(l.offert)}" onclick="basculerEditExtra('${groupe}',${i},'offert')">Offert</button>`}
           ${serviceLigneExtraHtml(groupe, i, l)}
         </span>
       </div>`).join('')}
@@ -33499,7 +33508,10 @@ function renderEditExtras(r) {
     ${arcades}${groupes}
     ${/* Ajouter une ligne, c est « Ajouter du sur mesure » (resoudreExtras) :
          au niveau « Non », pas de bouton (2026-11-07). */''}
-    ${typeof niveauStaff === 'function' && niveauStaff('surmesure') === 'non' ? '' : `<div class="fm-ajouts fm-x-ajouts" role="group" aria-labelledby="fmExtrasAjouter"><span class="fm-ajouts-titre" id="fmExtrasAjouter">Ajouter</span>${EXTRAS_GROUPES.map(([groupe, titre]) => `<button type="button" class="fm-ajout" onclick="ajouterEditExtra('${groupe}')">${plus}${titre}</button>`).join('')}</div>`}
+    ${niveauStaff('prix') === 'non' && EXTRAS_GROUPES.some(([groupe]) => modele[groupe].length) ? droitManquantHtml('prix', ' pour offrir', 'fmxDroitPrix') : ''}
+    ${typeof niveauStaff === 'function' && niveauStaff('surmesure') === 'non'
+      ? `<div class="fm-ajouts fm-x-ajouts" role="group" aria-labelledby="fmExtrasAjouter" aria-describedby="fmxDroit"><span class="fm-ajouts-titre" id="fmExtrasAjouter">Ajouter</span>${EXTRAS_GROUPES.map(([, titre]) => `<button type="button" class="fm-ajout" disabled>${plus}${titre}</button>`).join('')}</div>${droitManquantHtml('surmesure', '', 'fmxDroit')}`
+      : `<div class="fm-ajouts fm-x-ajouts" role="group" aria-labelledby="fmExtrasAjouter"><span class="fm-ajouts-titre" id="fmExtrasAjouter">Ajouter</span>${EXTRAS_GROUPES.map(([groupe, titre]) => `<button type="button" class="fm-ajout" onclick="ajouterEditExtra('${groupe}')">${plus}${titre}</button>`).join('')}</div>`}
     ${listes}
   </section>`;
 }

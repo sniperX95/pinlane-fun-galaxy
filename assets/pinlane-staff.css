@@ -20192,6 +20192,9 @@ body:is(.staff-mode, .admin-mode) .fx-modal .fm-notes { display: grid; gap: 12px
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-notes-titre { margin: 0; font-size: 14px; font-weight: 600; color: var(--text); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-notes textarea.input { min-height: 64px; height: auto; padding: 10px 12px; font-size: 14px; line-height: 1.4; resize: vertical; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-note-texte { margin: 0; font-size: 14px; line-height: 1.4; white-space: pre-line; }
+/* UN GESTE QUE LE ROLE N A PAS (2026-11-20) : eteint, et une ligne qui nomme le droit. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-droit { margin: 6px 0 0; font-size: 13px; line-height: 1.4; color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm :is(.fm-ajout, .fm-x-opt):disabled { opacity: 0.5; cursor: not-allowed; }
 /* LA RAISON D UN PRIX CHANGE A LA MAIN (2026-11-20) : les raisons de Reserver en touches, une autre
    a taper, le plafond du role en une ligne. */
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-raison { display: grid; gap: 8px; margin-top: 12px; }

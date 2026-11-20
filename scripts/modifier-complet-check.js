@@ -53,6 +53,9 @@
 //   [R1] un prix tape a la main demande sa raison : les raisons de Reserver et une autre a taper ;
 //   [R2] la raison choisie part avec le prix et s ecrit dans la note du serveur ;
 //   [R3] le plafond du role (10 %) se lit sous les raisons, et le dit avant le refus ;
+//   [I1] sans le droit « Ajouter du sur mesure », « Ajouter » se voit eteint, une ligne nomme le droit ;
+//   [I2] sans le droit « Ajuster un prix », « Offert » se voit eteint sur chaque ligne, une ligne le dit ;
+//   [I3] sans le droit « Adapter une formule », le programme d une formule se lit, une ligne le dit ;
 //   [J1] aucune erreur JS.
 // --contre-preuves : chaque regle retiree (au code servi, en memoire ; le disque n est jamais
 // touche) fait rougir sa lettre.
@@ -684,6 +687,46 @@ async function scenarioRaison(browser) {
 }
 
 // ---------------------------------------------------------------------------
+// [I1] [I2] [I3] UN GESTE QUE LE ROLE N A PAS SE VOIT ETEINT, AVEC LE DROIT QUI MANQUE.
+// ---------------------------------------------------------------------------
+const HUGO = 1602; // Formule 8, 10 joueurs
+async function scenarioDroits(browser) {
+  semer();
+  const serveur = B.monter({ mutations: mutation ? mutation.editions.filter((ed) => ed.serveur) : [], session: B.sessionDuRole('manager', { nom: 'Rachel' }) });
+  const { ctx, page, erreurs } = await monter(browser, serveur);
+  try {
+    // (le poste joue un role sans sur mesure, sans prix et sans formule a adapter)
+    await page.evaluate(() => {
+      const avant = window.niveauStaff;
+      window.niveauStaff = (cle) => (['surmesure', 'prix', 'formule'].includes(cle) ? 'non' : avant(cle));
+    });
+    await ouvrirModifier(page);
+    const a = await page.evaluate(() => {
+      const sec = document.querySelector('#posOverlay .fm-extras');
+      const ligne = (id) => { const n = document.getElementById(id); return n ? n.textContent.trim() : ''; };
+      return {
+        ajouter: sec ? Array.from(sec.querySelectorAll('.fm-x-ajouts .fm-ajout')).map((b) => `${b.textContent.trim()}${b.disabled ? '-' : '+'}`) : [],
+        offert: sec ? Array.from(sec.querySelectorAll('.fm-x-opt')).filter((b) => b.textContent.trim() === 'Offert').map((b) => b.disabled) : [],
+        droitSurMesure: ligne('fmxDroit'),
+        droitPrix: ligne('fmxDroitPrix'),
+      };
+    });
+    ok(a.ajouter.join() === 'Nourriture-,Boissons-,Autre-' && a.droitSurMesure === 'Il faut le droit « Ajouter du sur mesure ».',
+      '[I1] sans le sur mesure, « Ajouter » se voit eteint et la ligne nomme le droit', a);
+    ok(a.offert.length === 6 && a.offert.every(Boolean) && a.droitPrix === 'Il faut le droit « Ajuster un prix » pour offrir.',
+      '[I2] sans le droit du prix, « Offert » se voit eteint sur chaque ligne et la ligne nomme le droit', a);
+    await page.evaluate((id) => { closePos(); openPos(id); setTab('modifier'); }, HUGO);
+    await page.waitForSelector('#posOverlay .fm-programme', { timeout: 8000 });
+    const b = await page.evaluate(() => ({ lecture: Boolean(document.querySelector('#posOverlay .fm-lecture')), droit: (document.getElementById('fmDroitFormule') || {}).textContent || '' }));
+    ok(b.lecture && b.droit.trim() === 'Il faut le droit « Adapter une formule » pour changer le programme.',
+      '[I3] sans le droit d adapter une formule, le programme se lit et la ligne nomme le droit', b);
+    ok(erreurs.length === 0, '[J1] aucune erreur JS (droits)', erreurs.slice(0, 3));
+  } finally {
+    await ctx.close();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // LES CONTRE-PREUVES : une regle retiree, sa lettre rougit.
 // ---------------------------------------------------------------------------
 const FORMULE = ['formule'];
@@ -692,6 +735,7 @@ const NOTES_E = ['notes'];
 const TELEPHONE = ['telephone'];
 const ESPACEMENT = ['espacement'];
 const RAISON = ['raison'];
+const DROITS = ['droits'];
 const CSS = 'assets/pinlane-staff.css';
 const LIBRE = ['libre'];
 const CATALOGUE = ['catalogue'];
@@ -744,6 +788,10 @@ const MUTATIONS = [
   { nom: 'raison-absente', lettre: 'R1', scenarios: RAISON, editions: [{ fichier: JS, de: '    ${raisonPrixEditionHtml()}\n', vers: '' }] },
   { nom: 'raison-pas-envoyee', lettre: 'R2', scenarios: RAISON, editions: [{ fichier: JS, de: '{ requiresLanes, prixSuivi, prixRaison: raisonPrixEdition(), allowPastStart: true }', vers: '{ requiresLanes, prixSuivi, allowPastStart: true }' }] },
   { nom: 'plafond-muet', lettre: 'R3', scenarios: RAISON, editions: [{ fichier: JS, de: '  if (prix < reference - marge) return {', vers: '  if (false) return {' }] },
+  // Les droits qui manquent : la ligne du sur mesure, « Offert » cache, la ligne de la formule.
+  { nom: 'droit-muet', lettre: 'I1', scenarios: DROITS, editions: [{ fichier: JS, de: "${droitManquantHtml('surmesure', '', 'fmxDroit')}", vers: '' }] },
+  { nom: 'offert-cache', lettre: 'I2', scenarios: DROITS, editions: [{ fichier: JS, de: '\'<button type="button" class="fm-x-opt" disabled aria-describedby="fmxDroitPrix">Offert</button>\'', vers: "''" }] },
+  { nom: 'formule-muette', lettre: 'I3', scenarios: DROITS, editions: [{ fichier: JS, de: "droitManquantHtml('formule', ' pour changer le programme', 'fmDroitFormule')", vers: "''" }] },
   { nom: 'serveur-pose-l-existant', lettre: 'H3', scenarios: HEURE, editions: [{ fichier: API, serveur: true, de: '.filter((posee) => !dejaAuDossier(posee.activityId) && proposedItems', vers: '.filter((posee) => proposedItems' }] },
 ];
 
@@ -758,6 +806,7 @@ async function jouer(browser, noms) {
     if (nom === 'telephone') await scenarioTelephoneFiche(browser);
     if (nom === 'espacement') await scenarioEspacement(browser);
     if (nom === 'raison') await scenarioRaison(browser);
+    if (nom === 'droits') await scenarioDroits(browser);
   }
 }
 
@@ -767,7 +816,7 @@ async function main() {
   const t0 = Date.now();
   try {
     if (!process.argv.includes('--contre-preuves')) {
-      await jouer(browser, ['libre', 'catalogue', 'heure', 'formule', 'service', 'notes', 'telephone', 'espacement', 'raison']);
+      await jouer(browser, ['libre', 'catalogue', 'heure', 'formule', 'service', 'notes', 'telephone', 'espacement', 'raison', 'droits']);
     } else {
       console.log('[K] contre-preuves : chaque regle retiree fait rougir sa lettre');
       for (const m of MUTATIONS.filter((x) => !process.env.MC_MUTATIONS || liste(process.env.MC_MUTATIONS).includes(x.nom))) {

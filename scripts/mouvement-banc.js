@@ -20,8 +20,27 @@
 //   sansflou        aucun flou d'arrière-plan (backdrop-filter)
 //   sanstransition  aucune transition
 //   sansanimation   aucune animation CSS
+//   reduit          le mouvement réduit du système : aucune fenêtre n'anime son entrée,
+//                   la référence des gestes qui ouvrent une fenêtre
+//
+// LA FENETRE QUI S'OUVRE (2026-11-20, soir). Le gérant clique une réservation du
+// planning : « pas fluide du tout », « trop lent ». Les gestes ouvrir-fiche (un vrai
+// clic sur le nom d'une ligne du planning complet), fermer-fiche (Échap),
+// ouvrir-reserver et fermer-reserver lisent en plus, à chaque image depuis le geste, ce
+// que l'œil voit de la fenêtre : son opacité réelle (la sienne, celles de ses parents,
+// celle de son contenu s'il joue sa propre entrée), moins la part qu'un calque opaque
+// posé dessus cache (la forme qui volait de la ligne à la fiche). Ils rendent :
+//   première  le clic jusqu'à la première image où la fenêtre existe (le rendu) ;
+//   lisible   le clic jusqu'à la fenêtre lisible, opacité vue de 0,9 au moins ;
+//   complète  le clic jusqu'à la fenêtre posée : opacité 1, échelle 1, plus rien ne bouge ;
+//   à-coups   les images de plus de 50 ms APRÈS la première (le mouvement seul, le
+//             rendu est donné à part : traitement du clic, renderPosInner) ;
+//   fermée    pour la fermeture, la touche jusqu'à la dernière trace à l'écran.
 //
 // Usage : node scripts/mouvement-banc.js [variante,variante] [--cpu=4] [--sortie=fichier.json]
+//         [--port=5231] [--gestes=ouvrir-fiche,fermer-fiche] [--fois=5]
+// (--gestes : ces gestes seulement, sans les pages au repos ; --fois : chaque geste de
+// fenêtre rejoué autant de fois, la médiane est rendue)
 // Les chiffres absolus dépendent de la machine : on lit des RAPPORTS entre
 // variantes mesurées dans la même série.
 'use strict';
@@ -40,6 +59,9 @@ const VARIANTES = (args.find((a) => !a.startsWith('--')) || 'base').split(',').f
 const CPU = Number(opt('cpu', '4'));
 const SORTIE = opt('sortie', '');
 const PORT = Number(opt('port', '5231'));
+const GESTES = opt('gestes', '').split(',').filter(Boolean);
+const FOIS = Math.max(1, Number(opt('fois', '1')) || 1);
+const veut = (geste) => !GESTES.length || GESTES.includes(geste);
 
 const PAGES = [
   ['dashboard'], ['planning', 'all'], ['planning', 'bowling'], ['planning', 'laser'],
@@ -76,6 +98,55 @@ const SONDE = `(() => {
   } catch (e) { m.loaf = -1; }
 })()`;
 
+// Dans la page : ce que l'œil voit de la fenêtre à chaque image, depuis le geste.
+const SONDE_FENETRE = `(() => {
+  if (window.__fen) return;
+  const f = window.__fen = { surface: '', contenu: '', racine: '', actif: false, t0: 0, images: [], evenement: null, rendus: [] };
+  const geste = (e) => { if (f.actif && !f.t0 && e.isTrusted) f.t0 = e.timeStamp; };
+  document.addEventListener('click', geste, true);
+  document.addEventListener('keydown', geste, true);
+  const opacite = (el) => { let o = 1; for (let n = el; n && n.nodeType === 1; n = n.parentElement) o *= Number(getComputedStyle(n).opacity); return o; };
+  const commun = (a, b) => Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) * Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
+  const boucle = (t) => {
+    if (f.actif && f.t0) {
+      const s = f.surface ? document.querySelector(f.surface) : null;
+      let vue = 0, lisible = 0, echelle = 1;
+      if (s) {
+        const rs = s.getBoundingClientRect();
+        let cache = 0;
+        document.querySelectorAll('.pl-calque.pl-vol').forEach((v) => {
+          const ov = Number(getComputedStyle(v).opacity);
+          if (ov > 0) cache = Math.max(cache, ov * commun(v.getBoundingClientRect(), rs) / Math.max(1, rs.width * rs.height));
+        });
+        const c = f.contenu ? s.querySelector(f.contenu) : null;
+        vue = opacite(s) * (1 - cache);
+        lisible = vue * (c ? Number(getComputedStyle(c).opacity) : 1);
+        const m = /matrix\\(([^,]+)/.exec(getComputedStyle(s).transform || '');
+        echelle = m ? Number(m[1]) : 1;
+      }
+      // (ce qui bouge encore : la fenêtre, son voile, son contenu, les calques du mouvement)
+      const bougent = document.getAnimations().filter((a) => {
+        const x = a.effect && a.effect.target;
+        if (a.playState !== 'running' || !x || x.nodeType !== 1) return false;
+        if (a.effect.getComputedTiming().iterations === Infinity) return false;
+        return x.classList.contains('pl-calque') || Boolean(f.racine && x.closest(f.racine));
+      }).length;
+      const traces = Array.prototype.filter.call(document.querySelectorAll('.pl-calque.pl-vol, .pl-calque.pl-voile'), (v) => Number(getComputedStyle(v).opacity) > 0.01).length;
+      f.images.push({ t: t - f.t0, present: Boolean(s), vue, lisible, echelle, bougent, traces });
+    }
+    requestAnimationFrame(boucle);
+  };
+  requestAnimationFrame(boucle);
+  try {
+    new PerformanceObserver((l) => {
+      for (const e of l.getEntries()) {
+        if (!f.actif || (e.name !== 'click' && e.name !== 'keydown')) continue;
+        f.evenement = { traitement: e.processingEnd - e.processingStart, jusquALImage: e.duration };
+      }
+    }).observe({ type: 'event', durationThreshold: 16, buffered: false });
+  } catch (e) { /* (sans Event Timing, le traitement du geste n'est pas lu) */ }
+})()`;
+
 async function fenetre(page, cdp, geste, ms) {
   const lire = async () => Object.fromEntries((await cdp.send('Performance.getMetrics')).metrics.map((x) => [x.name, x.value]));
   await page.evaluate(() => { window.__mvt.images = []; window.__mvt.loaf = 0; window.__mvt.actif = true; });
@@ -100,6 +171,98 @@ async function fenetre(page, cdp, geste, ms) {
     p95: Math.round(tri[Math.floor(tri.length * 0.95)] || 0),
     bloque: Math.round(sonde.loaf),
   };
+}
+
+// Les fenêtres lues par SONDE_FENETRE : la boîte, son contenu, ce qui bouge avec elle, et la
+// fonction de app-main.js qui la dessine (chronométrée seule).
+const FICHE = { surface: '#posOverlay:not(.hidden) .edit-modal', contenu: '.pos-sheet', racine: '#posOverlay', rendu: 'renderPosInner' };
+const RESERVER = { surface: '#quickBookOverlay:not(.hidden) .qb-modal', contenu: '', racine: '#quickBookOverlay', rendu: 'renderQuickBook' };
+
+const mediane = (xs) => {
+  const v = xs.filter((x) => typeof x === 'number' && Number.isFinite(x)).sort((a, b) => a - b);
+  return v.length ? v[Math.floor((v.length - 1) / 2)] : null;
+};
+
+// Ce que la série d'images dit de l'ouverture (ou de la fermeture).
+function analyser(lu, fermeture) {
+  const im = lu.images;
+  if (!lu.t0 || !im.length) return { erreur: 'aucun geste lu' };
+  const t = (i) => (i >= 0 && i < im.length ? Math.round(im[i].t) : null);
+  const acoups = (de, a) => {
+    let n = 0, pire = 0;
+    for (let k = Math.max(1, de + 1); k <= Math.min(a, im.length - 1); k++) {
+      const d = im[k].t - im[k - 1].t;
+      if (d > 50) n += 1;
+      pire = Math.max(pire, d);
+    }
+    return { acoupsMouvement: n, pireMouvement: Math.round(pire) };
+  };
+  const base = { traitement: lu.evenement ? Math.round(lu.evenement.traitement) : null, jusquALImage: lu.evenement ? Math.round(lu.evenement.jusquALImage) : null, rendu: lu.rendus.length ? Math.round(lu.rendus[0]) : null };
+  if (fermeture) {
+    let j = -1;
+    im.forEach((x, i) => { if ((x.present && x.vue > 0.01) || x.traces > 0 || x.bougent > 0) j = i; });
+    return { ...base, fermee: j + 1 < im.length ? t(j + 1) : null, ...acoups(0, j + 1) };
+  }
+  const premiere = im.findIndex((x) => x.present);
+  let j = -1;
+  im.forEach((x, i) => { if (!x.present || x.lisible < 0.999 || Math.abs(x.echelle - 1) > 0.0005 || x.bougent > 0 || x.traces > 0) j = i; });
+  return {
+    ...base,
+    premiere: t(premiere),
+    vue: t(im.findIndex((x) => x.vue > 0.05)),
+    lisible: t(im.findIndex((x) => x.lisible >= 0.9)),
+    complete: j + 1 < im.length ? t(j + 1) : null,
+    ...acoups(premiere, j + 1),
+  };
+}
+
+// Un geste qui ouvre ou ferme une fenêtre : la mesure générale de `fenetre`, et la lecture
+// image par image de la sonde.
+async function gesteFenetre(page, cdp, quoi, geste, ms, fermeture = false) {
+  await page.evaluate((quoi) => {
+    const f = window.__fen;
+    Object.assign(f, { surface: quoi.surface, contenu: quoi.contenu, racine: quoi.racine, actif: true, t0: 0, images: [], evenement: null, rendus: [] });
+    if (quoi.rendu && typeof window[quoi.rendu] === 'function' && !window[quoi.rendu].__banc) {
+      const avant = window[quoi.rendu];
+      const chrono = function () {
+        const t = performance.now();
+        try { return avant.apply(this, arguments); } finally { window.__fen.rendus.push(performance.now() - t); }
+      };
+      chrono.__banc = true;
+      window[quoi.rendu] = chrono;
+    }
+  }, quoi);
+  const general = await fenetre(page, cdp, geste, ms);
+  const lu = await page.evaluate(() => {
+    const f = window.__fen;
+    f.actif = false;
+    return { t0: f.t0, images: f.images.slice(), evenement: f.evenement, rendus: f.rendus.slice() };
+  });
+  return { ...general, ...analyser(lu, fermeture) };
+}
+
+// Le nom d'une ligne bien à l'écran du planning complet : là où le gérant clique.
+async function nomDUneLigne(page, rang = 0) {
+  return page.evaluate((rang) => {
+    const vus = [];
+    for (const tr of document.querySelectorAll('.gf-t tr.gf-r:not(.gf-retenue)')) {
+      const nom = tr.querySelector('.gf-nom__t');
+      const r = nom ? nom.getBoundingClientRect() : null;
+      if (r && r.width > 10 && r.top > 140 && r.bottom < innerHeight - 40) vus.push({ x: r.left + Math.min(r.width / 2, 40), y: r.top + r.height / 2 });
+    }
+    return vus.length ? vus[rang % vus.length] : null;
+  }, rang);
+}
+
+// Un geste de fenêtre rejoué FOIS fois : la médiane de chaque mesure.
+function regrouper(series) {
+  const cles = [...new Set(series.flatMap((s) => Object.keys(s)))];
+  const out = { fois: series.length };
+  for (const c of cles) {
+    const vals = series.map((s) => s[c]);
+    out[c] = vals.every((v) => typeof v === 'number' || v === null) ? mediane(vals) : vals[0];
+  }
+  return out;
 }
 
 async function sansFinVisibles(page) {
@@ -144,13 +307,14 @@ async function mesurerVariante(navigateur, variante) {
   const serveur = await F.servir({ port: PORT, transformer: transformateur(variante) });
   const res = { variante, cpu: CPU, pages: {}, gestes: {}, erreurs: [] };
   try {
-    const { ctx, page, erreurs } = await F.monter(navigateur, { fixture: 'pic', appareil: 'ordinateur', theme: 'light', heure: '15:10', port: PORT });
+    const { ctx, page, erreurs } = await F.monter(navigateur, { fixture: 'pic', appareil: 'ordinateur', theme: 'light', heure: '15:10', port: PORT, mouvementReduit: variante === 'reduit' });
     await page.evaluate(SONDE);
+    await page.evaluate(SONDE_FENETRE);
     const cdp = await ctx.newCDPSession(page);
     await cdp.send('Performance.enable');
     await cdp.send('Emulation.setCPUThrottlingRate', { rate: CPU });
 
-    for (const [cle, vue] of PAGES) {
+    for (const [cle, vue] of GESTES.length ? [] : PAGES) {
       const nom = vue ? `${cle}:${vue}` : cle;
       try {
         await aller(page, cle, vue);
@@ -165,30 +329,60 @@ async function mesurerVariante(navigateur, variante) {
     // Les gestes, sur le planning complet puis le bowling.
     const vp = page.viewportSize();
     await aller(page, 'planning', 'all'); await page.waitForTimeout(1800);
-    res.gestes['survol-planning'] = await fenetre(page, cdp, () => balayer(page, 280, 160, vp.width - 40, vp.height - 40, 60), 2500);
-    res.gestes['molette-planning'] = await fenetre(page, cdp, async () => {
-      await page.mouse.move(vp.width / 2, vp.height / 2);
-      for (let i = 0; i < 8; i++) { await page.mouse.wheel(0, 240); await page.waitForTimeout(60); }
-      for (let i = 0; i < 8; i++) { await page.mouse.wheel(0, -240); await page.waitForTimeout(60); }
-    }, 2500);
-    res.gestes['ouvrir-reserver'] = await fenetre(page, cdp, async () => {
-      await page.locator('#planningReserver').click({ timeout: 5000 });
-    }, 1500);
-    res.gestes['fermer-reserver'] = await fenetre(page, cdp, () => page.keyboard.press('Escape'), 1000);
-    await aller(page, 'planning', 'bowling'); await page.waitForTimeout(1800);
-    res.gestes['survol-bowling'] = await fenetre(page, cdp, () => balayer(page, 280, 160, vp.width - 40, vp.height - 40, 60), 2500);
-    res.gestes['molette-bowling'] = await fenetre(page, cdp, async () => {
-      await page.mouse.move(vp.width / 2, vp.height / 2);
-      for (let i = 0; i < 8; i++) { await page.mouse.wheel(0, 240); await page.waitForTimeout(60); }
-      for (let i = 0; i < 8; i++) { await page.mouse.wheel(0, -240); await page.waitForTimeout(60); }
-    }, 2500);
-    // Changer de page au menu, à la souris.
-    res.gestes['menu-pages'] = await fenetre(page, cdp, async () => {
-      for (const motif of [/R[ée]servations/, /Accueil/, /Planning/]) {
-        const lien = page.locator('.ops-sidebar a, .ops-sidebar button').filter({ hasText: motif }).first();
-        if (await lien.count()) { await lien.click({ timeout: 4000 }).catch(() => {}); await page.waitForTimeout(700); }
+    if (veut('survol-planning')) res.gestes['survol-planning'] = await fenetre(page, cdp, () => balayer(page, 280, 160, vp.width - 40, vp.height - 40, 60), 2500);
+    if (veut('molette-planning')) {
+      res.gestes['molette-planning'] = await fenetre(page, cdp, async () => {
+        await page.mouse.move(vp.width / 2, vp.height / 2);
+        for (let i = 0; i < 8; i++) { await page.mouse.wheel(0, 240); await page.waitForTimeout(60); }
+        for (let i = 0; i < 8; i++) { await page.mouse.wheel(0, -240); await page.waitForTimeout(60); }
+      }, 2500);
+    }
+    // La fiche ouverte d'un vrai clic sur le nom d'une ligne, puis fermée à Échap.
+    if (veut('ouvrir-fiche') || veut('fermer-fiche')) {
+      const ouvertures = [];
+      const fermetures = [];
+      for (let i = 0; i < FOIS; i++) {
+        await page.evaluate(() => window.scrollTo(0, 0));
+        const nom = await nomDUneLigne(page, i);
+        if (!nom) { res.erreurs.push('ouvrir-fiche : aucune ligne du planning à l écran'); break; }
+        await page.mouse.move(nom.x, nom.y);
+        await page.waitForTimeout(300);
+        ouvertures.push(await gesteFenetre(page, cdp, FICHE, () => page.mouse.click(nom.x, nom.y), 1400));
+        fermetures.push(await gesteFenetre(page, cdp, FICHE, () => page.keyboard.press('Escape'), 1000, true));
+        await page.waitForTimeout(400);
       }
-    }, 3000);
+      if (veut('ouvrir-fiche')) res.gestes['ouvrir-fiche'] = regrouper(ouvertures);
+      if (veut('fermer-fiche')) res.gestes['fermer-fiche'] = regrouper(fermetures);
+    }
+    if (veut('ouvrir-reserver') || veut('fermer-reserver')) {
+      const ouvertures = [];
+      const fermetures = [];
+      for (let i = 0; i < FOIS; i++) {
+        ouvertures.push(await gesteFenetre(page, cdp, RESERVER, () => page.locator('#planningReserver').click({ timeout: 5000 }), 1500));
+        fermetures.push(await gesteFenetre(page, cdp, RESERVER, () => page.keyboard.press('Escape'), 1000, true));
+        await page.waitForTimeout(400);
+      }
+      if (veut('ouvrir-reserver')) res.gestes['ouvrir-reserver'] = regrouper(ouvertures);
+      if (veut('fermer-reserver')) res.gestes['fermer-reserver'] = regrouper(fermetures);
+    }
+    await aller(page, 'planning', 'bowling'); await page.waitForTimeout(1800);
+    if (veut('survol-bowling')) res.gestes['survol-bowling'] = await fenetre(page, cdp, () => balayer(page, 280, 160, vp.width - 40, vp.height - 40, 60), 2500);
+    if (veut('molette-bowling')) {
+      res.gestes['molette-bowling'] = await fenetre(page, cdp, async () => {
+        await page.mouse.move(vp.width / 2, vp.height / 2);
+        for (let i = 0; i < 8; i++) { await page.mouse.wheel(0, 240); await page.waitForTimeout(60); }
+        for (let i = 0; i < 8; i++) { await page.mouse.wheel(0, -240); await page.waitForTimeout(60); }
+      }, 2500);
+    }
+    // Changer de page au menu, à la souris.
+    if (veut('menu-pages')) {
+      res.gestes['menu-pages'] = await fenetre(page, cdp, async () => {
+        for (const motif of [/R[ée]servations/, /Accueil/, /Planning/]) {
+          const lien = page.locator('.ops-sidebar a, .ops-sidebar button').filter({ hasText: motif }).first();
+          if (await lien.count()) { await lien.click({ timeout: 4000 }).catch(() => {}); await page.waitForTimeout(700); }
+        }
+      }, 3000);
+    }
     res.erreurs.push(...erreurs.map((e) => 'page : ' + e.slice(0, 120)));
     await ctx.close();
   } finally {
@@ -214,6 +408,19 @@ function tableau(series) {
       const x = s.gestes[g]; if (!x) return `${s.variante}: -`;
       return `${s.variante}: ${String(x.imagesParSeconde).padStart(5)} i/s ${String(x.acoups).padStart(3)} ac ${String(x.pireImage).padStart(4)} ms ${String(x.filOccupe).padStart(5)}% ${String(x.bloque).padStart(5)} bl`;
     }).join(' | '));
+  }
+  const fenetres = gestes.filter((g) => series.some((s) => s.gestes[g] && s.gestes[g].fois));
+  if (fenetres.length) {
+    lignes.push('FENETRES, ms depuis le geste (médiane) : première image | vue | lisible >= 0,9 | complète (ou fermée) | à-coups du mouvement | pire image du mouvement | traitement du geste | geste jusqu à l image | rendu seul');
+    const n = (v) => String(v == null ? '-' : v).padStart(4);
+    for (const g of fenetres) {
+      for (const s of series) {
+        const x = s.gestes[g];
+        if (!x) continue;
+        const fin = x.complete !== undefined ? x.complete : x.fermee;
+        lignes.push(`  ${g.padEnd(16)} ${s.variante.padEnd(10)} x${x.fois} ${n(x.premiere)} ${n(x.vue)} ${n(x.lisible)} ${n(fin)} | ${n(x.acoupsMouvement)} ac ${n(x.pireMouvement)} ms | ${n(x.traitement)} ${n(x.jusquALImage)} ${n(x.rendu)}`);
+      }
+    }
   }
   return lignes.join('\n');
 }

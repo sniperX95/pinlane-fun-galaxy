@@ -41738,12 +41738,13 @@ async function rsVerifier() {
       return { corps, variantes, sansDossier };
     });
     const locaux = (demande ? demande.sansDossier : []).map((r) => [r.heure, r]);
-    if (!demande || !demande.variantes.length) { rsVerifs.set(cle, { etat: 'ok', resultats: new Map(locaux) }); continue; }
+    if (!demande || !demande.variantes.length) { rsVerifs.set(cle, { etat: 'ok', resultats: new Map(locaux) }); rsRejouerLeToucher(cle); continue; }
     rsVerifs.set(cle, { etat: 'calcul' });
     try {
       const payload = await apiRequest(API_ENDPOINTS.staffReservations, { method: 'POST', body: JSON.stringify({ ...demande.corps, dryRun: true, candidats: demande.variantes }) });
       const lus = payload && Array.isArray(payload.candidats) ? payload.candidats : [];
       rsVerifs.set(cle, { etat: 'ok', resultats: new Map([...locaux, ...lus.map((r) => [r.heure, r])]) });
+      rsRejouerLeToucher(cle);
     } catch (error) {
       rsVerifs.delete(cle);
       return;
@@ -42356,6 +42357,19 @@ function rsHeureProche() {
   return bonnes.length ? bonnes[0].heure : '';
 }
 
+// UN TOUCHER QUI ATTEND SON VERDICT (2026-11-20). Une heure que ce poste croit pleine et que le
+// serveur n a pas encore jugee (« vérification ») ne se prend pas au toucher : elle partait sans
+// verdict, donc sans refus ni « à placer », et un role sans le niveau forcer prenait 15:30 sur
+// huit pistes prises. Le toucher attend la reponse du serveur sur son bloc (rsVerifier), puis se
+// rejoue : l heure se prend si elle tient, sinon selon le role (rsHeureQuiCoince).
+let rsToucheEnAttente = null;
+function rsRejouerLeToucher(cle) {
+  const t = rsToucheEnAttente;
+  if (!t || t.cle !== cle) return;
+  rsToucheEnAttente = null;
+  setTimeout(() => { if (quickBookState && rsCleBloc(t.id) === t.cle) rsHeure(t.id, t.heure); }, 0);
+}
+
 // UN TOUCHER SUR UNE HEURE. Une activite qui n est pas au ticket s y ajoute a cette heure
 // (le bowling propose au depart, lui, cede sa place : rsPrendre) ; prise, elle change
 // d heure ; sa propre heure touchee une deuxieme fois la retire, tant qu il en reste une
@@ -42377,6 +42391,14 @@ function rsHeure(id, heure) {
   // (pendant une autre activite du groupe : l heure se prend, rien ne bouge ; le ticket le dit et
   // « Créer » attend, rvChevauchements. Le refus du serveur n est alors que ce chevauchement.)
   const pendant = x ? rsPendant(id, heure) : null;
+  const cle = rsCleBloc(id);
+  const juge = rsVerifs.get(cle);
+  // (seules les heures que rsVerifier juge attendent : une heure passee se note sans verdict)
+  if (x && !pendant && !x.verdict && x.tient !== true && !(juge && juge.etat === 'ok') && rvHeuresHorloge(id).slice(0, 48).includes(heure)) {
+    rsToucheEnAttente = { id, heure, cle };
+    return;
+  }
+  rsToucheEnAttente = null;
   const dejaForce = Boolean(s.forcer);
   rsToucheDe = id;
   rsGeste(() => {

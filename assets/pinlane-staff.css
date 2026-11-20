@@ -20200,6 +20200,9 @@ body:is(.staff-mode, .admin-mode) .fx-modal .fm :is(.fm-ajout, .fm-x-opt):disabl
 /* LA RAISON D UN PRIX CHANGE A LA MAIN (2026-11-20) : les raisons de Reserver en touches, une autre
    a taper, le plafond du role en une ligne. */
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-raison { display: grid; gap: 8px; margin-top: 12px; }
+/* (`display: grid` passe devant l attribut « caché » : sans cette ligne, la raison se reclame
+   alors que personne n a tape de prix) */
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-raison[hidden] { display: none; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-plafond { margin: 0; font-size: 13px; line-height: 1.4; color: var(--muted); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-plafond.is-ko { color: var(--danger, #b42318); font-weight: 600; }
 /* L HEURE DE SERVICE ET LA NOTE D UN EXTRA (2026-11-20) : des champs de la console sur la rangee

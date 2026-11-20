@@ -650,7 +650,9 @@ async function scenarioRaison(browser) {
     const bloc = document.getElementById('editRaisonPrix');
     const ligne = document.getElementById('editPlafond');
     return {
-      visible: Boolean(bloc && !bloc.hidden),
+      // (ce qui se voit vraiment : un style d affichage passe devant l attribut « caché »)
+      visible: Boolean(bloc && bloc.getClientRects().length),
+      cachesVus: Array.from(document.querySelectorAll('#posOverlay [hidden]')).filter((el) => el.getClientRects().length).map((el) => el.id || el.className),
       raisons: bloc ? Array.from(bloc.querySelectorAll('[data-raison]')).map((b) => `${b.textContent.trim()}${b.classList.contains('active') ? '*' : ''}`) : [],
       autre: Boolean(document.getElementById('editRaisonLibre')),
       plafond: ligne ? `${ligne.textContent.trim()}${ligne.classList.contains('is-ko') ? ' [ko]' : ''}` : '',
@@ -666,6 +668,7 @@ async function scenarioRaison(browser) {
     });
     const a = await lire();
     ok(a && !a.visible, '[R1] sans prix tape, pas de raison a donner', a);
+    ok(a && !a.cachesVus.length, '[R1] dans la fenetre, rien de ce qui est marque cache ne se voit', a && a.cachesVus);
     await page.fill('#editPriceInput', '150');
     await page.waitForTimeout(150);
     const b = await lire();
@@ -793,6 +796,7 @@ const MUTATIONS = [
   { nom: 'espacement-sans-effet', lettre: 'G2', scenarios: ESPACEMENT, editions: [{ fichier: JS, de: 'debuts[0].debut + k * minutes]', vers: 'debuts[0].debut + k * 30]' }] },
   { nom: 'pause-ailleurs', lettre: 'G3', scenarios: ESPACEMENT, editions: [{ fichier: JS, de: '  const derniere = debuts[debuts.length - 1];', vers: '  const derniere = debuts[1];' }] },
   // La raison d un prix : absente, pas envoyee, le plafond muet.
+  { nom: 'raison-toujours-la', lettre: 'R1', scenarios: RAISON, editions: [{ fichier: CSS, de: 'body:is(.staff-mode, .admin-mode) .fx-modal .fm-raison[hidden] { display: none; }', vers: '' }] },
   { nom: 'raison-absente', lettre: 'R1', scenarios: RAISON, editions: [{ fichier: JS, de: '    ${raisonPrixEditionHtml()}\n', vers: '' }] },
   { nom: 'raison-pas-envoyee', lettre: 'R2', scenarios: RAISON, editions: [{ fichier: JS, de: '{ requiresLanes, prixSuivi, prixRaison: raisonPrixEdition(), allowPastStart: true }', vers: '{ requiresLanes, prixSuivi, allowPastStart: true }' }] },
   { nom: 'plafond-muet', lettre: 'R3', scenarios: RAISON, editions: [{ fichier: JS, de: '  if (prix < reference - marge) return {', vers: '  if (false) return {' }] },

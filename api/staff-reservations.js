@@ -46,7 +46,7 @@ const { refreshFormuleOverrides } = require('../lib/booking-config');
 const { refreshCatalog } = require('../lib/catalog-store');
 const { getPool } = require('../lib/database');
 const { exigerLesDroits, finDeLaVisite, notesSansLaNoteAPlacer, planifierPourLaFenetre, simulerAutres } = require('../lib/reserver-fenetre');
-const { heureDuPlan, lireHeuresPosees, poserLesHeures } = require('../lib/heures-posees');
+const { ancresDuMoteur, debutDesActivites, heureDuPlan, lireHeuresPosees, memesActivites, poserLesHeures } = require('../lib/heures-posees');
 // La creation elle-meme vit dans lib/reserver-creation.js : la reservation en un clic d une demande
 // sur mesure (api/ops.js customRequestBook) prend le meme chemin.
 const { creerDepuisLaFenetre } = require('../lib/reserver-creation');
@@ -446,7 +446,20 @@ async function modifierABlanc(req, res, corps) {
     if ((jourPasse(current.date) || jourPasse(body.date)) && !sessionHasPermission(session, 'planning.past')) throw createHttpError('Changer un jour passé ne fait pas partie de votre rôle.', 403);
     const versionAttendue = lireVersionAttendue(body.baseUpdatedAt);
     if (versionAttendue !== null && !memeVersion(current.updatedAt, versionAttendue)) throw reservationModifieeEntreTemps(current);
-    const { patch, ops, shouldReplan } = await calculerLaModification({ body, current, session, requestedCenterId });
+    // LES HEURES D ABORD, PUIS LE RESTE (2026-11-20, dossier 1953 de Gembloux). « Enregistrer » deplace
+    // chaque heure changee par son chemin (PATCH activityMove), puis envoie le reste sur le dossier que
+    // ces deplacements ont ecrit. Le calcul a blanc joue la meme suite : les deplacements sur le dossier
+    // relu, par les controles du glisser, puis la modification sur le dossier deplace.
+    const aDeplacer = Array.isArray(body.deplacements) ? body.deplacements : [];
+    delete body.deplacements;
+    const dossierDeplace = aDeplacer.length ? await deplacerAvantLeReste(current, aDeplacer, session) : current;
+    if (dossierDeplace !== current) {
+      // (le corps part de l ecran d avant les deplacements : le plan et les pistes que la personne n a
+      // pas touches sont ceux du dossier deplace, comme a l enregistrement)
+      body.opsPlan = dossierDeplace.opsPlan;
+      if (JSON.stringify((body.lanes || []).map(Number)) === JSON.stringify((current.lanes || []).map(Number))) body.lanes = dossierDeplace.lanes || [];
+    }
+    const { patch, ops, shouldReplan } = await calculerLaModification({ body, current: dossierDeplace, session, requestedCenterId });
     const reservation = await updateReservation({ ...patch, ...ops, channel: patch.channel || current.channel || 'staff', aBlanc: true });
     // Les verrous du jour etaient pris par un vrai geste : pas de verdict, la console se tait.
     if (!reservation) return { ok: true, dryRun: true };
@@ -454,8 +467,41 @@ async function modifierABlanc(req, res, corps) {
     return { ok: true, dryRun: true, modification: true, reservation, ...(planNonRefait ? { planNonRefait } : {}) };
   } catch (error) {
     if ((error && error.statusCode >= 500) || estErreurInfra(error)) throw error;
-    return { ok: true, dryRun: true, modification: true, refus: { message: String(error.message), statut: error.statusCode || 400, ...(error.code ? { code: error.code } : {}) } };
+    return { ok: true, dryRun: true, modification: true, refus: { message: String(error.message), statut: error.statusCode || 400, ...(error.code ? { code: error.code } : {}), ...(Number.isInteger(error.rangDuDeplacement) ? { rang: error.rangDuDeplacement, suggestions: error.heuresProches || [] } : {}) } };
   }
+}
+
+// Les deplacements de « Modifier » joues avant le reste, a blanc : un apres l autre sur le dossier relu,
+// par les controles du PATCH activityMove (buildActivityMove, puis validateActivityMoveResources contre
+// la journee relue, fermetures comprises). Un refus porte son rang et les heures libres les plus proches.
+async function deplacerAvantLeReste(current, deplacements, session) {
+  if (deplacements.length > DEPLACEMENTS_A_BLANC_MAX) throw createHttpError('Déplacement d’activité invalide.', 400);
+  deplacements.forEach((d) => {
+    const activite = String((d && d.activityId) || '');
+    const droit = activite === 'laser_game' ? 'planning.laser' : activite === 'bowling' ? 'planning.bowling' : '';
+    if (droit && !sessionHasPermission(session, droit)) throw createHttpError('Ce planning ne fait pas partie de votre rôle.', 403);
+  });
+  const { buildActivityMove } = require('../lib/reservation-activity-move');
+  const { validateActivityMoveResources } = require('../lib/database');
+  const lu = await readStaffState(current.date, current.centerId || 'libramont', { avecBlocages: true, avecFermetures: true });
+  const voisins = (Array.isArray(lu.reservations) ? lu.reservations : []).filter((row) => Number(row.id) !== Number(current.id));
+  const tenir = (dossier, d) => {
+    const suivant = buildActivityMove(dossier, d);
+    try {
+      validateActivityMoveResources(suivant, d, voisins, lu.laneStatuses || {}, lu.blocks || [], current.date);
+    } catch (error) { if (!error.statusCode) error.statusCode = 409; throw error; }
+    return suivant;
+  };
+  let dossier = current;
+  for (let i = 0; i < deplacements.length; i += 1) {
+    try { dossier = tenir(dossier, deplacements[i]); } catch (error) {
+      if (!error || !error.statusCode || error.statusCode >= 500 || estErreurInfra(error)) throw error;
+      error.rangDuDeplacement = i;
+      error.heuresProches = heuresLibresProches(dossier, deplacements[i], null, tenir);
+      throw error;
+    }
+  }
+  return dossier;
 }
 
 // L HEURE D UNE ACTIVITE CHANGEE DANS « MODIFIER », SANS L ECRIRE (2026-11-18, Ansar : « on doit pouvoir
@@ -760,10 +806,19 @@ async function calculerLaModification({ body, current, session, requestedCenterI
   // ici : l heure d une activite deja au dossier se deplace par son propre chemin (activityMove), et une
   // heure restee sur une copie de la fiche ne rejoue rien. Un corps forge est refuse (lireHeuresPosees).
   const itemsAvant = Array.isArray(current.program) ? current.program : Array.isArray(current.program?.items) ? current.program.items : [];
-  const dejaAuDossier = (id) => itemsAvant.some((item) => item && item.activityId === id) || Number.isFinite(heureDuPlan(current, id));
+  // (un bowling que le programme porte sans que le plan le place, le dossier 1953 : il recoit son heure
+  // ici, comme un bowling ajoute ; un bowling place se deplace par son chemin)
+  const dejaAuDossier = (id) => (id === 'bowling' ? false : itemsAvant.some((item) => item && item.activityId === id)) || Number.isFinite(heureDuPlan(current, id));
   const heuresAPoser = lireHeuresPosees(patch.heuresPosees)
     .filter((posee) => !dejaAuDossier(posee.activityId) && proposedItems.some((item) => item && item.activityId === posee.activityId));
   delete patch.heuresPosees;
+  // Le bowling et le laser ajoutes ont leur heure avant le moteur, comme ancres (lib/heures-posees.js).
+  const ancres = ancresDuMoteur(heuresAPoser);
+  if (Object.keys(ancres).length) {
+    const preference = patch.preference && typeof patch.preference === 'object' && !Array.isArray(patch.preference) ? patch.preference : {};
+    const voulues = preference.preferredTimes && typeof preference.preferredTimes === 'object' && !Array.isArray(preference.preferredTimes) ? preference.preferredTimes : {};
+    patch.preference = { ...preference, preferredTimes: { ...voulues, ...ancres } };
+  }
   // LE NOMBRE DE PISTES POSE A LA MAIN (2026-11-05). Il suit le dossier : une heure ou un
   // nom change sans qu on le redemande. Le poser, le changer ou le retirer replanifie, et
   // descendre sous le conseil du centre demande le niveau forcer, juge ici.
@@ -778,7 +833,7 @@ async function calculerLaModification({ body, current, session, requestedCenterI
     const normale = Number(getCenter(requestedCenterId).resources?.bowling?.normalCapacityPerLane) || 6;
     if (joueurs > poseApres * normale) exigerPistesALaMain(session);
   }
-  const operationsChanged = patchChangesOperations(patch, current) || poseApres !== poseAvant;
+  const operationsChanged = patchChangesOperations(patch, current) || poseApres !== poseAvant || heuresAPoser.length > 0;
   const shouldReplan = operationsChanged;
   if (!operationsChanged) {
     // Ne jamais adopter les métadonnées/prix/snapshots renvoyés par le client.
@@ -795,6 +850,16 @@ async function calculerLaModification({ body, current, session, requestedCenterI
   const ops = shouldReplan
     ? await prepareReservationOps(operationalRequest, 'staff', { ignoreReservationId: Number(patch.id), heureEnregistree: current.startTime })
     : {};
+  // UN PROGRAMME QUE LE PLAN NE PORTE PAS NE S ECRIT PAS (2026-11-20, dossier 1953 de Gembloux). Le
+  // moteur refusait la Formule 5 avec son Bowling, et le dossier s ecrivait quand meme : le programme
+  // avec le bowling, le plan d avant sans lui. Modifier lisait « Bowling --:-- », Infos l ancien plan,
+  // un minigolf en double et une fin de visite fausse. Une activite ajoutee ou retiree, ou une heure
+  // demandee, que le moteur ne sait pas placer est refusee avec son motif : rien ne s ecrit. (Un nombre
+  // de joueurs que le plan ne suit pas s ecrit toujours sur l ancien plan, la console le dit.)
+  if (shouldReplan && ops.planAvailable === false && patch.program && (heuresAPoser.length || !memesActivites(current, proposedItems))) {
+    const motif = String(ops.planRefusal || ops.planWarning || 'le moteur n’a pas donné de motif.').trim();
+    throw createHttpError(`Ce programme ne tient pas au planning : ${motif}`, 422);
+  }
   if (heuresAPoser.length && shouldReplan && ops.opsPlan && ops.planAvailable !== false) {
     const jour = String(patch.date ?? current.date);
     const lu = await readStaffState(jour, requestedCenterId, { avecBlocages: true, avecFermetures: true });
@@ -802,6 +867,13 @@ async function calculerLaModification({ body, current, session, requestedCenterI
     const pose = poserLesHeures({ ...operationalRequest, ...ops }, heuresAPoser, { reservations: autres, laneStatuses: lu.laneStatuses || {}, blocks: lu.blocks || [], date: jour });
     if (pose.refus) throw createHttpError(pose.refus.message, 422);
     ops.opsPlan = pose.dossier.opsPlan;
+    // (une activite posee avant l arrivee fait venir le groupe plus tot : le dossier commence avec elle,
+    // la fiche ne dit plus « début 13:00 » au-dessus d un bowling a 12:00)
+    const premiere = debutDesActivites(ops.opsPlan);
+    const arrivee = minuteDeLaFenetre(String(patch.startTime ?? current.startTime ?? '').slice(0, 5));
+    if (Number.isFinite(premiere) && Number.isFinite(arrivee) && premiere < arrivee) {
+      ops.startTime = `${String(Math.floor(premiere / 60)).padStart(2, '0')}:${String(premiere % 60).padStart(2, '0')}`;
+    }
   }
   if (shouldReplan && JSON.stringify((patch.lanes ?? current.lanes ?? []).map(Number))
     === JSON.stringify((current.lanes || []).map(Number))) {

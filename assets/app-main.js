@@ -24563,6 +24563,29 @@ function closeStaffFloatingMenus() {
   document.querySelectorAll('.staff-action-popover').forEach(menu => menu.remove());
 }
 
+// LE PETIT MENU SE FERME DES QU ON TOUCHE AILLEURS, MEME LA OU LE CLIC EST ARRETE (2026-11-20).
+// Le menu de gauche et le tableau du planning arretent leurs clics (stopPropagation) : le clic
+// de fermeture, pose sur document, ne les entendait jamais. Le petit menu d une ligne restait
+// ouvert par-dessus la page suivante, et bloquait Entree pour pointer Arrive tant qu il etait la.
+// L appui est entendu a la capture, avant tout gestionnaire ; Echap le ferme et rend la main a
+// son bouton. Toucher son propre bouton le laisse a la bascule de showStaffFloatingMenu.
+document.addEventListener('pointerdown', (event) => {
+  const menu = document.querySelector('.staff-action-popover');
+  if (!menu || menu.contains(event.target)) return;
+  if (menu._ancre && menu._ancre.contains && menu._ancre.contains(event.target)) return;
+  closeStaffFloatingMenus();
+}, true);
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape') return;
+  const menu = document.querySelector('.staff-action-popover');
+  if (!menu) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const ancre = menu._ancre;
+  closeStaffFloatingMenus();
+  if (ancre && ancre.isConnected && typeof ancre.focus === 'function') ancre.focus({ preventScroll: true });
+}, true);
+
 function showStaffFloatingMenu(event, html) {
   event?.preventDefault?.();
   event?.stopPropagation?.();
@@ -24575,6 +24598,7 @@ function showStaffFloatingMenu(event, html) {
   const menu = document.createElement('div');
   menu.className = 'staff-action-popover';
   menu.dataset.anchor = event?.currentTarget?.className || 'staff-action';
+  menu._ancre = event?.currentTarget || null;
   menu.innerHTML = html;
   document.body.appendChild(menu);
   const rect = event?.currentTarget?.getBoundingClientRect?.();
@@ -30572,10 +30596,13 @@ function peindreHistorique(id) {
   const corps = document.querySelector(`[data-fx-histo="${Number(id)}"] .fx-histo-corps`);
   if (!corps) return;
   // La liste qui remplace « Chargement » entre en cascade ; une relecture qui la repeint ne bouge pas.
-  const arrivee = Boolean(corps.querySelector('.fx-histo-etat[role="status"]'));
+  // (lu dans le texte du corps, pas par querySelector : historique-dossier-check joue cette
+  // fonction hors navigateur, sur un corps qui n a que innerHTML)
+  const arrivee = /class="fx-histo-etat" role="status"/.test(corps.innerHTML || '');
   corps.innerHTML = corpsHistoriqueHtml(Number(id));
-  if (arrivee && window.PlMouvement && typeof window.PlMouvement.entrer === 'function') {
-    window.PlMouvement.entrer(corps.querySelectorAll('.fx-histo-entree, .fx-histo-etat, .fx-histo-panne'), { dy: 6, pas: 30, duree: 240, max: 6 });
+  const mouvement = typeof window !== 'undefined' ? window.PlMouvement : null;
+  if (arrivee && mouvement && typeof mouvement.entrer === 'function' && typeof corps.querySelectorAll === 'function') {
+    mouvement.entrer(corps.querySelectorAll('.fx-histo-entree, .fx-histo-etat, .fx-histo-panne'), { dy: 6, pas: 30, duree: 240, max: 6 });
   }
 }
 async function chargerHistoriqueDossier(r) {

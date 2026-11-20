@@ -85,6 +85,28 @@ async function calmer(page) {
   await page.evaluate(TOUT_FINIR);
 }
 async function apresLeGeste(page) { await page.evaluate(IMAGES); }
+// Le bouton ▾ d'une ligne bien à l'écran, cliqué.
+async function ouvrirPetitMenu(page) {
+  const pret = await page.evaluate(() => {
+    document.querySelectorAll('[data-gate-menu]').forEach((x) => x.removeAttribute('data-gate-menu'));
+    const b = [...document.querySelectorAll('button.gf-gb--fleche, .gf-gb--statut')].find((x) => { const r = x.getBoundingClientRect(); return r.width > 0 && r.top > 160 && r.bottom < innerHeight - 40; });
+    if (b) b.setAttribute('data-gate-menu', '1');
+    return Boolean(b);
+  });
+  return pret && cliquer(page, '[data-gate-menu="1"]');
+}
+// Le planning complet par le menu de gauche (son groupe déplié s'il le faut). `calme: false` :
+// le clic part sans attendre, pour lire le mouvement qu'il lance.
+async function allerAuPlanning(page, { calme = true } = {}) {
+  if (!(await page.locator('[data-fgx-menu-key="complete"]').filter({ visible: true }).count())) {
+    await cliquer(page, '[data-fgx-menu-toggle="planning"]');
+    await page.waitForTimeout(400);
+    await calmer(page);
+  }
+  const ok = await cliquer(page, '[data-fgx-menu-key="complete"]');
+  if (calme) { await page.waitForTimeout(400); await calmer(page); }
+  return ok;
+}
 
 // Chaque étape part de l'état où la console s'ouvre (le planning complet) ou s'y amène.
 const ETAPES = {
@@ -121,16 +143,22 @@ const ETAPES = {
   },
   async petitMenu({ page }, v) {
     await calmer(page);
-    const pret = await page.evaluate(() => {
-      const b = [...document.querySelectorAll('button.gf-gb--fleche, .gf-gb--statut')].find((x) => { const r = x.getBoundingClientRect(); return r.width > 0 && r.top > 160 && r.bottom < innerHeight - 40; });
-      if (b) b.setAttribute('data-gate-menu', '1');
-      return Boolean(b);
-    });
-    v('petit menu : un bouton de statut est à l écran', pret && await cliquer(page, '[data-gate-menu="1"]'));
+    v('petit menu : un bouton de statut est à l écran', await ouvrirPetitMenu(page));
     await apresLeGeste(page);
     v('petit menu : il naît de son bouton', (await compter(page, '.staff-action-popover')) >= 1);
+    // Il se ferme, et ne reste jamais sur la page suivante (le 20/11, il y restait : le menu
+    // de gauche arrête ses clics, la fermeture posée sur document ne les entendait pas).
     await page.keyboard.press('Escape');
+    await page.waitForTimeout(80);
+    v('petit menu : Échap le ferme', await page.evaluate(() => !document.querySelector('.staff-action-popover')));
     await calmer(page);
+    await ouvrirPetitMenu(page);
+    await calmer(page);
+    await cliquer(page, '[data-fgx-menu-key="dashboard"]');
+    await page.waitForTimeout(200);
+    v('petit menu : il ne reste pas ouvert sur la page suivante', await page.evaluate(() => state.staffMenuPage === 'dashboard' && !document.querySelector('.staff-action-popover')));
+    await calmer(page);
+    await allerAuPlanning(page);
   },
   async arrive({ page }, v) {
     await calmer(page);
@@ -165,12 +193,7 @@ const ETAPES = {
       await page.waitForTimeout(400);
       await calmer(page);
     }
-    if (!(await page.locator('[data-fgx-menu-key="complete"]').filter({ visible: true }).count())) {
-      await cliquer(page, '[data-fgx-menu-toggle="planning"]');
-      await page.waitForTimeout(400);
-      await calmer(page);
-    }
-    v('menu : le planning complet est dans le menu', await cliquer(page, '[data-fgx-menu-key="complete"]'));
+    v('menu : le planning complet est dans le menu', await allerAuPlanning(page, { calme: false }));
     await apresLeGeste(page);
     v('menu : la page du planning monte en cascade', (await compter(page, '#planningBarre, #globalPlanningBox, #planningBox')) >= 1);
     await calmer(page);
@@ -267,6 +290,8 @@ const MUTATIONS = [
   { nom: 'le planning ne glisse plus d un jour à l autre', fichier: MOUVEMENT, de: '    glisserJour(apres > avant ? 1 : -1);', vers: '    void 0;', etape: 'jour', rougit: 'jour : le planning glisse vers le jour suivant' },
   { nom: 'les lignes filtrées n entrent plus', fichier: MOUVEMENT, de: "    entrer(document.querySelectorAll('.gf-t tr.gf-r'), { dy: 8, pas: 18, duree: 260, max: 12 });", vers: '    void 0;', etape: 'filtre', rougit: 'filtre : les lignes arrivent en cascade' },
   { nom: 'le petit menu apparaît sec', fichier: MOUVEMENT, de: "    pop.animate([{ opacity: 0, translate: '0px ' + (dessus ? 6 : -6) + 'px' }, { opacity: 1, translate: '0px 0px' }], { id: ID, duration: 170, easing: SORTIE });", vers: '    void 0;', etape: 'petitMenu', rougit: 'petit menu : il naît de son bouton' },
+  { nom: 'Échap ne ferme plus le petit menu', fichier: 'assets/app-main.js', de: '  closeStaffFloatingMenus();\n  if (ancre && ancre.isConnected', vers: '  if (ancre && ancre.isConnected', etape: 'petitMenu', rougit: 'petit menu : Échap le ferme' },
+  { nom: 'un toucher arrêté ne ferme plus le petit menu (le défaut du 20/11)', fichier: 'assets/app-main.js', de: '  if (menu._ancre && menu._ancre.contains && menu._ancre.contains(event.target)) return;\n  closeStaffFloatingMenus();', vers: '  if (menu._ancre && menu._ancre.contains && menu._ancre.contains(event.target)) return;', etape: 'petitMenu', rougit: 'petit menu : il ne reste pas ouvert sur la page suivante' },
   { nom: 'Arrivé sans onde', fichier: MOUVEMENT, de: '    if (ligne && peutAnimer(ligne)) onde(ligne);', vers: '    void 0;', etape: 'arrive', rougit: 'arrivé : une onde passe sur la ligne' },
   { nom: 'l onde reste posée sur la ligne', fichier: MOUVEMENT, de: '    a.onfinish = a.oncancel = function () { c.remove(); };', vers: '    void 0;', etape: 'arrive', rougit: 'arrivé : l onde ne laisse rien derrière elle' },
   { nom: 'les barres repartent de zéro', fichier: 'assets/pinlane-charts.js', de: '    var glisse = animate && Boolean(avant) && !reducedMotion();', vers: '    var glisse = false;', etape: 'barres', rougit: 'barres : les barres glissent d un chiffre à l autre' },
@@ -278,7 +303,7 @@ const MUTATIONS = [
   { nom: 'le contenu de la fiche ne glisse plus', fichier: MOUVEMENT, de: "    entrer(enfantsVisibles(document.querySelector('#posOverlay .edit-modal-body')), { dx: sens * 18, dy: 0, pas: 30, duree: 280, max: 6 });", vers: '    void 0;', etape: 'fiche', rougit: 'fiche : le contenu arrive du côté de l onglet' },
   { nom: 'les dépliants n écoutent plus leur ouverture', fichier: MOUVEMENT, de: "    document.addEventListener('toggle', deplie, true);", vers: '    void 0;', etape: 'fiche', rougit: 'fiche : le dépliant descend en cascade' },
   { nom: 'le dépliant joue avant d être rempli (le défaut du 20/11)', fichier: MOUVEMENT, de: "    requestAnimationFrame(function () {\n      if (!d.open || !d.isConnected) return;\n      entrer(Array.prototype.filter.call(d.children, function (c) { return c.tagName !== 'SUMMARY'; }), { dy: -6, pas: 30, duree: 240, max: 6 });\n    });", vers: "    entrer(Array.prototype.filter.call(d.children, function (c) { return c.tagName !== 'SUMMARY'; }), { dy: -6, pas: 30, duree: 240, max: 6 });", etape: 'fiche', rougit: 'fiche : l historique descend une fois rempli' },
-  { nom: 'la réponse de l historique arrive sèche', fichier: 'assets/app-main.js', de: '  if (arrivee && window.PlMouvement', vers: '  if (false && window.PlMouvement', etape: 'fiche', rougit: 'fiche : la réponse de l historique entre en cascade' },
+  { nom: 'la réponse de l historique arrive sèche', fichier: 'assets/app-main.js', de: '  if (arrivee && mouvement', vers: '  if (false && mouvement', etape: 'fiche', rougit: 'fiche : la réponse de l historique entre en cascade' },
   { nom: 'le mouvement réduit ignoré', fichier: MOUVEMENT, de: '  function reduit() { return Boolean(mq && mq.matches); }', vers: '  function reduit() { return false; }', etape: 'reduit', rougit: 'mouvement réduit : aucun geste ne lance de mouvement' },
 ];
 

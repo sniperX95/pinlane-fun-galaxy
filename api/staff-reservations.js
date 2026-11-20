@@ -706,12 +706,12 @@ async function calculerLaModification({ body, current, session, requestedCenterI
     centerId: requestedCenterId,
   };
   // LE TELEPHONE DU DOSSIER (2026-11-20, la regle de la creation, lib/telephone-du-client.js) : un
-  // numero change doit tenir, et le numero d un dossier ne se vide pas. Seul un numero change se juge :
-  // un ancien numero qui ne tient pas ne bloque pas les autres changements.
+  // numero change doit tenir. Seul un numero change et tape se juge : un ancien numero qui ne tient pas
+  // ne bloque pas les autres changements, et le PATCH du dossier entier peut encore le vider (un dossier
+  // d avant la regle, reserver-comptoir-check [D1]) ; l onglet Modifier, lui, ne le laisse pas vider.
   if (Object.prototype.hasOwnProperty.call(patch, 'phone') && String(patch.phone ?? '').trim() !== String(current.phone ?? '').trim()) {
     const tape = String(patch.phone ?? '').trim();
-    if (!tape) throw createHttpError('Le téléphone du client ne peut pas être vidé.', 422);
-    if (!require('../lib/telephone-du-client').telephoneValide(tape)) throw createHttpError('Ce numéro de téléphone n’est pas valide, 8 chiffres au moins.', 422);
+    if (tape && !require('../lib/telephone-du-client').telephoneValide(tape)) throw createHttpError('Ce numéro de téléphone n’est pas valide, 8 chiffres au moins.', 422);
   }
   // LES DROITS DU DOSSIER (2026-11-03, lib/droits-reservation.js). La raison
   // du prix ne s ecrit pas telle quelle : elle part dans la note du serveur.

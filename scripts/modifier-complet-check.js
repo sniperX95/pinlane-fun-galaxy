@@ -45,7 +45,7 @@
 //   [T1] le numero d un dossier ne se vide pas : rien ne part, la fiche le dit sous le champ ;
 //   [T2] un numero trop court se dit en quittant le champ et ne part pas ; un numero qui tient
 //        efface la ligne ;
-//   [T3] le serveur redit la regle (422) a un poste reste sur une ancienne page ;
+//   [T3] le serveur refuse un numero change trop court (422) a un poste reste sur une ancienne page ;
 //   [T4] un numero qui tient part et s ecrit ;
 //   [J1] aucune erreur JS.
 // --contre-preuves : chaque regle retiree (au code servi, en memoire ; le disque n est jamais
@@ -564,10 +564,9 @@ async function scenarioTelephoneFiche(browser) {
     // [T3] le serveur redit la regle a un poste reste sur une ancienne page.
     if (r && r.corps) {
       semer({ phone: TEL });
-      const vide = await serveur.appeler('PATCH', '/api/staff-reservations', { ...r.corps, phone: '' });
       const court = await serveur.appeler('PATCH', '/api/staff-reservations', { ...r.corps, phone: '12' });
-      ok(vide.statut === 422 && /vidé/.test(String(vide.json && vide.json.message)) && court.statut === 422 && /pas valide/.test(String(court.json && court.json.message)) && telEnBase() === TEL, '[T3] le serveur refuse un numero vide ou trop court (422, chacun sa phrase), rien ne s ecrit',
-        { vide: [vide.statut, vide.json && vide.json.message], court: [court.statut, court.json && court.json.message], base: telEnBase() });
+      ok(court.statut === 422 && /pas valide/.test(String(court.json && court.json.message)) && telEnBase() === TEL, '[T3] le serveur refuse un numero trop court (422, avec sa phrase), rien ne s ecrit',
+        { court: [court.statut, court.json && court.json.message], base: telEnBase() });
     }
     ok(erreurs.length === 0, '[J1] aucune erreur JS (telephone)', erreurs.slice(0, 3));
   } finally {
@@ -625,8 +624,7 @@ const MUTATIONS = [
   // Le telephone : le controle de la fiche, sa ligne, et celui du serveur.
   { nom: 'telephone-libre', lettre: 'T1', scenarios: TELEPHONE, editions: [{ fichier: JS, de: "  if (touches.includes('phone')) {", vers: '  if (false) {' }] },
   { nom: 'telephone-muet', lettre: 'T2', scenarios: TELEPHONE, editions: [{ fichier: JS, de: '  ligne.hidden = false;\n', vers: '' }] },
-  { nom: 'serveur-telephone-libre', lettre: 'T3', scenarios: TELEPHONE, editions: [{ fichier: API, serveur: true, de: "    if (!tape) throw createHttpError('Le téléphone du client ne peut pas être vidé.', 422);", vers: '' }] },
-  { nom: 'serveur-telephone-court', lettre: 'T3', scenarios: TELEPHONE, editions: [{ fichier: API, serveur: true, de: "    if (!require('../lib/telephone-du-client').telephoneValide(tape)) throw", vers: '    if (false) throw' }] },
+  { nom: 'serveur-telephone-court', lettre: 'T3', scenarios: TELEPHONE, editions: [{ fichier: API, serveur: true, de: "    if (tape && !require('../lib/telephone-du-client').telephoneValide(tape)) throw", vers: '    if (false) throw' }] },
   { nom: 'serveur-pose-l-existant', lettre: 'H3', scenarios: HEURE, editions: [{ fichier: API, serveur: true, de: '.filter((posee) => !dejaAuDossier(posee.activityId) && proposedItems', vers: '.filter((posee) => proposedItems' }] },
 ];
 

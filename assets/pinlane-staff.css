@@ -9721,14 +9721,6 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 @media (hover: hover) { .qb-modal.rv.rs .rs-qj-n:hover { background: var(--rs-survol); } }
 @media (prefers-reduced-motion: reduce) { .qb-modal.rv.rs .rs-qj { animation: none; } }
 @media (max-width: 900px) { .qb-modal.rv.rs .rs-qj-zone { padding-top: 24px; } .qb-modal.rv.rs .rs-qj { padding: 16px 14px 10px; } .qb-modal.rv.rs .rs-qj-n { height: 48px; } }
-/* LA CARTE DES PISTES ET DES ARMES dans Reserver (2026-11-18) : dans le
-   ticket, au-dessus du verdict et de « Créer ». Elle ne couvre rien : posee en
-   bas de la colonne, elle cachait « Formules » et des heures. La zone vide ne
-   prend aucune place (elle reste annoncee au lecteur d ecran). */
-.qb-modal.rv.rs .rs-attr-zone { flex: none; padding: 6px 16px 10px; }
-.qb-modal.rv.rs .rs-attr-zone:empty { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-.qb-modal.rv.rs .rs-attr { animation: rs-qj-entree var(--rs-duree) var(--rs-sortie); }
-@media (prefers-reduced-motion: reduce) { .qb-modal.rv.rs .rs-attr { animation: none; } }
 
 /* LE SEGMENT : jour, duree, parties */
 .qb-modal.rv.rs .rs-seg { flex: none; display: inline-flex; gap: 2px; padding: 3px; border-radius: 10px; background: var(--rs-touche); }
@@ -10226,14 +10218,6 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
   .qb-modal.rv.rs.is-ticket .rs-tk-tot, .qb-modal.rv.rs.is-ticket .rs-tk-liens { display: flex; }
   .qb-modal.rv.rs.is-ticket .rs-tk-pay { display: grid; }
   .qb-modal.rv.rs.is-ticket .rs-tk-creer { width: 100%; height: 52px; }
-}
-/* (la carte des pistes au telephone : la troisieme rangee de la fenetre, entre
-   la colonne et le verdict ; la colonne raccourcit, rien n est couvert) */
-@media (max-width: 900px) {
-  .qb-modal.rv.rs .rs-attr-zone { grid-row: 3; padding: 8px 16px 0; border-top: 1px solid var(--rs-ligne); background: var(--surface); }
-  .qb-modal.rv.rs .rs-attr-zone:empty { padding: 0; border: 0; }
-  .qb-modal.rv.rs .rs-attr-zone:not(:empty) + .rs-verdict, .qb-modal.rv.rs .rs-attr-zone:not(:empty) + .rs-verdict:empty + .rs-tk-p { border-top: 0; }
-  .qb-modal.rv.rs.is-ticket .rs-attr-zone { padding: 0 16px 8px; border-top: 0; }
 }
 
 @media (max-width: 560px) {
@@ -20219,25 +20203,15 @@ body:is(.staff-mode, .admin-mode) .fx-modal .fm .edit-actions-main > button { mi
 body:is(.staff-mode, .admin-mode) .fx-modal .fm .es-save { justify-content: center; min-width: 150px; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm .edit-error { margin: 14px 0 0; }
 
-/* LA CARTE DES PISTES ET DES ARMES (2026-11-18, Ansar : « une petite pop up
-   styler qui montre les pistes attribué automatiquement ou arme pour laser [...]
-   ça doit pas deranger »). Dans Modifier, elle vit en tete de la barre du bas :
-   elle reste visible pendant qu on fait defiler la fiche et ne couvre jamais
-   « Enregistrer ». Vide, la zone sort du flux sans quitter l arbre d
-   accessibilite (le lecteur d ecran annonce ce qui y arrive). Dans Reserver,
-   elle se pose en bas de la colonne, sans voile. Ses pistes en pastilles, celles
-   qui arrivent en bleu ; deux gestes : celui qui garde (plein), l autre encadre. */
-body:is(.staff-mode, .admin-mode) .fx-modal .fm .fm-attr { flex: 0 0 100%; order: -2; min-width: 0; }
-body:is(.staff-mode, .admin-mode) .fx-modal .fm .fm-attr:empty { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+/* LA PETITE CARTE DE LA CONSOLE (2026-11-18), celle de « Un autre ordre » sur la
+   fiche et dans Reserver : ses lignes, puis ses gestes, le plein qui garde et
+   l encadre. (La carte des pistes et des armes de Modifier est partie le
+   2026-11-20 : ce sont les pastilles des pistes qui le disent.) */
 body:is(.staff-mode, .admin-mode) .attr-carte { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 8px 8px 12px; border-radius: 12px; background: var(--accent-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent); color: var(--text); font-size: 13.5px; line-height: 1.45; font-variant-numeric: tabular-nums; }
-body:is(.staff-mode, .admin-mode) .attr-icone { flex: none; color: var(--accent-strong); }
 body:is(.staff-mode, .admin-mode) .attr-lignes { flex: 1 1 240px; min-width: 0; display: grid; gap: 2px; }
 body:is(.staff-mode, .admin-mode) .attr-ligne { margin: 0; overflow-wrap: anywhere; }
 body:is(.staff-mode, .admin-mode) .attr-ligne b { font-weight: 650; }
-body:is(.staff-mode, .admin-mode) .attr-avant { display: inline-block; color: var(--muted); font-weight: 450; }
 body:is(.staff-mode, .admin-mode) .attr-note { display: block; color: var(--muted); font-weight: 450; }
-body:is(.staff-mode, .admin-mode) .attr-piste { display: inline-grid; place-items: center; min-width: 22px; height: 22px; margin: 0 1px; padding: 0 5px; border-radius: 6px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-strong); font-size: 12.5px; font-weight: 650; line-height: 1; vertical-align: 1px; }
-body:is(.staff-mode, .admin-mode) .attr-piste.is-neuve { background: var(--console-selected); box-shadow: none; color: var(--console-selected-text); }
 body:is(.staff-mode, .admin-mode) .attr-gestes { flex: none; display: flex; gap: 6px; margin-left: auto; }
 body:is(.staff-mode, .admin-mode) .attr-b { display: inline-flex; align-items: center; justify-content: center; min-height: 36px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--text); font: inherit; font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer; }
 body:is(.staff-mode, .admin-mode) .attr-b:hover { border-color: var(--control-border); }
@@ -20261,26 +20235,18 @@ body:is(.staff-mode, .admin-mode) .ordre-carte.is-calcul { background: var(--sub
   body:is(.staff-mode, .admin-mode) .fx-modal .fz-bandeau-gestes.avec-ordre > * { flex: 1 1 0; min-width: 0; }
   body:is(.staff-mode, .admin-mode) .fx-modal .fz-bandeau-gestes.avec-ordre > .fz-autre-ordre { flex-basis: 100%; }
 }
-/* Elle arrive (une fois : un nouveau dessin de la fiche ne la rejoue pas). */
-body:is(.staff-mode, .admin-mode) .attr-carte.is-entree { animation: attr-entree 180ms cubic-bezier(.23, 1, .32, 1); }
-@keyframes attr-entree { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-/* « Modifier » : les pastilles des pistes (ou le laser) s eclairent un instant. */
-body:is(.staff-mode, .admin-mode) .fx-modal .attr-repere { border-radius: 10px; animation: attr-repere 1.4s ease-out; }
-@keyframes attr-repere { /* mouvement-permis : une fois, sur les pistes proposees */ from { box-shadow: 0 0 0 3px var(--accent); } to { box-shadow: 0 0 0 3px transparent; } }
-@media (prefers-reduced-motion: reduce) {
-  body:is(.staff-mode, .admin-mode) .attr-carte.is-entree, body:is(.staff-mode, .admin-mode) .fx-modal .attr-repere { animation: none; }
-  body:is(.staff-mode, .admin-mode) .fx-modal .attr-repere { box-shadow: 0 0 0 3px var(--accent); }
-}
 @media (max-width: 760px) {
   body:is(.staff-mode, .admin-mode) .attr-carte { font-size: 13px; }
   body:is(.staff-mode, .admin-mode) .attr-lignes { flex-basis: 180px; }
 }
-/* Au telephone, une ligne de texte puis les deux gestes : « avant » se tait (la
-   barre du bas dit deja « Pistes 3 → 3, 4 »), l icone aussi. */
+/* Au telephone, une ligne de texte puis les gestes. */
 @media (max-width: 480px) {
-  body:is(.staff-mode, .admin-mode) .attr-avant.is-pistes, body:is(.staff-mode, .admin-mode) .attr-icone { display: none; }
   body:is(.staff-mode, .admin-mode) .attr-carte { padding: 8px 8px 8px 12px; gap: 6px 10px; }
 }
+
+/* LES VAGUES DU LASER DANS SA RANGEE (2026-11-20) : une ligne de faits, « 2 vagues
+   de 12 armes », qui suit le groupe en place. Pas de carte ni de bouton. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .fm-act-vagues { flex: 1 1 100%; margin: 0; font-size: 13.5px; line-height: 1.4; color: var(--text); font-variant-numeric: tabular-nums; }
 
 @media (max-width: 760px) {
   body:is(.staff-mode, .admin-mode) .fx-modal .fm-quand { grid-auto-flow: row; grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -20318,6 +20284,7 @@ body:is(.staff-mode, .admin-mode) .fx-modal .es2 .dossier-visit-section > .es-jo
 .compte-pop { position: fixed; z-index: 700; width: min(300px, calc(100vw - 32px)); box-sizing: border-box; padding: 14px 16px; border-radius: var(--radius-lg); background: var(--surface); color: var(--text); border: 1px solid var(--line-strong); box-shadow: var(--shadow-overlay); font-family: var(--font-ui); font-variant-numeric: tabular-nums; }
 .compte-pop::before { content: ''; position: absolute; top: -7px; left: var(--compte-fleche, 50%); width: 12px; height: 12px; margin-left: -6px; background: var(--surface); border-left: 1px solid var(--line-strong); border-top: 1px solid var(--line-strong); transform: rotate(45deg); }
 .compte-pop.is-dessus::before { top: auto; bottom: -7px; transform: rotate(225deg); }
+.compte-pop.is-sans-fleche::before { display: none; }
 .compte-pop__titre { margin: 0 0 10px; font-size: 13px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .compte-pop__rang { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .compte-pop__lib { font-size: 15px; font-weight: 600; }
@@ -20334,11 +20301,22 @@ body:is(.staff-mode, .admin-mode) .fx-modal .es2 .dossier-visit-section > .es-jo
 .compte-pop__prix b { font-size: 16px; font-weight: 700; }
 .compte-pop__avant { margin: 2px 0 0; text-align: right; font-size: 12px; color: var(--muted); }
 .compte-pop__erreur { margin: 10px 0 0; font-size: 13px; color: var(--danger); }
-/* La carte des pistes et des armes du compte (2026-11-19) : sous le prix, au-dessus
-   des boutons, le meme habit que dans Modifier, a la largeur de la bulle. */
-.compte-pop__attr { margin: 12px 0 0; }
-body:is(.staff-mode, .admin-mode) .compte-pop .attr-carte { gap: 6px 10px; padding: 8px 8px 8px 10px; font-size: 13px; }
-body:is(.staff-mode, .admin-mode) .compte-pop .attr-lignes { flex-basis: 170px; }
+/* LES PISTES DANS LA BULLE (2026-11-20, Ansar : « faut tout direct ») : les pastilles
+   de Modifier en petit, sous le compte, celles du groupe pleines. Elles suivent − et +
+   et se touchent sur place ; aucune carte, aucun renvoi vers la fiche. 32 px a la
+   souris, 44 au doigt (deux rangees au telephone). Le laser dit ses vagues en une ligne. */
+.compte-pop__pistes { margin: 12px 0 0; }
+.compte-pop__lib-pistes { display: block; margin: 0 0 6px; font-size: 13px; font-weight: 600; }
+.compte-pop__puces { display: grid; grid-template-columns: repeat(auto-fill, minmax(28px, 1fr)); gap: 4px; }
+body:is(.staff-mode, .admin-mode) .compte-pop .lane-chip.compte-pop__piste { min-width: 0; width: 100%; height: 32px; padding: 0; border-radius: 7px; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+body:is(.staff-mode, .admin-mode) .compte-pop .lane-chip.compte-pop__piste.is-prise:not(.is-on) { border-style: dashed; color: var(--muted); }
+@media (pointer: coarse) {
+  .compte-pop__puces { grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 6px; }
+  body:is(.staff-mode, .admin-mode) .compte-pop .lane-chip.compte-pop__piste { height: 44px; }
+}
+.compte-pop__laser { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin: 10px 0 0; font-size: 13px; }
+.compte-pop__laser span { font-weight: 600; }
+.compte-pop__laser b { font-weight: 600; text-align: right; }
 .compte-pop__actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 .compte-pop__actions button { min-height: 36px; padding: 0 14px; border-radius: var(--radius-md); font: 600 13px var(--font-ui); cursor: pointer; }
 .compte-pop__annuler { background: transparent; border: 1px solid var(--line-strong); color: var(--text); }

@@ -32540,7 +32540,7 @@ function renderEditFormuleBloc(r, formule, lignes, controls = {}) {
       <div class="fm-act-heure"><span class="visually-hidden">Heure prévue : </span><span class="fm-heures">${heureHtml}</span>${ficheVisuelActivite(r, { activityId: choice.id, nom: choice.label })}</div>
       <div class="fm-act-corps">
         <div class="fm-act-tete"><h5>${escapeHtml(choice.label)}</h5>${detail ? `<span class="fm-act-detail">${escapeHtml(detail)}</span>` : ''}<span class="fm-act-parties" data-parties-activite="${escapeHtml(choice.id)}">${partiesActiviteHtml(etapesHeure, choice.id)}</span><button type="button" class="dossier-remove-activity fm-retirer" aria-label="Retirer ${escapeHtml(choice.label)} de cette visite" onclick="toggleEditActivity('${escapeJsString(choice.id)}')">Retirer</button></div>
-        <div class="fm-act-reglages">${champHeureEditionHtml(choice.id)}${renderActivityParticipantsControl(choice.id, 'edit', 'ecart')}${options}</div>
+        <div class="fm-act-reglages">${champHeureEditionHtml(choice.id)}${champHeureNouvelleHtml(choice.id)}${renderActivityParticipantsControl(choice.id, 'edit', 'ecart')}${options}</div>
         ${estBowling ? controls.lanes || '' : ''}
         ${estLaser && !formuleChangee ? renderDossierLaserEditor(r) : ''}
       </div>
@@ -32948,6 +32948,8 @@ function resumeModifsEdition() {
   if (change('date') && e.date) modifs.push(`Jour ${jourCourt(origine.date)} → ${jourCourt(e.date)}`);
   if (change('startTime') && e.startTime) modifs.push(`Arrivée ${origine.startTime} → ${e.startTime}`);
   modifs.push(...modifsHeuresEdition());
+  // (l heure tapee sur une activite ajoutee : « Laser Game à 17:30 »)
+  Object.entries(heuresNouvellesEnvoyees() || {}).forEach(([id, heure]) => modifs.push(`${nomActiviteHeureEdition(id)} à ${heure}`));
   if (areneChangeeEdition()) modifs.push(areneEdition() === 'seuls' ? 'Arène : pour vous seuls' : 'Arène : partagée si besoin');
   if (Number(e.pax) > 0 && Number(e.pax) !== Number(origine.pax)) modifs.push(`Joueurs ${Number(origine.pax)} → ${Number(e.pax)}`);
   const accompagnants = (d) => Math.max(0, Math.trunc(Number(d.companions) || 0));
@@ -33553,6 +33555,59 @@ function champHeureEditionHtml(activityId) {
           </div>
           <div class="fm-heure-refus" id="${id}-refus" data-heure-refus="${escapeHtml(cle)}" aria-live="polite"${refus ? '' : ' hidden'}>${refus ? refusHeureHtml(cle, refus) : ''}</div>`;
   }).join('');
+}
+
+// UNE ACTIVITE AJOUTEE ICI A SON HEURE AVANT D ENREGISTRER (2026-11-20, Ansar : « modifier tout
+// complet », comme Reserver). Vide, le planning la place ; tapee, elle part avec le programme
+// (heuresPosees) et le serveur la juge comme une heure deplacee : sa phrase et ses heures libres
+// reviennent par le verdict et par « Enregistrer ». Ni la table d anniversaire, ni le bar, ni les
+// jetons d arcades : rien ne s y joue a une heure.
+function activiteAjouteeEdition(r, id) {
+  if (!r || !id || id === 'party_table' || id === 'arcade_credit' || /^service_/.test(id)) return false;
+  const items = Array.isArray(r.program) ? r.program : Array.isArray(r.program && r.program.items) ? r.program.items : [];
+  if (items.some((item) => item && item.activityId === id)) return false;
+  const plan = r.opsPlan || {};
+  const blocs = Array.isArray(plan.resourceBlocks) ? plan.resourceBlocks : [];
+  if (id === 'bowling') return !blocs.some((bloc) => bloc && bloc.resourceType === 'bowling_lane');
+  if (id === 'laser_game') return !blocs.some((bloc) => bloc && bloc.resourceType === 'laser_arena');
+  return !(Array.isArray(plan.timeline) ? plan.timeline : []).some((etape) => etape && etape.activityId === id && etape.flexible !== true);
+}
+
+function champHeureNouvelleHtml(activityId) {
+  const r = state.selectedRes;
+  const e = state.editState;
+  if (!e || !activiteAjouteeEdition(r, activityId) || !peutChangerHeureEdition(r, activityId)) return '';
+  const valeur = (e.heuresNouvelles || {})[activityId] || '';
+  const id = `editHeureNouvelle-${activityId.replace(/[^a-z0-9]/gi, '-')}`;
+  return `<div class="fm-champ fm-heure-champ" data-heure-nouvelle-zone="${escapeHtml(activityId)}">
+            <label class="lbl" for="${id}">Heure</label>
+            <div class="fm-heure-saisie"><input id="${id}" class="input" type="time" step="${activityId === 'bowling' ? 1800 : 300}" value="${escapeHtml(valeur)}" data-heure-nouvelle="${escapeHtml(activityId)}" data-pl-focus="fiche.edit.heure-nouvelle.${escapeHtml(activityId)}" oninput="poserHeureNouvelle('${escapeJsString(activityId)}', this.value)"></div>
+          </div>`;
+}
+
+// La frappe ne re-rend pas la fiche : la barre du bas le dit et le serveur la juge.
+function poserHeureNouvelle(activityId, valeur) {
+  const e = state.editState;
+  if (!e) return;
+  const heures = { ...(e.heuresNouvelles || {}) };
+  if (Number.isFinite(minutesHeureEdition(valeur))) heures[activityId] = String(valeur);
+  else delete heures[activityId];
+  e.heuresNouvelles = heures;
+  if (state.editError) setEditError('');
+  majModifsEdition();
+}
+
+// Celles qui partent : une activite encore au programme, et que le dossier n a pas encore.
+function heuresNouvellesEnvoyees() {
+  const e = state.editState;
+  const r = state.selectedRes;
+  if (!e || !r || !e.heuresNouvelles) return null;
+  const auProgramme = new Set(getEditProgramItems().map((item) => item.activityId));
+  const heures = {};
+  Object.entries(e.heuresNouvelles).forEach(([id, heure]) => {
+    if (auProgramme.has(id) && activiteAjouteeEdition(r, id) && Number.isFinite(minutesHeureEdition(heure))) heures[id] = heure;
+  });
+  return Object.keys(heures).length ? heures : null;
 }
 
 // La phrase du refus, puis les heures libres les plus proches.
@@ -34306,6 +34361,8 @@ function preparerModificationEdition(options = {}) {
     && (formuleChangee || versProgrammeNormal || poseEditionChange() || editProgramAChange() || Number(es.pax) !== Number(state.selectedRes.pax));
   // Les extras partent s ils ont change (nourriture, boissons, le reste).
   const extrasNouveaux = peutAdapterFormule() && editExtrasAChange() ? extrasDepuisLignes(es.extrasEdites, es.pax) : null;
+  // L heure tapee sur une activite ajoutee part avec le programme (heuresNouvellesEnvoyees).
+  const heuresPoseesNouvelles = programme ? heuresNouvellesEnvoyees() : null;
   // Lus ici, une fois : `appliquer` se rejoue quand l etat d edition peut ne
   // plus etre celui de ce dossier (le compte a l arrivee le rend aussitot).
   const devisActivites = getEditPrixActivites();
@@ -34322,6 +34379,7 @@ function preparerModificationEdition(options = {}) {
     if (es.pistesALaMain) updated.pistesALaMain = lanesFinales.length;
     else if (pistesALaMainDuDossier(origine)) updated.pistesALaMain = 0;
     if (extrasNouveaux) updated.extras = extrasNouveaux;
+    if (heuresPoseesNouvelles) updated.heuresPosees = heuresPoseesNouvelles;
     // LA NOUVELLE FORMULE SE JOUE DEPUIS SA CARTE : sans programme (celui de
     // l ancienne, adaptee ou non, ne la suit pas) et sans plan (ses ancres et
     // la variante de l ancienne non plus). Le serveur la planifie a partir de

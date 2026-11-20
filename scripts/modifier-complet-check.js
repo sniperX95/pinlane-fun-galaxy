@@ -19,6 +19,13 @@
 //   [X4] au niveau catalogue (Assistant manager), une ancienne ligne hors de la carte ne fait
 //        plus refuser l enregistrement : elle reste, les heures des pizzas aussi, et la ligne
 //        changee garde sa note ;
+//   [H1] une activite ajoutee dans Modifier (le minigolf) a son champ « Heure », vide (le planning
+//        la placerait) ; tapee (18:00), elle part avec le programme (heuresPosees), la barre du bas
+//        le dit, et le serveur l ecrit a cette heure, le bowling a la sienne ;
+//   [H2] une heure qui chevauche le bowling (16:45) : le serveur refuse avec sa phrase, la fiche
+//        la montre, rien n est ecrit ;
+//   [H3] le serveur ne pose une heure que sur une activite ajoutee : une heure envoyee pour le
+//        bowling deja au dossier ne le deplace pas ;
 //   [J1] aucune erreur JS.
 // --contre-preuves : chaque regle retiree (au code servi, en memoire ; le disque n est jamais
 // touche) fait rougir sa lettre.
@@ -239,10 +246,78 @@ async function scenarioCatalogue(browser) {
 }
 
 // ---------------------------------------------------------------------------
+// [H1] [H2] [H3] L HEURE D UNE ACTIVITE AJOUTEE.
+// ---------------------------------------------------------------------------
+// L heure (en minutes) qu une activite a dans le plan ecrit : le premier service du bowling, la
+// premiere etape a heure d une autre activite.
+function heureEnBase(id, activite) {
+  const row = B.base.reservations.get(Number(id));
+  const plan = row && (typeof row.ops_plan === 'string' ? JSON.parse(row.ops_plan) : row.ops_plan);
+  const debut = (x) => { const lu = /^(\d{1,2}):(\d{2})/.exec(String((x && x.startTime) || '')); return lu ? Number(lu[1]) * 60 + Number(lu[2]) : NaN; };
+  const premiers = (liste) => { const d = liste.map(debut).filter(Number.isFinite); return d.length ? Math.min(...d) : NaN; };
+  if (!plan) return NaN;
+  if (activite === 'bowling') return premiers((plan.resourceBlocks || []).filter((b) => b && b.resourceType === 'bowling_lane'));
+  return premiers((plan.timeline || []).filter((e) => e && e.type === 'activity' && e.activityId === activite && e.flexible !== true));
+}
+const GOLF = 'minigolf_blacklight';
+async function scenarioHeure(browser) {
+  semer();
+  const serveur = B.monter({ mutations: mutation ? mutation.editions.filter((ed) => ed.serveur) : [], session: B.sessionDuRole('manager', { nom: 'Rachel' }) });
+  const { ctx, page, erreurs, journal } = await monter(browser, serveur);
+  try {
+    const bowlingAvant = heureEnBase(NOEL, 'bowling');
+    await ouvrirModifier(page);
+    await page.click(`#posOverlay .fm-ajouts .fm-ajout[onclick*="'${GOLF}'"]`);
+    await page.waitForSelector(`#posOverlay [data-heure-nouvelle="${GOLF}"]`, { timeout: 5000 }).catch(() => null);
+    const champ = await page.evaluate((golf) => {
+      const c = document.querySelector(`#posOverlay [data-heure-nouvelle="${golf}"]`);
+      const l = c && document.querySelector(`#posOverlay label[for="${c.id}"]`);
+      return c ? { type: c.type, valeur: c.value, label: l ? l.textContent.trim() : '' } : null;
+    }, GOLF);
+    ok(champ && champ.type === 'time' && champ.valeur === '' && champ.label === 'Heure', '[H1] le minigolf ajoute a son champ « Heure », vide', champ);
+
+    // [H2] 16:45 chevauche le bowling (16:30) : refuse, rien n est ecrit.
+    await page.fill(`#posOverlay [data-heure-nouvelle="${GOLF}"]`, '16:45');
+    await page.waitForTimeout(150);
+    const refuse = await enregistrer(page, journal);
+    const r2 = refuse.length ? refuse[refuse.length - 1] : null;
+    const dit = await page.evaluate(() => { const n = document.getElementById('editError'); return n && !n.hidden ? n.textContent.trim() : ''; });
+    ok(r2 && r2.statut === 422 && /chevauche/i.test(String(r2.json && r2.json.message)) && r2.corps.heuresPosees && r2.corps.heuresPosees[GOLF] === '16:45',
+      '[H2] 16:45 chevauche le bowling : le serveur refuse avec sa phrase', r2 ? { statut: r2.statut, json: r2.json, heures: r2.corps.heuresPosees } : 'aucun envoi');
+    ok(/chevauche/i.test(dit) && !Number.isFinite(heureEnBase(NOEL, GOLF)), '[H2] la fiche montre la phrase, rien n est ecrit', { dit, golf: heureEnBase(NOEL, GOLF) });
+
+    // [H1] 18:00 passe : la barre le dit, le serveur l ecrit.
+    await page.fill(`#posOverlay [data-heure-nouvelle="${GOLF}"]`, '18:00');
+    await page.waitForTimeout(150);
+    const barre = await page.evaluate(() => (document.getElementById('editModifs') || {}).textContent || '');
+    ok(/Minigolf[^,]* à 18:00/.test(barre), '[H1] la barre du bas dit « Minigolf … à 18:00 »', barre);
+    const envois = await enregistrer(page, journal);
+    const r1 = envois.length ? envois[envois.length - 1] : null;
+    ok(r1 && r1.statut === 200 && pareil(r1.corps.heuresPosees, { [GOLF]: '18:00' }) && (r1.corps.program && r1.corps.program.items || []).some((i) => i.activityId === GOLF),
+      '[H1] l heure part avec le programme (heuresPosees)', r1 ? { statut: r1.statut, heures: r1.corps.heuresPosees, json: r1.statut === 200 ? '' : r1.json } : 'aucun envoi');
+    ok(heureEnBase(NOEL, GOLF) === 18 * 60 && heureEnBase(NOEL, 'bowling') === bowlingAvant,
+      '[H1] le serveur ecrit le minigolf a 18:00, le bowling garde son heure', { golf: heureEnBase(NOEL, GOLF), bowling: heureEnBase(NOEL, 'bowling'), avant: bowlingAvant });
+
+    // [H3] le meme corps, plus une heure pour le bowling deja au dossier : rien ne le deplace.
+    if (r1 && r1.corps) {
+      semer();
+      const rep = await serveur.appeler('PATCH', '/api/staff-reservations', { ...r1.corps, heuresPosees: { ...r1.corps.heuresPosees, bowling: '18:30' } });
+      ok(rep.statut === 200 && heureEnBase(NOEL, 'bowling') === bowlingAvant && heureEnBase(NOEL, GOLF) === 18 * 60,
+        '[H3] une heure envoyee pour le bowling deja au dossier ne le deplace pas', { statut: rep.statut, json: rep.statut === 200 ? '' : rep.json, bowling: heureEnBase(NOEL, 'bowling'), golf: heureEnBase(NOEL, GOLF) });
+    }
+    ok(erreurs.length === 0, '[J1] aucune erreur JS (heure)', erreurs.slice(0, 3));
+  } finally {
+    await ctx.close();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // LES CONTRE-PREUVES : une regle retiree, sa lettre rougit.
 // ---------------------------------------------------------------------------
 const LIBRE = ['libre'];
 const CATALOGUE = ['catalogue'];
+const HEURE = ['heure'];
+const API = 'api/staff-reservations.js';
 const MUTATIONS = [
   // Les lignes refaites a chaque envoi, comme avant : le serveur ne reconnait plus rien.
   { nom: 'lignes-refaites', lettre: 'X2', scenarios: LIBRE, editions: [{ fichier: JS, de: '      if (intacte) {\n', vers: '      if (false) {\n' }] },
@@ -255,12 +330,20 @@ const MUTATIONS = [
   { nom: 'categorie-perdue', lettre: 'X2', scenarios: LIBRE, editions: [{ fichier: JS, de: '        categorie: (memeArticle && garde.categorie) || nomGroupe,\n', vers: '        categorie: nomGroupe,\n' }] },
   { nom: 'heure-perdue', lettre: 'X2', scenarios: LIBRE, editions: [{ fichier: JS, de: '        ...(heure ? { heure } : {}),\n        ...(note ? { note } : {}),\n', vers: '' }] },
   { nom: 'id-refait', lettre: 'X2', scenarios: LIBRE, editions: [{ fichier: JS, de: '        id: (garde && garde.id) || `${nomGroupe}-${i + 1}`,\n', vers: '        id: `${nomGroupe}-${i + 1}`,\n' }] },
+  // L heure d une activite ajoutee : pas de champ, pas d envoi, pas de pose, pas de refus, et le serveur qui pose aussi l existant.
+  { nom: 'heure-sans-champ', lettre: 'H1', scenarios: HEURE, editions: [{ fichier: JS, de: '${champHeureEditionHtml(choice.id)}${champHeureNouvelleHtml(choice.id)}', vers: '${champHeureEditionHtml(choice.id)}' }] },
+  { nom: 'heure-pas-envoyee', lettre: 'H1', scenarios: HEURE, editions: [{ fichier: JS, de: '    if (heuresPoseesNouvelles) updated.heuresPosees = heuresPoseesNouvelles;\n', vers: '' }] },
+  { nom: 'heure-muette', lettre: 'H1', scenarios: HEURE, editions: [{ fichier: JS, de: "  Object.entries(heuresNouvellesEnvoyees() || {}).forEach(([id, heure]) => modifs.push(", vers: '  [].forEach(([id, heure]) => modifs.push(' }] },
+  { nom: 'serveur-ignore-l-heure', lettre: 'H1', scenarios: HEURE, editions: [{ fichier: API, serveur: true, de: '    ops.opsPlan = pose.dossier.opsPlan;\n', vers: '' }] },
+  { nom: 'refus-avale', lettre: 'H2', scenarios: HEURE, editions: [{ fichier: API, serveur: true, de: '    if (pose.refus) throw createHttpError(pose.refus.message, 422);\n', vers: '' }] },
+  { nom: 'serveur-pose-l-existant', lettre: 'H3', scenarios: HEURE, editions: [{ fichier: API, serveur: true, de: '.filter((posee) => !dejaAuDossier(posee.activityId) && proposedItems', vers: '.filter((posee) => proposedItems' }] },
 ];
 
 async function jouer(browser, noms) {
   for (const nom of noms) {
     if (nom === 'libre') await scenarioLibre(browser);
     if (nom === 'catalogue') await scenarioCatalogue(browser);
+    if (nom === 'heure') await scenarioHeure(browser);
   }
 }
 
@@ -270,7 +353,7 @@ async function main() {
   const t0 = Date.now();
   try {
     if (!process.argv.includes('--contre-preuves')) {
-      await jouer(browser, ['libre', 'catalogue']);
+      await jouer(browser, ['libre', 'catalogue', 'heure']);
     } else {
       console.log('[K] contre-preuves : chaque regle retiree fait rougir sa lettre');
       for (const m of MUTATIONS.filter((x) => !process.env.MC_MUTATIONS || liste(process.env.MC_MUTATIONS).includes(x.nom))) {

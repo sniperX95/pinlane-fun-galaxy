@@ -210,7 +210,8 @@ async function lesDeuxOuverts(page) {
 // sur les heures yavais ce qui reste comme dispo »), en court (« reste 5 ») ; son nom dit
 // tout (« reste 5 pistes »). Sauf une heure pendant l autre activite du ticket (2026-11-13,
 // « quand on choisi bowling a 18h [...] et que je prends lasergame a 18h30 ça dit rien ») :
-// elle dit ce qu elle en fera (« décale le laser »), `pendant`, lue a part.
+// elle le dit (« pendant le laser »), dans le ton du refus ; depuis le 2026-11-20, rien ne
+// suit plus (« décale le laser » n existe plus).
 const ecritSurLaTouche = (n) => `reste ${n}`;
 const heures = (page, id) => page.evaluate((i) => [...document.querySelectorAll(`#rsZ-${i} .rs-h[data-heure]`)].map((b) => ({
   heure: b.dataset.heure,
@@ -321,9 +322,11 @@ async function scenarioA(browser) {
     await verifie(page, 'bowling');
     const b2h = await lireB(6, 120, 1);
     ok(b2h.length > 0 && b2h.every((x) => x.juste), '[A] la duree change, ce qui reste suit', b2h);
-    // Deux heures de bowling chevauchent le laser pose a la suite : ces heures-la le disent.
-    const decalent = (await heures(page, 'bowling')).filter((x) => x.pendant);
-    ok(decalent.length > 0 && decalent.every((x) => x.mot === 'décale le laser'), '[A] une heure pendant le laser pose a la suite dit « décale le laser », a la place de ce qui reste', decalent.map((x) => ({ heure: x.heure, mot: x.mot })));
+    // Deux heures de bowling chevauchent le laser pose a la suite : ces heures-la le disent, et
+    // le laser ne suivra pas (2026-11-20).
+    const toutes = await heures(page, 'bowling');
+    const pendants = toutes.filter((x) => x.mot === 'pendant le laser');
+    ok(pendants.length > 0 && pendants.every((x) => x.coince) && !toutes.some((x) => /décale/.test(x.mot)), '[A] une heure pendant le laser pose a la suite dit « pendant le laser », jamais « décale le laser »', toutes.map((x) => ({ heure: x.heure, mot: x.mot })));
     // Les parties changent : la partie la plus serree decide.
     await page.locator('#rsV-laser_game-2').click();
     await verifie(page, 'laser_game');

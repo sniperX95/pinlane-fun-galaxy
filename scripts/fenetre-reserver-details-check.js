@@ -28,10 +28,11 @@
    [C1] « groupe occupé » sans rien qui chevauche a l ecran (le moteur replace
         l activite d apres et retombe sur le laser) se dit par le vrai manque de
         l heure : « manque 1 arme » a 15:30.
-   LE BOWLING PRIS QUAND MEME A 21:30 (il suit le laser) :
-   [T1] 22:00 et 22:30 disent « trop tard » : le bowling d apres finirait apres
-        minuit, la fenetre n envoyait rien et la touche restait grise, sans un
-        mot.
+   LE BOWLING PRIS QUAND MEME A 21:30 :
+   [T1] il ne suit plus le laser (2026-11-20, rvHeureSansSuivre) : 22:00 et
+        22:30 du laser disent ce qui leur manque a CETTE heure (« manque 2
+        armes »), jamais « trop tard » (avant, le bowling repartait apres le
+        laser et finissait apres minuit).
    [F1] le refus est sous la ligne du bowling, pas au-dessus du total, et ne se
         redit pas sous chaque heure (« bowling, manque 1 piste ») : le laser a
         15:30 dit son propre manque.
@@ -95,8 +96,8 @@ const MUTATIONS = [
   { nom: 'ajout-liste-recente', cible: 'A1', fichier: APP, de: "remplace ? { liste: [], suite: '' } : rsListeBloc(id, { frais: true });", vers: "remplace ? { liste: [], suite: '' } : rsListeBloc(id);" },
   { nom: 'ajout-demain-ouverture', cible: 'A2', fichier: APP, de: "remplace ? { liste: [], suite: '' } : rsListeBloc(id, { frais: true });", vers: "remplace ? { liste: [], suite: '' } : rsListeBloc(id);" },
   { nom: 'reste-du-groupe-entier', cible: 'R1', fichier: APP, de: 'return rsPlaceDesDeparts(rvEcartsLaser().map((minutes, k) => [numToTime((base + minutes) / 60), Number(parPartie[k]) || joueurs]));', vers: 'return rsPlaceDesDeparts(rvEcartsLaser().map((minutes, k) => [numToTime((base + minutes) / 60), joueurs]));' },
-  { nom: 'heure-sans-dossier-muette', cible: 'T1', fichier: APP, de: '        else sansDossier.push(rvRefusDeLaVariante(id, 0, heure));\n', vers: '' },
-  { nom: 'trop-tard-avant-le-bowling', cible: 'T2', fichier: APP, de: '  return coince && coince.local && pendant && !pendant.suit ? null : coince;', vers: '  return coince;' },
+  { nom: 'juste-apres-suit', cible: 'T1', fichier: APP, de: "    rvChoisirHeure(id, rang, rvModifiable() ? heure : rang > 0 && heure === suite ? '' : heure, { seule: true });\n    if (pendant) s.forcer = false;\n    else rsForcerApres(quoi, x, dejaForce);\n    rsVersQuestion(", vers: "    rvChoisirHeure(id, rang, rang > 0 && heure === suite ? '' : heure, { seule: true });\n    if (pendant) s.forcer = false;\n    else rsForcerApres(quoi, x, dejaForce);\n    rsVersQuestion(" },
+  { nom: 'trop-tard-avant-le-bowling', cible: 'T2', fichier: APP, de: '  return coince && coince.local && pendant ? null : coince;', vers: '  return coince;' },
   { nom: 'partie-sans-chevauchement', cible: 'C2', fichier: APP, de: '  if (!plages || !plages.lignes.laser_game) return null;', vers: '  return null;' },
   { nom: 'parties-sans-reste', cible: 'R2', fichier: APP, de: ": motPendant || rsResteDit(x.place).replace(/ armes?$/, '');", vers: ': motPendant;' },
   { nom: 'il-restera-zero', cible: 'L1', fichier: APP, de: "  const liste = (mots || []).filter(Boolean);\n  if (!liste.length) return '';", vers: "  const liste = (mots || []).filter(Boolean);\n  if (liste.length) return `il restera ${liste.join(', ')}`;" },
@@ -335,9 +336,11 @@ async function scenarioSoir(browser, lettres) {
       ok(!mots.some((x) => /^bowling, /.test(x)), '[F1] aucune heure du laser ne redit « bowling, manque 1 piste »', mots.filter((x) => /^bowling/.test(x)));
     }
     if (voit('T1')) {
+      const l = await page.evaluate(() => { const x = rvHeuresDesLignes().bowling || {}; return { heure: x.heure, foulee: x.foulee }; });
+      ok(l.heure === '21:30' && l.foulee === false, '[T1] le bowling touche a 21:30 (« juste après ») garde cette heure : il ne suivra pas le laser', l);
       const a = await lire(page, bloc('laser_game', '22:00'));
       const b = await lire(page, bloc('laser_game', '22:30'));
-      ok([a, b].every((t) => t && t.mot === 'trop tard' && t.coince), '[T1] le bowling suit le laser : 22:00 et 22:30 disent « trop tard », dans le ton du refus', { a, b });
+      ok([a, b].every((t) => t && /^manque \d+ armes?$/.test(t.mot) && t.coince), '[T1] le bowling ne suit plus le laser : 22:00 et 22:30 disent ce qui leur manque, jamais « trop tard »', { a, b });
     }
     if (voit('F1')) {
       const t = await lire(page, bloc('laser_game', '15:30'));

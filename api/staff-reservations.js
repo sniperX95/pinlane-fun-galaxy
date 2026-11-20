@@ -56,6 +56,7 @@ const { lireHistoriqueDossier } = require('../lib/historique-dossier');
 const { simulerCandidats } = require('../lib/reserver-simulation');
 const { normaliserEpingles } = require('../lib/departs-rapides');
 const { chercherUnAutreOrdre, corpsDuDossier, planConformeALaProposition } = require('../lib/autre-ordre');
+const { choixDuDossierEnregistre, cleDuChoix } = require('../lib/formule-comptoir');
 
 // LE COMPTOIR CONNAIT LES MEMES CENTRES QUE LE TUNNEL (2026-08-21).
 //
@@ -228,6 +229,8 @@ function patchChangesOperations(patch, current) {
     } else if (comparable(patch[key]) !== comparable(current[key])) return true;
   }
   if (patch.formulaId != null && comparable(patch.formulaId) !== comparable(current.formuleId)) return true;
+  // Un autre choix d acces illimite (les activites prises, ce qui est garde) se replanifie.
+  if (Object.prototype.hasOwnProperty.call(patch, 'illimite') && cleDuChoix(patch.illimite) !== cleDuChoix(current.opsPlan && current.opsPlan.illimite)) return true;
   if (!ownParticipants && patch.pax != null && Number(patch.pax) !== Number(current.pax)) return true;
   const lanes = current.lanes || [];
   if (patch.laneCount != null && Number(patch.laneCount) !== Number(current.laneCount ?? lanes.length)) return true;
@@ -771,6 +774,13 @@ async function calculerLaModification({ body, current, session, requestedCenterI
   if (patchAdapteLaFormule(patch, current) || patch.formuleSurMesure) exigerAdaptationDeFormule(session);
   // Une formule gardee par un autre centre ne se prend pas ici (lib/formule-comptoir.js).
   if (patch.formuleId || patch.formulaId) exigerFormuleDuCentre({ formuleId: patch.formuleId || patch.formulaId, centerId: requestedCenterId });
+  // LE CHOIX D UN ACCES ILLIMITE SUIT LE DOSSIER (2026-11-20, lib/formule-comptoir.js) : sans choix dans le
+  // corps, celui que son plan garde, tant que sa formule reste la meme. Un choix envoye se relit, lui,
+  // comme a la creation (normalizeReservationRequest), et un corps forge est refuse.
+  if (!Object.prototype.hasOwnProperty.call(patch, 'illimite')) {
+    const garde = choixDuDossierEnregistre(current, { formuleId: patch.formuleId ?? patch.formulaId ?? current.formuleId, centerId: requestedCenterId });
+    if (garde) patch.illimite = garde;
+  }
   if (Object.prototype.hasOwnProperty.call(patch, 'extras')) {
     const { extras, refus } = resoudreExtras({ extras: patch.extras, avant: current.extras, session, centerId: requestedCenterId, pax: patch.pax ?? current.pax });
     if (refus) throw refus;

@@ -48,6 +48,20 @@
 //   [I] DANS MODIFIER : un dossier passe en acces illimite (le serveur le planifie et le verifie
 //       comme une creation), puis revient a un programme normal ; une bascule forgee sur une
 //       heure pleine est refusee avec la phrase.
+// LE CHOIX ACTIVITE PAR ACTIVITE (2026-11-20, le soir). Un gerant : « je comprends pas ton activités en
+// illimité, il faut qu on puisse choisir activité par activité, genre quelle activité en illimité ».
+//   [J] RESERVER, DE VRAIS CLICS : toutes les tuiles allumees d office, Minigolf eteint, le bowling « 1
+//       fois », l arrivee a 16:00 ; la phrase ne cite que ce qui est choisi, avec l heure fixe du bowling
+//       que la page montre avant « Créer » et que le plan tient ; le corps envoye et le plan du
+//       dossier ne portent que ces activites, au prix de l acces par joueur ; la fiche le dit ; un corps
+//       forge (hors du centre, hors de l acces, « à volonté » sur les arcades, vide) est refuse a la
+//       creation comme a la modification ; un dossier sans le champ se planifie comme avant ; la derniere
+//       activite reste allumee.
+//   [K] MODIFIER : le meme choix, relu (tuiles, phrase, une rangee par activite prise, meme quand Modifier
+//       s ouvre avant que les formules gardees soient lues), change de vrais clics et enregistre ; un
+//       autre changement le garde ; un dossier sans le champ se replanifie comme avant.
+//   [L] SANS NAVIGATEUR : un acces sans bowling ne tient aucune piste, sans laser aucune arme ; le mail
+//       de confirmation dit le programme choisi, le rappel ne promet pas le laser.
 //   [*] Zero erreur JavaScript.
 //
 // CONTRE-PREUVES : `--contre-preuves` sert le code casse expres, une mutation a la fois (en
@@ -109,10 +123,10 @@ const MUTATIONS = [
   { nom: 'une-fois-gardee', lettre: 'G', cible: '[G] « une fois » : le bowling 1 h a son heure, comme avant', serveur: true, fichier: 'lib/a-volonte.js', de: "  const garderBowling = gardees.includes('bowling');", vers: "  const garderBowling = gardees.length > 0;" },
   { nom: 'porte-cachee', lettre: 'D', cible: '[D] la porte « Accès illimité »', fichier: APP, de: "  rsPoser('rsZ-portes', `${acces ? `<div class=\"rs-portes is-seule is-acces\">${acces}</div>` : ''}", vers: "  rsPoser('rsZ-portes', `${false ? `<div class=\"rs-portes is-seule is-acces\">${acces}</div>` : ''}" },
   { nom: 'ticket-muet', lettre: 'D', cible: '[D] au ticket : ce qui est garde, en clair', serveur: true, fichier: 'lib/reserver-fenetre.js', de: '    acces: plan ? accesIllimiteDuDossier(dossier) : null,', vers: '    acces: null,' },
-  { nom: 'fiche-muette', lettre: 'D', cible: '[D] la fiche le dit en une phrase', fichier: APP, de: "  return window.PinlaneAVolonte.resume(r.opsPlan, { minutes: Number(f.illimite.minutes) || 0, toutes: centre.length > 0 && centre.every((id) => comprises.includes(id)), nombre: comprises.length });", vers: '  return null;' },
+  { nom: 'fiche-muette', lettre: 'D', cible: '[D] la fiche le dit en une phrase', fichier: APP, de: '  return window.PinlaneAVolonte.resume(r.opsPlan, { minutes: Number(f.illimite.minutes) || 0, comprises });', vers: '  return null;' },
   { nom: 'modifier-sans-illimite', lettre: 'I', cible: '[I] dans Modifier : « À la carte | Accès illimité »', fichier: APP, de: '  const illimitees = getEffectiveCatalogFormules().filter(estFormuleIllimitee);\n  // (la formule du dossier reste au selecteur', vers: '  const illimitees = [];\n  // (la formule du dossier reste au selecteur' },
   { nom: 'modifier-sans-catalogue', lettre: 'I', cible: '[I] dans Modifier : « À la carte | Accès illimité »', fichier: APP, de: "  if (!choix.length) { lireLesFormulesGardeesPourModifier(); return ''; }", vers: "  if (!choix.length) { return ''; }" },
-  { nom: 'modifier-sans-pistes', lettre: 'I', cible: '[I] enregistre : le dossier en acces illimite', fichier: APP, de: "    || (dossierFormule.type === 'formule' && Boolean(resolveDisplayFormule(dossierFormule.formuleId)?.hasBowling));", vers: ';' },
+  { nom: 'modifier-sans-pistes', lettre: 'I', cible: '[I] enregistre : le dossier en acces illimite', fichier: APP, de: "    || (dossierFormule.type === 'formule' && Boolean(resolveDisplayFormule(dossierFormule.formuleId)?.hasBowling)))\n", vers: '    || false)\n' },
   { nom: 'verdict-pas-repeint', lettre: 'I', cible: '[I] le verdict du serveur dit ce qui sera garde', fichier: APP, de: '  if (acces) acces.outerHTML = renderEditIllimiteChoix();', vers: '' },
   { nom: 'retour-sans-heures', lettre: 'I', cible: '[I] « À la carte » : une visite de ses activites', fichier: APP, de: '      updated.preference = { activityOrder: ids, preferredTimes:', vers: '      updated.preferenceOubliee = { activityOrder: ids, preferredTimes:' },
   { nom: 'rangees-une-heure', lettre: 'I', cible: '[I] sous l acces illimite, les rangees disent ce qui est garde', fichier: APP, de: '  const volonte = gardeAVolonteEdition(r);\n  const rangees = [...choix, ...supplement].map((choice, rang) => {', vers: '  const volonte = null;\n  const rangees = [...choix, ...supplement].map((choice, rang) => {' },
@@ -120,7 +134,7 @@ const MUTATIONS = [
   { nom: 'planning-muet', lettre: 'D', cible: '[D] le planning montre les pistes et les armes gardees', fichier: 'assets/pinlane-planning-global.js', de: "        if (e.aVolonte) {\n          d2 = 'à volonté';", vers: "        if (false) {\n          d2 = 'à volonté';" },
   { nom: 'laser-six-heures', lettre: 'D', cible: '[D] le planning montre les pistes et les armes gardees', fichier: 'assets/pinlane-planning-global.js', de: "    else if (col.nature === 'laser' && liste.length > 1 && liste.every(function (e) { return e.aVolonte; })) {", vers: '    else if (false) {' },
   { nom: 'menu-qui-redit', lettre: 'I', cible: '[I] sous « Accès illimité », rien ne redit la formule', fichier: APP, de: "  if (estFormuleIllimitee(String(e.type || '') === 'formule' && e.formuleId ? resolveDisplayFormule(e.formuleId) : null)) return '';\n", vers: '' },
-  { nom: 'menu-avec-l-acces', lettre: 'I', cible: '[I] a la carte, le menu « Formule » propose les formules, pas l acces illimite', fichier: APP, de: "  const catalogue = getEffectiveCatalogFormules().filter(f => !estFormuleIllimitee(f));", vers: '  const catalogue = getEffectiveCatalogFormules();' },
+  { nom: 'menu-avec-l-acces', lettre: 'I', cible: '[I] a la carte, le menu « Formule » propose les formules, pas l acces illimite', fichier: APP, de: '  const catalogue = getEffectiveCatalogFormules().filter(f => !estFormuleIllimitee(f) && formuleJoueeAuCentre(f));', vers: '  const catalogue = getEffectiveCatalogFormules().filter(f => formuleJoueeAuCentre(f));' },
   { nom: 'fiche-heures-suggerees', lettre: 'D', cible: '[D] la fiche : ses autres activites sans heure, « à volonté »', fichier: APP, de: "  const accesIllimite = typeof illimiteDeSaCarte === 'function' && illimiteDeSaCarte(r);\n  getStaffFormulaTimedItems(r)", vers: '  const accesIllimite = false;\n  getStaffFormulaTimedItems(r)' },
   { nom: 'planning-heures-suggerees', lettre: 'D', cible: '[D] au planning, ses autres activites disent « à volonté », sans heure', fichier: 'assets/pinlane-planning-global.js', de: "      var acces = typeof illimiteDeSaCarte === 'function' && illimiteDeSaCarte(r);", vers: '      var acces = false;' },
   // LE FORMULAIRE COURT, LA PAGE EN PHOTOS, LE SELECTEUR DE MODIFIER (2026-11-20).
@@ -129,7 +143,8 @@ const MUTATIONS = [
   { nom: 'reprise-oubliee', lettre: 'I', cible: '[I] « À la carte » puis « Accès illimité » : le dossier redevient ce qu il etait', fichier: APP, de: '  if (e.versProgrammeNormal) e.versProgrammeNormal = false;\n  changerFormuleEdition(id);', vers: '  changerFormuleEdition(id);' },
   { nom: 'photos-absentes', lettre: 'D', cible: '[D] sa page : la phrase commune, le prix et le total, chaque activite en vraie photo', fichier: APP, de: "  return trouve ? `/assets/fungalaxy/${trouve[1]}-carte.webp` : '';\n}", vers: "  return '';\n}" },
   { nom: 'total-oublie', lettre: 'D', cible: '[D] la porte « Accès illimité »', fichier: APP, de: "  const total = f.type !== 'per_lane' && rsEtat() && rsEtat().faits.combien ?", vers: "  const total = false ?" },
-  { nom: 'phrase-d-avant', lettre: 'D', cible: '[D] au ticket : ce qui est garde, en clair', serveur: true, fichier: 'assets/pinlane-a-volonte.js', de: "    if (toutes !== false) return 'Tout à volonté';", vers: "    if (toutes !== false) return 'Toutes les activités à volonté';" },
+  // (2026-11-20, le soir) La phrase d avant revient, sans citer ce qui est compris : le ticket le voit.
+  { nom: 'phrase-d-avant', lettre: 'D', cible: '[D] au ticket : ce qui est garde, en clair', fichier: 'assets/pinlane-a-volonte.js', de: "    return [libres.length ? `À volonté ${quand} : ${libres.join(', ')}` : '', ...uneFois.map((u) => u.court)].filter(Boolean).join(' · ');", vers: "    return [`Tout à volonté ${quand}`, ...uneFois.map((u) => u.court)].join(' · ');" },
   { nom: 'deux-points-revenus', lettre: 'D', cible: '[D] la fiche le dit en une phrase', fichier: 'assets/pinlane-a-volonte.js', de: '        courte: `Bowling, ${pistesDites(pistes)} ${gardees} toute la visite.`,', vers: '        courte: `Bowling : ${pistesDites(pistes)} ${gardees} toute la visite.`,' },
   { nom: 'tarifs-liste-d-avant', lettre: 'C', cible: '[C] la liste de Tarifs dit l acces avec les mots du comptoir', fichier: PAGES, de: '      desc: tfDescIllimite(entry) || (Array.isArray(entry.desc) ? entry.desc.map(String) : []),', vers: '      desc: (Array.isArray(entry.desc) ? entry.desc.map(String) : []),' },
   { nom: 'duree-ignoree', lettre: 'C', cible: '[C] la duree se choisit d un toucher', fichier: PAGES, de: "    else { f.dureeAutre = false; f.dureeMinutes = String(Number(valeur) || 180); }", vers: "    else { f.dureeAutre = false; }" },
@@ -137,6 +152,28 @@ const MUTATIONS = [
   { nom: 'toutes-retire', lettre: 'A', cible: '[A] la fenetre ouvre avec « Ajouter toutes les activités »', fichier: APP, de: '</div>${toutes}</div>${rsJoueursPetitsHtml(petites)}', vers: '</div></div>${rsJoueursPetitsHtml(petites)}' },
   { nom: 'toutes-sa-rangee', lettre: 'A', cible: '[A] la fenetre ouvre avec « Ajouter toutes les activités »', fichier: APP, de: '</div>${toutes}</div>${rsJoueursPetitsHtml(petites)}', vers: '</div></div>${toutes}${rsJoueursPetitsHtml(petites)}' },
   { nom: 'retour-sans-programme', lettre: 'I', cible: '[I] « À la carte »', fichier: APP, de: "    if (versProgrammeNormal && programme) {\n      updated.type = 'visite';", vers: "    if (false) {\n      updated.type = 'visite';" },
+  // L ACCES ILLIMITE CHOISI ACTIVITE PAR ACTIVITE (2026-11-20, le soir).
+  { nom: 'tuiles-figees', lettre: 'J', cible: '[J] eteindre Minigolf, le bowling « 1 fois », 16:00', fichier: APP, de: "  if (!suite) { toast('Gardez au moins une activité.'); return; }\n  rsGeste(() => { quickBookState.illimite = suite; quickBookState.forcer = false; });", vers: "  if (!suite) { toast('Gardez au moins une activité.'); return; }\n  rsGeste(() => { quickBookState.forcer = false; });" },
+  { nom: 'phrase-cite-les-retirees', lettre: 'J', cible: '[J] eteindre Minigolf, le bowling « 1 fois », 16:00', fichier: APP, de: '  const comprises = choix.activites.map((id) => ({ id, nom: rvNomActivite(id) }));', vers: '  const comprises = activitesDeLIllimite(f).map((id) => ({ id, nom: rvNomActivite(id) }));' },
+  { nom: 'derniere-eteinte', lettre: 'J', cible: '[J] la derniere activite reste allumee', fichier: APP, de: '  if (prise && choix.activites.length <= 1) return null;\n', vers: '' },
+  { nom: 'choix-pas-envoye', lettre: 'J', cible: '[J] le corps envoye porte le choix', fichier: APP, de: '    ...(formule && !adaptee && estFormuleIllimitee(formule) ? { illimite: choixIllimiteEnvoye(rsChoixIllimite(formule)) } : {}),\n', vers: '' },
+  { nom: 'choix-ignore-au-moteur', lettre: 'J', cible: '[J] le plan ne porte que les activites choisies', serveur: true, fichier: 'lib/reservation-ops.js', de: '      ? formuleSelonLeChoix(getFormula(formuleDemandee, centerId), request.illimite) : null;', vers: '      ? null : null;' },
+  { nom: 'choix-pas-garde', lettre: 'J', cible: '[J] le dossier garde son choix dans son plan', serveur: true, fichier: 'lib/reservation-ops.js', de: '  return choix ? { ...sans, illimite: empreinteDuChoix(choix, choix.formuleId || request.formuleId) } : sans;', vers: '  return sans;' },
+  { nom: 'choix-ecrit-sans-choix', lettre: 'J', cible: '[J] un dossier sans le champ se planifie comme avant', serveur: true, fichier: 'lib/reservation-ops.js', de: '  return choix ? { ...sans, illimite: empreinteDuChoix(choix, choix.formuleId || request.formuleId) } : sans;', vers: "  return { ...sans, illimite: empreinteDuChoix(choix || { activites: ['bowling'], aVolonte: [] }, request.formuleId) };" },
+  { nom: 'choix-cru', lettre: 'J', cible: '[J] un corps forge est refuse', serveur: true, fichier: FC_FICHIER, de: '  if (hors !== undefined) throw refusDeSaisie(', vers: '  if (false) throw refusDeSaisie(' },
+  { nom: 'volonte-crue', lettre: 'J', cible: '[J] un corps forge est refuse', serveur: true, fichier: FC_FICHIER, de: '  if (aVolonte.some((id) => !A_HEURE.includes(id) || !ids.includes(id))) throw refusDeSaisie(', vers: '  if (false) throw refusDeSaisie(' },
+  { nom: 'fiche-cite-tout', lettre: 'J', cible: '[J] la fiche dit le choix', fichier: APP, de: ' : choixIllimiteDuDossier(r, f).activites;\n  const comprises = [...new Set(items)]', vers: ' : f.illimite.activites;\n  const comprises = [...new Set(items)]' },
+  { nom: 'modifier-lecture-seule', lettre: 'K', cible: '[K] Modifier relit le choix du dossier', fichier: APP, de: "    tuiles = illimiteTuilesHtml(actuelle, choixE, { acces, gestes: { basculer: 'basculerIllimiteEdition', volonte: 'volonteIllimiteEdition' }, prefixe: 'edIl' });", vers: "    tuiles = '';" },
+  { nom: 'modifier-oublie-le-dossier', lettre: 'K', cible: '[K] Modifier relit le choix du dossier', fichier: APP, de: '  return formuleChangeeEdition() ? choixIllimiteDOffice(f) : choixIllimiteDuDossier(state.selectedRes, f);', vers: '  return choixIllimiteDOffice(f);' },
+  { nom: 'programme-bati-sans-sa-formule', lettre: 'K', cible: '[K] Modifier relit le choix du dossier', fichier: APP, de: '  if (e.programmeEdite && e.programmeSansSaFormule && !editProgramAChange() && r && r.formuleId && resolveDisplayFormule(r.formuleId)) delete e.programmeEdite;\n', vers: '' },
+  { nom: 'barre-muette', lettre: 'K', cible: '[K] Modifier change le choix', fichier: APP, de: '  modifs.push(...modifsIllimiteEdition());\n', vers: '' },
+  { nom: 'modifier-pas-envoye', lettre: 'K', cible: '[K] Modifier enregistre le choix change', fichier: APP, de: '    if (illimiteEnvoye) updated.illimite = illimiteEnvoye;\n', vers: '' },
+  { nom: 'garde-oubliee', lettre: 'K', cible: '[K] Modifier : un autre changement garde le choix', serveur: true, fichier: 'api/staff-reservations.js', de: '    if (garde) patch.illimite = garde;', vers: '' },
+  { nom: 'garde-inventee', lettre: 'K', cible: '[K] un dossier sans le champ, modifie, se replanifie comme avant', serveur: true, fichier: 'api/staff-reservations.js', de: '    if (garde) patch.illimite = garde;', vers: "    patch.illimite = garde || { formuleId: String(current.formuleId || ''), activites: ['bowling', 'laser_game'], aVolonte: [] };" },
+  { nom: 'pistes-sans-bowling', lettre: 'L', cible: '[L] un acces sans bowling ne tient aucune piste', serveur: true, fichier: 'lib/database.js', de: "  if (choixIllimite && !choixIllimite.activites.map(String).includes('bowling')) return false;\n", vers: '' },
+  { nom: 'armes-sans-laser', lettre: 'L', cible: '[L] un acces sans laser ne tient aucune arme', serveur: true, fichier: 'lib/formula-choice.js', de: '  return formuleSelonLeChoix(jouee, choixQueLeDossierPorte(dossier, formula && formula.id));', vers: '  return jouee;' },
+  { nom: 'mail-de-tout-l-acces', lettre: 'L', cible: '[L] le mail de confirmation dit le programme choisi', serveur: true, fichier: 'lib/reservation-ops.js', de: '      ? formuleSelonLeChoix(getFormula(formuleDemandee, centerId), request.illimite) : null;', vers: '      ? null : null;' },
+  { nom: 'mail-laser-promis', lettre: 'L', cible: '[L] le rappel ne promet pas le laser', serveur: true, fichier: 'lib/ops-communications.js', de: '    const laserPromis = !(varianteDuDossier || choixIllimite) || ', vers: '    const laserPromis = !varianteDuDossier || ' },
 ];
 const LES_MUTATIONS = new Map(MUTATIONS.map((m) => [m.nom, m]));
 
@@ -161,6 +198,8 @@ function transformer(rel, texte) {
 const serveur = C.monterServeur({ mutations: mutation && mutation.serveur ? [{ fichier: mutation.fichier, de: mutation.de, vers: mutation.vers }] : [] });
 // Les images au telephone (375 px) : PINLANE_ILLIMITE_APPAREIL=telephone375 avec --captures.
 FX.APPAREILS.telephone375 = { viewport: { width: 375, height: 812 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, locale: 'fr-BE' };
+// Les images de rapport (1440 x 900, theme clair) : PINLANE_ILLIMITE_APPAREIL=ecran1440 avec --captures.
+FX.APPAREILS.ecran1440 = { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1, locale: 'fr-BE' };
 const APPAREIL = process.env.PINLANE_ILLIMITE_APPAREIL || 'comptoir';
 const ouvrir = (browser, options = {}) => C.ouvrirConsole(browser, serveur, { port: PORT, reservations: () => [], appareil: APPAREIL, ...options });
 const finir = async (m, quoi) => { ok(m.erreurs.length === 0, `[*] zero erreur JavaScript (${quoi})`, m.erreurs.slice(0, 3).join(' | ')); await m.ctx.close(); };
@@ -197,6 +236,13 @@ function retenues(r) {
 }
 // Les departs de laser attendus : toutes les demi-heures, de l arrivee a la fin de la visite moins une partie.
 const departsAttendus = (debut, fin, armes) => { const l = []; for (let m = Math.ceil(enMin(debut) / 30) * 30; m + 25 <= enMin(fin); m += 30) l.push(`${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}:${armes}:25`); return l; };
+// LA PHRASE CITE CE QUI EST CHOISI (2026-11-20, le soir) : les noms courts que la console de Libramont
+// lit, dans l ordre du centre, ecrits ici en clair (pas recalcules par le code juge).
+const NOM_COURT = { bowling: 'Bowling', laser_game: 'Laser', minigolf_blacklight: 'Minigolf', billards: 'Billard', arcade_time: 'Arcades', playground: 'Playground', duckpin_bowling: 'Duckpin', fun_run: 'Pixel' };
+const nomsDe = (ids) => DU_CENTRE().filter((id) => ids.includes(id)).map((id) => NOM_COURT[id] || id).join(', ');
+const sansLes = (...retirees) => DU_CENTRE().filter((id) => !retirees.includes(id));
+// Les activites du centre que le plan d un dossier porte (blocs et etapes).
+const activitesDuPlan = (r) => { const p = planDe(r); return [...new Set([...(p.resourceBlocks || []), ...(p.timeline || [])].map((b) => b && b.activityId).filter((id) => id && DU_CENTRE().includes(id)))]; };
 async function neufs(page, avant, voulu = 1) {
   for (let i = 0; i < 80; i += 1) {
     const l = [...B.base.reservations.entries()].filter(([id]) => !avant.has(id)).map(([, r]) => r);
@@ -552,9 +598,15 @@ async function scenarioD(browser) {
       return { tete: [t('.rs-acces-n b'), t('.rs-acces-n span'), t('.rs-acces-prix b'), t('.rs-acces-prix small')], acts, servies, texte: z ? z.textContent.replace(/\s+/g, ' ') : '' };
     });
     const bloc = await lireBloc();
-    ok(bloc.tete.join(' | ') === 'Accès illimité | Tout à volonté pendant 3 h, à partir de 2 joueurs | 32 € par joueur | 320 € pour 10 joueurs'
-      && memeEnsemble(bloc.acts.map((a) => a.id), DU_CENTRE()) && bloc.acts.every((a) => a.tag === 'à volonté' && /^\/assets\/fungalaxy\/[a-z-]+-carte\.webp$/.test(a.photo)) && bloc.servies.every((s) => s === 200)
-      && !/Compris|Toutes les activités| : /.test(bloc.texte), '[D] sa page : la phrase commune, le prix et le total, chaque activite en vraie photo « à volonté »', bloc);
+    // (2026-11-20, le soir) La phrase cite ce que l acces comprend, le prix est celui de l acces par
+    // joueur, dit simplement ; le bowling et le laser disent ce qu ils gardent (sur le plan, les pistes et
+    // les armes), les autres « à volonté ».
+    const libresDuBloc = bloc.acts.filter((a) => a.id !== 'bowling' && a.id !== 'laser_game');
+    const tagDuBloc = (id) => (bloc.acts.find((a) => a.id === id) || {}).tag || '';
+    ok(bloc.tete[0] === 'Accès illimité' && new RegExp(`^À volonté (de \\d\\d:\\d\\d à \\d\\d:\\d\\d|pendant 3 h) : ${nomsDe(DU_CENTRE())}$`).test(bloc.tete[1]) && bloc.tete[2] === '32 € par joueur' && bloc.tete[3] === 'prix de l’accès illimité, à partir de 2 joueurs'
+      && memeEnsemble(bloc.acts.map((a) => a.id), DU_CENTRE()) && bloc.acts.every((a) => /^\/assets\/fungalaxy\/[a-z-]+-carte\.webp$/.test(a.photo)) && bloc.servies.every((s) => s === 200)
+      && libresDuBloc.every((a) => a.tag === 'à volonté') && /^pistes/.test(tagDuBloc('bowling')) && /armes/.test(tagDuBloc('laser_game'))
+      && !/Compris|Toutes les activités/.test(bloc.texte), '[D] sa page : la phrase commune, le prix et le total, chaque activite en vraie photo « à volonté »', bloc);
     await page.waitForSelector('.rs-s-l.is-formule .rs-h[data-heure="15:30"]', { timeout: 10000 });
     // La derniere arrivee proposee : une heure que le serveur accepte ; la demi-heure d apres, il la
     // refuse « hors horaires », et le comptoir ne la propose pas (sa regle est celle du serveur).
@@ -575,11 +627,11 @@ async function scenarioD(browser) {
       detail: ((document.querySelector('#rsL-a-formule .rs-tk-n small') || {}).textContent || '').trim(),
       garde: Array.from(document.querySelectorAll('.rs-tk-n small.is-garde')).map((s) => s.textContent.trim()),
     }));
-    ok(ticket.duree === 'Tout à volonté de 15:30 à 18:30.' && ticket.detail === ticket.duree && ticket.garde.length === 2 && ticket.garde.some((l) => /^Bowling, pistes \d+ et \d+ gardées toute la visite\.$/.test(l)) && ticket.garde.includes(`Laser, ${JOUEURS} armes gardées à chaque départ.`), '[D] au ticket : ce qui est garde, en clair', ticket);
+    ok(ticket.duree === 'Visite de 15:30 à 18:30.' && ticket.detail === `À volonté de 15:30 à 18:30 : ${nomsDe(DU_CENTRE())}.` && ticket.garde.length === 2 && ticket.garde.some((l) => /^Bowling, pistes \d+ et \d+ gardées toute la visite\.$/.test(l)) && ticket.garde.includes(`Laser, ${JOUEURS} armes gardées à chaque départ.`), '[D] au ticket : ce qui est garde, en clair', ticket);
     // Sur le plan, les photos du bowling et du laser disent ce qui est garde (les pistes, les armes).
     const apresHeure = await lireBloc();
     const tagDe = (id) => apresHeure.acts.find((a) => a.id === id) || {};
-    ok(tagDe('bowling').tag === 'à volonté' && /^pistes \d+ et \d+$/.test(tagDe('bowling').precision) && tagDe('laser_game').precision === `${JOUEURS} armes`, '[D] sur le plan, les photos disent les pistes et les armes gardees', apresHeure.acts);
+    ok(/^pistes \d+ et \d+$/.test(tagDe('bowling').tag) && tagDe('laser_game').tag === `${JOUEURS} armes`, '[D] sur le plan, les photos disent les pistes et les armes gardees', apresHeure.acts);
     await photo(page, 'reserver-ticket', '#quickBookOverlay .rs, #quickBookOverlay');
     const debut = new Set([...B.base.reservations.keys()]);
     await creer(page, 'Team building Formule');
@@ -610,7 +662,7 @@ async function scenarioD(browser) {
       return { fiche, programme, cartes, autres };
     }, r && r.id);
     const pistesDites = `pistes ${f.pistes.slice(0, -1).join(', ')} et ${f.pistes[f.pistes.length - 1]}`;
-    ok(vu.fiche === `Accès illimité Tout à volonté de 15:30 à 18:30. Bowling, ${pistesDites} gardées toute la visite. Laser, ${JOUEURS} armes gardées à chaque départ.`, '[D] la fiche le dit en une phrase', vu.fiche);
+    ok(vu.fiche === `Accès illimité À volonté de 15:30 à 18:30 : ${nomsDe(DU_CENTRE())}. Bowling, ${pistesDites} gardées toute la visite. Laser, ${JOUEURS} armes gardées à chaque départ.`, '[D] la fiche le dit en une phrase', vu.fiche);
     const departs = departsAttendus('15:30', '18:30', JOUEURS).map((d) => d.slice(0, 5));
     ok(vu.cartes.bowling.length === 1 && vu.cartes.bowling[0].titre.startsWith(`Bowling à volonté de 15:30 à 18:30 · pistes ${f.pistes.join('-')} gardées toute la visite`) && /à volonté/.test(vu.cartes.bowling[0].texte)
       && departs.length > 1 && vu.cartes.laser.length === 1 && vu.cartes.laser[0].titre.startsWith(`Laser à volonté · ${departs.length} départs, de ${departs[0]} à ${departs[departs.length - 1]} · ${JOUEURS} armes gardées`)
@@ -766,7 +818,7 @@ async function scenarioI(browser) {
     await page.locator(versIllimite).click();
     await verdictPose(page);
     const choisi = await lireChoix();
-    ok(choisi.segments.join() === 'À la carte=false,Accès illimité=true' && /^Tout à volonté de 16:00 à 19:00\. Bowling, pistes? [\d ,et]+ gardées? toute la visite\. Laser, 10 armes gardées à chaque départ\.$/.test(choisi.dit), '[I] le verdict du serveur dit ce qui sera garde, et le chemin du retour', choisi);
+    ok(choisi.segments.join() === 'À la carte=false,Accès illimité=true' && new RegExp(`^À volonté de 16:00 à 19:00 : ${nomsDe(DU_CENTRE())}\\. Bowling, pistes? [\\d ,et]+ gardées? toute la visite\\. Laser, 10 armes gardées à chaque départ\\.$`).test(choisi.dit), '[I] le verdict du serveur dit ce qui sera garde, et le chemin du retour', choisi);
     const illimiteDejaPris = await toucherLePris(versIllimite);
     ok(illimiteDejaPris.marque === 'avant' && illimiteDejaPris.formule === ID_ILLIMITEE && !illimiteDejaPris.normal, '[I] « Accès illimité » deja pris ne rejoue pas sa carte', illimiteDejaPris);
     // Les rangees du bowling et du laser disent ce qui est garde, plus « 1 heure / 1 partie » de la carte.
@@ -795,7 +847,7 @@ async function scenarioI(browser) {
     await page.evaluate((i) => { closePos(); openPos(i); setTab('modifier'); }, ID);
     await page.waitForTimeout(300);
     const deja = await lireChoix();
-    ok(deja.segments.join() === 'À la carte=false,Accès illimité=true' && /^Tout à volonté de 16:00 à 19:00\./.test(deja.dit) && await page.locator('#editAccesSortir').count() === 1, '[I] « À la carte » se touche sur un dossier en acces illimite', deja);
+    ok(deja.segments.join() === 'À la carte=false,Accès illimité=true' && deja.dit.startsWith(`À volonté de 16:00 à 19:00 : ${nomsDe(DU_CENTRE())}.`) && await page.locator('#editAccesSortir').count() === 1, '[I] « À la carte » se touche sur un dossier en acces illimite', deja);
     // (rouvert, le dossier est une formule : le menu « Formule » ne se montre pas sous son selecteur)
     const redites2 = await lireRedites();
     ok(!redites2.menu && !redites2.origine && !redites2.bandeau, '[I] sous « Accès illimité », rien ne redit la formule', { rouvert: redites2 });
@@ -827,6 +879,268 @@ async function scenarioI(browser) {
     const message = String((forge.json || {}).message || (forge.json || {}).error || '');
     ok(forge.statut >= 400 && JSON.stringify(B.base.reservations.get(ID)) === avant && /Laser/.test(message), '[I] une bascule forgee sur une heure pleine est refusee, avec la phrase, rien n est ecrit', { statut: forge.statut, message });
   } finally { await finir(m, 'I'); }
+}
+
+// ---------------------------------------------------------------------------
+// [J] [K] [L] L ACCES ILLIMITE CHOISI ACTIVITE PAR ACTIVITE (2026-11-20, le soir)
+// ---------------------------------------------------------------------------
+// Un gerant : « je comprends pas ton activités en illimité, il faut qu on puisse choisir activité par
+// activité, genre quelle activité en illimité ». Dans Reserver et dans Modifier, chaque activite de
+// l acces est une tuile a bascule, toutes allumees d office ; le bowling et le laser pris disent « À
+// volonté » ou « 1 fois ». Le choix part au serveur, qui le relit contre l acces ET le centre, et vit dans
+// le plan du dossier (opsPlan.illimite) : les pistes, les armes, la fiche et les mails le lisent.
+// Les tuiles d une zone (Reserver : #rsAcces, Modifier : #editAcces), la phrase, le prix, le ticket.
+const lireTuiles = (page, zone) => page.evaluate((sel) => {
+  const z = document.querySelector(sel);
+  const texte = (el) => ((el || {}).textContent || '').replace(/\s+/g, ' ').trim();
+  const tuiles = Array.from(z ? z.querySelectorAll('.rs-ill-act') : []).map((li) => {
+    const bouton = li.querySelector('.rs-ill-t');
+    const seg = (cle) => { const b = li.querySelector(`[data-ill-volonte="${cle}"]`); return b ? b.getAttribute('aria-checked') : ''; };
+    return { id: li.dataset.illActivite, pris: bouton ? bouton.getAttribute('aria-pressed') : '', tag: texte(li.querySelector('.rs-ill-tag')), volonte: seg('oui'), uneFois: seg('non') };
+  });
+  return {
+    tuiles,
+    dit: texte(document.getElementById('rsAccesDit') || (z && z.querySelector('.fm-choix-dit'))),
+    prix: [texte(z && z.querySelector('.rs-acces-prix b')), texte(z && z.querySelector('.rs-acces-prix small'))],
+    ticket: texte(document.querySelector('#rsL-a-formule .rs-tk-n small')),
+  };
+}, zone);
+const tuileDe = (lu, id) => (lu.tuiles || []).find((t) => t.id === id) || {};
+// La phrase du dossier de [J] et [K] : sans Minigolf, le bowling une fois, a l heure que le planning lui fixe
+// dans la visite (« 1 fois », a heure fixe, comme une formule dont le bowling n est pas a volonte).
+const phraseJ = (debut, fin, bowling) => `À volonté de ${debut} à ${fin} : ${nomsDe(sansLes('bowling', 'minigolf_blacklight'))} · Bowling 1 h à ${bowling}`;
+// Une heure fixe de bowling 1 h dans la visite : sur la grille, de l arrivee a la fin moins une heure.
+const heureDansLaVisite = (h, debut, fin) => /^\d{2}:\d{2}$/.test(String(h)) && enMin(h) % 30 === 0 && enMin(h) >= enMin(debut) && enMin(h) + 60 <= enMin(fin);
+const plusUneHeure = (h) => { const m = enMin(h) + 60; return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`; };
+const CHOIX_J = () => ({ activites: sansLes('minigolf_blacklight'), aVolonte: ['laser_game'] });
+const corpsEnvoye = (journal, m) => { const x = journal.filter((e) => e.m === m && (m === 'PATCH' || (/staff-reservations/.test(String(e.url)) && e.corps && !e.corps.dryRun))).pop(); return x ? x.corps : null; };
+
+async function preparerLAcces() {
+  serveur.changerSession(C.roleDe('manager'));
+  if (!C.CATALOGUE_BANC.formules.has(ID_ILLIMITEE)) await garderParLeServeur({ ...CORPS_ILLIMITE, aVolonte: { bowling: true, laser_game: true } });
+}
+
+async function ouvrirLAcces(page) {
+  await C.ouvrirFenetre(page, JOUEURS);
+  await page.waitForFunction((id) => getEffectiveCatalogFormules().some((f) => f.id === id), ID_ILLIMITEE, { timeout: 10000 }).catch(() => {});
+  await page.evaluate(() => rsPeindreActivites && rsPeindreActivites()).catch(() => {});
+  await page.waitForSelector('#rsIllimite', { timeout: 8000 }).catch(() => {});
+  await page.locator('#rsIllimite').click();
+  await page.waitForSelector('#rsAcces .rs-ill-act', { timeout: 8000 }).catch(() => {});
+}
+
+async function scenarioJ(browser) {
+  console.log('\n[J] Reserver : l acces illimite choisi activite par activite');
+  await preparerLAcces();
+  const m = await ouvrir(browser, { role: 'manager' });
+  try {
+    const { page, journal } = m;
+    await ouvrirLAcces(page);
+    const depart = await lireTuiles(page, '#rsAcces');
+    const libres = depart.tuiles.filter((t) => t.id !== 'bowling' && t.id !== 'laser_game');
+    ok(memeEnsemble(depart.tuiles.map((t) => t.id), DU_CENTRE()) && depart.tuiles.every((t) => t.pris === 'true')
+      && tuileDe(depart, 'bowling').volonte === 'true' && tuileDe(depart, 'bowling').uneFois === 'false' && tuileDe(depart, 'laser_game').volonte === 'true' && tuileDe(depart, 'laser_game').uneFois === 'false'
+      && libres.length > 0 && libres.every((t) => t.volonte === '' && t.uneFois === '')
+      && depart.prix[0] === '32 € par joueur' && /^prix de l’accès illimité/.test(depart.prix[1]),
+    '[J] Reserver : chaque activite de l acces est une tuile allumee d office, le bowling et le laser « À volonté », le prix de l acces par joueur', depart);
+    // Eteindre Minigolf, le bowling « 1 fois », l arrivee a 16:00 : de vrais clics.
+    await page.locator('[id="rsIlT-minigolf_blacklight"]').click();
+    await page.locator('[id="rsIlV-bowling-non"]').click();
+    await page.waitForSelector('.rs-s-l.is-formule .rs-h[data-heure="16:00"]', { timeout: 10000 });
+    await page.locator('.rs-s-l.is-formule .rs-h[data-heure="16:00"]').click();
+    await C.pret(page);
+    await page.waitForTimeout(500);
+    const choisi = await lireTuiles(page, '#rsAcces');
+    // L heure fixe du bowling, telle que la page la montre avant « Créer » : le plan cree doit la tenir.
+    const heureBowling = (String(tuileDe(choisi, 'bowling').tag).match(/^1 h à (\d{2}:\d{2})$/) || [])[1] || '';
+    const phrase = phraseJ('16:00', '19:00', heureBowling);
+    ok(tuileDe(choisi, 'minigolf_blacklight').pris === 'false' && tuileDe(choisi, 'minigolf_blacklight').tag === 'hors accès'
+      && tuileDe(choisi, 'bowling').pris === 'true' && tuileDe(choisi, 'bowling').uneFois === 'true' && tuileDe(choisi, 'bowling').volonte === 'false' && heureDansLaVisite(heureBowling, '16:00', '19:00')
+      && tuileDe(choisi, 'laser_game').volonte === 'true' && choisi.dit === phrase && choisi.ticket === `${phrase}.` && choisi.prix[0] === '32 € par joueur',
+    '[J] eteindre Minigolf, le bowling « 1 fois », 16:00 : la phrase ne cite que ce qui est choisi', { ...choisi, attendue: phrase });
+    await photo(page, 'reserver-choix', '#quickBookOverlay .rs, #quickBookOverlay');
+    const debut = new Set([...B.base.reservations.keys()]);
+    await creer(page, 'Team building choisi');
+    const [r] = await neufs(page, debut);
+    const corps = corpsEnvoye(journal, 'POST');
+    ok(corps && corps.illimite && memeEnsemble(corps.illimite.activites || [], sansLes('minigolf_blacklight')) && (corps.illimite.aVolonte || []).join() === 'laser_game',
+      '[J] le corps envoye porte le choix : les activites prises, le laser garde', corps && corps.illimite);
+    const p = planDe(r);
+    const t = retenues(r);
+    ok(r && r.formule_id === ID_ILLIMITEE && Number(r.price) === 32 * JOUEURS && p.illimite && p.illimite.formuleId === ID_ILLIMITEE && memeEnsemble(p.illimite.activites || [], sansLes('minigolf_blacklight')) && (p.illimite.aVolonte || []).join() === 'laser_game',
+      '[J] le dossier garde son choix dans son plan, au prix de l acces par joueur', r && { formule: r.formule_id, prix: r.price, choix: p.illimite });
+    ok(r && memeEnsemble(activitesDuPlan(r), sansLes('minigolf_blacklight')) && t.gardees.length === 0 && t.uneFois === 1 && t.heures.bowling === heureBowling && t.minutesBowling === 60 && t.pistes.length >= 2
+      && memeEnsemble((r.lanes || []).map(Number), t.pistes) && t.departs.join() === departsAttendus('16:00', '19:00', JOUEURS).join(),
+    '[J] le plan ne porte que les activites choisies : le bowling 1 h a l heure que la page montrait, ses pistes pour cette heure seulement, le laser garde a chaque depart, pas de minigolf', r && { heureMontree: heureBowling, activites: activitesDuPlan(r), retenues: t, lanes: r.lanes });
+    // La fiche le dit, avec les memes mots.
+    await page.waitForFunction((id) => state.reservations.some((x) => String(x.id) === String(id)), r && r.id, { timeout: 8000 }).catch(() => {});
+    const fiche = await page.evaluate((id) => { openPos(id); const texte = ((document.getElementById('ficheAcces') || {}).innerText || '').replace(/\s+/g, ' ').trim(); closePos(); return texte; }, r && r.id);
+    ok(fiche === `Accès illimité ${phrase}. Laser, ${JOUEURS} armes gardées à chaque départ.`, '[J] la fiche dit le choix, et seulement lui', fiche);
+
+    // UN CORPS FORGE EST REFUSE (422), a la creation comme a la modification, et rien ne s ecrit : une
+    // activite hors du centre, une hors de l acces (l acces sans arcades), « à volonté » sur les arcades,
+    // aucune activite.
+    await garderParLeServeur({ ...CORPS_ILLIMITE, nom: 'Illimité sans arcades', activites: sansLes('arcade_time'), aVolonte: { bowling: false, laser_game: true } });
+    const avantForge = B.base.reservations.size;
+    const forges = [
+      ['hors du centre', ID_ILLIMITEE, { activites: ['bowling', 'golf_oclock'], aVolonte: [] }],
+      ['hors de l acces', ID_SANS_ARCADES, { activites: ['arcade_time', 'laser_game'], aVolonte: [] }],
+      ['a volonte sur les arcades', ID_ILLIMITEE, { activites: ['bowling', 'arcade_time'], aVolonte: ['arcade_time'] }],
+      ['aucune activite', ID_ILLIMITEE, { activites: [], aVolonte: [] }],
+    ];
+    const refus = [];
+    for (const [quoi, formule, illimite] of forges) {
+      const rep = await reserverIllimite(`Forge ${quoi}`, JOUEURS, '16:00', formule, { illimite });
+      refus.push({ quoi, statut: rep.statut, message: String((rep.json || {}).message || (rep.json || {}).error || '') });
+    }
+    const avantPatch = JSON.stringify(B.base.reservations.get(Number(r && r.id)));
+    const patch = await page.evaluate(async (i) => {
+      const x = state.reservations.find((y) => String(y.id) === String(i));
+      const corpsForge = { ...buildReservationApiPayload({ ...x, illimite: { activites: ['bowling', 'golf_oclock'], aVolonte: ['bowling'] } }, {}), baseUpdatedAt: x.updatedAt };
+      return window.__vraiAppel('PATCH', '/api/staff-reservations', corpsForge);
+    }, r && r.id);
+    retirerFormules([ID_SANS_ARCADES]);
+    ok(refus.every((x) => x.statut === 422 && /accès illimité|activité|bowling et le laser/.test(x.message)) && B.base.reservations.size === avantForge
+      && patch.statut === 422 && JSON.stringify(B.base.reservations.get(Number(r && r.id))) === avantPatch,
+    '[J] un corps forge est refuse, a la creation comme a la modification : rien ne s ecrit', { refus, patch: { statut: patch.statut, message: (patch.json || {}).message } });
+
+    // UN DOSSIER SANS CE CHAMP (comme avant le soir du 20/11) se planifie comme avant : toute sa formule,
+    // ses pistes et ses armes gardees, aucun choix ecrit.
+    const ancien = dossierDe(await reserverIllimite('Dossier d avant', JOUEURS, '17:30'));
+    const ta = ancien ? retenues(ancien) : null;
+    ok(ancien && planDe(ancien).illimite === undefined && memeEnsemble(activitesDuPlan(ancien), DU_CENTRE()) && ta.pistes.length >= 2 && ta.gardees.join() === `17:30-20:30:${ta.pistes.length}`
+      && ta.departs.join() === departsAttendus('17:30', '20:30', JOUEURS).join() && Number(ancien.price) === 32 * JOUEURS,
+    '[J] un dossier sans le champ se planifie comme avant : toute la formule, pistes et armes gardees, aucun choix ecrit', ancien && { choix: planDe(ancien).illimite, activites: activitesDuPlan(ancien), retenues: ta });
+
+    // La derniere activite allumee reste allumee : une autre fenetre, toutes eteintes sauf Billard.
+    await page.evaluate(() => { if (typeof closeQuickBook === 'function') closeQuickBook(); });
+    await page.waitForTimeout(300);
+    await ouvrirLAcces(page);
+    for (const id of sansLes('billards')) await page.locator(`[id="rsIlT-${id}"]`).click();
+    await page.locator('[id="rsIlT-billards"]').click();
+    await page.waitForTimeout(300);
+    const derniere = await lireTuiles(page, '#rsAcces');
+    const dit = await page.evaluate(() => document.body.innerText.includes('Gardez au moins une activité.'));
+    ok(derniere.tuiles.filter((x) => x.pris === 'true').map((x) => x.id).join() === 'billards' && dit, '[J] la derniere activite reste allumee, et le comptoir le dit', { prises: derniere.tuiles.filter((x) => x.pris === 'true').map((x) => x.id), dit });
+    await page.evaluate(() => { if (typeof closeQuickBook === 'function') closeQuickBook(); });
+  } finally { await finir(m, 'J'); }
+}
+
+async function scenarioK(browser) {
+  console.log('\n[K] Modifier : le meme choix, relu et change');
+  await preparerLAcces();
+  const m = await ouvrir(browser, { role: 'manager' });
+  try {
+    const { page, journal } = m;
+    serveur.changerSession(C.roleDe('manager'));
+    // Le dossier de depart : l acces sans Minigolf, le bowling 1 fois, cree au handler de Reserver ; et un
+    // dossier sans le champ, comme avant le soir du 20/11.
+    const cree = await reserverIllimite('Groupe choisi', JOUEURS, '16:00', ID_ILLIMITEE, { illimite: CHOIX_J() });
+    const ID = Number(cree.json.reservation && cree.json.reservation.id);
+    const ancienRep = await reserverIllimite('Dossier d avant', JOUEURS, '18:00');
+    const ANCIEN = Number(ancienRep.json.reservation && ancienRep.json.reservation.id);
+    ok(Boolean(ID) && Boolean(ANCIEN), '[K] les dossiers de depart sont crees', { statut: [cree.statut, ancienRep.statut], message: [cree.json.message, ancienRep.json.message] });
+    if (!ID || !ANCIEN) return;
+    await page.evaluate((liste) => { liste.forEach((x) => { window.__FIXTURE__.jours[window.__FIXTURE__.jour].push(x); upsertReservationInState(x); }); renderStaff(); }, [cree.json.reservation, ancienRep.json.reservation]);
+    await page.evaluate(() => { serveurSaitModifierABlanc = true; }); // eslint-disable-line no-undef
+    const ouvrirModifier = async (i) => {
+      await page.evaluate((x) => { closePos(); openPos(x); setTab('modifier'); }, i);
+      await page.waitForSelector('#editAcces .rs-ill-act', { timeout: 8000 }).catch(() => {});
+      await verdictPose(page);
+    };
+    await ouvrirModifier(ID);
+    const relu = await lireTuiles(page, '#editAcces');
+    const heureK = retenues(B.base.reservations.get(ID)).heures.bowling;
+    const rangees = await page.evaluate(() => ({ bowling: ((document.querySelector('#posOverlay [data-a-volonte="bowling"]') || {}).textContent || '').trim(), laser: ((document.querySelector('#posOverlay [data-a-volonte="laser_game"]') || {}).textContent || '').trim(), rangs: Array.from(document.querySelectorAll('#posOverlay .fm-acts [data-edit-activity]')).map((x) => x.dataset.editActivity) }));
+    ok(tuileDe(relu, 'minigolf_blacklight').pris === 'false' && relu.tuiles.length === DU_CENTRE().length && relu.tuiles.filter((x) => x.id !== 'minigolf_blacklight').every((x) => x.pris === 'true')
+      && tuileDe(relu, 'bowling').uneFois === 'true' && tuileDe(relu, 'laser_game').volonte === 'true'
+      && heureDansLaVisite(heureK, '16:00', '19:00') && tuileDe(relu, 'bowling').tag === `1 h à ${heureK}` && memeEnsemble(rangees.rangs, sansLes('minigolf_blacklight'))
+      && relu.dit === `${phraseJ('16:00', '19:00', heureK)}. Laser, ${JOUEURS} armes gardées à chaque départ.`
+      && rangees.bowling.startsWith(`Bowling 1 h à ${heureK}, piste`) && /^Bowling 1 h à \d{2}:\d{2}, pistes? [\d ,et]+\.$/.test(rangees.bowling) && rangees.laser === `Laser, ${JOUEURS} armes gardées à chaque départ.`,
+    '[K] Modifier relit le choix du dossier : les memes tuiles que Reserver, la phrase et les rangees le disent', { heureK, relu, rangees });
+    // Reprendre Minigolf, retirer Duckpin, le bowling « À volonté » : de vrais clics.
+    await page.locator('[id="edIlT-minigolf_blacklight"]').click();
+    await page.locator('[id="edIlT-duckpin_bowling"]').click();
+    await page.locator('[id="edIlV-bowling-oui"]').click();
+    await verdictPose(page);
+    const change = await lireTuiles(page, '#editAcces');
+    const modifs = await page.evaluate(() => ((document.getElementById('editModifs') || {}).textContent || '').replace(/\s+/g, ' ').trim());
+    ok(tuileDe(change, 'minigolf_blacklight').pris === 'true' && tuileDe(change, 'duckpin_bowling').pris === 'false' && tuileDe(change, 'bowling').volonte === 'true'
+      && modifs.includes('Accès illimité : Bowling à volonté, avec Minigolf, sans Duckpin')
+      && new RegExp(`^À volonté de 16:00 à 19:00 : ${nomsDe(sansLes('duckpin_bowling'))}\\. Bowling, pistes? [\\d ,et]+ gardées? toute la visite\\. Laser, ${JOUEURS} armes gardées à chaque départ\\.$`).test(change.dit),
+    '[K] Modifier change le choix : la barre le dit, le verdict du serveur dit ce qui sera garde', { change, modifs });
+    await photo(page, 'modifier-choix', '#posOverlay .edit-modal');
+    await enregistrerEdition(page);
+    const apres = B.base.reservations.get(ID);
+    const ta = retenues(apres);
+    const envoye = corpsEnvoye(journal, 'PATCH');
+    ok(envoye && envoye.illimite && memeEnsemble(envoye.illimite.activites || [], sansLes('duckpin_bowling')) && memeEnsemble(envoye.illimite.aVolonte || [], ['bowling', 'laser_game'])
+      && planDe(apres).illimite && memeEnsemble(planDe(apres).illimite.activites || [], sansLes('duckpin_bowling')) && memeEnsemble(activitesDuPlan(apres), sansLes('duckpin_bowling'))
+      && ta.gardees.join() === `16:00-19:00:${ta.pistes.length}` && ta.departs.join() === departsAttendus('16:00', '19:00', JOUEURS).join() && Number(apres.price) === 32 * JOUEURS,
+    '[K] Modifier enregistre le choix change : le plan le suit, au meme prix par joueur', { envoye: envoye && envoye.illimite, choix: planDe(apres).illimite, activites: activitesDuPlan(apres), retenues: ta, prix: apres && apres.price });
+    await ouvrirModifier(ID);
+    const rouvert = await lireTuiles(page, '#editAcces');
+    ok(tuileDe(rouvert, 'duckpin_bowling').pris === 'false' && tuileDe(rouvert, 'minigolf_blacklight').pris === 'true' && tuileDe(rouvert, 'bowling').volonte === 'true', '[K] rouvert, Modifier relit le nouveau choix', rouvert.tuiles);
+    // Un autre changement (un joueur de plus) garde le choix : rien n en part, le serveur relit celui du
+    // dossier, et le prix suit le groupe.
+    await page.locator('#editPaxInput').fill(String(JOUEURS + 1));
+    await verdictPose(page);
+    await enregistrerEdition(page);
+    const onze = B.base.reservations.get(ID);
+    const sansChoix = corpsEnvoye(journal, 'PATCH');
+    ok(onze && Number(onze.pax) === JOUEURS + 1 && sansChoix && !Object.prototype.hasOwnProperty.call(sansChoix, 'illimite')
+      && planDe(onze).illimite && memeEnsemble(planDe(onze).illimite.activites || [], sansLes('duckpin_bowling')) && memeEnsemble(activitesDuPlan(onze), sansLes('duckpin_bowling')) && Number(onze.price) === 32 * (JOUEURS + 1),
+    '[K] Modifier : un autre changement garde le choix, le prix suit le groupe', onze && { pax: onze.pax, envoye: sansChoix && sansChoix.illimite, choix: planDe(onze).illimite, activites: activitesDuPlan(onze), prix: onze.price });
+    // UN DOSSIER SANS LE CHAMP, dans Modifier : les tuiles disent sa formule (tout, garde), et 12 joueurs le
+    // replanifient comme avant, sans choix ecrit.
+    await ouvrirModifier(ANCIEN);
+    const lu = await lireTuiles(page, '#editAcces');
+    await page.locator('#editPaxInput').fill('12');
+    await verdictPose(page);
+    await enregistrerEdition(page);
+    const ancien = B.base.reservations.get(ANCIEN);
+    const tAncien = retenues(ancien);
+    const envoyeAncien = corpsEnvoye(journal, 'PATCH');
+    ok(lu.tuiles.length === DU_CENTRE().length && lu.tuiles.every((x) => x.pris === 'true') && tuileDe(lu, 'bowling').volonte === 'true' && tuileDe(lu, 'laser_game').volonte === 'true'
+      && ancien && Number(ancien.pax) === 12 && envoyeAncien && !Object.prototype.hasOwnProperty.call(envoyeAncien, 'illimite')
+      && planDe(ancien).illimite === undefined && memeEnsemble(activitesDuPlan(ancien), DU_CENTRE()) && tAncien.gardees.join() === `18:00-21:00:${tAncien.pistes.length}` && tAncien.departs.join() === departsAttendus('18:00', '21:00', 12).join(),
+    '[K] un dossier sans le champ, modifie, se replanifie comme avant : toute sa formule, aucun choix ecrit', { tuiles: lu.tuiles, retenues: tAncien, choix: ancien && planDe(ancien).illimite, envoye: envoyeAncien && envoyeAncien.illimite });
+  } finally { await finir(m, 'K'); }
+}
+
+// [L] Sans navigateur : les pistes, les armes et les mails suivent le choix.
+async function scenarioL() {
+  console.log('\n[L] les pistes, les armes et les mails suivent le choix');
+  await preparerLAcces();
+  B.semer([]);
+  const armes = Number(require(path.join(ROOT, 'lib/ops-knowledge.js')).getCenter(CENTRE).resources.laser.weaponCount);
+  // Vingt joueurs au minigolf et au billard seulement, a 15:30 : aucune piste, aucune arme.
+  const x = dossierDe(await reserverIllimite('Minigolf et billard', 20, '15:30', ID_ILLIMITEE, { illimite: { activites: ['minigolf_blacklight', 'billards'], aVolonte: [] } }));
+  const tx = x ? retenues(x) : null;
+  ok(x && (x.lanes || []).length === 0 && tx.pistes.length === 0 && memeEnsemble(activitesDuPlan(x), ['minigolf_blacklight', 'billards']),
+    '[L] un acces sans bowling ne tient aucune piste', x && { lanes: x.lanes, retenues: tx, activites: activitesDuPlan(x) });
+  // Toute l arene a 15:30 pour un groupe de laser : elle passe, l acces sans laser n y tient aucune arme.
+  const z = await serveur.appeler('POST', '/api/staff-reservations', { centerId: CENTRE, date: JOUR, startTime: '15:30', duration: 0.5, totalDuration: 0.5, pax: armes, status: 'pending', type: 'laser', laserGames: 1, name: 'Toute l arene', phone: TEL, lanes: [] });
+  // Et a chaque demi-heure de sa visite, la garde de la base (ensureLaserCapacity) laisse toute l arene a
+  // un autre groupe : elle n invente aucune partie de laser a un acces pris sans lui (une formule sans
+  // partie posee en recoit une, formulaFallbackLaserBlocks, apres son heure : 15:30 ne la voyait pas).
+  const { ensureLaserCapacity, mapReservation: lue } = require(path.join(ROOT, 'lib/database.js'));
+  const pleines = x ? ['15:30', '16:00', '16:30', '17:00', '17:30', '18:00'].filter((h) => {
+    try { ensureLaserCapacity({ type: 'laser', centerId: CENTRE, startTime: h, duration: 0.5, pax: armes, lanes: [], opsPlan: null }, [lue(x)]); return false; } catch (erreur) { return true; }
+  }) : ['sans dossier'];
+  ok(x && tx.armes === 0 && pleines.length === 0 && z.statut < 400 && Boolean(dossierDe(z)), '[L] un acces sans laser ne tient aucune arme : toute l arene reste a vendre', { statut: z.statut, message: z.json.message || z.json.error, armes, pleines });
+  // Les mails disent le programme choisi, et le rappel ne promet pas un laser que le groupe n a pas pris.
+  const choisi = dossierDe(await reserverIllimite('Mail choisi', JOUEURS, '16:00', ID_ILLIMITEE, { illimite: CHOIX_J() }));
+  const { mapReservation } = require(path.join(ROOT, 'lib/database.js'));
+  const { buildMessage } = require(path.join(ROOT, 'lib/ops-communications.js'));
+  const confirmation = choisi ? buildMessage({ reservation: mapReservation(choisi), templateId: 'confirmation', channel: 'email' }) : null;
+  const corpsMail = String((confirmation && confirmation.body) || '');
+  const heureL = choisi ? retenues(choisi).heures.bowling : '';
+  ok(heureDansLaVisite(heureL, '16:00', '19:00') && corpsMail.includes(`- ${heureL} à ${plusUneHeure(heureL)}, Bowling`) && !/minigolf/i.test(corpsMail),
+    '[L] le mail de confirmation dit le programme choisi : le bowling a son heure fixe, pas de minigolf', { heureL, mail: corpsMail.slice(0, 900) });
+  const rappel = x ? buildMessage({ reservation: mapReservation(x), templateId: 'reminder_48h', channel: 'email' }) : null;
+  const corpsRappel = String((rappel && rappel.body) || '');
+  ok(/Un seul service/.test(corpsRappel) && !/Laser Game/.test(corpsRappel), '[L] le rappel ne promet pas le laser a un acces choisi sans lui', corpsRappel.slice(0, 900));
 }
 
 // ---------------------------------------------------------------------------
@@ -886,7 +1200,7 @@ async function scenarioE() {
 }
 
 // ---------------------------------------------------------------------------
-const SCENARIOS = { A: scenarioA, B: scenarioB, C: scenarioC, D: scenarioD, F: scenarioF, G: scenarioG, I: scenarioI, E: scenarioE };
+const SCENARIOS = { A: scenarioA, B: scenarioB, C: scenarioC, D: scenarioD, F: scenarioF, G: scenarioG, I: scenarioI, J: scenarioJ, K: scenarioK, L: scenarioL, E: scenarioE };
 
 function verifierLesAncres() {
   let mortes = 0;

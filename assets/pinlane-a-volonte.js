@@ -14,8 +14,8 @@
 
    Elle se lit sur le plan du dossier, jamais sur une copie : les pistes que la
    base a finalement attribuees, les heures d un dossier deplace au planning.
-     - « Tout à volonté de 15:30 à 18:30. » (« 6 activités à volonté de 15:30
-       à 18:30. » quand le gerant en a decoche)
+     - « À volonté de 15:30 à 18:30 : Bowling, Laser, Minigolf. » (les
+       activites que le dossier comprend, et seulement elles)
      - « Bowling, pistes 3 et 4 gardées toute la visite. »
        (en long : « Bowling à volonté, pistes 3 et 4 gardées de 15:30 à 18:30 »)
      - « Laser, 10 armes gardées à chaque départ. »
@@ -25,11 +25,13 @@
        pistes 3 et 4. », « Laser, 1 partie à 16:30. »
    UN SEUL MOT, UNE SEULE FORME (2026-11-20, Ansar : « pour les activités
    illimité on comprend rien, un truc bcp plus simple à comprendre »). Le
-   produit s appelle « Accès illimité » partout ; sa phrase commence toujours
-   par « Tout à volonté », puis dit ce qui est garde ou joue une fois, sans
-   deux-points au milieu. Chaque activite a aussi son etiquette courte
-   (`etiquettes` : « à volonté », « 1 h à 15:30 », « 1 partie à 16:30 ») pour
-   les photos de la fenetre Reserver.
+   produit s appelle « Accès illimité » partout. Chaque activite a aussi son
+   etiquette courte (`etiquettes` : « à volonté », « 1 h à 15:30 », « 1 partie
+   à 16:30 ») pour les tuiles de la fenetre Reserver.
+   LE CHOIX ACTIVITE PAR ACTIVITE (2026-11-20, le soir) : chaque dossier prend
+   les activites qu il veut (lib/formule-comptoir.js, opsPlan.illimite), et la
+   phrase ne cite que celles-la : « À volonté de 15:30 à 18:30 : Laser,
+   Minigolf, Arcades · Bowling 1 h à 16:00 » (phraseDuChoix).
 
    Double vie : global navigateur (window.PinlaneAVolonte) et module CommonJS,
    comme assets/pinlane-pistes.js.
@@ -85,11 +87,44 @@
     return blocsDe(plan, 'bowling_lane', true).length > 0 || blocsDe(plan, 'laser_arena', true).length > 0;
   }
 
+  // LE NOM D UNE ACTIVITE DANS LA PHRASE, court comme sa tuile : « Laser » pour le Laser Game, le
+  // premier mot d un nom de deux mots quand il suffit (« Minigolf »), les deux premiers d un nom plus
+  // long (« Fun Run »).
+  function nomCourt(id, nom) {
+    if (id === 'bowling') return 'Bowling';
+    if (id === 'laser_game') return 'Laser';
+    const mots = String(nom || id || '').trim().split(/\s+/).filter(Boolean);
+    if (mots.length > 2) return mots.slice(0, 2).join(' ');
+    return mots.length === 2 && mots[0].length >= 6 ? mots[0] : mots.join(' ');
+  }
+
+  // LA PHRASE DU CHOIX (2026-11-20, un gerant : « il faut qu on puisse choisir activité par activité
+  // pour l illimité »). Elle ne cite que ce que le dossier comprend, et dit le bowling ou le laser joues
+  // une fois a leur heure : « À volonté de 15:30 à 18:30 : Laser, Minigolf, Arcades · Bowling 1 h à
+  // 16:00 ». Avant toute heure, « pendant 3 h ». `comprises` : [{ id, nom }] dans l ordre du centre ;
+  // `uneFois` : [{ activite, court }].
+  function phraseDuChoix({ debut = '', fin = '', minutes = 0, comprises = [], uneFois = [] } = {}) {
+    const aHeure = new Set(uneFois.map((u) => u.activite));
+    const libres = comprises.filter((a) => a && a.id && !aHeure.has(a.id)).map((a) => nomCourt(a.id, a.nom));
+    const quand = debut && fin ? `de ${debut} à ${fin}` : `pendant ${dureeDite(minutes)}`;
+    return [libres.length ? `À volonté ${quand} : ${libres.join(', ')}` : '', ...uneFois.map((u) => u.court)].filter(Boolean).join(' · ');
+  }
+
+  // Les activites d un plan, quand l appelant ne dit pas ce que le dossier comprend.
+  function activitesDuPlan(plan) {
+    const vues = new Map();
+    [...(Array.isArray(plan.resourceBlocks) ? plan.resourceBlocks : []), ...(Array.isArray(plan.timeline) ? plan.timeline : [])].forEach((pas) => {
+      if (pas && pas.activityId && !vues.has(pas.activityId)) vues.set(pas.activityId, String(pas.label || '').replace(/\s+à volonté$/, ''));
+    });
+    return [...vues].map(([id, nom]) => ({ id, nom }));
+  }
+
   // CE QUE L ACCES COMPREND ET GARDE. `plan` : le plan du dossier (opsPlan). Options : `minutes`,
-  // la duree vendue (la visite ne finit pas avant) ; `toutes`, le dossier comprend toutes les
-  // activites du centre. Rend null sans plan lisible.
-  // `nombre` : combien d activites le dossier comprend, quand ce ne sont pas toutes celles du centre.
-  function resume(plan, { minutes = 0, toutes = true, nombre = 0 } = {}) {
+  // la duree vendue (la visite ne finit pas avant) ; `comprises`, les activites que le dossier
+  // comprend ([{ id, nom }], son choix), sinon celles du plan. Rend null sans plan lisible.
+  // (`toutes` et `nombre` disaient « Tout à volonté » ou « 6 activités à volonté » avant le choix
+  // activite par activite : la phrase cite maintenant chacune.)
+  function resume(plan, { minutes = 0, comprises = null } = {}) {
     if (!plan || typeof plan !== 'object') return null;
     const blocs = Array.isArray(plan.resourceBlocks) ? plan.resourceBlocks : [];
     const etapes = Array.isArray(plan.timeline) ? plan.timeline : [];
@@ -142,7 +177,7 @@
       const de = Math.min(...pistesUneFois.map((bloc) => bornes(bloc).debut).filter((m) => m !== null));
       const duree = pistesUneFois.reduce((total, bloc) => { const b = bornes(bloc); return total + (b.debut !== null && b.fin !== null ? b.fin - b.debut : 0); }, 0);
       const pistes = [...new Set(pistesUneFois.flatMap((bloc) => (Array.isArray(bloc.lanes) ? bloc.lanes : []).map(Number)))].filter((n) => Number.isInteger(n) && n > 0).sort((a, b) => a - b);
-      uneFois.push({ activite: 'bowling', debut: heureDe(de), phrase: `Bowling ${dureeDite(duree)} à ${heureDe(de)}${pistes.length ? `, ${pistesDites(pistes)}` : ''}.`, etiquette: `${dureeDite(duree)} à ${heureDe(de)}`, precision: pistes.length ? pistesDites(pistes) : '' });
+      uneFois.push({ activite: 'bowling', debut: heureDe(de), phrase: `Bowling ${dureeDite(duree)} à ${heureDe(de)}${pistes.length ? `, ${pistesDites(pistes)}` : ''}.`, court: `Bowling ${dureeDite(duree)} à ${heureDe(de)}`, etiquette: `${dureeDite(duree)} à ${heureDe(de)}`, precision: pistes.length ? pistesDites(pistes) : '' });
     }
     const lasersUneFois = blocsDe(plan, 'laser_arena', false);
     if (lasersUneFois.length) {
@@ -154,10 +189,11 @@
       });
       const heures = [...parPartie.values()].sort((x, y) => x - y).map(heureDe);
       const quand = heures.length > 1 ? `${heures.slice(0, -1).join(', ')} et ${heures[heures.length - 1]}` : heures[0];
-      if (heures.length) uneFois.push({ activite: 'laser_game', debut: heures[0], phrase: `Laser, ${pluriel(heures.length, 'partie')} à ${quand}.`, etiquette: `${pluriel(heures.length, 'partie')} à ${quand}`, precision: '' });
+      if (heures.length) uneFois.push({ activite: 'laser_game', debut: heures[0], phrase: `Laser, ${pluriel(heures.length, 'partie')} à ${quand}.`, court: `Laser ${pluriel(heures.length, 'partie')} à ${quand}`, etiquette: `${pluriel(heures.length, 'partie')} à ${quand}`, precision: '' });
     }
-    // (ce qui se joue une fois suit la phrase : elle n a plus a dire « sauf »)
-    const phrase = `${tete({ toutes, nombre })} de ${heureDe(debut)} à ${heureDe(fin)}.`;
+    // La phrase ne cite que ce que le dossier comprend ; ce qui se joue une fois s y dit a son heure.
+    const liste = Array.isArray(comprises) ? comprises : activitesDuPlan(plan);
+    const phrase = phraseDuChoix({ debut: heureDe(debut), fin: heureDe(fin), comprises: liste, uneFois: uneFois.filter((u) => liste.some((a) => a && a.id === u.activite)) });
     // L etiquette de chaque activite garde ou jouee une fois, pour sa photo.
     const etiquettes = {};
     [...gardes, ...uneFois].forEach((ligne) => { etiquettes[ligne.activite] = { etiquette: ligne.etiquette, precision: ligne.precision || '' }; });
@@ -168,16 +204,9 @@
       gardes,
       uneFois,
       etiquettes,
-      texte: [phrase, ...gardes.map((g) => g.courte), ...uneFois.map((u) => u.phrase)].join(' '),
+      // La phrase, puis ce que les pistes et les armes gardees deviennent.
+      texte: [`${phrase}.`, ...gardes.map((g) => g.courte)].join(' '),
     };
-  }
-
-  // LE DEBUT DE LA PHRASE, le meme avant toute heure (« Tout à volonté pendant 3 h ») et sur un plan
-  // (« Tout à volonté de 15:30 à 18:30 ») : toutes les activites du centre, sinon combien.
-  function tete({ toutes = true, nombre = 0 } = {}) {
-    if (toutes !== false) return 'Tout à volonté';
-    const n = Math.max(0, Math.trunc(Number(nombre) || 0));
-    return n > 0 ? `${pluriel(n, 'activité')} à volonté` : 'Les activités comprises à volonté';
   }
 
   // La phrase longue d un bloc garde, pour la carte du planning (son infobulle et sa lecture vocale).
@@ -188,5 +217,5 @@
     return garde ? garde.longue : '';
   }
 
-  return { resume, phraseDuBloc, gardeQuelqueChose, tete };
+  return { resume, phraseDuBloc, phraseDuChoix, nomCourt, gardeQuelqueChose };
 }));

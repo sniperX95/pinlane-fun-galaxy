@@ -9955,16 +9955,38 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv.rs .rs-acces-prix { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 1px; text-align: right; }
 .qb-modal.rv.rs .rs-acces-prix b { font-size: 16px; font-weight: 600; line-height: 1.25; }
 .qb-modal.rv.rs .rs-acces-prix small { font-size: 13px; line-height: 1.3; color: var(--muted); }
-.qb-modal.rv.rs .rs-ill-acts { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 12px 8px; margin: 0; padding: 0; list-style: none; }
-.qb-modal.rv.rs .rs-ill-act { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.qb-modal.rv.rs .rs-ill-ph { display: block; aspect-ratio: 3 / 2; margin-bottom: 5px; border-radius: 8px; background: var(--rs-touche) center / cover no-repeat; }
-.qb-modal.rv.rs .rs-ill-ph.is-vide { background: color-mix(in srgb, var(--rs-ill-c, var(--muted)) 30%, var(--surface)); }
-.qb-modal.rv.rs .rs-ill-act b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; line-height: 1.3; }
-.qb-modal.rv.rs .rs-ill-tag { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; line-height: 1.3; color: var(--muted); }
-.qb-modal.rv.rs .rs-ill-act.is-fixe .rs-ill-tag { font-weight: 600; color: var(--text); }
-.qb-modal.rv.rs .rs-ill-act small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; line-height: 1.3; color: var(--muted); }
-/* (au telephone, quatre photos par rangee : les huit activites tiennent en deux rangees) */
-@media (max-width: 600px) { .qb-modal.rv.rs .rs-ill-acts { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px 6px; } }
+/* (un groupe plus petit que le minimum : « à partir de 6 joueurs » se lit en couleur) */
+.qb-modal.rv.rs .rs-acces-prix small.is-peu { font-weight: 600; color: var(--warning); }
+/* LES TUILES DE L ACCES (2026-11-20, le soir, un gerant : « il faut qu on puisse choisir activité par
+   activité ») : la meme tuile dans Reserver et dans Modifier (#editAcces). Chaque activite se prend ou se
+   retire d un toucher, comme les tuiles des activites : prise, fond bleu clair et bord bleu ; retiree,
+   photo grisee et « hors accès ». Le bowling et le laser prennent deux colonnes : dessous, « À volonté |
+   1 fois ». Leur place ne change pas quand on les retire, rien ne saute. */
+:is(.qb-modal.rv.rs, #editAcces) .rs-ill-acts { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; width: 100%; margin: 0; padding: 0; list-style: none; align-items: start; }
+:is(.qb-modal.rv.rs, #editAcces) .rs-ill-act { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+:is(.qb-modal.rv.rs, #editAcces) .rs-ill-act.is-heure { grid-column: span 2; }
+:is(.qb-modal.rv.rs, #editAcces) .rs-ill-t { display: flex; flex-direction: column; align-items: stretch; gap: 1px; min-width: 0; width: 100%; margin: 0; padding: 6px 6px 8px; border: 0; border-radius: 12px; background: transparent; box-shadow: inset 0 0 0 1px var(--rs-ligne, var(--line)); color: var(--text); font: inherit; text-align: left; cursor: pointer; transition: background-color 160ms ease, box-shadow 160ms ease; }
+:is(.qb-modal.rv.rs, #editAcces) .rs-ill-act.is-on .rs-ill-t { background: var(--accent-soft); box-shadow: inset 0 0 0 1.5px var(--accent); }
+:is(.qb-modal.rv.rs, #editAcces) .rs-ill-ph { display: block; aspect-ratio: 3 / 2; margin-bottom: 5px; border-radius: 8px; background: var(--rs-touche, var(--subtle)) center / cover no-repeat; transition: filter 160ms ease, opacity 160ms ease; }
+:is(.qb-modal.rv.rs, #editAcces) .rs-ill-act.is-heure .rs-ill-ph { aspect-ratio: 3 / 1; }
+:is(.qb-modal.rv.rs, #editAcces) .rs-ill-ph.is-vide { background: color-mix(in srgb, var(--rs-ill-c, var(--muted)) 30%, var(--surface)); }
+:is(.qb-modal.rv.rs, #editAcces) .rs-ill-act.is-off .rs-ill-ph { filter: grayscale(1); opacity: .45; }
+:is(.qb-modal.rv.rs, #editAcces) .rs-ill-t b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; line-height: 1.3; }
+:is(.qb-modal.rv.rs, #editAcces) .rs-ill-act.is-on .rs-ill-t b { color: var(--accent-strong); }
+:is(.qb-modal.rv.rs, #editAcces) .rs-ill-act.is-off .rs-ill-t b { font-weight: 500; color: var(--muted); }
+:is(.qb-modal.rv.rs, #editAcces) .rs-ill-tag { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; line-height: 1.3; color: var(--muted); }
+:is(.qb-modal.rv.rs, #editAcces) .rs-ill-act.is-fixe .rs-ill-tag { font-weight: 600; color: var(--text); }
+/* « À volonté | 1 fois » : le selecteur a deux choix de Modifier (.fm-choix-seg), en petit. */
+:is(.qb-modal.rv.rs, #editAcces) .rs-ill-seg { display: flex; gap: 2px; padding: 2px; border-radius: 9px; background: var(--subtle); }
+:is(.qb-modal.rv.rs, #editAcces) .rs-ill-seg button { flex: 1 1 0; min-width: 0; height: 32px; padding: 0 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 0; border-radius: 7px; background: transparent; color: var(--muted); font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; }
+:is(.qb-modal.rv.rs, #editAcces) .rs-ill-seg button[aria-checked="true"] { background: var(--surface); color: var(--text); font-weight: 600; box-shadow: var(--shadow-sm), 0 0 0 1px var(--line); cursor: default; }
+:is(.qb-modal.rv.rs, #editAcces) .rs-ill-seg button:not([aria-checked="true"]):hover { color: var(--text); }
+:is(.qb-modal.rv.rs, #editAcces) :is(.rs-ill-t, .rs-ill-seg button):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (hover: hover) { :is(.qb-modal.rv.rs, #editAcces) .rs-ill-act.is-off .rs-ill-t:hover { background: var(--rs-touche, var(--subtle)); } }
+@media (pointer: coarse) { :is(.qb-modal.rv.rs, #editAcces) .rs-ill-seg button { height: 44px; } }
+@media (prefers-reduced-motion: reduce) { :is(.qb-modal.rv.rs, #editAcces) :is(.rs-ill-t, .rs-ill-ph) { transition: none; } }
+/* (au telephone, quatre colonnes : le bowling et le laser cote a cote, puis les autres quatre par rangee) */
+@media (max-width: 600px) { :is(.qb-modal.rv.rs, #editAcces) .rs-ill-acts { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px 6px; } }
 /* (l acces illimite au ticket n a pas d icone : la case reste, vide, pour aligner les noms) */
 .qb-modal.rv.rs .rs-tk-i:empty { visibility: hidden; }
 

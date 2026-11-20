@@ -32189,7 +32189,9 @@ function buildEditProgramFromReservation(r) {
   // lues au catalogue du centre. Sa carte ne nomme pas chacune avec un mot que la ligne ci-dessous
   // reconnait (golf, billard, duckpin...).
   if (formule && formule.illimite && Array.isArray(formule.illimite.activites)) {
-    formule.illimite.activites.forEach((id) => {
+    // (2026-11-20, le soir) Le dossier qui a choisi ses activites (opsPlan.illimite) : celles-la seulement.
+    const prises = typeof choixIllimiteDuDossier === 'function' && estFormuleIllimitee(formule) ? choixIllimiteDuDossier(r, formule).activites : formule.illimite.activites;
+    prises.forEach((id) => {
       if (id === 'bowling') { etat.bowling.on = true; etat.bowling.duration = Number(formule.bowlingDur || 1); } else if (id === 'laser_game') { etat.laser_game.on = true; etat.laser_game.games = Math.max(1, getFormulaLaserGameCount(formule)); } else if (id) etat.others[id] = true;
     });
     return etat;
@@ -32384,11 +32386,18 @@ function getEditPrixEstime() {
 
 function ensureEditProgram(r) {
   if (!state.editState) return null;
-  if (!state.editState.programmeEdite) {
-    state.editState.programmeEdite = buildEditProgramFromReservation(r);
-    state.editState.programmeEditeInitial = JSON.stringify(state.editState.programmeEdite);
+  const e = state.editState;
+  // UNE FORMULE LUE APRES L OUVERTURE (2026-11-20, le soir) : les formules gardees, dont l acces illimite,
+  // arrivent apres un Modifier ouvert d abord (lireLesFormulesGardeesPourModifier). Le programme bati sans
+  // sa formule ne gardait que le bowling, le laser et le libre passaient en « Ajouter » ; tant que personne
+  // n y a touche, il se rebatit sur elle.
+  if (e.programmeEdite && e.programmeSansSaFormule && !editProgramAChange() && r && r.formuleId && resolveDisplayFormule(r.formuleId)) delete e.programmeEdite;
+  if (!e.programmeEdite) {
+    e.programmeEdite = buildEditProgramFromReservation(r);
+    e.programmeEditeInitial = JSON.stringify(e.programmeEdite);
+    e.programmeSansSaFormule = Boolean(r && String(r.type || '') === 'formule' && r.formuleId && !resolveDisplayFormule(r.formuleId));
   }
-  return state.editState.programmeEdite;
+  return e.programmeEdite;
 }
 
 function editProgramAChange() {
@@ -32466,6 +32475,10 @@ function getEditProgramItems() {
 }
 
 function toggleEditActivity(id) {
+  // SOUS UN ACCES ILLIMITE (2026-11-20, le soir) : retirer ou ajouter une de ses activites, c est son
+  // choix (les tuiles du dessus), jamais une formule adaptee que le choix du dossier ecraserait.
+  const acces = typeof choixIllimiteEdition === 'function' && choixIllimiteEdition() ? resolveDisplayFormule(state.editState.formuleId) : null;
+  if (acces && activitesDeLIllimite(acces).includes(String(id))) { basculerIllimiteEdition(id); return; }
   const programme = state.editState && state.editState.programmeEdite;
   if (!programme) return;
   if (id === 'bowling') programme.bowling.on = !programme.bowling.on;
@@ -32786,12 +32799,18 @@ function renderEditIllimiteChoix() {
     ...choix.map((f) => segment(enIllimite && String(actuelle.id) === String(f.id), `data-formule="${escapeHtml(f.id)}" onclick="passerEnIllimiteEdition(this.dataset.formule)"`, motDe(f))),
   ].join('');
   let dit = '';
+  let tuiles = '';
   if (enIllimite) {
-    // (ce que le serveur gardera, des que son verdict est la ; un dossier deja en acces illimite : son plan)
-    const ecrit = dossierEcritDuVerdict() || (formuleChangeeEdition() ? null : state.selectedRes);
+    // (ce que le serveur gardera, des que son verdict est la ; un dossier deja en acces illimite et un
+    // choix inchange : son plan ; avant, la phrase du choix a l ecran)
+    const ecrit = dossierEcritDuVerdict() || (formuleChangeeEdition() || illimiteChangeEdition() ? null : state.selectedRes);
     const acces = ecrit ? accesIllimiteDuDossier(ecrit) : null;
     const nom = choix.length === 1 && rvNomFormule(actuelle) !== 'Accès illimité' ? `${rvNomFormule(actuelle)}. ` : '';
-    dit = `${nom}${acces ? acces.texte : phraseDeLIllimite(actuelle).texte}`;
+    const choixE = choixIllimiteEdition();
+    dit = `${nom}${acces ? acces.texte : `${phraseDuChoixIllimite(actuelle, choixE, null)}.`}`;
+    // LE MEME CHOIX QUE DANS RESERVER (2026-11-20, le soir), au lieu de la lecture seule : chaque activite
+    // se retire ou se reprend, le bowling et le laser « À volonté » ou « 1 fois ».
+    tuiles = illimiteTuilesHtml(actuelle, choixE, { acces, gestes: { basculer: 'basculerIllimiteEdition', volonte: 'volonteIllimiteEdition' }, prefixe: 'edIl' });
   } else if (e.versProgrammeNormal || origineIllimitee) {
     dit = 'Chaque activité à son prix, le bowling et le laser à leur heure. Les pistes et les armes ne sont plus gardées toute la visite.';
   } else if (choix.length === 1) {
@@ -32799,7 +32818,77 @@ function renderEditIllimiteChoix() {
     const f = choix[0];
     dit = `Accès illimité, ${phraseDeLIllimite(f).court.replace(/^Tout/, 'tout')}, ${formatMontant(f.price)} par joueur.`;
   }
-  return `<div class="fm-choix-acces" id="editAcces" role="group" aria-label="Programme"><div class="fm-choix-seg" role="radiogroup" aria-label="À la carte ou accès illimité">${segments}</div>${dit ? `<p class="fm-choix-dit${enIllimite ? ' is-acces' : ''}" role="status">${escapeHtml(dit)}</p>` : ''}</div>`;
+  return `<div class="fm-choix-acces" id="editAcces" role="group" aria-label="Programme"><div class="fm-choix-seg" role="radiogroup" aria-label="À la carte ou accès illimité">${segments}</div>${dit ? `<p class="fm-choix-dit${enIllimite ? ' is-acces' : ''}" role="status">${escapeHtml(dit)}</p>` : ''}${tuiles}</div>`;
+}
+
+// LE CHOIX DE L ACCES DANS MODIFIER : celui que la personne a touche, sinon celui du dossier (son plan),
+// sinon celui d office. null hors d un acces illimite.
+function choixIllimiteEdition() {
+  const e = state.editState;
+  const f = e && !e.versProgrammeNormal && String(e.type || '') === 'formule' && e.formuleId ? resolveDisplayFormule(e.formuleId) : null;
+  if (!estFormuleIllimitee(f)) return null;
+  return choixIllimiteRelu(f, e.illimiteChoix) || choixIllimiteDeDepartEdition(f);
+}
+
+// Le choix d avant toute touche : celui du plan du dossier, ou celui d office pour un acces pris ici.
+function choixIllimiteDeDepartEdition(f) {
+  return formuleChangeeEdition() ? choixIllimiteDOffice(f) : choixIllimiteDuDossier(state.selectedRes, f);
+}
+
+function illimiteChangeEdition() {
+  const e = state.editState;
+  const choix = choixIllimiteEdition();
+  if (!e || !choix || !e.illimiteChoix) return false;
+  return cleChoixIllimite(choix) !== cleChoixIllimite(choixIllimiteDeDepartEdition(resolveDisplayFormule(e.formuleId)));
+}
+
+// Le choix touche : le programme du dossier suit (ses activites prises, celles que « À la carte »
+// reprendrait), sans devenir une formule adaptee, puis la fiche se redessine et le serveur juge.
+function poserChoixIllimiteEdition(suite) {
+  const e = state.editState;
+  const r = state.selectedRes;
+  if (!e || !r || !suite) return;
+  e.illimiteChoix = suite;
+  const dossier = dossierPourFormule(r);
+  const programme = buildEditProgramFromReservation({ ...dossier, opsPlan: { ...(dossier.opsPlan || {}), illimite: suite } });
+  e.programmeEdite = programme;
+  e.programmeEditeInitial = JSON.stringify(programme);
+  e.programmeSansSaFormule = false;
+  if (state.editError) setEditError('');
+  renderPos();
+}
+
+function basculerIllimiteEdition(id) {
+  const e = state.editState;
+  const choix = choixIllimiteEdition();
+  if (!choix) return;
+  const suite = choixIllimiteBascule(resolveDisplayFormule(e.formuleId), choix, String(id || ''));
+  if (!suite) { toast('Gardez au moins une activité.'); return; }
+  poserChoixIllimiteEdition(suite);
+}
+
+function volonteIllimiteEdition(id, oui) {
+  const choix = choixIllimiteEdition();
+  if (!choix) return;
+  const suite = choixIllimiteVolonte(choix, String(id || ''), oui === true);
+  if (cleChoixIllimite(suite) !== cleChoixIllimite(choix)) poserChoixIllimiteEdition(suite);
+}
+
+// « Accès illimité : sans Minigolf, Bowling 1 fois » : ce que le choix change, dans la barre du bas.
+function modifsIllimiteEdition() {
+  if (!illimiteChangeEdition()) return [];
+  const f = resolveDisplayFormule(state.editState.formuleId);
+  const avant = choixIllimiteDeDepartEdition(f);
+  const apres = choixIllimiteEdition();
+  const morceaux = [];
+  activitesDeLIllimite(f).forEach((id) => {
+    const a = avant.activites.includes(id);
+    const b = apres.activites.includes(id);
+    if (a && !b) morceaux.push(`sans ${rsNomTuile(id)}`);
+    else if (!a && b) morceaux.push(`avec ${rsNomTuile(id)}`);
+    if (b && ILL_A_HEURE.includes(id) && (!a || avant.aVolonte.includes(id) !== apres.aVolonte.includes(id))) morceaux.push(`${rsNomTuile(id)} ${apres.aVolonte.includes(id) ? 'à volonté' : '1 fois'}`);
+  });
+  return morceaux.length ? [`Accès illimité : ${morceaux.join(', ')}`] : [];
 }
 
 // SOUS UN ACCES ILLIMITE A VOLONTE (2026-11-19) : le bowling et le laser ne se reglent ni en heure ni en
@@ -32807,18 +32896,27 @@ function renderEditIllimiteChoix() {
 // pistes 3 et 4 gardées toute la visite. », « Laser, 10 armes gardées à chaque départ. »), lus sur le
 // plan du serveur (son verdict, sinon le dossier tel qu enregistre), et ceux de la formule tant qu il
 // n a rien dit (2026-11-20).
+// LE CHOIX DU DOSSIER FAIT FOI (2026-11-20, le soir) : le bowling et le laser pris « À volonté » disent
+// ce qui est garde, pris « 1 fois » leur heure fixe (« Bowling 1 h à 16:00, pistes 3 et 4. ») ; l acces
+// fixe 1 h et 1 partie, rien ne se regle dessous. Un acces sans choix suit sa formule, comme avant.
 function gardeAVolonteEdition(r) {
   const e = state.editState;
   if (!e || e.versProgrammeNormal) return null;
-  const f = String(e.type || '') === 'formule' && e.formuleId ? resolveDisplayFormule(e.formuleId) : null;
-  const voulues = estFormuleIllimitee(f) && Array.isArray(f.illimite.aVolonte) ? f.illimite.aVolonte : [];
+  const choix = choixIllimiteEdition();
+  const voulues = choix ? ILL_A_HEURE.filter((id) => choix.activites.includes(id)) : [];
   if (!voulues.length) return null;
-  const ecrit = dossierEcritDuVerdict() || (formuleChangeeEdition() ? null : r);
+  const ecrit = dossierEcritDuVerdict() || (formuleChangeeEdition() || illimiteChangeEdition() ? null : r);
   const acces = ecrit ? accesIllimiteDuDossier(ecrit) : null;
-  const garde = (id) => (acces ? acces.gardes.find((g) => g.activite === id) : null);
   const dit = {};
-  if (voulues.includes('bowling')) { const g = garde('bowling'); dit.bowling = g ? g.courte : 'Bowling, pistes gardées toute la visite.'; }
-  if (voulues.includes('laser_game')) { const g = garde('laser_game'); dit.laser_game = g ? g.courte : 'Laser, armes gardées à chaque départ.'; }
+  voulues.forEach((id) => {
+    if (choix.aVolonte.includes(id)) {
+      const g = acces ? acces.gardes.find((x) => x.activite === id) : null;
+      dit[id] = g ? g.courte : id === 'bowling' ? 'Bowling, pistes gardées toute la visite.' : 'Laser, armes gardées à chaque départ.';
+    } else {
+      const u = acces ? acces.uneFois.find((x) => x.activite === id) : null;
+      dit[id] = u ? u.phrase : id === 'bowling' ? 'Bowling 1 h, à heure fixe.' : 'Laser, 1 partie à heure fixe.';
+    }
+  });
   return dit;
 }
 
@@ -33018,6 +33116,7 @@ function editionReplanifie() {
   if (!e || !origine) return false;
   return editProgramAChange()
     || formuleChangeeEdition()
+    || illimiteChangeEdition()
     || Boolean(e.versProgrammeNormal)
     || String(e.startTime || '') !== String(origine.startTime || '')
     || String(e.date || '') !== String(origine.date || '')
@@ -33857,6 +33956,8 @@ function resumeModifsEdition() {
   const nomFormule = (id) => { const f = resolveDisplayFormule(id); return f ? rvNomFormule(f) : String(id || 'Programme'); };
   if (formuleChangee) modifs.push(`${nomFormule(origine.formuleId)} → ${nomFormule(e.formuleId)}`);
   if (e.versProgrammeNormal) modifs.push(`${nomFormule(origine.formuleId)} → programme normal`);
+  // (« Accès illimité : sans Minigolf, Bowling 1 fois », le choix touche ici)
+  modifs.push(...modifsIllimiteEdition());
   if (!formuleChangee && e.duration != null && Number(e.duration) > 0 && Number(e.duration) !== Number(origine.duration)) modifs.push(`Durée ${formatDurationLabel(Number(origine.duration) || 0)} → ${formatDurationLabel(Number(e.duration))}`);
   const pistesAvant = parseLaneInput((origine.lanes || []).join(','));
   const pistesApres = parseLaneInput(e.lanesStr);
@@ -35271,8 +35372,11 @@ function preparerModificationEdition(options = {}) {
   const dossierFormule = dossierPourFormule(state.selectedRes);
   // (une formule gardee au catalogue du centre, l acces illimite compris, n est pas dans FORMULES :
   // son bowling se lit sur sa carte, sinon le dossier partait sans pistes et la base le refusait)
-  const requiresLanes = reservationNeedsLanes(dossierFormule.type, dossierFormule.formuleId)
-    || (dossierFormule.type === 'formule' && Boolean(resolveDisplayFormule(dossierFormule.formuleId)?.hasBowling));
+  // (un acces illimite choisi sans le bowling n en tient aucune : le serveur le relit, lib/database.js)
+  const choixAcces = choixIllimiteEdition();
+  const requiresLanes = (reservationNeedsLanes(dossierFormule.type, dossierFormule.formuleId)
+    || (dossierFormule.type === 'formule' && Boolean(resolveDisplayFormule(dossierFormule.formuleId)?.hasBowling)))
+    && !(choixAcces && !choixAcces.activites.includes('bowling'));
   const requiredCount = requiresLanes ? getEditBowlingCapacityNeed(dossierFormule, es).requiredCount : 0;
   const duration = Number(es.duration);
   const pax = Number(es.pax);
@@ -35354,6 +35458,10 @@ function preparerModificationEdition(options = {}) {
     if (!items.some((item) => item.activityId === 'bowling')) lanesVoulues.length = 0;
   }
   const nouvelleFormule = formuleChangee ? resolveDisplayFormule(es.formuleId) : null;
+  // L ACCES ILLIMITE CHOISI ACTIVITE PAR ACTIVITE (2026-11-20, le soir) : le choix touche ici part, et un
+  // acces pris ici part avec le sien ; le serveur le relit contre l acces et le centre. Sans geste, rien ne
+  // part : le serveur garde celui du dossier (calculerLaModification), un dossier d avant reste tel quel.
+  const illimiteEnvoye = choixAcces && (illimiteChangeEdition() || (nouvelleFormule && estFormuleIllimitee(nouvelleFormule))) ? choixIllimiteEnvoye(choixAcces) : null;
   // CE QU ON AFFICHE EST CE QUI S ECRIT. Un prix tape, ou celui que le dossier
   // garde (un nom, une heure, des extras), part tel quel : le serveur ecrit le
   // montant du corps. Sans lui, l ANCIEN montant resterait en base pendant que
@@ -35406,6 +35514,9 @@ function preparerModificationEdition(options = {}) {
       updated.program = null;
       updated.opsPlan = null;
     }
+    // (sans geste, aucun choix ne part, pas meme celui qu une ecriture d avant aurait laisse sur la copie)
+    if (illimiteEnvoye) updated.illimite = illimiteEnvoye;
+    else delete updated.illimite;
     // L ecart voulu par le comptoir (prix d ami) est repris tel quel : editer
     // l heure ou les joueurs d un dossier offert ne doit pas le repasser au
     // plein tarif en silence. La REFERENCE, elle, suit la nouvelle configuration.
@@ -37553,7 +37664,8 @@ function rvComposition() {
     const formule = rvFormule();
     if (!formule) return vide;
     if (s.adaptee && s.visit) return s.visit;
-    return buildEditProgramFromReservation({ formuleId: formule.id });
+    // (un acces illimite : les activites que la fenetre a prises, rsChoixIllimite)
+    return buildEditProgramFromReservation({ formuleId: formule.id, ...(estFormuleIllimitee(formule) ? { opsPlan: { illimite: rsChoixIllimite(formule) } } : {}) });
   }
   if (s.type === 'visite') return s.visit || vide;
   if (s.type === 'bowling') return { bowling: { on: true, duration: Number(s.duration) || 1 }, laser_game: { on: false }, others: {} };
@@ -38035,22 +38147,91 @@ function phraseDeLIllimite(f) {
   };
 }
 
-// L ETIQUETTE DE CHAQUE ACTIVITE COMPRISE, sous sa photo : « à volonté », ou l heure de ce qui se
-// joue une fois. Sur un plan (`acces`, assets/pinlane-a-volonte.js), ce que le plan garde vraiment :
-// « à volonté » et ses pistes, « 1 h à 15:30 » ; avant l heure, ce que la formule promet.
-function etiquettesDeLIllimite(f, acces = null) {
+// ── L ACCES ILLIMITE CHOISI ACTIVITE PAR ACTIVITE (2026-11-20, le soir) ──────
+// Un gerant : « je comprends pas ton activités en illimité, il faut qu on puisse choisir activité par
+// activité pour l illimité, genre quelle activité en illimité » (la demande vient de Marius, Gembloux :
+// « un team building qui a accès à toutes les activités »). Dans Reserver et dans Modifier, les activites
+// de l acces sont des tuiles a bascule : toutes prises d office, chacune se retire ou se reprend d un
+// toucher, la derniere reste ; le bowling et le laser pris disent « À volonté » ou « 1 fois », regles
+// d office comme la formule. Le choix part au serveur (`illimite`, relu contre la formule et le centre,
+// lib/formule-comptoir.js) et vit dans le plan du dossier (opsPlan.illimite). Le prix reste celui de
+// l acces, par joueur.
+const ILL_A_HEURE = ['bowling', 'laser_game'];
+
+// Ce qu un acces peut comprendre ici : ses activites que le centre vend, dans l ordre des tuiles.
+function activitesDeLIllimite(f) {
   if (!estFormuleIllimitee(f)) return [];
-  const ill = f.illimite;
-  const aVolonte = Array.isArray(ill.aVolonte) ? ill.aVolonte : [];
-  const lues = acces && acces.etiquettes ? acces.etiquettes : {};
-  const choix = typeof getQuickBookActivityChoices === 'function' ? getQuickBookActivityChoices() : [];
-  const ids = [...choix.map((c) => c.id).filter((id) => ill.activites.includes(id)), ...ill.activites.filter((id) => !choix.some((c) => c.id === id))];
-  return ids.map((id) => {
-    const lue = lues[id];
-    const fixe = (id === 'bowling' || id === 'laser_game') && !aVolonte.includes(id);
-    const promise = fixe ? { etiquette: id === 'bowling' ? '1 h' : '1 partie', precision: 'à heure fixe' } : { etiquette: 'à volonté', precision: id === 'bowling' ? 'pistes gardées' : id === 'laser_game' ? 'armes gardées' : '' };
-    return { id, nom: rsNomTuile(id), ...(lue && lue.etiquette ? lue : promise), fixe };
-  });
+  const siennes = f.illimite.activites.map(String);
+  const centre = typeof getQuickBookActivityChoices === 'function' ? getQuickBookActivityChoices().map((c) => c.id) : [];
+  return centre.length ? centre.filter((id) => siennes.includes(id)) : siennes;
+}
+
+// Le choix d office : tout ce que l acces comprend, garde comme sa formule le dit.
+function choixIllimiteDOffice(f) {
+  const activites = activitesDeLIllimite(f);
+  const aVolonte = ILL_A_HEURE.filter((id) => activites.includes(id) && (f.illimite.aVolonte || []).includes(id));
+  return { formuleId: String(f.id), activites, aVolonte };
+}
+
+// Un choix relu sur son acces (ce que l acces ou le centre ne comprend plus tombe), sinon null.
+function choixIllimiteRelu(f, choix) {
+  if (!estFormuleIllimitee(f) || !choix || String(choix.formuleId || '') !== String(f.id) || !Array.isArray(choix.activites)) return null;
+  const activites = activitesDeLIllimite(f).filter((id) => choix.activites.includes(id));
+  if (!activites.length) return null;
+  return { formuleId: String(f.id), activites, aVolonte: ILL_A_HEURE.filter((id) => activites.includes(id) && (choix.aVolonte || []).includes(id)) };
+}
+
+// Le choix d un dossier : celui que son plan garde, sinon celui d office.
+function choixIllimiteDuDossier(r, f) {
+  return choixIllimiteRelu(f, r && r.opsPlan && r.opsPlan.illimite) || choixIllimiteDOffice(f);
+}
+
+// Deux choix pareils ont la meme cle (lib/formule-comptoir.js, cleDuChoix).
+function cleChoixIllimite(choix) {
+  if (!choix) return '';
+  const liste = (v) => (Array.isArray(v) ? v.map(String).sort().join(',') : '');
+  return `${liste(choix.activites)}|${liste(choix.aVolonte)}`;
+}
+
+// Ce qui part au serveur : les activites prises et ce qui est garde.
+function choixIllimiteEnvoye(choix) {
+  return choix ? { activites: choix.activites.slice(), aVolonte: choix.aVolonte.slice() } : null;
+}
+
+// Toucher une tuile : l activite se retire ou se reprend. null quand c est la derniere prise.
+function choixIllimiteBascule(f, choix, id) {
+  if (!choix || !activitesDeLIllimite(f).includes(id)) return choix;
+  const prise = choix.activites.includes(id);
+  if (prise && choix.activites.length <= 1) return null;
+  const activites = activitesDeLIllimite(f).filter((x) => (x === id ? !prise : choix.activites.includes(x)));
+  // (une activite reprise revient comme la formule la garde)
+  const aVolonte = prise ? choix.aVolonte.filter((x) => x !== id) : [...choix.aVolonte, ...(ILL_A_HEURE.includes(id) && (f.illimite.aVolonte || []).includes(id) ? [id] : [])];
+  return { formuleId: choix.formuleId, activites, aVolonte: ILL_A_HEURE.filter((x) => activites.includes(x) && aVolonte.includes(x)) };
+}
+
+function choixIllimiteVolonte(choix, id, oui) {
+  if (!choix || !ILL_A_HEURE.includes(id) || !choix.activites.includes(id)) return choix;
+  const aVolonte = oui ? [...choix.aVolonte, id] : choix.aVolonte.filter((x) => x !== id);
+  return { ...choix, aVolonte: ILL_A_HEURE.filter((x) => aVolonte.includes(x)) };
+}
+
+// LA PHRASE DU CHOIX, celle de partout (assets/pinlane-a-volonte.js, phraseDuChoix) : « À volonté de
+// 15:30 à 18:30 : Laser, Minigolf, Arcades · Bowling 1 h à 16:00 ». Sur un plan du serveur (`acces`),
+// ses heures ; avant, la duree de l acces (« À volonté pendant 3 h : … · Bowling 1 h »).
+// (recopiee sans le module pour les bancs qui ne chargent que cette console)
+function phraseDuChoixIllimite(f, choix, acces = null) {
+  if (!estFormuleIllimitee(f) || !choix) return '';
+  const comprises = choix.activites.map((id) => ({ id, nom: rvNomActivite(id) }));
+  const uneFois = acces && Array.isArray(acces.uneFois)
+    ? acces.uneFois.filter((u) => choix.activites.includes(u.activite) && u.court)
+    : ILL_A_HEURE.filter((id) => choix.activites.includes(id) && !choix.aVolonte.includes(id)).map((id) => ({ activite: id, court: id === 'bowling' ? 'Bowling 1 h' : 'Laser 1 partie' }));
+  const args = acces && acces.debut && acces.fin ? { debut: acces.debut, fin: acces.fin, comprises, uneFois } : { minutes: Number(f.illimite.minutes) || 0, comprises, uneFois };
+  if (typeof window !== 'undefined' && window.PinlaneAVolonte && typeof window.PinlaneAVolonte.phraseDuChoix === 'function') return window.PinlaneAVolonte.phraseDuChoix(args);
+  const nom = (a) => (a.id === 'laser_game' ? 'Laser' : rsNomTuile(a.id));
+  const aHeure = new Set(uneFois.map((u) => u.activite));
+  const libres = comprises.filter((a) => !aHeure.has(a.id)).map(nom);
+  const quand = args.debut ? `de ${args.debut} à ${args.fin}` : `pendant ${rvHeuresLabel(args.minutes / 60)}`;
+  return [libres.length ? `À volonté ${quand} : ${libres.join(', ')}` : '', ...uneFois.map((u) => u.court)].filter(Boolean).join(' · ');
 }
 
 // La photo d une activite au comptoir : celle du centre (BDG_PHOTOS, celles de Gembloux seulement a
@@ -38062,27 +38243,41 @@ function photoDActiviteDuCentre(id) {
   return trouve ? `/assets/fungalaxy/${trouve[1]}-carte.webp` : '';
 }
 
-// LES ACTIVITES COMPRISES EN PHOTOS : chacune sa vraie photo, son nom et son etiquette. Une liste a
-// lire, pas des boutons : l acces illimite se prend entier.
-function rsPhotosDeLIllimiteHtml(f, acces = null) {
-  const etiquettes = etiquettesDeLIllimite(f, acces);
-  if (!etiquettes.length) return '';
-  return `<ul class="rs-ill-acts" aria-label="Ce qui est compris">${etiquettes.map((e) => {
-    const photo = photoDActiviteDuCentre(e.id);
-    const visuel = photo ? `<span class="rs-ill-ph" style="background-image:url('${escapeHtml(photo)}')" aria-hidden="true"></span>` : `<span class="rs-ill-ph is-vide" style="--rs-ill-c:${rvCouleur(e.id)}" aria-hidden="true"></span>`;
-    return `<li class="rs-ill-act${e.fixe ? ' is-fixe' : ''}" data-ill-activite="${escapeHtml(e.id)}">${visuel}<b>${escapeHtml(e.nom)}</b><span class="rs-ill-tag">${escapeHtml(e.etiquette)}</span>${e.precision ? `<small>${escapeHtml(e.precision)}</small>` : ''}</li>`;
+// LES TUILES DE L ACCES : chaque activite en vraie photo, son nom, ce qu elle donne. Prise (fond bleu
+// clair, bord bleu) ou retiree (photo grisee, « hors accès ») d un toucher ; le bowling et le laser pris
+// ont dessous « À volonté » et « 1 fois ». Sur un plan (`acces`), ce que l heure choisie garde vraiment
+// (« pistes 3 et 4 », « 1 h à 16:00 »). `gestes` : les fonctions de la page, { basculer, volonte }.
+function illimiteTuilesHtml(f, choix, { acces = null, gestes, prefixe = 'rsIl' } = {}) {
+  const ids = activitesDeLIllimite(f);
+  if (!ids.length || !choix) return '';
+  const lues = acces && acces.etiquettes ? acces.etiquettes : {};
+  return `<ul class="rs-ill-acts" aria-label="Activités de l’accès illimité">${ids.map((id) => {
+    const prise = choix.activites.includes(id);
+    const aHeure = ILL_A_HEURE.includes(id);
+    const garde = prise && choix.aVolonte.includes(id);
+    const nom = rsNomTuile(id);
+    const photo = photoDActiviteDuCentre(id);
+    const visuel = photo ? `<span class="rs-ill-ph" style="background-image:url('${escapeHtml(photo)}')" aria-hidden="true"></span>` : `<span class="rs-ill-ph is-vide" style="--rs-ill-c:${rvCouleur(id)}" aria-hidden="true"></span>`;
+    const lue = lues[id] && lues[id].etiquette ? lues[id] : null;
+    // (sur le plan : les pistes gardees, les armes, l heure de ce qui se joue une fois)
+    // (« hors accès » se dit pareil pour le bowling et pour les arcades, sans accord a deviner)
+    const tag = !prise ? 'hors accès' : !aHeure ? 'à volonté' : lue ? (garde ? lue.precision || lue.etiquette : lue.etiquette) : garde ? (id === 'bowling' ? 'pistes gardées' : 'armes gardées') : 'à heure fixe';
+    const dit = `${nom}, ${prise ? `dans l’accès${aHeure ? (garde ? ', à volonté' : ', 1 fois') : ''}` : 'hors accès'}`;
+    const seg = prise && aHeure ? `<span class="rs-ill-seg" role="radiogroup" aria-label="${escapeHtml(`${nom} : à volonté ou 1 fois`)}">${[[true, 'À volonté', 'oui'], [false, '1 fois', 'non']].map(([oui, mot, cle]) => `<button type="button" role="radio" id="${prefixe}V-${escapeHtml(id)}-${cle}" aria-checked="${garde === oui}" data-ill-volonte="${cle}" onclick="${gestes.volonte}(this.closest('[data-ill-activite]').dataset.illActivite, ${oui})">${mot}</button>`).join('')}</span>` : '';
+    return `<li class="rs-ill-act${prise ? ' is-on' : ' is-off'}${aHeure ? ' is-heure' : ''}${aHeure && prise && !garde ? ' is-fixe' : ''}" data-ill-activite="${escapeHtml(id)}"><button type="button" class="rs-ill-t" id="${prefixe}T-${escapeHtml(id)}" aria-pressed="${prise}" aria-label="${escapeHtml(dit)}" onclick="${gestes.basculer}(this.closest('[data-ill-activite]').dataset.illActivite)">${visuel}<b>${escapeHtml(nom)}</b><span class="rs-ill-tag">${escapeHtml(tag)}</span></button>${seg}</li>`;
   }).join('')}</ul>`;
 }
 
 // Ce que le plan d un dossier comprend et garde, lu par la regle commune (assets/pinlane-a-volonte.js).
+// Ce qu il comprend : son choix (opsPlan.illimite), sinon le programme d une formule adaptee, sinon tout
+// l acces.
 function accesIllimiteDuDossier(r) {
   if (!r || !r.formuleId || !r.opsPlan || typeof window === 'undefined' || !window.PinlaneAVolonte) return null;
   const f = resolveDisplayFormule(r.formuleId);
   if (!estFormuleIllimitee(f)) return null;
-  const items = r.program && Array.isArray(r.program.items) && !illimiteDeSaCarte(r) ? r.program.items.map((item) => item && item.activityId).filter(Boolean) : f.illimite.activites;
-  const centre = typeof getQuickBookActivityChoices === 'function' ? getQuickBookActivityChoices().map((c) => c.id) : [];
-  const comprises = [...new Set(items)];
-  return window.PinlaneAVolonte.resume(r.opsPlan, { minutes: Number(f.illimite.minutes) || 0, toutes: centre.length > 0 && centre.every((id) => comprises.includes(id)), nombre: comprises.length });
+  const items = r.program && Array.isArray(r.program.items) && !illimiteDeSaCarte(r) ? r.program.items.map((item) => item && item.activityId).filter(Boolean) : choixIllimiteDuDossier(r, f).activites;
+  const comprises = [...new Set(items)].map((id) => ({ id, nom: rvNomActivite(id) }));
+  return window.PinlaneAVolonte.resume(r.opsPlan, { minutes: Number(f.illimite.minutes) || 0, comprises });
 }
 
 // LE CRENEAU A VERIFIER : ce que la visite occupe vraiment, comme au serveur. Une formule a
@@ -39608,6 +39803,9 @@ function rvConstruire({ simulation = false } = {}) {
     extras,
     ...(needsLanes && rvPistesALaMain() ? { pistesALaMain: rvPistesALaMain() } : {}),
     ...(!simulation && rsFmActive(s) ? { formuleSurMesure: { nom: rsFmNom(s), ...(s.fm.mode === 'personne' && rsFmMontant(s.fm) != null ? { prixParPersonne: rsFmMontant(s.fm) } : {}) } } : {}),
+    // L ACCES ILLIMITE CHOISI ACTIVITE PAR ACTIVITE (2026-11-20, le soir) : les activites prises et ce
+    // qui est garde ; le serveur le relit contre l acces et le centre (lib/formule-comptoir.js).
+    ...(formule && !adaptee && estFormuleIllimitee(formule) ? { illimite: choixIllimiteEnvoye(rsChoixIllimite(formule)) } : {}),
     // « Réserver pour Dupont » : le dossier du groupe prive, que le serveur rattache a sa privatisation.
     ...(s.privatisation ? { privatisation: s.privatisation } : {}),
   };
@@ -41994,7 +42192,8 @@ function rsHeuresDeLaFormule() {
 
 function rsListeFormule() {
   const s = quickBookState;
-  const cle = JSON.stringify([s.date, s.pax, s.formuleId, rvPistesALaMain(), rvRevisionDuJour(s.date), Math.floor(currentTimeDecimal() * 60)]);
+  // (un acces illimite sans bowling ou avec le bowling une fois ne tient pas aux memes heures)
+  const cle = JSON.stringify([s.date, s.pax, s.formuleId, rvPistesALaMain(), rvRevisionDuJour(s.date), Math.floor(currentTimeDecimal() * 60), cleChoixIllimite(rsChoixIllimite())]);
   if (rsFormuleMemo.cle !== cle) {
     const bonnes = new Set(rvHeuresQuiTiennent());
     rsFormuleMemo = { cle, liste: rsHeuresDeLaFormule().map((heure) => ({ heure, mot: '', tient: bonnes.has(heure) })) };
@@ -42033,11 +42232,11 @@ function rsBlocFormuleHtml() {
   const f = s.type === 'formule' ? rvFormule() : null;
   if (!f) return '<section class="rs-seance is-vide" aria-label="À quelle heure ?"><div class="rs-s-n"><b>À quelle heure ?</b><small>Touchez une formule, ses heures s’affichent ici.</small></div></section>';
   const nom = rvNomFormule(f);
-  // L acces illimite dit ce que l heure donne : « Tout à volonté de 15:30 à 18:30 », lu sur le plan
-  // du serveur ; avant lui, rien de plus que le bloc du dessus (« Tout à volonté pendant 3 h »).
+  // L acces illimite dit ce que l heure donne, la visite de son arrivee a sa fin, lue sur le plan du
+  // serveur ; ce qu elle comprend est dans le bloc du dessus, avec ses heures (2026-11-20, le soir).
   // Sa question n a pas de deux-points au milieu (2026-11-20).
   const acces = estFormuleIllimitee(f) ? ((rvPlanCourant() || {}).acces || null) : null;
-  const duree = estFormuleIllimitee(f) ? (acces ? acces.phrase : '') : rsDureeFormule();
+  const duree = estFormuleIllimitee(f) ? (acces && acces.debut && acces.fin ? `Visite de ${acces.debut} à ${acces.fin}.` : '') : rsDureeFormule();
   const question = estFormuleIllimitee(f) ? 'À quelle heure arrive le groupe ?' : `${nom} à quelle heure ?`;
   const { liste, lue } = rsListeFormule();
   const choisie = s.startTime;
@@ -43335,11 +43534,13 @@ function rsLignesActivites() {
     // 15:30 à 18:30 »), puis ce qui est garde et ce qui se joue une fois a son heure, une ligne
     // chacun. Le plan du serveur fait foi. Ce qui est compris se voit en photos a gauche : le ticket
     // ne le recopie plus (2026-11-20).
+    // (2026-11-20, le soir) La phrase ne cite que les activites prises ; dessous, les pistes et les armes
+    // gardees. Ce qui se joue une fois est deja dans la phrase, a son heure.
     const illimite = estFormuleIllimitee(formule) && !s.adaptee;
     const acces = illimite ? ((rvPlanCourant() || {}).acces || null) : null;
-    const dit = illimite ? phraseDeLIllimite(formule) : null;
-    const detail = ko ? rsPhrase(ko.d) : illimite ? (acces ? acces.phrase : `${dit.titre}.`) : s.adaptee ? '' : [rsDetailFormule(etapes), choix ? choix.label : ''].filter(Boolean).join(', ');
-    const detailsAcces = illimite && !ko ? (acces ? [...acces.gardes.map((g) => g.courte), ...acces.uneFois.map((u) => u.phrase)] : dit.details) : [];
+    const dit = illimite ? `${phraseDuChoixIllimite(formule, rsChoixIllimite(formule), acces)}.` : '';
+    const detail = ko ? rsPhrase(ko.d) : illimite ? dit : s.adaptee ? '' : [rsDetailFormule(etapes), choix ? choix.label : ''].filter(Boolean).join(', ');
+    const detailsAcces = illimite && !ko && acces ? acces.gardes.map((g) => g.courte) : [];
     const prixF = montant > 0 && combien ? rsEuros(montant) : '';
     const verdictF = !ko && !s.adaptee ? rsVerdictDesCandidats(ids[0], 0, s.startTime) : null;
     const resteF = verdictF && verdictF.statut !== 'ko' ? rsResteDuPlan(verdictF.prend) : [];
@@ -44193,25 +44394,55 @@ function rsPageDesFormules() {
   return rvFormuleIllimitee() ? 'illimite' : 'formules';
 }
 
-// LA PAGE DE L ACCES ILLIMITE, UN SEUL BLOC (2026-11-20) : son nom, la phrase commune, le prix par
-// joueur et le total du groupe, puis chaque activite comprise en photo avec son etiquette (« à
-// volonté », ou l heure de ce qui se joue une fois). Dessous, la seule chose a decider : l heure
-// d arrivee. Plus de « Compris : » ni de paragraphe.
+// Le choix de la fenetre : celui qu on a touche pour CET acces, sinon celui d office (tout, garde comme
+// la formule le dit).
+function rsChoixIllimite(f = rvFormuleIllimitee()) {
+  const s = quickBookState;
+  if (!s || !estFormuleIllimitee(f)) return null;
+  return choixIllimiteRelu(f, s.illimite) || choixIllimiteDOffice(f);
+}
+
+// Toucher une tuile : l activite se retire ou se reprend ; la derniere prise reste.
+function rsBasculerIllimite(id) {
+  const f = rvFormuleIllimitee();
+  const choix = rsChoixIllimite(f);
+  if (!choix || quickBookState.adaptee) return;
+  const suite = choixIllimiteBascule(f, choix, String(id || ''));
+  if (!suite) { toast('Gardez au moins une activité.'); return; }
+  rsGeste(() => { quickBookState.illimite = suite; quickBookState.forcer = false; });
+}
+
+// « À volonté » ou « 1 fois », pour le bowling et le laser pris.
+function rsVolonteIllimite(id, oui) {
+  const f = rvFormuleIllimitee();
+  const choix = rsChoixIllimite(f);
+  if (!choix || quickBookState.adaptee) return;
+  const suite = choixIllimiteVolonte(choix, String(id || ''), oui === true);
+  if (cleChoixIllimite(suite) === cleChoixIllimite(choix)) return;
+  rsGeste(() => { quickBookState.illimite = suite; quickBookState.forcer = false; });
+}
+
+// LA PAGE DE L ACCES ILLIMITE, UN SEUL BLOC (2026-11-20) : son nom, la phrase du choix, le prix par
+// joueur, puis chaque activite en tuile a bascule (le soir : « il faut qu on puisse choisir activité
+// par activité »), le bowling et le laser avec « À volonté » ou « 1 fois ». Dessous, l heure d arrivee.
+// Le prix ne bouge pas avec le choix : celui de l acces, par joueur, dit simplement.
 function rsIllimiteHtml() {
   const s = quickBookState;
   const liste = rsIllimitees();
   const f = rvFormuleIllimitee();
   const tuiles = liste.length > 1 ? `<div class="rs-fs-g" role="group" aria-label="Accès illimité">${liste.map((x) => rsFormuleHtml(x, 0)).join('')}</div>` : '';
   const choisie = f || (liste.length === 1 ? liste[0] : null);
-  const dit = choisie ? phraseDeLIllimite(choisie) : null;
   const lu = choisie ? rsPrixDeLIllimite(choisie) : null;
   // (sur un plan du serveur, ce que l heure choisie garde vraiment : pistes, armes, heures)
   const acces = f && choisie === f ? ((rvPlanCourant() || {}).acces || null) : null;
-  // (un groupe plus petit que le minimum : la phrase le dit en couleur, le ticket dit la regle)
-  const tropPeu = choisie && rsEtat().faits.combien && (Number(s.pax) || 1) < (Number(choisie.minPax) || 1);
+  const choix = choisie ? (f && !s.adaptee ? rsChoixIllimite(f) : choixIllimiteDOffice(choisie)) : null;
+  // (un groupe plus petit que le minimum : le minimum le dit en couleur, le ticket dit la regle)
+  const min = choisie ? Number(choisie.minPax) || 1 : 1;
+  const tropPeu = choisie && rsEtat().faits.combien && (Number(s.pax) || 1) < min;
+  const prix = ['prix de l’accès illimité', min > 1 ? `à partir de ${min} joueurs` : ''].filter(Boolean).join(', ');
   const explication = choisie ? `<div class="rs-acces" id="rsAcces">
-      <div class="rs-acces-t"><p class="rs-acces-n"><b>${escapeHtml(rvNomFormule(choisie))}</b><span${tropPeu ? ' class="is-peu"' : ''}>${escapeHtml([dit.court, dit.minimum].filter(Boolean).join(', '))}</span></p><p class="rs-acces-prix"><b>${escapeHtml(lu.parJoueur)}</b>${lu.total ? `<small>${escapeHtml(lu.total)}</small>` : ''}</p></div>
-      ${rsPhotosDeLIllimiteHtml(choisie, acces)}
+      <div class="rs-acces-t"><p class="rs-acces-n"><b>${escapeHtml(rvNomFormule(choisie))}</b><span id="rsAccesDit">${escapeHtml(phraseDuChoixIllimite(choisie, choix, acces))}</span></p><p class="rs-acces-prix"><b>${escapeHtml(lu.parJoueur)}</b><small${tropPeu ? ' class="is-peu"' : ''}>${escapeHtml(prix)}</small></p></div>
+      ${f && !s.adaptee ? illimiteTuilesHtml(f, choix, { acces, gestes: { basculer: 'rsBasculerIllimite', volonte: 'rsVolonteIllimite' }, prefixe: 'rsIl' }) : ''}
     </div>` : '';
   const heures = f ? rsBlocFormuleHtml() : `<section class="rs-seance is-vide" aria-label="À quelle heure ?"><div class="rs-s-n"><b>À quelle heure ?</b><small>${liste.length ? 'Touchez un accès illimité, ses heures s’affichent ici.' : 'Ce centre n’a pas encore d’accès illimité. Il se crée dans Tarifs &amp; formules.'}</small></div></section>`;
   return `${rsRetourHtml()}${tuiles}${explication}${heures}`;

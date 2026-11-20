@@ -3455,6 +3455,17 @@ function getEffectiveCatalogFormules() {
 }
 if (typeof window !== 'undefined') window.getEffectiveCatalogFormules = getEffectiveCatalogFormules;
 
+// UNE FORMULE QUE CE CENTRE NE JOUE PAS (2026-11-20, Ansar a Gembloux : « ça me montre quand même
+// les activités qu’on a pas à Gembloux quand on réserve ici »). Le catalogue des formules est
+// commun aux centres ; le serveur pose `missingActivityIds` sur chaque formule dont une activite
+// est coupee au centre (api/public-booking-meta.js, formulesPubliques : les formules 6, 7 et 8 et
+// leur playground a Gembloux). Le formulaire public les retirait deja ; Reserver et Modifier les
+// proposaient encore, et le serveur les refusait ensuite (« Activité non disponible dans ce
+// centre »). Modifier garde en tete la formule d un dossier qui en a une (formulesProposeesEdition).
+function formuleJoueeAuCentre(f) {
+  return !(f && Array.isArray(f.missingActivityIds) && f.missingActivityIds.length);
+}
+
 function isCenterScopeOwner() {
   return !!scopedCentersCache.owner;
 }
@@ -32879,7 +32890,7 @@ function formulesProposeesEdition() {
   const origine = departsEdition().get(state.editState)?.origine;
   // (les acces illimites ont leur selecteur « À la carte | Accès illimité », renderEditIllimiteChoix :
   // le menu « Formule » ne les redit pas)
-  const catalogue = getEffectiveCatalogFormules().filter(f => !estFormuleIllimitee(f));
+  const catalogue = getEffectiveCatalogFormules().filter(f => !estFormuleIllimitee(f) && formuleJoueeAuCentre(f));
   const actuelle = origine && !catalogue.some(f => String(f.id) === String(origine.formuleId)) ? resolveDisplayFormule(origine.formuleId) : null;
   return actuelle && !estFormuleIllimitee(actuelle) ? [actuelle, ...catalogue] : catalogue;
 }
@@ -36923,7 +36934,7 @@ function getQuickBookFormulaChoices() {
   const pax = Number(quickBookState.pax) || 1;
   // Le catalogue EFFECTIF du centre, jamais le socle fichier : la reservation
   // rapide de la console proposait les 14 formules de Fun Galaxy chez N4.
-  return getEffectiveCatalogFormules().map(formule => {
+  return getEffectiveCatalogFormules().filter(formuleJoueeAuCentre).map(formule => {
     const availability = getFormuleAvailability(formule, quickBookState.date, pax, quickBookState.startTime);
     return {
       ...formule,

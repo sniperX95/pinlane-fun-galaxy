@@ -392,7 +392,7 @@ const MUTATIONS = [
   { nom: 'ajustement-tu', lettre: 'A', groupes: ['A'], editions: [{ fichier: JS, de: '    return phrase(ajustement\n', vers: '    return phrase(false\n' }] },
   { nom: 'plancher-oublie', lettre: 'A', groupes: ['A'], editions: [{ fichier: DROITS, serveur: true, de: 'return euros(Math.max(0, pose));', vers: 'return euros(pose);' }] },
   { nom: 'plancher-oublie-a-l-ecran', lettre: 'A', groupes: ['A'], editions: [{ fichier: JS, de: 'return Math.max(0, Math.round((estime.total + ajustementGarde(r)) * 100) / 100);', vers: 'return Math.round((estime.total + ajustementGarde(r)) * 100) / 100;' }] },
-  { nom: 'prix-tape-sans-raison', lettre: 'T', groupes: ['T'], editions: [{ fichier: JS, de: '        ...(prixSuivi ? {} : { prixRaison: RAISON_PRIX_PAR_DEFAUT }),\n', vers: '' }] },
+  { nom: 'prix-tape-sans-raison', lettre: 'T', groupes: ['T'], editions: [{ fichier: JS, de: '        ...(prixSuivi ? {} : { prixRaison: raison || RAISON_PRIX_PAR_DEFAUT }),\n', vers: '' }] },
 ];
 
 async function main() {

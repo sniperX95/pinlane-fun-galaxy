@@ -32993,6 +32993,79 @@ function areneChangeeEdition() {
   const e = state.editState;
   return Boolean(e && state.selectedRes && e.areneEdition && e.areneEdition !== areneDuDossierEdition(state.selectedRes));
 }
+// L ESPACEMENT DES PARTIES DU LASER (2026-11-20, Ansar : « modifier tout complet », comme Reserver) :
+// 30 min, 1 h ou 1 h 30 entre deux parties, ou une pause de 30 min avant la derniere. Le toucher pose
+// l heure de chaque partie (heuresActivites), comme si on les tapait une a une : leurs champs se
+// montrent, le verdict les juge, « Enregistrer » les deplace par le chemin du glisser. Une partie ne
+// part jamais avant que les vagues de la precedente aient joue (30 min par vague) : les choix plus
+// courts ne se proposent pas.
+function partiesLaserEdition(r) {
+  return [...pointsHeureEdition(r).values()]
+    .filter((p) => p.activityId === 'laser_game' && p.unite && p.start !== null && p.start !== undefined)
+    .map((p) => { const [partie, vague] = String(p.unite).split('.').map(Number); return { ...p, partie: partie || 1, vague: vague || 1 }; })
+    .sort((a, b) => a.partie - b.partie || a.vague - b.vague);
+}
+
+function minutesPointEdition(p) {
+  const changee = minutesHeureEdition(heuresChangeesEdition()[p.cle]);
+  return Number.isFinite(changee) ? changee : Math.round(Number(p.start) * 60);
+}
+
+function debutsPartiesLaserEdition(points) {
+  const parties = [...new Set(points.map((p) => p.partie))];
+  return parties.map((n) => ({ partie: n, debut: Math.min(...points.filter((p) => p.partie === n).map(minutesPointEdition)) }));
+}
+
+function espacementLaserEditionHtml(r) {
+  if (!r || !peutChangerHeureEdition(r, 'laser_game') || activiteAjouteeEdition(r, 'laser_game')) return '';
+  const points = partiesLaserEdition(r);
+  const debuts = debutsPartiesLaserEdition(points);
+  if (debuts.length < 2) return '';
+  const pas = 30 * Math.max(...points.map((p) => p.vague));
+  const ecarts = debuts.slice(1).map((d, k) => d.debut - debuts[k].debut);
+  const egal = ecarts.every((m) => m === ecarts[0]) ? ecarts[0] : null;
+  const choix = [30, 60, 90].filter((m) => m >= pas).map((m) => `<button type="button" class="qb-dur-btn dossier-option${egal === m ? ' active' : ''}" aria-pressed="${egal === m}" data-espacement="${m}" onclick="espacerPartiesLaserEdition(${m})">${escapeHtml(rvHeuresLabel(m / 60))}</button>`);
+  choix.push('<button type="button" class="qb-dur-btn dossier-option" data-pause onclick="pauseLaserEdition()">+ Pause</button>');
+  return `<div class="dossier-activity-setting fm-espacement"><span class="lbl">Espacement</span><div class="dossier-options" role="group" aria-label="Espacement des parties">${choix.join('')}</div></div>`;
+}
+
+// Chaque partie a son nouveau debut ; ses vagues gardent leur ecart. Une heure revenue a celle du
+// dossier n est plus un changement.
+function poserDebutsLaserEdition(r, voulus) {
+  const e = state.editState;
+  if (!e || !r) return;
+  const points = partiesLaserEdition(r);
+  const changees = { ...heuresChangeesEdition() };
+  debutsPartiesLaserEdition(points).forEach(({ partie, debut }) => {
+    const voulu = voulus.get(partie);
+    if (!Number.isFinite(voulu)) return;
+    points.filter((p) => p.partie === partie).forEach((p) => {
+      const minutes = voulu + (minutesPointEdition(p) - debut);
+      if (minutes === Math.round(Number(p.start) * 60)) delete changees[p.cle];
+      else changees[p.cle] = numToTime(minutes / 60);
+    });
+  });
+  e.heuresActivites = changees;
+  noteHeuresEdition = null;
+  if (state.editError) setEditError('');
+  renderPos();
+}
+
+function espacerPartiesLaserEdition(minutes) {
+  const r = state.selectedRes;
+  const debuts = debutsPartiesLaserEdition(partiesLaserEdition(r));
+  if (debuts.length < 2) return;
+  poserDebutsLaserEdition(r, new Map(debuts.map(({ partie }, k) => [partie, debuts[0].debut + k * minutes])));
+}
+
+function pauseLaserEdition() {
+  const r = state.selectedRes;
+  const debuts = debutsPartiesLaserEdition(partiesLaserEdition(r));
+  if (debuts.length < 2) return;
+  const derniere = debuts[debuts.length - 1];
+  poserDebutsLaserEdition(r, new Map([[derniere.partie, derniere.debut + 30]]));
+}
+
 function areneEditionHtml() {
   const voulue = areneEdition();
   const bouton = (valeur, texte, sous) => `<button type="button" class="qb-dur-btn dossier-option ${voulue === valeur ? 'active' : ''}" aria-pressed="${voulue === valeur}" data-arene="${valeur}" onclick="setEditArene(this.dataset.arene)"><span>${texte}</span><small>${sous}</small></button>`;
@@ -33056,7 +33129,7 @@ function renderEditFormuleBloc(r, formule, lignes, controls = {}) {
     // (les reglages que Reserver propose a cette activite : tables et duree, duree, session)
     else if (!estBowling && !estLaser) options = reglagesAutreEditionHtml(choice.id, programme.othersOptions[choice.id] || {});
     if (estLaser && !(volonte && volonte.laser_game)) {
-      options = `<div class="dossier-activity-setting"><span class="lbl">Parties par joueur</span><div class="dossier-options" role="group" aria-label="Nombre de parties Laser Game">${partiesLaserEditionChoix(programme.laser_game.games).map(games => `<button type="button" class="qb-dur-btn dossier-option ${Number(programme.laser_game.games) === games ? 'active' : ''}" aria-pressed="${Number(programme.laser_game.games) === games}" onclick="setEditLaserGames(${games})">${games} partie${games > 1 ? 's' : ''}</button>`).join('')}${Number(programme.laser_game.games) < RV_PARTIES_MAX ? `<button type="button" class="qb-dur-btn dossier-option fm-plus-partie" onclick="setEditLaserGames(${Number(programme.laser_game.games) + 1})">+ Partie</button>` : ''}</div></div>${areneEditionHtml()}`;
+      options = `<div class="dossier-activity-setting"><span class="lbl">Parties par joueur</span><div class="dossier-options" role="group" aria-label="Nombre de parties Laser Game">${partiesLaserEditionChoix(programme.laser_game.games).map(games => `<button type="button" class="qb-dur-btn dossier-option ${Number(programme.laser_game.games) === games ? 'active' : ''}" aria-pressed="${Number(programme.laser_game.games) === games}" onclick="setEditLaserGames(${games})">${games} partie${games > 1 ? 's' : ''}</button>`).join('')}${Number(programme.laser_game.games) < RV_PARTIES_MAX ? `<button type="button" class="qb-dur-btn dossier-option fm-plus-partie" onclick="setEditLaserGames(${Number(programme.laser_game.games) + 1})">+ Partie</button>` : ''}</div></div>${areneEditionHtml()}${espacementLaserEditionHtml(r)}`;
       const extra = programme.laser_game.extraLaser;
       if (extra) options += `<small class="fm-act-note">+ ${extra.games - programme.laser_game.games} partie pour ${extra.participants} joueurs · ${escapeHtml(formatMoneyCentimes(extra.price))}${Number(extra.discountAmount) > 0 ? ` · remise ${escapeHtml(formatMoneyCentimes(extra.discountAmount))}` : ''}</small>`;
       if (Number(programme.laser_game.games) > 1) options += renderDossierJoueursDesParties(programme.laser_game, state.editState.pax);

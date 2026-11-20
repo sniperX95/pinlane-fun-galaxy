@@ -47,6 +47,9 @@
 //        efface la ligne ;
 //   [T3] le serveur refuse un numero change trop court (422) a un poste reste sur une ancienne page ;
 //   [T4] un numero qui tient part et s ecrit ;
+//   [G1] un laser a plusieurs parties a son espacement (30 min, 1 h, 1 h 30, + Pause), le sien choisi ;
+//   [G2] « 1h » pose la 2e partie a 16:30 (son champ, la barre du bas) et « Enregistrer » la deplace ;
+//   [G3] « + Pause » repousse la derniere partie de 30 min, les autres restent ;
 //   [J1] aucune erreur JS.
 // --contre-preuves : chaque regle retiree (au code servi, en memoire ; le disque n est jamais
 // touche) fait rougir sa lettre.
@@ -575,12 +578,62 @@ async function scenarioTelephoneFiche(browser) {
 }
 
 // ---------------------------------------------------------------------------
+// [G1] [G2] [G3] L ESPACEMENT DES PARTIES DU LASER.
+// ---------------------------------------------------------------------------
+const MANON = 1618; // laser, 8 joueurs, deux parties 15:30 et 16:00
+const ROMAIN = 1630; // laser, 20 joueurs, trois parties 21:30, 22:00, 22:30
+function partiesEnBase(id) {
+  const row = B.base.reservations.get(Number(id));
+  const plan = row && (typeof row.ops_plan === 'string' ? JSON.parse(row.ops_plan) : row.ops_plan);
+  return ((plan && plan.resourceBlocks) || []).filter((b) => b && b.resourceType === 'laser_arena').sort((a, b) => (a.countIndex || 1) - (b.countIndex || 1)).map((b) => `${b.countIndex || 1}@${String(b.startTime).slice(0, 5)}`).join(',');
+}
+async function ouvrirLaser(page, id) {
+  await page.evaluate((i) => { closePos(); openPos(i); setTab('modifier'); }, id);
+  await page.waitForSelector('#posOverlay .fm-programme', { timeout: 8000 });
+}
+const lireEspacement = (page) => page.evaluate(() => {
+  const rang = document.querySelector('#posOverlay .fm-espacement');
+  return {
+    choix: rang ? Array.from(rang.querySelectorAll('button')).map((b) => `${b.textContent.trim()}${b.classList.contains('active') ? '*' : ''}`) : null,
+    heures: Array.from(document.querySelectorAll('#posOverlay [data-heure-champ^="laser_game:"]')).map((n) => `${n.getAttribute('data-heure-champ')}=${n.value}`),
+    barre: (document.getElementById('editModifs') || {}).textContent || '',
+  };
+});
+async function scenarioEspacement(browser) {
+  semer();
+  const serveur = B.monter({ mutations: mutation ? mutation.editions.filter((ed) => ed.serveur) : [], session: B.sessionDuRole('manager', { nom: 'Rachel' }) });
+  const { ctx, page, erreurs, journal } = await monter(browser, serveur);
+  try {
+    await ouvrirLaser(page, MANON);
+    const a = await lireEspacement(page);
+    ok(a.choix && a.choix.join() === '30 min*,1 h,1 h 30,+ Pause', '[G1] le laser a deux parties a son espacement : 30 min (le sien), 1 h, 1 h 30, + Pause', a);
+    await page.click('#posOverlay .fm-espacement [data-espacement="60"]');
+    await page.waitForTimeout(250);
+    const b = await lireEspacement(page);
+    ok(b.choix && b.choix.join() === '30 min,1 h*,1 h 30,+ Pause' && b.heures.join() === 'laser_game:2.1=16:30' && /16:00 → 16:30/.test(b.barre),
+      '[G2] « 1h » pose la 2e partie a 16:30 : son champ, la barre du bas', b);
+    const envois = await enregistrer(page, journal);
+    const r = envois.length ? envois[envois.length - 1] : null;
+    ok(r && r.statut === 200 && r.corps.activityMove && partiesEnBase(MANON) === '1@15:30,2@16:30', '[G2] « Enregistrer » deplace la 2e partie a 16:30', { statut: r && r.statut, json: r && r.statut !== 200 ? r.json : '', base: partiesEnBase(MANON) });
+    await ouvrirLaser(page, ROMAIN);
+    await page.click('#posOverlay .fm-espacement [data-pause]');
+    await page.waitForTimeout(250);
+    const c = await lireEspacement(page);
+    ok(c.heures.join() === 'laser_game:3.1=23:00' && /22:30 → 23:00/.test(c.barre), '[G3] « + Pause » repousse la derniere partie de 30 min, les autres restent', c);
+    ok(erreurs.length === 0, '[J1] aucune erreur JS (espacement)', erreurs.slice(0, 3));
+  } finally {
+    await ctx.close();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // LES CONTRE-PREUVES : une regle retiree, sa lettre rougit.
 // ---------------------------------------------------------------------------
 const FORMULE = ['formule'];
 const SERVICE = ['service'];
 const NOTES_E = ['notes'];
 const TELEPHONE = ['telephone'];
+const ESPACEMENT = ['espacement'];
 const CSS = 'assets/pinlane-staff.css';
 const LIBRE = ['libre'];
 const CATALOGUE = ['catalogue'];
@@ -625,6 +678,10 @@ const MUTATIONS = [
   { nom: 'telephone-libre', lettre: 'T1', scenarios: TELEPHONE, editions: [{ fichier: JS, de: "  if (touches.includes('phone')) {", vers: '  if (false) {' }] },
   { nom: 'telephone-muet', lettre: 'T2', scenarios: TELEPHONE, editions: [{ fichier: JS, de: '  ligne.hidden = false;\n', vers: '' }] },
   { nom: 'serveur-telephone-court', lettre: 'T3', scenarios: TELEPHONE, editions: [{ fichier: API, serveur: true, de: "    if (tape && !require('../lib/telephone-du-client').telephoneValide(tape)) throw", vers: '    if (false) throw' }] },
+  // L espacement du laser : absent, sans effet, la pause au mauvais endroit.
+  { nom: 'espacement-absent', lettre: 'G1', scenarios: ESPACEMENT, editions: [{ fichier: JS, de: '${areneEditionHtml()}${espacementLaserEditionHtml(r)}', vers: '${areneEditionHtml()}' }] },
+  { nom: 'espacement-sans-effet', lettre: 'G2', scenarios: ESPACEMENT, editions: [{ fichier: JS, de: 'debuts[0].debut + k * minutes]', vers: 'debuts[0].debut + k * 30]' }] },
+  { nom: 'pause-ailleurs', lettre: 'G3', scenarios: ESPACEMENT, editions: [{ fichier: JS, de: '  const derniere = debuts[debuts.length - 1];', vers: '  const derniere = debuts[1];' }] },
   { nom: 'serveur-pose-l-existant', lettre: 'H3', scenarios: HEURE, editions: [{ fichier: API, serveur: true, de: '.filter((posee) => !dejaAuDossier(posee.activityId) && proposedItems', vers: '.filter((posee) => proposedItems' }] },
 ];
 
@@ -637,6 +694,7 @@ async function jouer(browser, noms) {
     if (nom === 'service') await scenarioService(browser);
     if (nom === 'notes') await scenarioNotes(browser);
     if (nom === 'telephone') await scenarioTelephoneFiche(browser);
+    if (nom === 'espacement') await scenarioEspacement(browser);
   }
 }
 
@@ -646,7 +704,7 @@ async function main() {
   const t0 = Date.now();
   try {
     if (!process.argv.includes('--contre-preuves')) {
-      await jouer(browser, ['libre', 'catalogue', 'heure', 'formule', 'service', 'notes', 'telephone']);
+      await jouer(browser, ['libre', 'catalogue', 'heure', 'formule', 'service', 'notes', 'telephone', 'espacement']);
     } else {
       console.log('[K] contre-preuves : chaque regle retiree fait rougir sa lettre');
       for (const m of MUTATIONS.filter((x) => !process.env.MC_MUTATIONS || liste(process.env.MC_MUTATIONS).includes(x.nom))) {

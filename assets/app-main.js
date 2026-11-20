@@ -32786,9 +32786,11 @@ function dossierPourFormule(r) {
 // du dossier reste dans la liste meme si le catalogue ne la propose plus.
 function formulesProposeesEdition() {
   const origine = departsEdition().get(state.editState)?.origine;
-  const catalogue = getEffectiveCatalogFormules();
+  // (les acces illimites ont leur selecteur « À la carte | Accès illimité », renderEditIllimiteChoix :
+  // le menu « Formule » ne les redit pas)
+  const catalogue = getEffectiveCatalogFormules().filter(f => !estFormuleIllimitee(f));
   const actuelle = origine && !catalogue.some(f => String(f.id) === String(origine.formuleId)) ? resolveDisplayFormule(origine.formuleId) : null;
-  return actuelle ? [actuelle, ...catalogue] : catalogue;
+  return actuelle && !estFormuleIllimitee(actuelle) ? [actuelle, ...catalogue] : catalogue;
 }
 
 function disponibiliteFormuleEdition(formule) {
@@ -32835,6 +32837,8 @@ function renderEditFormuleChoix() {
   const e = state.editState;
   const origine = e && departsEdition().get(e)?.origine;
   if (!origine || e.versProgrammeNormal) return '';
+  // (en acces illimite, le selecteur « À la carte | Accès illimité » dit tout : pas de menu qui le redit)
+  if (estFormuleIllimitee(String(e.type || '') === 'formule' && e.formuleId ? resolveDisplayFormule(e.formuleId) : null)) return '';
   // (a la carte, le menu ne se montre pas par-dessus un acces illimite choisi : il a sa carte, renderEditIllimiteChoix)
   if (!formuleDOrigineEdition(origine) && formuleChangeeEdition() && !formulesProposeesEdition().some((f) => String(f.id) === String(e.formuleId))) return '';
   const indice = indiceFormuleEdition();
@@ -33094,10 +33098,13 @@ function renderEditFormuleBloc(r, formule, lignes, controls = {}) {
   const sansActivite = lignes.length && !editProgramAChange()
     ? `<ul class="edit-formule-list">${lignes.map(ligne => `<li>${escapeHtml(String(ligne))}</li>`).join('')}</ul>`
     : '<p class="fm-vide">Aucune activité au programme.</p>';
-  const versNormal = state.editState && state.editState.versProgrammeNormal
-    ? '<p class="fm-acces" id="editAccesNormal" role="status">Programme normal : chaque activité a son prix, le bowling et le laser à leur heure. Les pistes et les armes ne sont plus gardées toute la visite.</p>'
+  // (le selecteur « À la carte | Accès illimité » dit lui-meme ce que devient le programme : le bandeau
+  // « Programme normal » ne se montre que sans lui)
+  const choixAcces = renderEditIllimiteChoix();
+  const versNormal = !choixAcces && state.editState && state.editState.versProgrammeNormal
+    ? '<p class="fm-acces" id="editAccesNormal" role="status">Chaque activité a son prix, le bowling et le laser à leur heure. Les pistes et les armes ne sont plus gardées toute la visite.</p>'
     : '';
-  return `${renderEditIllimiteChoix()}${versNormal}${renderEditFormuleChoix() || (formule?.name && !versNormal ? `<p class="dossier-formula-origin">Formule <strong>${escapeHtml(formule.name)}</strong> · les changements ne valent que pour cette visite.</p>` : '')}
+  return `${choixAcces}${versNormal}${renderEditFormuleChoix() || (formule?.name && !versNormal && !estFormuleIllimitee(formule) ? `<p class="dossier-formula-origin">Formule <strong>${escapeHtml(formule.name)}</strong> · les changements ne valent que pour cette visite.</p>` : '')}
     <p class="fm-replan" role="status">Les heures seront recalculées à l’enregistrement.</p>
     <div class="fm-acts">${rangees || sansActivite}</div>
     ${ajouts.length ? `<div class="fm-ajouts" role="group" aria-labelledby="fmAjoutsTitre"><span class="fm-ajouts-titre" id="fmAjoutsTitre">Ajouter</span>${ajouts.join('')}</div>` : ''}`;

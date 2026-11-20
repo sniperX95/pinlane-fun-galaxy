@@ -119,6 +119,8 @@ const MUTATIONS = [
   { nom: 'heure-refusee-proposee', lettre: 'D', cible: '[D] la derniere arrivee proposee, le serveur l accepte', fichier: APP, de: "  return { lue, liste: lue ? rsFormuleMemo.liste.filter((x) => !(x.verdict && x.verdict.statut === 'ko' && x.verdict.court === 'hors horaires')) : rsFormuleMemo.liste };", vers: '  return { lue, liste: rsFormuleMemo.liste };' },
   { nom: 'planning-muet', lettre: 'D', cible: '[D] le planning montre les pistes et les armes gardees', fichier: 'assets/pinlane-planning-global.js', de: "        if (e.aVolonte) {\n          d2 = 'à volonté';", vers: "        if (false) {\n          d2 = 'à volonté';" },
   { nom: 'laser-six-heures', lettre: 'D', cible: '[D] le planning montre les pistes et les armes gardees', fichier: 'assets/pinlane-planning-global.js', de: "    else if (col.nature === 'laser' && liste.length > 1 && liste.every(function (e) { return e.aVolonte; })) {", vers: '    else if (false) {' },
+  { nom: 'menu-qui-redit', lettre: 'I', cible: '[I] sous « Accès illimité », rien ne redit la formule', fichier: APP, de: "  if (estFormuleIllimitee(String(e.type || '') === 'formule' && e.formuleId ? resolveDisplayFormule(e.formuleId) : null)) return '';\n", vers: '' },
+  { nom: 'menu-avec-l-acces', lettre: 'I', cible: '[I] a la carte, le menu « Formule » propose les formules, pas l acces illimite', fichier: APP, de: "  const catalogue = getEffectiveCatalogFormules().filter(f => !estFormuleIllimitee(f));", vers: '  const catalogue = getEffectiveCatalogFormules();' },
   { nom: 'fiche-heures-suggerees', lettre: 'D', cible: '[D] la fiche : ses autres activites sans heure, « à volonté »', fichier: APP, de: '  const accesIllimite = illimiteDeSaCarte(r);\n  getStaffFormulaTimedItems(r)', vers: '  const accesIllimite = false;\n  getStaffFormulaTimedItems(r)' },
   { nom: 'planning-heures-suggerees', lettre: 'D', cible: '[D] au planning, ses autres activites disent « à volonté », sans heure', fichier: 'assets/pinlane-planning-global.js', de: "      var acces = typeof illimiteDeSaCarte === 'function' && illimiteDeSaCarte(r);", vers: '      var acces = false;' },
   // LE FORMULAIRE COURT, LA PAGE EN PHOTOS, LE SELECTEUR DE MODIFIER (2026-11-20).
@@ -750,6 +752,9 @@ async function scenarioI(browser) {
       return page.evaluate(() => ({ marque: ((document.getElementById('editAcces') || {}).dataset || {}).marque || '', normal: Boolean(state.editState && state.editState.versProgrammeNormal), type: state.editState && state.editState.type, formule: (state.editState && state.editState.formuleId) || '' }));
     };
     const avantChoix = await lireChoix();
+    // A la carte, le menu « Formule » propose les formules du catalogue, sans l acces illimite : il a son choix.
+    const menuALaCarte = await page.evaluate(() => { const m = document.querySelector('#posOverlay #editFormuleSelect'); return m ? Array.from(m.options).map((o) => o.value) : null; });
+    ok(Array.isArray(menuALaCarte) && menuALaCarte.length > 1 && !menuALaCarte.includes(ID_ILLIMITEE), '[I] a la carte, le menu « Formule » propose les formules, pas l acces illimite', menuALaCarte);
     ok(avantChoix.segments.join() === 'À la carte=true,Accès illimité=false' && avantChoix.dit === 'Accès illimité, tout à volonté pendant 3 h, 32 € par joueur.' && !avantChoix.anciens, '[I] dans Modifier : « À la carte | Accès illimité », ce que l acces promet et son prix', avantChoix);
     const versIllimite = `#posOverlay .fm-choix-seg [data-formule="${ID_ILLIMITEE}"]`;
     if (!(await page.locator(versIllimite).count())) return;
@@ -768,6 +773,15 @@ async function scenarioI(browser) {
       return { bowling: t('#posOverlay [data-a-volonte="bowling"]'), laser: t('#posOverlay [data-a-volonte="laser_game"]'), reglages };
     });
     ok(/^Bowling, pistes? [\d ,et]+ gardées? toute la visite\.$/.test(rangees.bowling) && rangees.laser === `Laser, ${JOUEURS} armes gardées à chaque départ.` && rangees.reglages.length === 0, '[I] sous l acces illimite, les rangees disent ce qui est garde, plus « 1 heure / 1 partie »', rangees);
+    // Le selecteur dit tout : pas de menu « Formule » qui redit « Accès illimité · 32 € » dessous,
+    // ni de ligne « Formule Accès illimité », ni le bandeau d avant.
+    const lireRedites = () => page.evaluate(() => ({
+      menu: Boolean(document.querySelector('#posOverlay #editFormuleSelect')),
+      origine: ((document.querySelector('#posOverlay .dossier-formula-origin') || {}).textContent || '').trim(),
+      bandeau: Boolean(document.querySelector('#posOverlay #editAccesNormal')),
+    }));
+    const redites = await lireRedites();
+    ok(!redites.menu && !redites.origine && !redites.bandeau, '[I] sous « Accès illimité », rien ne redit la formule', redites);
     await photo(page, 'modifier-passer', '#posOverlay .edit-modal');
     await enregistrerEdition(page);
     const passe = B.base.reservations.get(ID);
@@ -779,6 +793,9 @@ async function scenarioI(browser) {
     await page.waitForTimeout(300);
     const deja = await lireChoix();
     ok(deja.segments.join() === 'À la carte=false,Accès illimité=true' && /^Tout à volonté de 16:00 à 19:00\./.test(deja.dit) && await page.locator('#editAccesSortir').count() === 1, '[I] « À la carte » se touche sur un dossier en acces illimite', deja);
+    // (rouvert, le dossier est une formule : le menu « Formule » ne se montre pas sous son selecteur)
+    const redites2 = await lireRedites();
+    ok(!redites2.menu && !redites2.origine && !redites2.bandeau, '[I] sous « Accès illimité », rien ne redit la formule', { rouvert: redites2 });
     if (!(await page.locator('#editAccesSortir').count())) return;
     await page.locator('#editAccesSortir').click();
     await verdictPose(page);

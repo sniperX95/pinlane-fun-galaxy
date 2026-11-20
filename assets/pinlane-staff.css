@@ -20063,7 +20063,6 @@ body:is(.staff-mode, .admin-mode) .fx-modal .fm-choix-seg button.is-on { backgro
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-choix-seg button:not(.is-on):hover { color: var(--text); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-choix-dit { max-width: 640px; margin: 0; font-size: 14px; line-height: 1.45; color: var(--muted); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-choix-dit.is-acces { color: var(--text); }
-body:is(.staff-mode, .admin-mode) .fx-modal .fm-choix-acces ~ #editAccesNormal { display: none; }
 @media (pointer: coarse) { body:is(.staff-mode, .admin-mode) .fx-modal .fm-choix-seg button { height: 44px; } }
 /* L ACCES ILLIMITE DANS MODIFIER (2026-11-19) : y passer, voir ce qu il garde, en revenir. Encadre
    de bleu, un bouton secondaire encadre, pas d icone. */

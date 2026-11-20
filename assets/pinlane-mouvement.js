@@ -106,47 +106,39 @@
   }
 
   // ---- LES FENETRES ---------------------------------------------------------
-  // `surface` : la boîte de la fenêtre (la fiche, Réserver). `origine` : ce qui a été touché.
-  // La fenêtre est déjà peinte et lisible ; on la fait apparaître pendant que la forme vole.
+  // `surface` : la boîte de la fenêtre (la fiche, Réserver). La fenêtre est déjà peinte et
+  // lisible ; elle est VISIBLE dès la première image. Le gérant trouvait la fiche « pas fluide
+  // du tout » (20/11) : une forme volait de la ligne à la fenêtre (300 ms) et se fondait (140 ms)
+  // pendant que la vraie fenêtre restait à l'opacité 0 jusqu'à 273 ms, finie vers 440 ms.
+  // Désormais : la vraie fenêtre naît elle-même, opacité 0 à 1 et échelle 0,98 à 1 en 180 ms,
+  // le fond en 150 ms. Aucun calque ne vole, aucune ombre n'est mise à l'échelle.
+  var DERNIERE_FERMEE = -1e9;
+  function reouverture() { return performance.now() - DERNIERE_FERMEE < 300; }
   function ouvrirFenetre(voileEl, surface, origine, o) {
     o = o || {};
-    if (!peutAnimer(surface)) return;
-    var cible = boite(surface);
-    if (!cible) return;
-    var depuis = boite(origine);
+    if (!peutAnimer(surface) || reouverture()) return;
     if (voileEl && voileEl !== surface && typeof voileEl.animate === 'function') {
-      voileEl.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, easing: SORTIE });
+      voileEl.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 150, easing: SORTIE });
     }
-    if (depuis && aLEcran(depuis) && !(depuis.width >= cible.width * 0.9 && depuis.height >= cible.height * 0.9)) {
-      // La forme vole de la ligne à la fenêtre ; le contenu se pose à son arrivée.
-      voler(depuis, cible, { rayon: getComputedStyle(surface).borderRadius, duree: o.duree || 300 });
-      surface.animate([{ opacity: 0 }, { opacity: 0, offset: 0.62 }, { opacity: 1 }], { duration: (o.duree || 300) + 140, easing: 'linear' });
-      return;
-    }
-    // Sans origine visible (ouverture par l'adresse, par un test) : elle apparaît en fondu, à sa
-    // vraie taille. Jamais de transform sur la vraie fenêtre : sous scale(0.97), une mesure faite
-    // pendant l'entrée lisait 38,8 px pour une photo de 40 (fiche-simple au téléphone, 19/11).
-    surface.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, easing: SORTIE });
+    // Au téléphone la fenêtre prend tout l'écran : elle ne fait que se fondre, sa boîte ne bouge
+    // jamais (fenetre-taille-juste-check : une mesure faite pendant l'entrée lisait 38,8 px pour
+    // une photo de 40, 19/11). Sur grand écran elle grandit de 0,98 à 1.
+    var telephone = Boolean(window.matchMedia) && window.matchMedia('(max-width: 860px)').matches;
+    surface.animate(
+      telephone ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 0, transform: 'scale(0.98)' }, { opacity: 1, transform: 'scale(1)' }],
+      { duration: o.duree || 180, easing: SORTIE }
+    );
   }
 
-  // La fenêtre va disparaître d'un coup (l'appelant la cache juste après) : sa forme se range
-  // dans ce qui l'avait ouverte, ou s'efface sur place, et le voile s'éteint.
-  function fermerFenetre(surface, origine) {
+  // La fenêtre va disparaître d'un coup (l'appelant la cache juste après) : une forme vide de
+  // sa taille s'efface sur place en 150 ms (même rectangle : rien ne vole) et le voile s'éteint.
+  function fermerFenetre(surface) {
+    DERNIERE_FERMEE = performance.now();
     if (reduit()) return;
     var depuis = boite(surface);
     if (!depuis) return;
-    voileQuiSEteint(170);
-    var rayon = getComputedStyle(surface).borderRadius;
-    var vers = boite(origine);
-    if (vers && aLEcran(vers)) {
-      voler(depuis, vers, { retour: true, rayon: rayon, duree: 240, courbe: GLISSE });
-      return;
-    }
-    var petit = {
-      left: depuis.left + depuis.width * 0.015, top: depuis.top + depuis.height * 0.015 + 6,
-      width: depuis.width * 0.97, height: depuis.height * 0.97,
-    };
-    voler(depuis, petit, { retour: true, rayon: rayon, duree: 160, courbe: SORTIE });
+    voileQuiSEteint(150);
+    voler(depuis, depuis, { retour: true, rayon: getComputedStyle(surface).borderRadius, duree: 150, courbe: SORTIE });
   }
 
   // ---- LE GLISSEUR ----------------------------------------------------------

@@ -472,6 +472,9 @@ function retirerFormules(ids) {
 const CAPTURES = typeof argument('captures') === 'string' ? argument('captures') : '';
 async function photo(page, nom, selecteur = '') {
   if (!CAPTURES || mutation) return;
+  // (les fenetres entrent et sortent en fondu : la photo attend que le mouvement soit fini,
+  // sinon elle montre le planning a travers la fenetre)
+  await page.waitForTimeout(900);
   fs.mkdirSync(CAPTURES, { recursive: true });
   const cible = selecteur ? page.locator(selecteur).first() : null;
   if (cible && await cible.count()) await cible.screenshot({ path: path.join(CAPTURES, `${nom}.png`) });
@@ -615,8 +618,6 @@ async function scenarioD(browser) {
     ok(vu.autres.length > 0 && vu.autres.every((c) => /à volonté/.test(c.texte) && !/\d{1,2}:\d{2}/.test(c.texte)), '[D] au planning, ses autres activites disent « à volonté », sans heure', vu.autres);
     const libresFiche = vu.programme.filter((l) => l.nom && !/^(Bowling|Laser)/.test(l.nom));
     ok(libresFiche.length > 0 && libresFiche.every((l) => l.quand === 'Libre' && l.detail === 'à volonté'), '[D] la fiche : ses autres activites sans heure, « à volonté »', vu.programme);
-    // (la fiche se ferme en fondu : la photo attend qu elle soit partie)
-    if (CAPTURES && !mutation) await page.waitForTimeout(900);
     await photo(page, 'planning-gardees');
     // La visite equivalente, creee au meme handler a une autre heure et lue de la meme facon.
     const visite = await serveur.appeler('POST', '/api/staff-reservations', { centerId: CENTRE, date: JOUR, startTime: '18:00', duration: 1, totalDuration: 1, lanes: [], pax: JOUEURS, status: 'pending', type: 'visite', name: 'Visite equivalente', phone: TEL, program: programme, preference: { activityOrder: programme.map((l) => l.activityId), preferredTimes: { bowling: '18:00', laser_game: '19:00' }, laserGameTimes: ['19:00'], laserPlacement: 'scheduled' } });

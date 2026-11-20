@@ -28768,7 +28768,8 @@ function getGroupeProgramme(r) {
   // activités illimité on comprend rien ») : l heure que le moteur leur suggerait (« Minigolf
   // 16:30 ») se lisait comme un rendez-vous. Elles sont libres, « à volonté », comme la phrase du
   // ticket et le grand tableau ; le bowling et le laser gardent leurs pistes et leurs departs.
-  const accesIllimite = illimiteDeSaCarte(r);
+  // (typeof : des gates lisent getGroupeProgramme seule, sans le reste de la console)
+  const accesIllimite = typeof illimiteDeSaCarte === 'function' && illimiteDeSaCarte(r);
   getStaffFormulaTimedItems(r)
     .filter(item => item.activityId !== 'bowling' && item.activityId !== 'laser_game')
     .forEach(item => etapes.push({

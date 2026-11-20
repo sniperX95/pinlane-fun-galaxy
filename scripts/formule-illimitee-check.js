@@ -117,7 +117,9 @@ const MUTATIONS = [
   { nom: 'retour-sans-heures', lettre: 'I', cible: '[I] « À la carte » : une visite de ses activites', fichier: APP, de: '      updated.preference = { activityOrder: ids, preferredTimes:', vers: '      updated.preferenceOubliee = { activityOrder: ids, preferredTimes:' },
   { nom: 'rangees-une-heure', lettre: 'I', cible: '[I] sous l acces illimite, les rangees disent ce qui est garde', fichier: APP, de: '  const volonte = gardeAVolonteEdition(r);\n  const rangees = [...choix, ...supplement].map((choice, rang) => {', vers: '  const volonte = null;\n  const rangees = [...choix, ...supplement].map((choice, rang) => {' },
   { nom: 'heure-refusee-proposee', lettre: 'D', cible: '[D] la derniere arrivee proposee, le serveur l accepte', fichier: APP, de: "  return { lue, liste: lue ? rsFormuleMemo.liste.filter((x) => !(x.verdict && x.verdict.statut === 'ko' && x.verdict.court === 'hors horaires')) : rsFormuleMemo.liste };", vers: '  return { lue, liste: rsFormuleMemo.liste };' },
-  { nom: 'planning-muet', lettre: 'D', cible: '[D] le planning montre les pistes et les armes gardees', fichier: 'assets/pinlane-planning-global.js', de: "        if (e.aVolonte) bulle = 'Laser à volonté · départ de '", vers: "        if (false) bulle = 'Laser à volonté · départ de '" },
+  { nom: 'planning-muet', lettre: 'D', cible: '[D] le planning montre les pistes et les armes gardees', fichier: 'assets/pinlane-planning-global.js', de: "        if (e.aVolonte) {\n          d2 = 'à volonté';", vers: "        if (false) {\n          d2 = 'à volonté';" },
+  { nom: 'laser-six-heures', lettre: 'D', cible: '[D] le planning montre les pistes et les armes gardees', fichier: 'assets/pinlane-planning-global.js', de: "    else if (col.nature === 'laser' && liste.length > 1 && liste.every(function (e) { return e.aVolonte; })) {", vers: '    else if (false) {' },
+  { nom: 'planning-heures-suggerees', lettre: 'D', cible: '[D] au planning, ses autres activites disent « à volonté », sans heure', fichier: 'assets/pinlane-planning-global.js', de: "      var acces = typeof illimiteDeSaCarte === 'function' && illimiteDeSaCarte(r);", vers: '      var acces = false;' },
   // LE FORMULAIRE COURT, LA PAGE EN PHOTOS, LE SELECTEUR DE MODIFIER (2026-11-20).
   { nom: 'a-la-carte-sans-garde', lettre: 'I', cible: '[I] « À la carte » deja pris ne change rien au dossier', fichier: APP, de: "  if (e.versProgrammeNormal || !estFormuleIllimitee(actuelle)) return;\n", vers: '' },
   { nom: 'illimite-rejoue', lettre: 'I', cible: '[I] « Accès illimité » deja pris ne rejoue pas sa carte', fichier: APP, de: "  if (!e.versProgrammeNormal && String(e.type || '') === 'formule' && String(e.formuleId || '') === String(id)) return;\n", vers: '' },
@@ -591,13 +593,17 @@ async function scenarioD(browser) {
       const rangee = document.querySelector(`#globalPlanningGridWrap tr[data-gf-id="${res.id}"]`);
       const cases = (titre) => (rangee ? Array.from(rangee.querySelectorAll(`.gf-a[data-gf-titre="${titre}"] .gf-x`)) : []).map((c) => ({ titre: c.getAttribute('title') || '', texte: c.textContent.replace(/\s+/g, ' ').trim() }));
       const cartes = { bowling: cases('Bowling'), laser: cases('Laser') };
-      return { fiche, cartes };
+      // (ses autres activites : « à volonté », sans l heure que le moteur leur suggerait)
+      const autres = rangee ? Array.from(rangee.querySelectorAll('.gf-a[data-gf-titre] .gf-x')).filter((c) => !/^(Bowling|Laser)$/.test(c.closest('.gf-a').getAttribute('data-gf-titre'))).map((c) => ({ case: c.closest('.gf-a').getAttribute('data-gf-titre'), texte: c.textContent.replace(/\s+/g, ' ').trim() })).filter((c) => !/crédits/.test(c.texte)) : [];
+      return { fiche, cartes, autres };
     }, r && r.id);
     const pistesDites = `pistes ${f.pistes.slice(0, -1).join(', ')} et ${f.pistes[f.pistes.length - 1]}`;
     ok(vu.fiche === `Accès illimité Tout à volonté de 15:30 à 18:30. Bowling, ${pistesDites} gardées toute la visite. Laser, ${JOUEURS} armes gardées à chaque départ.`, '[D] la fiche le dit en une phrase', vu.fiche);
     const departs = departsAttendus('15:30', '18:30', JOUEURS).map((d) => d.slice(0, 5));
     ok(vu.cartes.bowling.length === 1 && vu.cartes.bowling[0].titre.startsWith(`Bowling à volonté de 15:30 à 18:30 · pistes ${f.pistes.join('-')} gardées toute la visite`) && /à volonté/.test(vu.cartes.bowling[0].texte)
-      && vu.cartes.laser.length === departs.length && vu.cartes.laser.every((c, i) => c.titre.startsWith(`Laser à volonté · départ de ${departs[i]} · ${JOUEURS} armes gardées`)), '[D] le planning montre les pistes et les armes gardees', vu.cartes);
+      && departs.length > 1 && vu.cartes.laser.length === 1 && vu.cartes.laser[0].titre.startsWith(`Laser à volonté · ${departs.length} départs, de ${departs[0]} à ${departs[departs.length - 1]} · ${JOUEURS} armes gardées`)
+      && /à volonté/.test(vu.cartes.laser[0].texte) && vu.cartes.laser[0].texte.includes(`${departs.length} départs`), '[D] le planning montre les pistes et les armes gardees', vu.cartes);
+    ok(vu.autres.length > 0 && vu.autres.every((c) => /à volonté/.test(c.texte) && !/\d{1,2}:\d{2}/.test(c.texte)), '[D] au planning, ses autres activites disent « à volonté », sans heure', vu.autres);
     await photo(page, 'planning-gardees');
     // La visite equivalente, creee au meme handler a une autre heure et lue de la meme facon.
     const visite = await serveur.appeler('POST', '/api/staff-reservations', { centerId: CENTRE, date: JOUR, startTime: '18:00', duration: 1, totalDuration: 1, lanes: [], pax: JOUEURS, status: 'pending', type: 'visite', name: 'Visite equivalente', phone: TEL, program: programme, preference: { activityOrder: programme.map((l) => l.activityId), preferredTimes: { bowling: '18:00', laser_game: '19:00' }, laserGameTimes: ['19:00'], laserPlacement: 'scheduled' } });

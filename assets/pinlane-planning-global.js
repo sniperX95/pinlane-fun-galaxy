@@ -445,16 +445,22 @@
       // Les activites a heure d une formule (hors bowling, laser, table). Ses
       // credits d arcade restent un compteur, meme quand la formule leur donne
       // une heure.
+      // UN ACCES ILLIMITE NE DONNE PAS D HEURE A SES ACTIVITES LIBRES (2026-11-20, Ansar : « pour
+      // les activités illimité on comprend rien ») : l heure que le moteur leur suggerait (« Minigolf
+      // 17:45 ») se lisait comme un rendez-vous. Elles disent « à volonté », comme la phrase du
+      // ticket ; le bowling et le laser gardent leurs pistes et leurs departs.
+      var acces = typeof illimiteDeSaCarte === 'function' && illimiteDeSaCarte(r);
       getStaffFormulaTimedItems(r).forEach(function (it) {
         if (it.activityId === 'bowling' || it.activityId === 'laser_game') return;
         if (it.activityId === 'party_table') { g.table = g.table || it; return; }
         if (GP_SERVI[it.activityId]) { var servi = gpServi(it.label || gpNomActivite(it.activityId)); g.boissons = g.boissons || { nom: servi, start: it.start }; g.infos.push(servi); return; }
         if (it.activityId === 'arcade_credit') { var crf = gpCredits(it.label || gpNomActivite(it.activityId), r.pax); g.credits.push(crf); poser('arcade_credit', { credit: true, nom: it.label, credits: crf }); return; }
-        poser(it.activityId, { start: it.start, end: Math.max(it.end, it.start + 0.25) });
+        poser(it.activityId, { start: it.start, end: Math.max(it.end, it.start + 0.25), illimite: acces, volonte: acces });
       });
       var libres = gpLibres(g);
       libres.places.forEach(function (p) {
-        poser(p.l.id, { start: p.start, end: p.end, libre: !p.fixe, journee: Boolean(p.journee), unites: p.l.unites, nom: p.l.nom, enfants: p.l.enfants, minutes: p.l.minutes, illimite: Number(p.l.minutes) >= 999 });
+        var volonte = acces && !p.fixe;
+        poser(p.l.id, { start: p.start, end: p.end, libre: !p.fixe, journee: Boolean(p.journee), unites: p.l.unites, nom: p.l.nom, enfants: p.l.enfants, minutes: p.l.minutes, illimite: Number(p.l.minutes) >= 999 || volonte, volonte: volonte });
       });
       libres.servis.forEach(function (l) {
         if (l.id === 'arcade_credit') { var cr = gpCredits(l.nom, l.enfants || r.pax); g.credits.push(cr); poser('arcade_credit', { credit: true, nom: l.nom, credits: cr }); }
@@ -644,6 +650,8 @@
   // activités »). La regle du moteur : une fenetre ouverte (Matin Malin, Kids Fun Day) se
   // joue a volonte jusqu a la fin de sa periode (isOpenWindowFormula, lib/ops-engine.js).
   var GF_ILLIMITE = 'Illimité';
+  // (le mot d un acces illimite, celui de son ticket : « Tout à volonté pendant 3 h »)
+  var GF_VOLONTE = 'à volonté';
   function gfIllimite(r) {
     var f = r.formuleId && typeof resolveDisplayFormule === 'function' ? resolveDisplayFormule(r.formuleId) : null;
     return Boolean(f) && f.orderPolicy === 'open_window';
@@ -693,8 +701,8 @@
     var etat = gfEtat(g, e, m);
     var t = '', d = '', d2 = '', d3 = '', bulle = '', panne = false;
     if ((g.illimite || e.illimite) && !e.credit) {
-      t = GF_ILLIMITE;
-      bulle = gpTitreActivite(e.activityId) + ' : illimité pendant la visite, sans heure fixe';
+      t = e.volonte ? GF_VOLONTE : GF_ILLIMITE;
+      bulle = gpTitreActivite(e.activityId) + (e.volonte ? ' : à volonté pendant la visite, sans heure fixe' : ' : illimité pendant la visite, sans heure fixe');
     } else if (e.aPlacer) {
       t = 'à placer';
       bulle = 'Laser : une partie encore sans heure, à placer au planning laser';
@@ -729,7 +737,11 @@
         d3 = gfJoueursHorsGroupe(r, armes, ['arme', 'armes']);
         if (gfRendueA(r, fin)) d = gfPluriel(armes || Number(r.pax) || 0, ['arme libérée', 'armes libérées']);
         bulle = 'Laser à ' + gpHeure(debut) + (e.parties > 1 ? ' · partie ' + e.partie + ' sur ' + e.parties : '') + ' · ' + (armes || Number(r.pax) || 0) + ' armes';
-        if (e.aVolonte) bulle = 'Laser à volonté · départ de ' + gpHeure(debut) + ' · ' + (armes || Number(r.pax) || 0) + ' armes gardées';
+        if (e.aVolonte) {
+          d2 = 'à volonté';
+          if (e.departs > 1 && !d) d = e.departs + ' départs';
+          bulle = 'Laser à volonté · ' + (e.departs > 1 ? e.departs + ' départs, de ' + gpHeure(debut) + ' à ' + gpHeure(e.dernier) : 'départ de ' + gpHeure(debut)) + ' · ' + (armes || Number(r.pax) || 0) + ' armes gardées';
+        }
       } else if (col.nature === 'plaine') {
         var enfants = Number(e.enfants) || Number(r.pax) || 0;
         if (desLeDebut) t = enfants + ' enf.'; else d = enfants + ' enf.';
@@ -765,7 +777,7 @@
     var signe = t !== '' && (etat === 'retard' || etat === 'encours' || etat === 'lancer');
     var libre = t === 'Libre';
     var fini = etat === 'fini' && t !== '';
-    if (t === GF_ILLIMITE) return '<b class="gf-x__t is-illimite">' + (fait ? GF_FAIT : '') + gpEsc(t) + '</b>';
+    if (t === GF_ILLIMITE || t === GF_VOLONTE) return '<b class="gf-x__t is-illimite">' + (fait ? GF_FAIT : '') + gpEsc(t) + '</b>';
     if (!fixe && !signe && !fait && !fini && !libre) return gpEsc(t);
     return '<b class="gf-x__t' + (fixe || signe || libre && !fini ? '' : ' is-nu') + (libre ? ' is-libre' : '') + '">' + (fait ? GF_FAIT : '') + gpEsc(t) + '</b>';
   }
@@ -798,6 +810,12 @@
     if (!liste.length) return '<td class="gf-a is-vide"></td>';
     // (« Illimité » se dit une fois, pas une fois par partie de laser)
     if (g.illimite) liste = liste.filter(function (e) { return !e.credit; }).slice(0, 1).concat(liste.filter(function (e) { return e.credit; }));
+    // (le laser garde a chaque depart d un acces illimite se dit une fois : son premier depart,
+    // « à volonté », le nombre de departs ; six heures empilees ne se lisaient pas)
+    else if (col.nature === 'laser' && liste.length > 1 && liste.every(function (e) { return e.aVolonte; })) {
+      var dernier = liste[liste.length - 1];
+      liste = [Object.assign({}, liste[0], { departs: liste.length, dernier: dernier.start, end: Math.max(liste[0].end, dernier.end) })];
+    }
     return '<td class="gf-a' + (liste.length > 1 ? ' is-plusieurs' : '') + (liste.length > 2 ? ' is-trois' : '') + '" data-gf-titre="' + gpEsc(col.titre) + '">' + liste.map(function (e) { return gfActivite(g, e, col, m); }).join('') + '</td>';
   }
 
@@ -1228,7 +1246,7 @@
       var liste = g.cases.get(c.cle) || [];
       if (!liste.length) return;
       parts.push(c.titre + ' ' + liste.map(function (e) {
-        if ((g.illimite || e.illimite) && !e.credit) return 'illimité';
+        if ((g.illimite || e.illimite) && !e.credit) return e.volonte ? 'à volonté' : 'illimité';
         if (e.aPlacer) return 'à placer';
         if (e.credit) return (e.credits ? e.credits.total : 0) + ' crédits';
         if (e.libre && !e.journee) return 'sans heure fixe ' + GF_ETATS[gfEtat(g, e, m)];

@@ -97,7 +97,9 @@ const MUTATIONS = [
   { nom: 'ajout-demain-ouverture', cible: 'A2', fichier: APP, de: "remplace ? { liste: [], suite: '' } : rsListeBloc(id, { frais: true });", vers: "remplace ? { liste: [], suite: '' } : rsListeBloc(id);" },
   { nom: 'reste-du-groupe-entier', cible: 'R1', fichier: APP, de: 'return rsPlaceDesDeparts(rvEcartsLaser().map((minutes, k) => [numToTime((base + minutes) / 60), Number(parPartie[k]) || joueurs]));', vers: 'return rsPlaceDesDeparts(rvEcartsLaser().map((minutes, k) => [numToTime((base + minutes) / 60), joueurs]));' },
   { nom: 'juste-apres-suit', cible: 'T1', fichier: APP, de: "    rvChoisirHeure(id, rang, rvModifiable() ? heure : rang > 0 && heure === suite ? '' : heure, { seule: true });\n    if (pendant) s.forcer = false;\n    else rsForcerApres(quoi, x, dejaForce);\n    rsVersQuestion(", vers: "    rvChoisirHeure(id, rang, rang > 0 && heure === suite ? '' : heure, { seule: true });\n    if (pendant) s.forcer = false;\n    else rsForcerApres(quoi, x, dejaForce);\n    rsVersQuestion(" },
-  { nom: 'trop-tard-avant-le-bowling', cible: 'T2', fichier: APP, de: '  return coince && coince.local && pendant ? null : coince;', vers: '  return coince;' },
+  // (trop-tard-avant-le-bowling est retiree le 2026-11-20 : depuis que rien ne suit plus, la fenetre
+  // compte la visite de l heure de chaque activite, rvDureeDeLaVisite. Le laser a 22:30 ne se juge plus
+  // « trop tard » en amont, et sans ce refus local, retirer rsRefusOuChevauchement ne change plus [T2].)
   { nom: 'partie-sans-chevauchement', cible: 'C2', fichier: APP, de: '  if (!plages || !plages.lignes.laser_game) return null;', vers: '  return null;' },
   { nom: 'parties-sans-reste', cible: 'R2', fichier: APP, de: ": motPendant || rsResteDit(x.place).replace(/ armes?$/, '');", vers: ': motPendant;' },
   { nom: 'il-restera-zero', cible: 'L1', fichier: APP, de: "  const liste = (mots || []).filter(Boolean);\n  if (!liste.length) return '';", vers: "  const liste = (mots || []).filter(Boolean);\n  if (liste.length) return `il restera ${liste.join(', ')}`;" },

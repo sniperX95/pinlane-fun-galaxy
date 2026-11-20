@@ -1251,7 +1251,7 @@ const MUTATIONS = [
   { nom: 'boite-qui-grandit-decroche', lettre: 'J', scenarios: ['minute'], editions: [{ fichier: PG, de: '      if (wrap._gfSuit && wrap._gfPose > defile.scrollHeight - defile.clientHeight + 1) { wrap._gfRegle = null; gfAllerAMaintenant(wrap, false); return; }\n', vers: '' }] },
   // [K] un autre jour
   { nom: 'aujourd-hui-cache', lettre: 'K', scenarios: ['autreJour'], editions: [{ fichier: PGC, de: '#planningBarre .staff-today-btn { flex: none; box-sizing: border-box;', vers: '#planningBarre .staff-today-btn { display: none; flex: none; box-sizing: border-box;' }] },
-  { nom: 'passe-en-vente', lettre: 'K', scenarios: ['autreJour'], editions: [{ fichier: PG, de: ' && !(m.maintenant == null && state.currentDate < todayStr());', vers: ';' }] },
+  { nom: 'passe-en-vente', lettre: 'K', scenarios: ['autreJour'], editions: [{ fichier: PG, de: ' && !(m.maintenant == null && state.currentDate < todayStr()) && !(prive && prive.centre);', vers: ' && !(prive && prive.centre);' }] },
   // [L] la barre agrandie
   { nom: 'barre-trop-etroite', lettre: 'L', scenarios: ['teteLargeurs'], editions: [{ fichier: PGC, de: '.gf-recherche { position: relative; flex: 1 1 auto; min-width: 0; height: var(--pb-l1); }', vers: '.gf-recherche { position: relative; flex: none; width: 720px; height: var(--pb-l1); }' }] },
   // Agrandie au telephone, la liste ne defile plus : le bas de la journee est perdu.

@@ -74,7 +74,7 @@ const MUTATIONS = [
   { nom: 'phrase-mangee', lettre: 'B', cible: `[B] au comptoir, « ${PHRASE} » se lit avant « Créer »`, fichier: APP,
     de: "  const prive = /^Privatisé : /.exec(String(texte || ''));", vers: '  const prive = null;' },
   { nom: 'forcer-offert', lettre: 'B', cible: '[B] « Créer quand même » n est pas offert sur une privatisation', fichier: APP,
-    de: "<div class=\"rs-tk-liens\">${plan && plan.fermeture ? '' : forcer}<button", vers: '<div class="rs-tk-liens">${forcer}<button' },
+    de: "<div class=\"rs-tk-liens\">${(plan && plan.fermeture) || chevauche ? '' : forcer}<button", vers: "<div class=\"rs-tk-liens\">${chevauche ? '' : forcer}<button" },
   { nom: 'groupe-oublie', lettre: 'C', cible: `[C] « Réserver pour ${NOM} » : le plan tient, pour le groupe prive`, fichier: APP,
     de: '    ...(s.privatisation ? { privatisation: s.privatisation } : {}),\n', vers: '' },
   { nom: 'heures-sans-le-groupe', lettre: 'C', cible: '[C] pour le groupe, ses heures se disent possibles dans sa privatisation (20:00)', fichier: APP,

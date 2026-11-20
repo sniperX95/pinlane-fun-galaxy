@@ -28962,17 +28962,23 @@ function getGroupeProgramme(r) {
       exige: formuleSuivie && vagues === 1,
     });
   });
+  // UN ACCES ILLIMITE NE DONNE PAS D HEURE A SES ACTIVITES LIBRES (2026-11-20, Ansar : « pour les
+  // activités illimité on comprend rien ») : l heure que le moteur leur suggerait (« Minigolf
+  // 16:30 ») se lisait comme un rendez-vous. Elles sont libres, « à volonté », comme la phrase du
+  // ticket et le grand tableau ; le bowling et le laser gardent leurs pistes et leurs departs.
+  const accesIllimite = illimiteDeSaCarte(r);
   getStaffFormulaTimedItems(r)
     .filter(item => item.activityId !== 'bowling' && item.activityId !== 'laser_game')
     .forEach(item => etapes.push({
       cle: item.key,
       activityId: item.activityId,
       nom: item.label,
-      quoi: '',
+      quoi: accesIllimite ? 'à volonté' : '',
       ou: '',
       groupe: '',
-      start: item.start,
-      end: item.end,
+      start: accesIllimite ? null : item.start,
+      end: accesIllimite ? null : item.end,
+      ...(accesIllimite ? { libre: true, volonte: true } : {}),
       fait: Boolean(item.done),
       coche: item.key,
       exige: true,
@@ -29131,15 +29137,17 @@ function renderGroupeEtapes(r, moment, options = {}) {
   const libres = enLigne ? etapes.filter(etape => etape.libre) : [];
   const ligneLibres = () => {
     const toutFait = libres.every(etape => etape.fait);
+    // (les activites d un acces illimite sont toutes « à volonté » : le mot se dit une fois, en tete)
+    const volonte = libres.every(etape => etape.volonte);
     const puces = libres.map(etape => {
       const cochable = Boolean(etape.coche) && r.status !== 'cancelled' && peutCocher;
       const appel = cochable ? `toggleFormulaActivity(${Number(r.id)}, '${escapeJsString(etape.coche)}', event)` : '';
-      return `<button type="button" class="gc-libre${etape.fait ? ' is-fait' : ''}" ${cochable ? `onclick="${appel}" aria-pressed="${etape.fait}" aria-label="${escapeHtml(etape.nom)}${etape.quoi ? ` ${escapeHtml(etape.quoi)}` : ''} : ${etape.fait ? 'fait, annuler' : 'marquer comme fait'}" data-pl-focus="carte.activite.${Number(r.id)}.${escapeHtml(etape.coche)}"` : 'disabled'}>${etape.fait ? ACTIVITY_CHECK_SVG : ''}<span>${escapeHtml(etape.nom)}</span>${etape.quoi ? `<small>${escapeHtml(etape.quoi)}</small>` : ''}</button>`;
+      return `<button type="button" class="gc-libre${etape.fait ? ' is-fait' : ''}" ${cochable ? `onclick="${appel}" aria-pressed="${etape.fait}" aria-label="${escapeHtml(etape.nom)}${etape.quoi ? ` ${escapeHtml(etape.quoi)}` : ''} : ${etape.fait ? 'fait, annuler' : 'marquer comme fait'}" data-pl-focus="carte.activite.${Number(r.id)}.${escapeHtml(etape.coche)}"` : 'disabled'}>${etape.fait ? ACTIVITY_CHECK_SVG : ''}<span>${escapeHtml(etape.nom)}</span>${etape.quoi && !etape.volonte ? `<small>${escapeHtml(etape.quoi)}</small>` : ''}</button>`;
     }).join('');
     // « Libre » dit deja « a leur rythme » : la ligne laisse toute la place
     // aux puces (le mot reste pour les lecteurs d ecran).
     return `<li class="gc-step gc-step-libres is-${toutFait ? 'fait' : 'libre'}">
-      <span class="gc-step-time is-free">Libre<span class="visually-hidden">, ${toutFait ? 'tout est fait' : 'à leur rythme'}</span></span>
+      <span class="gc-step-time is-free">${volonte ? 'À volonté' : 'Libre'}<span class="visually-hidden">, ${toutFait ? 'tout est fait' : 'à leur rythme'}</span></span>
       <span class="gc-libres">${puces}</span>
     </li>`;
   };

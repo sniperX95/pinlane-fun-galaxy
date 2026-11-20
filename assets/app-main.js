@@ -18843,19 +18843,22 @@ function privatisationPhrase(p) {
 }
 
 // LE BANDEAU, sous la barre des trois plannings : chaque privatisation du jour, ce qu elle ferme,
-// le dossier du groupe, et « Retirer » pour qui peut privatiser. Une journee sans privatisation
-// ne le montre pas : le planning reste celui d avant.
+// le dossier du groupe (il s ouvre d un toucher), « Modifier » et « Retirer » pour qui peut
+// privatiser. Une journee sans privatisation ne le montre pas : le planning reste celui d avant.
 function renderBandeauPrivatisations() {
   if (typeof document === 'undefined') return;
   const zone = document.getElementById('planningPrivatisations');
   if (!zone) return;
   const liste = state.view === 'staff' ? privatisationsGroupees(getAvailabilityBlocksForDate(state.currentDate), state.currentDate) : [];
   const peut = peutGeste('privatiser');
+  const cadenas = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="10.5" width="15" height="10" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg>';
   const html = liste.map(p => {
     const groupe = p.reservationId ? todaysReservations().find(r => Number(r.id) === Number(p.reservationId)) : null;
-    const detail = [privatisationPortee(p), groupe ? `dossier ${groupe.name || `n° ${groupe.id}`}` : ''].filter(Boolean).join(' · ');
-    const ids = escapeHtml(p.ids.join(','));
-    return `<div class="pb-prive" data-privatisation="${ids}"><span class="pb-prive__t"><b>${escapeHtml(privatisationPhrase(p))}</b><span>${escapeHtml(detail)}</span></span>${peut ? `<button type="button" class="pb-prive__x" onclick="retirerPrivatisationUi('${escapeJsString(p.ids.join(','))}')">Retirer</button>` : ''}</div>`;
+    const dossier = groupe ? `<button type="button" class="pb-prive__dossier" onclick="openPos(${Number(groupe.id)})">${escapeHtml(groupe.name || `Dossier n° ${groupe.id}`)}</button>` : '';
+    const gestes = peut
+      ? `<span class="pb-prive__gestes"><button type="button" class="pb-prive__b" onclick="modifierPrivatisationUi('${escapeJsString(p.ids.join(','))}')">Modifier</button><button type="button" class="pb-prive__x" onclick="retirerPrivatisationUi('${escapeJsString(p.ids.join(','))}')">Retirer</button></span>`
+      : '';
+    return `<div class="pb-prive" data-privatisation="${escapeHtml(p.ids.join(','))}"><span class="pb-prive__cadenas" aria-hidden="true">${cadenas}</span><span class="pb-prive__t"><b>${escapeHtml(privatisationPhrase(p))}</b><span>${escapeHtml(privatisationPortee(p))}${dossier}</span></span>${gestes}</div>`;
   }).join('');
   if (zone.__rendu === html) return;
   zone.__rendu = html;
@@ -18875,14 +18878,54 @@ async function privatisationRelire(date) {
   else refreshAvailabilityBlocksUi();
 }
 
+// Les privatisations a venir du centre, telles que le serveur les liste (action listerPrivatisations) :
+// la fenetre « Privatisations à venir » les montre, la fenetre Privatiser y lit les autres groupes du
+// jour choisi, « Modifier » y retrouve une privatisation d un autre jour.
+let privatisationsAVenir = null;
+async function lirePrivatisationsAVenir() {
+  const reponse = await apiRequest(API_ENDPOINTS.ops, { method: 'POST', body: JSON.stringify({ action: 'listerPrivatisations', centerId: getCurrentStaffCenterId() }) });
+  privatisationsAVenir = Array.isArray(reponse && reponse.privatisations) ? reponse.privatisations : [];
+  return privatisationsAVenir;
+}
+
+function privatisationDeLaListe(x) {
+  const minutes = (h) => { const [a, b] = String(h || '').split(':').map(Number); return (a || 0) * 60 + (b || 0); };
+  return {
+    ids: (x.ids || []).map(Number),
+    nom: String(x.nom || ''),
+    date: x.date,
+    debut: minutes(x.startTime),
+    fin: x.endTime === '24:00' ? 1440 : minutes(x.endTime),
+    toutLeCentre: Boolean(x.toutLeCentre),
+    activites: (x.activites || []).map(a => String((a && a.id) || a)),
+    reservationId: x.reservationId || null,
+  };
+}
+
+// Une privatisation connue de ce poste, par les numeros de ses blocages : la journee servie, les
+// blocages d Etablissement, ou la derniere liste des privatisations a venir.
+function privatisationConnue(ids) {
+  const voulus = (ids || []).map(Number);
+  const blocs = [...(fermeturesServies(state.currentDate) || []), ...(availabilityBlocksCache.blocks || [])].filter(b => voulus.includes(Number(b.id)));
+  const groupe = privatisationsGroupees(blocs, state.currentDate)[0];
+  if (groupe) return groupe;
+  const lue = (privatisationsAVenir || []).find(x => (x.ids || []).some(id => voulus.includes(Number(id))));
+  return lue ? privatisationDeLaListe(lue) : null;
+}
+const idsDuTexte = (texte) => String(texte || '').split(',').map(Number).filter(n => Number.isInteger(n) && n > 0);
+
 async function retirerPrivatisationUi(idsTexte) {
   if (!peutGeste('privatiser')) { toast('Votre rôle ne permet pas de retirer une privatisation. Demandez à un responsable.'); return; }
-  const ids = String(idsTexte || '').split(',').map(Number).filter(n => Number.isInteger(n) && n > 0);
+  const ids = idsDuTexte(idsTexte);
   if (!ids.length) return;
-  const connus = [...(fermeturesServies(state.currentDate) || []), ...(availabilityBlocksCache.blocks || [])].filter(b => ids.includes(Number(b.id)));
-  const p = privatisationsGroupees(connus)[0];
-  const dit = p ? `\n${privatisationPhrase(p)} (${privatisationPortee(p)})` : '';
-  if (!window.confirm(`Retirer cette privatisation ?${dit}\nCes heures redeviendront réservables, en ligne et au comptoir.`)) return;
+  const p = privatisationConnue(ids);
+  const voulu = await staffConfirm({
+    title: 'Retirer cette privatisation ?',
+    body: `${p ? `${privatisationPhrase(p)} (${privatisationPortee(p)}). ` : ''}Ces heures redeviendront réservables, en ligne et au comptoir.`,
+    confirmLabel: 'Retirer',
+    danger: true,
+  });
+  if (!voulu) return;
   try {
     await apiRequest(API_ENDPOINTS.ops, { method: 'POST', body: JSON.stringify({ action: 'retirerPrivatisation', centerId: getCurrentStaffCenterId(), ids }) });
     toast('Privatisation retirée.');
@@ -18890,50 +18933,195 @@ async function retirerPrivatisationUi(idsTexte) {
     toast(error?.message || 'Retrait impossible pour le moment. Réessayez.');
   }
   await privatisationRelire(p ? p.date : state.currentDate);
+  if (document.getElementById('prvListe')) chargerListePrivatisations();
 }
 
-// LA FENETRE « PRIVATISER » : le jour, de quelle heure a quelle heure, tout le centre ou les
-// activites choisies, pour qui. Avant d enregistrer, elle montre les reservations deja sur ces
-// heures (le serveur les lit a blanc) : elles restent a leur place, et l une d elles peut etre le
-// dossier du groupe prive. Tout changement de la demande redemande cette lecture.
-let privatiserVu = null;
+// « Modifier » (le bandeau, la liste) : la fenetre de la privatisation, remplie. Elle s enregistre
+// a la place de l ancienne, en une ecriture (le serveur retire et pose ensemble).
+function modifierPrivatisationUi(idsTexte, { depuisLaListe = false } = {}) {
+  const p = privatisationConnue(idsDuTexte(idsTexte));
+  if (!p) { toast('Cette privatisation a changé : le planning se met à jour.'); privatisationRelire(state.currentDate); return; }
+  ouvrirPrivatiser({
+    remplace: p.ids,
+    date: p.date,
+    debut: availabilityMinutesToHHMM(p.debut ?? 0),
+    fin: p.fin == null || p.fin >= 1440 ? '00:00' : availabilityMinutesToHHMM(p.fin),
+    nom: p.nom,
+    toutLeCentre: p.toutLeCentre,
+    activites: p.activites,
+    reservationId: p.reservationId,
+    depuisLaListe,
+  });
+}
+
+// ── LA FENETRE « PRIVATISER » (refaite le 2026-11-20, Ansar : « un truc bcp plus complet, bcp
+// plus beau visuellement ») ───────────────────────────────────────────────────────────────────
+// A gauche ce qu on decide : le jour (une puce par jour, ou un autre), les heures (la journee
+// dessinee avec ses reservations, la plage se tire a la souris ou au doigt, ou se tape), ce qui est
+// ferme (tout le centre, ou des activites, chacune avec sa photo), pour qui. A droite ce que ca
+// donne, en direct : la plage en clair, la phrase que le planning dira, et les reservations deja sur
+// ces heures, lues par le serveur a chaque changement (a blanc, rien ne s ecrit). Plus d etape
+// « voir ce qui est deja reserve » : « Privatiser » s allume quand la liste lue est celle de la
+// demande. Rien ne se deplace tout seul, et l une des reservations peut etre le dossier du groupe.
+let prv = null;
+const PRV_PAS = 15;
 
 function privatiserActivites() {
   const ids = [...new Set((typeof getCenterActivities === 'function' ? getCenterActivities() : []).map(a => String((a && a.id) || '')).filter(Boolean))];
   return (ids.length ? ids : ['bowling', 'laser_game']).map(id => ({ id, nom: rvNomActivite(id) }));
 }
 
-function ouvrirPrivatiser({ date = '', debut = '', fin = '' } = {}) {
-  if (!peutGeste('privatiser')) { toast('Votre rôle ne permet pas de privatiser. Demandez à un responsable.'); return; }
-  privatiserVu = null;
-  const jour = date || state.currentDate;
-  const activites = privatiserActivites().map(a => `<label class="prv-act"><input type="checkbox" name="prvActivite" value="${escapeHtml(a.id)}" onchange="privatiserChange('activite')"><span>${escapeHtml(a.nom)}</span></label>`).join('');
-  smFenetreOuvrir({
-    titre: 'Privatiser',
-    sous: 'Personne ne pourra réserver sur ces heures, ni en ligne ni au comptoir.',
-    classe: 'is-petite prv-fen',
-    corps: `<form class="bdg-hf prv" id="prvForm" onsubmit="privatiserEnvoyer(event)" novalidate>
-      <label class="bdg-champ"><span>Jour</span><input class="input" id="prvDate" type="date" required value="${escapeHtml(jour)}" min="${escapeHtml(todayStr())}" oninput="privatiserChange()"></label>
-      <div class="bdg-hf-l">
-        <label class="bdg-champ"><span>De</span><input class="input" id="prvDe" type="time" step="900" required value="${escapeHtml(debut)}" oninput="privatiserChange()"></label>
-        <label class="bdg-champ"><span>À</span><input class="input" id="prvA" type="time" step="900" required value="${escapeHtml(fin)}" oninput="privatiserChange()"></label>
-      </div>
-      <fieldset class="prv-quoi"><legend>Ce qui est privatisé</legend>
-        <div class="prv-choix">
-          <label class="prv-act"><input type="radio" name="prvQuoi" value="centre" checked onchange="privatiserChange('centre')"><span>Tout le centre</span></label>
-          <label class="prv-act"><input type="radio" name="prvQuoi" value="activites" onchange="privatiserChange()"><span>Seulement des activités</span></label>
+// Les heures d ouverture du jour, en minutes (getSchedule rend des heures decimales). Un jour ferme
+// garde une journee de 10:00 a minuit, et le dit.
+function privatiserOuverture(date) {
+  let plage = null;
+  try { plage = typeof getSchedule === 'function' ? getSchedule(date, state.isHolidayMode) : null; } catch (error) { plage = null; }
+  const open = plage && Number.isFinite(Number(plage.open)) ? Math.round(Number(plage.open) * 60) : 600;
+  const close = plage && Number.isFinite(Number(plage.close)) ? Math.round(Number(plage.close) * 60) : 1440;
+  const o = Math.max(0, Math.min(open, 1380));
+  return { open: o, close: Math.max(o + 60, Math.min(close, 1440)), ferme: !plage };
+}
+
+const prvMinutes = (h) => {
+  const lu = /^(\d{1,2}):(\d{2})$/.exec(String(h || '').trim());
+  return lu ? Number(lu[1]) * 60 + Number(lu[2]) : null;
+};
+const prvHeure = (m) => (m >= 1440 ? '00:00' : availabilityMinutesToHHMM(Math.max(0, Math.round(m))));
+const prvHeureDite = (m) => (m >= 1440 ? 'minuit' : availabilityMinutesToHHMM(Math.max(0, Math.round(m))));
+function prvDuree(minutes) {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return h && m ? `${h} h ${String(m).padStart(2, '0')}` : h ? `${h} h` : `${m} min`;
+}
+// (une date en morceaux, pour les puces des jours ; rsDateLue garde ses propres formats)
+const prvDatesMemo = new Map();
+function prvDate(iso, options) {
+  const cle = `${iso}|${JSON.stringify(options)}`;
+  if (!prvDatesMemo.has(cle)) {
+    let texte = iso;
+    try { texte = new Intl.DateTimeFormat('fr-BE', options).format(parseLocalDate(iso)); } catch (error) { /* date brute */ }
+    prvDatesMemo.set(cle, texte.replace('.', ''));
+  }
+  return prvDatesMemo.get(cle);
+}
+const prvDateLongue = (iso) => rsDateLue(iso, { weekday: 'long', day: 'numeric', month: 'long' });
+
+// Les jours proposes en puces : aujourd hui et les 13 suivants, plus le jour choisi s il est plus loin.
+function privatiserJours(choisi) {
+  const jours = [];
+  const d = parseLocalDate(todayStr());
+  for (let i = 0; i < 14; i += 1) {
+    jours.push(rvIso(d));
+    d.setDate(d.getDate() + 1);
+  }
+  if (choisi && !jours.includes(choisi) && choisi >= todayStr()) jours.push(choisi);
+  return jours;
+}
+
+function privatiserJoursHtml(choisi) {
+  return privatiserJours(choisi).map((iso, i) => {
+    const on = iso === choisi;
+    return `<button type="button" class="prv-jour${on ? ' is-on' : ''}" role="radio" aria-checked="${on}" aria-label="${escapeHtml(prvDateLongue(iso))}" data-prv-jour="${escapeHtml(iso)}" onclick="privatiserJour('${escapeJsString(iso)}')"><span>${escapeHtml(i === 0 ? 'auj' : prvDate(iso, { weekday: 'short' }))}</span><b>${escapeHtml(prvDate(iso, { day: 'numeric' }))}</b><small>${escapeHtml(prvDate(iso, { month: 'short' }))}</small></button>`;
+  }).join('');
+}
+
+function privatiserCorpsHtml({ jour, debut, fin, nom, toutLeCentre, activites, modifier }) {
+  const centre = getCurrentStaffCenterId();
+  const acts = privatiserActivites().map(a => {
+    const coche = !toutLeCentre && activites.includes(a.id);
+    return `<label class="prv-act${coche ? ' is-on' : ''}"><input type="checkbox" name="prvActivite" value="${escapeHtml(a.id)}"${coche ? ' checked' : ''} onchange="privatiserChange('activite')">${ficheVisuelActivite({ centerId: centre }, { activityId: a.id, nom: a.nom })}<span class="prv-act__nom">${escapeHtml(a.nom)}</span></label>`;
+  }).join('');
+  const signe = (plus) => `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="${plus ? 'M5 12h14M12 5v14' : 'M5 12h14'}"/></svg>`;
+  const heure = (id, dit, valeur) => `<div class="prv-heure"><span class="prv-heure__dit" id="${id}Dit">${dit}</span><button type="button" class="prv-pas" aria-label="${dit} : 15 minutes plus tôt" onclick="privatiserPas('${id}', -1)">${signe(false)}</button><input class="prv-heure__h" id="${id}" type="time" step="900" required value="${escapeHtml(valeur)}" aria-labelledby="${id}Dit" oninput="privatiserChange()"><button type="button" class="prv-pas" aria-label="${dit} : 15 minutes plus tard" onclick="privatiserPas('${id}', 1)">${signe(true)}</button></div>`;
+  return `<form class="prv2" id="prvForm" onsubmit="privatiserEnvoyer(event)" novalidate>
+    <div class="prv2-gauche">
+      <section class="prv-bloc" aria-labelledby="prvJourT">
+        <h4 class="prv-tit" id="prvJourT">Le jour</h4>
+        <div class="prv-jours" id="prvJours" role="radiogroup" aria-labelledby="prvJourT">${privatiserJoursHtml(jour)}</div>
+        <label class="prv-autre"><span>Un autre jour</span><input class="input" id="prvDate" type="date" required value="${escapeHtml(jour)}" min="${escapeHtml(todayStr())}" oninput="privatiserChange('jour')"></label>
+      </section>
+      <section class="prv-bloc" aria-labelledby="prvHeuresT">
+        <h4 class="prv-tit" id="prvHeuresT">Les heures</h4>
+        <div class="prv-jauge" aria-hidden="true">
+          <div class="prv-jauge__piste" id="prvPiste">
+            <div class="prv-jauge__privees" id="prvJaugePrivees"></div>
+            <div class="prv-jauge__resas" id="prvJaugeResas"></div>
+            <div class="prv-jauge__sel" id="prvJaugeSel" data-prv-tirer="tout"><span class="prv-poignee" data-prv-tirer="debut"></span><span class="prv-poignee" data-prv-tirer="fin"></span></div>
+          </div>
+          <div class="prv-jauge__heures" id="prvJaugeHeures"></div>
         </div>
-        <div class="prv-acts" id="prvActs" hidden>${activites}</div>
-      </fieldset>
-      <label class="bdg-champ"><span>Pour qui</span><input class="input" id="prvNom" maxlength="120" autocomplete="off" required placeholder="Anniversaire Dupont, société Lambert" oninput="privatiserChange()"></label>
+        <p class="prv-aide prv-ferme" id="prvFerme" hidden>Le centre est fermé ce jour-là.</p>
+        <div class="prv-heures">${heure('prvDe', 'De', debut)}${heure('prvA', 'À', fin)}<p class="prv-duree" id="prvDuree"></p></div>
+        <div class="prv-raccourcis" id="prvRaccourcis"></div>
+      </section>
+      <section class="prv-bloc" aria-labelledby="prvQuoiT">
+        <h4 class="prv-tit" id="prvQuoiT">Ce qui est fermé</h4>
+        <div class="prv-seg" role="radiogroup" aria-labelledby="prvQuoiT">
+          <label class="prv-seg__b"><input type="radio" name="prvQuoi" value="centre"${toutLeCentre ? ' checked' : ''} onchange="privatiserChange('centre')"><span>Tout le centre</span></label>
+          <label class="prv-seg__b"><input type="radio" name="prvQuoi" value="activites"${toutLeCentre ? '' : ' checked'} onchange="privatiserChange()"><span>Des activités</span></label>
+        </div>
+        <div class="prv-acts" id="prvActs"${toutLeCentre ? ' hidden' : ''}>${acts}</div>
+      </section>
+      <section class="prv-bloc">
+        <label class="prv-tit" for="prvNom">Pour qui</label>
+        <input class="input prv-nom" id="prvNom" maxlength="120" autocomplete="off" required placeholder="Anniversaire Dupont, société Lambert" value="${escapeHtml(nom)}" oninput="privatiserChange('nom')">
+        <p class="prv-aide">L’équipe lit ce nom sur le planning. En ligne, les clients lisent seulement « privatisé ».</p>
+      </section>
+    </div>
+    <aside class="prv2-droite" aria-label="Ce que donne la privatisation">
+      <div class="prv-resume" id="prvResume"></div>
       <div class="prv-vu" id="prvVu" aria-live="polite"></div>
+    </aside>
+    <div class="prv2-pied">
       <p class="bdg-hf-err" id="prvErr" role="alert" hidden></p>
       <div class="bdg-actions">
-        <button type="button" class="bdg-b" onclick="smFenetreFermer()">Annuler</button>
-        <button type="submit" class="bdg-p" id="prvOk">Voir ce qui est déjà réservé</button>
+        <button type="button" class="bdg-b" onclick="privatiserAnnuler()">Annuler</button>
+        <button type="submit" class="bdg-p" id="prvOk" disabled>${modifier ? 'Enregistrer' : 'Privatiser'}</button>
       </div>
-    </form>`,
+    </div>
+  </form>`;
+}
+
+function ouvrirPrivatiser({ date = '', debut = '', fin = '', nom = '', toutLeCentre = true, activites = [], reservationId = null, remplace = [], depuisLaListe = false } = {}) {
+  if (!peutGeste('privatiser')) { toast('Votre rôle ne permet pas de privatiser. Demandez à un responsable.'); return; }
+  const jour = date && date >= todayStr() ? date : (state.currentDate >= todayStr() ? state.currentDate : todayStr());
+  const plage = privatiserOuverture(jour);
+  // (sans heures donnees : la soiree, de 18:00 a la fermeture, ce qui se privatise le plus souvent)
+  const soir = Math.min(Math.max(18 * 60, plage.open), plage.close - 60);
+  const etat = {
+    remplace: (remplace || []).map(Number).filter(n => n > 0),
+    reservationId: reservationId ? Number(reservationId) : null,
+    depuisLaListe,
+    vu: null,
+    ticket: 0,
+    ticketJour: 0,
+    minuterie: 0,
+    journee: { date: jour, plage, resas: [] },
+  };
+  const parActivites = toutLeCentre === false && (activites || []).length > 0;
+  // (l etat se pose apres l ouverture : la fenetre d avant, fermee par celle-ci, ne l efface pas)
+  smFenetreOuvrir({
+    titre: etat.remplace.length ? 'Modifier la privatisation' : 'Privatiser',
+    sous: 'Personne ne pourra réserver sur ces heures, ni en ligne ni au comptoir.',
+    classe: 'prv-fen',
+    corps: privatiserCorpsHtml({ jour, debut: debut || prvHeure(soir), fin: fin || prvHeure(plage.close), nom, toutLeCentre: !parActivites, activites: activites || [], modifier: etat.remplace.length > 0 }),
+    quandFermee: () => { clearTimeout(etat.minuterie); if (prv === etat) prv = null; },
   });
+  prv = etat;
+  const piste = document.getElementById('prvPiste');
+  if (piste) piste.addEventListener('pointerdown', privatiserTirer);
+  document.querySelector('#prvJours .is-on')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  privatiserJournee(jour);
+  privatiserPeindre();
+  privatiserVerifier();
+  // (les autres groupes des autres jours, pour la journee dessinee)
+  lirePrivatisationsAVenir().then(() => privatiserPeindre()).catch(() => {});
+}
+
+function privatiserAnnuler() {
+  const retour = prv && prv.depuisLaListe;
+  smFenetreFermer();
+  if (retour) ouvrirListePrivatisations();
 }
 
 function privatiserErreur(message) {
@@ -18941,20 +19129,6 @@ function privatiserErreur(message) {
   if (!zone) { if (message) toast(message); return; }
   zone.textContent = message || '';
   zone.hidden = !message;
-}
-
-// La demande change : ce qui a ete vu ne vaut plus pour elle.
-function privatiserChange(quoi = '') {
-  if (quoi === 'centre') document.querySelectorAll('input[name="prvActivite"]').forEach(c => { c.checked = false; });
-  // (les activites ne se montrent qu a qui ne privatise pas tout le centre)
-  const acts = document.getElementById('prvActs');
-  if (acts) acts.hidden = (document.querySelector('input[name="prvQuoi"]:checked') || {}).value !== 'activites';
-  privatiserVu = null;
-  const vu = document.getElementById('prvVu');
-  if (vu) vu.innerHTML = '';
-  const ok = document.getElementById('prvOk');
-  if (ok) ok.textContent = 'Voir ce qui est déjà réservé';
-  privatiserErreur('');
 }
 
 function privatiserLire() {
@@ -18966,66 +19140,379 @@ function privatiserLire() {
   return { date: valeur('prvDate'), startTime: valeur('prvDe'), endTime: fin === '00:00' ? '24:00' : fin, toutLeCentre, activites, nom: valeur('prvNom') };
 }
 
+// Ce qui manque a la demande, dans l ordre ou elle se lit. `pourVoir` : la liste se lit sans le nom.
+function privatiserManque(corps, { pourVoir = false } = {}) {
+  const debut = prvMinutes(corps.startTime);
+  const fin = corps.endTime === '24:00' ? 1440 : prvMinutes(corps.endTime);
+  if (!corps.date) return 'Choisissez le jour.';
+  if (debut === null || fin === null) return 'Choisissez de quelle heure à quelle heure.';
+  if (!(fin > debut)) return 'L’heure de fin vient après l’heure de début.';
+  if (!corps.toutLeCentre && !corps.activites.length) return 'Choisissez au moins une activité, ou tout le centre.';
+  if (!pourVoir && !corps.nom) return 'Donnez le nom du client ou de l’événement.';
+  return '';
+}
+
+// La cle d une demande pour la liste lue : le nom n y change rien.
+const privatiserCle = (corps) => JSON.stringify({ ...corps, nom: '' });
+
+// La demande change : ce qui a ete lu ne vaut plus pour elle, la liste se relit un instant apres.
+function privatiserChange(quoi = '') {
+  if (!prv) return;
+  if (quoi === 'centre') document.querySelectorAll('input[name="prvActivite"]').forEach(c => { c.checked = false; });
+  const acts = document.getElementById('prvActs');
+  const parActivites = (document.querySelector('input[name="prvQuoi"]:checked') || {}).value === 'activites';
+  if (acts) acts.hidden = !parActivites;
+  document.querySelectorAll('.prv-act').forEach(l => l.classList.toggle('is-on', Boolean(l.querySelector('input:checked'))));
+  if (quoi === 'jour') {
+    const date = document.getElementById('prvDate')?.value || '';
+    const zone = document.getElementById('prvJours');
+    if (zone && date) {
+      zone.innerHTML = privatiserJoursHtml(date);
+      zone.querySelector('.is-on')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+    if (date && (!prv.journee || prv.journee.date !== date)) privatiserJournee(date);
+  }
+  privatiserErreur('');
+  privatiserPeindre();
+  if (quoi === 'nom') { privatiserBouton(); return; }
+  prv.vu = null;
+  // (une lecture deja partie ne vaut plus : sa reponse ne s affichera pas)
+  prv.ticket += 1;
+  privatiserBouton();
+  clearTimeout(prv.minuterie);
+  prv.minuterie = setTimeout(privatiserVerifier, 250);
+}
+
+function privatiserJour(iso) {
+  const champ = document.getElementById('prvDate');
+  if (!champ || !iso) return;
+  champ.value = iso;
+  privatiserChange('jour');
+}
+
+function privatiserPas(id, sens) {
+  const champ = document.getElementById(id);
+  if (!champ || !prv) return;
+  const ouvert = prv.journee.plage;
+  const actuel = prvMinutes(champ.value === '00:00' && id === 'prvA' ? '24:00' : champ.value);
+  const base = actuel === null ? (id === 'prvDe' ? ouvert.open : ouvert.close) : actuel;
+  const pas = Math.round((base + sens * PRV_PAS) / PRV_PAS) * PRV_PAS;
+  champ.value = prvHeure(Math.max(0, Math.min(1440, pas)));
+  privatiserChange();
+}
+
+// LA JAUGE : la journee, de l ouverture a la fermeture (elargie si la plage en sort). Les
+// reservations du jour en traits, rangees sur autant de lignes qu il faut pour ne jamais se cacher ;
+// celles que la plage ferme, en fonce ; les autres privatisations du jour, hachurees.
+function privatiserBornes() {
+  const corps = privatiserLire();
+  const plage = prv.journee.plage;
+  const debut = prvMinutes(corps.startTime);
+  const fin = corps.endTime === '24:00' ? 1440 : prvMinutes(corps.endTime);
+  const min = Math.min(plage.open, debut ?? plage.open);
+  const max = Math.max(plage.close, fin ?? plage.close);
+  return { corps, debut, fin, min: Math.floor(min / 60) * 60, max: Math.min(1440, Math.ceil(max / 60) * 60), plage };
+}
+
+const prvPeindreSi = (zone, html) => { if (zone && zone.__rendu !== html) { zone.__rendu = html; zone.innerHTML = html; } };
+
+function privatiserPeindre() {
+  if (!prv) return;
+  const b = privatiserBornes();
+  const largeur = Math.max(60, b.max - b.min);
+  const pc = (m) => `${(((m - b.min) / largeur) * 100).toFixed(3)}%`;
+  const large = (d, f) => `${(((f - d) / largeur) * 100).toFixed(3)}%`;
+  const valide = b.debut !== null && b.fin !== null && b.fin > b.debut;
+  const sel = document.getElementById('prvJaugeSel');
+  if (sel) {
+    sel.hidden = !valide;
+    if (valide) { sel.style.left = pc(b.debut); sel.style.width = large(b.debut, b.fin); }
+  }
+  const marques = [];
+  const pas = largeur > 600 ? 120 : 60;
+  for (let m = b.min; m <= b.max; m += pas) marques.push(`<span style="left:${pc(m)}">${m >= 1440 ? 'minuit' : `${Math.floor(m / 60)} h`}</span>`);
+  prvPeindreSi(document.getElementById('prvJaugeHeures'), marques.join(''));
+  // Les reservations du jour, sur des lignes (un trait par visite, jamais l un sous l autre).
+  const touchees = new Set(((prv.vu && prv.vu.reservations) || []).map(r => Number(r.id)));
+  const resas = (prv.journee.resas || []).map(r => ({ r, d: prvMinutes(r.debut), f: r.fin === 'minuit' ? 1440 : prvMinutes(r.fin) })).filter(x => x.d !== null && x.f !== null && x.f > x.d).sort((x, y) => x.d - y.d);
+  const fins = [];
+  const traits = resas.map(x => {
+    let ligne = fins.findIndex(f => f <= x.d);
+    if (ligne < 0) { ligne = fins.length; fins.push(0); }
+    fins[ligne] = x.f;
+    return { ...x, ligne };
+  });
+  const lignes = Math.max(1, Math.min(6, fins.length));
+  document.getElementById('prvPiste')?.style.setProperty('--prv-lignes', String(lignes));
+  prvPeindreSi(document.getElementById('prvJaugeResas'), traits.filter(t => t.ligne < 6).map(t => `<span class="prv-trait${touchees.has(Number(t.r.id)) ? ' is-touchee' : ''}" style="left:${pc(Math.max(b.min, t.d))};width:${large(Math.max(b.min, t.d), Math.min(b.max, t.f))};top:calc(${t.ligne} * var(--prv-ligne))"></span>`).join(''));
+  prvPeindreSi(document.getElementById('prvJaugePrivees'), privatiserAutresDuJour(b.corps.date).map(p => {
+    const d = Math.max(b.min, p.debut ?? 0);
+    const f = Math.min(b.max, p.fin == null ? 1440 : p.fin);
+    return f > d ? `<span class="prv-autre-prive" style="left:${pc(d)};width:${large(d, f)}"></span>` : '';
+  }).join(''));
+  const ferme = document.getElementById('prvFerme');
+  if (ferme) ferme.hidden = !b.plage.ferme;
+  const duree = document.getElementById('prvDuree');
+  if (duree) duree.textContent = valide ? prvDuree(b.fin - b.debut) : '';
+  privatiserRaccourcis(b);
+  privatiserResume(b, valide);
+}
+
+// Les autres privatisations du jour (celle qui se modifie n en fait pas partie).
+function privatiserAutresDuJour(date) {
+  if (!date || !prv) return [];
+  const remplace = new Set(prv.remplace);
+  const blocs = [...(date === state.currentDate ? (fermeturesServies(date) || []) : []), ...(availabilityBlocksCache.blocks || [])]
+    .filter(b => b && b.kind === 'private' && (b.date || date) === date && !remplace.has(Number(b.id)));
+  const vus = privatisationsGroupees(blocs, date);
+  const cles = new Set(vus.flatMap(p => p.ids));
+  const deLaListe = (privatisationsAVenir || []).filter(x => x.date === date && !(x.ids || []).some(id => remplace.has(Number(id)) || cles.has(Number(id)))).map(privatisationDeLaListe);
+  return [...vus, ...deLaListe];
+}
+
+// Les plages d un toucher, seulement celles que le jour ouvre.
+function privatiserRaccourcis(b) {
+  const { open, close } = b.plage;
+  const choix = [['Toute la journée', open, close]];
+  if (open < 12 * 60 && close > 12 * 60) choix.push(['Le matin', open, 12 * 60]);
+  if (open < 18 * 60 && close > 13 * 60) choix.push(['L’après-midi', Math.max(open, 13 * 60), Math.min(close, 18 * 60)]);
+  if (close > 18 * 60) choix.push(['Le soir', Math.max(open, 18 * 60), close]);
+  prvPeindreSi(document.getElementById('prvRaccourcis'), choix.filter(([, d, f]) => f > d).map(([mot, d, f]) => {
+    const on = b.debut === d && b.fin === f;
+    return `<button type="button" class="prv-raccourci${on ? ' is-on' : ''}" aria-pressed="${on}" onclick="privatiserPlage(${Number(d)}, ${Number(f)})">${escapeHtml(mot)}<small>${escapeHtml(`${prvHeureDite(d)} à ${prvHeureDite(f)}`)}</small></button>`;
+  }).join(''));
+}
+
+function privatiserPlage(debut, fin) {
+  const de = document.getElementById('prvDe');
+  const a = document.getElementById('prvA');
+  if (!de || !a) return;
+  de.value = prvHeure(debut);
+  a.value = prvHeure(fin);
+  privatiserChange();
+}
+
+// Ce que ca donne, en clair, a droite : le jour, la plage, ce qui ferme, pour qui, et la phrase que
+// le planning dira (le format de lib/availability-blocks.js phraseDuBlocage).
+function privatiserResume(b, valide) {
+  const corps = b.corps;
+  const centre = getCurrentStaffCenterId();
+  const jour = corps.date ? rsJourMot(corps.date) : 'Choisissez le jour';
+  const longue = corps.date ? prvDateLongue(corps.date) : '';
+  const ids = corps.toutLeCentre ? privatiserActivites().map(a => a.id) : corps.activites;
+  const photos = ids.slice(0, 5).map(id => ficheVisuelActivite({ centerId: centre }, { activityId: id, nom: rvNomActivite(id) })).join('');
+  const quoi = corps.toutLeCentre ? 'Tout le centre' : (corps.activites.length ? corps.activites.map(id => rvNomActivite(id)).join(', ') : 'Aucune activité choisie');
+  const phrase = valide
+    ? `${privatisationPhrase({ nom: corps.nom, debut: b.debut, fin: b.fin })}${corps.toutLeCentre || !corps.activites.length ? '' : ` (${corps.activites.map(id => rvNomActivite(id)).join(', ')})`}.`
+    : '';
+  prvPeindreSi(document.getElementById('prvResume'), `<p class="prv-resume__jour">${escapeHtml(jour)}${longue && longue.toLowerCase() !== jour.toLowerCase() ? `<span>${escapeHtml(longue)}</span>` : ''}</p>
+    <p class="prv-resume__heures">${valide ? `<b>${escapeHtml(prvHeureDite(b.debut))}</b><i aria-hidden="true"></i><b>${escapeHtml(prvHeureDite(b.fin))}</b><span>${escapeHtml(prvDuree(b.fin - b.debut))}</span>` : '<span>Choisissez les heures</span>'}</p>
+    <p class="prv-resume__quoi">${photos ? `<span class="prv-resume__photos">${photos}</span>` : ''}<span>${escapeHtml(quoi)}</span></p>
+    <p class="prv-resume__nom${corps.nom ? '' : ' is-vide'}">${escapeHtml(corps.nom || 'Le nom du groupe')}</p>
+    ${phrase ? `<p class="prv-resume__planning"><small>Sur le planning</small><span class="prv-phrase">${escapeHtml(phrase)}</span></p>` : ''}`);
+}
+
+// La plage se tire a la souris ou au doigt : une poignee deplace son bord, la plage entiere glisse,
+// un toucher ailleurs sur la jauge y amene le bord le plus proche. Au quart d heure.
+function privatiserTirer(event) {
+  if (!prv || (event.button !== undefined && event.button !== 0)) return;
+  const piste = document.getElementById('prvPiste');
+  if (!piste) return;
+  const b = privatiserBornes();
+  if (b.debut === null || b.fin === null || !(b.fin > b.debut)) return;
+  const boite = piste.getBoundingClientRect();
+  const largeur = Math.max(60, b.max - b.min);
+  const aMinute = (x) => b.min + ((x - boite.left) / Math.max(1, boite.width)) * largeur;
+  const quart = (m) => Math.round(m / PRV_PAS) * PRV_PAS;
+  let quoi = ((event.target.closest && event.target.closest('[data-prv-tirer]')) || { dataset: {} }).dataset.prvTirer || '';
+  const depart = aMinute(event.clientX);
+  if (!quoi) quoi = Math.abs(depart - b.debut) <= Math.abs(depart - b.fin) ? 'debut' : 'fin';
+  const origine = { debut: b.debut, fin: b.fin };
+  const appliquer = (x) => {
+    const m = aMinute(x);
+    let debut = origine.debut;
+    let fin = origine.fin;
+    if (quoi === 'debut') debut = Math.min(quart(m), fin - PRV_PAS);
+    else if (quoi === 'fin') fin = Math.max(quart(m), debut + PRV_PAS);
+    else {
+      const long = origine.fin - origine.debut;
+      debut = Math.max(b.min, Math.min(b.max - long, origine.debut + quart(m - depart)));
+      fin = debut + long;
+    }
+    debut = Math.max(b.min, debut);
+    fin = Math.min(b.max, fin);
+    const de = document.getElementById('prvDe');
+    const a = document.getElementById('prvA');
+    if (de) de.value = prvHeure(debut);
+    if (a) a.value = prvHeure(fin);
+    privatiserPeindre();
+  };
+  event.preventDefault();
+  try { piste.setPointerCapture(event.pointerId); } catch (error) { /* (souris deja relachee) */ }
+  piste.classList.add('is-tire');
+  if (quoi !== 'tout') appliquer(event.clientX);
+  const bouge = (e) => appliquer(e.clientX);
+  const lacher = () => {
+    piste.removeEventListener('pointermove', bouge);
+    piste.removeEventListener('pointerup', lacher);
+    piste.removeEventListener('pointercancel', lacher);
+    piste.classList.remove('is-tire');
+    privatiserChange();
+  };
+  piste.addEventListener('pointermove', bouge);
+  piste.addEventListener('pointerup', lacher);
+  piste.addEventListener('pointercancel', lacher);
+}
+
+// Les reservations de la journee, pour la jauge : la lecture a blanc de la journee entiere (le
+// serveur les dit avec leurs heures). Un autre groupe deja prive ce jour-la refuse cette lecture : la
+// jauge reste sans traits, la liste de droite, elle, dit tout.
+async function privatiserJournee(date) {
+  if (!prv || !date) return;
+  const plage = privatiserOuverture(date);
+  const ticket = ++prv.ticketJour;
+  prv.journee = { date, plage, resas: [] };
+  try {
+    const reponse = await apiRequest(API_ENDPOINTS.ops, { method: 'POST', body: JSON.stringify({ action: 'privatiser', centerId: getCurrentStaffCenterId(), aBlanc: true, date, startTime: availabilityMinutesToHHMM(plage.open), endTime: plage.close >= 1440 ? '24:00' : availabilityMinutesToHHMM(plage.close), toutLeCentre: true, nom: 'Journée', ...(prv.remplace.length ? { remplace: prv.remplace } : {}) }) });
+    if (!prv || ticket !== prv.ticketJour) return;
+    prv.journee.resas = Array.isArray(reponse && reponse.reservations) ? reponse.reservations : [];
+  } catch (error) {
+    // (la jauge reste sans les reservations du jour)
+  }
+  if (prv && ticket === prv.ticketJour) privatiserPeindre();
+}
+
+// LA LISTE, LUE EN DIRECT : la demande telle qu elle est, a blanc. Le dernier ticket gagne : la
+// reponse d une demande deja changee ne s affiche jamais.
+async function privatiserVerifier() {
+  if (!prv) return;
+  const corps = privatiserLire();
+  const zone = document.getElementById('prvVu');
+  const manque = privatiserManque(corps, { pourVoir: true });
+  if (manque) {
+    prv.vu = null;
+    if (zone) zone.classList.remove('is-lecture');
+    prvPeindreSi(zone, `<p class="prv-attente">${escapeHtml(manque)}</p>`);
+    privatiserBouton();
+    return;
+  }
+  const ticket = ++prv.ticket;
+  if (zone) zone.classList.add('is-lecture');
+  try {
+    const reponse = await apiRequest(API_ENDPOINTS.ops, { method: 'POST', body: JSON.stringify({ action: 'privatiser', centerId: getCurrentStaffCenterId(), ...corps, nom: corps.nom || 'Groupe privé', ...(prv.remplace.length ? { remplace: prv.remplace } : {}), aBlanc: true }) });
+    if (prv && ticket === prv.ticket) {
+      privatiserErreur('');
+      privatiserMontrer(reponse);
+    }
+  } catch (error) {
+    if (!prv || ticket !== prv.ticket) return;
+    prv.vu = null;
+    prvPeindreSi(zone, '');
+    privatiserErreur(error?.message || 'Lecture impossible pour le moment. Réessayez.');
+  } finally {
+    if (prv && ticket === prv.ticket && zone) zone.classList.remove('is-lecture');
+    privatiserBouton();
+  }
+}
+
 function privatiserMontrer(reponse, { garderLeChoix = false } = {}) {
   const zone = document.getElementById('prvVu');
-  if (!zone) return;
-  const choisi = garderLeChoix ? ((document.querySelector('input[name="prvGroupe"]:checked') || {}).value || '') : '';
+  if (!zone || !prv) return;
+  const coche = document.querySelector('input[name="prvGroupe"]:checked');
+  const voulu = garderLeChoix || coche ? ((coche && coche.value) || '') : (prv.reservationId ? String(prv.reservationId) : '');
   const reservations = Array.isArray(reponse && reponse.reservations) ? reponse.reservations : [];
-  const privatisation = (reponse && reponse.privatisation) || (privatiserVu && privatiserVu.privatisation) || null;
-  privatiserVu = { privatisation, reservations };
-  const phrase = privatisation && privatisation.phrase ? `<p class="prv-phrase">${escapeHtml(privatisation.phrase)}</p>` : '';
+  const choisi = reservations.some(r => String(r.id) === voulu) ? voulu : '';
+  prv.vu = { cle: privatiserCle(privatiserLire()), reservations };
   const detail = (r) => [`${r.debut} à ${r.fin}`, r.libelle, r.joueurs ? `${r.joueurs} joueur${r.joueurs > 1 ? 's' : ''}` : ''].filter(Boolean).join(', ');
-  const liste = reservations.length
-    ? `<p class="prv-dit">${reservations.length > 1 ? `${reservations.length} réservations sont déjà sur ces heures. Rien ne se déplace tout seul : elles restent à leur place. Si l’une d’elles est le groupe privé, cochez-la.` : 'Une réservation est déjà sur ces heures. Rien ne se déplace tout seul : elle reste à sa place. Si c’est le groupe privé, cochez-la.'}</p>
-      <ul class="prv-resas">${reservations.map(r => `<li><label class="prv-resa"><input type="radio" name="prvGroupe" value="${Number(r.id)}"${String(r.id) === choisi ? ' checked' : ''}><span><b>${escapeHtml(r.nom)}</b> <small>${escapeHtml(detail(r))}</small></span></label></li>`).join('')}
-      <li><label class="prv-resa"><input type="radio" name="prvGroupe" value=""${choisi ? '' : ' checked'}><span>Aucune n’est le groupe privé</span></label></li></ul>`
-    : '<p class="prv-dit">Aucune réservation sur ces heures.</p>';
-  zone.innerHTML = phrase + liste;
-  const ok = document.getElementById('prvOk');
-  if (ok) {
-    ok.textContent = 'Privatiser';
-    // (la liste et « Privatiser » se lisent ensemble, sans chercher sous le bord)
-    ok.scrollIntoView({ block: 'nearest' });
-  }
+  const html = reservations.length
+    ? `<p class="prv-dit">${reservations.length > 1 ? `${reservations.length} réservations sont déjà sur ces heures. Elles restent à leur place. Si l’une d’elles est le groupe privé, touchez-la.` : 'Une réservation est déjà sur ces heures. Elle reste à sa place. Si c’est le groupe privé, touchez-la.'}</p>
+      <ul class="prv-resas">${reservations.map(r => `<li><label class="prv-resa"><input type="radio" name="prvGroupe" value="${Number(r.id)}"${String(r.id) === choisi ? ' checked' : ''}><span class="prv-resa__h">${escapeHtml(r.debut)}</span><span class="prv-resa__t"><b>${escapeHtml(r.nom)}</b><small>${escapeHtml(detail(r))}</small></span></label></li>`).join('')}
+      <li><label class="prv-resa is-aucune"><input type="radio" name="prvGroupe" value=""${choisi ? '' : ' checked'}><span class="prv-resa__t">Aucune n’est le groupe privé</span></label></li></ul>`
+    : '<p class="prv-dit is-libre">Aucune réservation sur ces heures.</p>';
+  zone.__rendu = html;
+  zone.innerHTML = html;
+  privatiserPeindre();
+}
+
+// « Privatiser » s allume quand la liste lue est celle de la demande, et qu elle a un nom.
+function privatiserBouton() {
+  const bouton = document.getElementById('prvOk');
+  if (!bouton || !prv) return;
+  const corps = privatiserLire();
+  bouton.disabled = Boolean(privatiserManque(corps)) || !prv.vu || prv.vu.cle !== privatiserCle(corps);
 }
 
 async function privatiserEnvoyer(event) {
   if (event) event.preventDefault();
+  if (!prv) return;
   const corps = privatiserLire();
-  const manque = !corps.date ? 'Choisissez le jour.'
-    : !corps.startTime || !corps.endTime ? 'Choisissez de quelle heure à quelle heure.'
-      : !corps.toutLeCentre && !corps.activites.length ? 'Cochez au moins une activité, ou tout le centre.'
-        : !corps.nom ? 'Donnez le nom du client ou de l’événement.' : '';
+  const manque = privatiserManque(corps);
   if (manque) { privatiserErreur(manque); return; }
+  if (!prv.vu || prv.vu.cle !== privatiserCle(corps)) {
+    privatiserErreur('Un instant : la liste des réservations se relit.');
+    privatiserVerifier();
+    return;
+  }
   const bouton = document.getElementById('prvOk');
   if (bouton) bouton.disabled = true;
-  const aBlanc = !privatiserVu;
-  const envoi = { action: 'privatiser', centerId: getCurrentStaffCenterId(), ...corps };
-  if (aBlanc) envoi.aBlanc = true;
-  else {
-    envoi.reservationsVues = privatiserVu.reservations.map(r => Number(r.id));
-    const groupe = document.querySelector('input[name="prvGroupe"]:checked');
-    if (groupe && groupe.value) envoi.reservationId = Number(groupe.value);
-  }
+  const remplace = prv.remplace.slice();
+  const retour = prv.depuisLaListe;
+  const envoi = { action: 'privatiser', centerId: getCurrentStaffCenterId(), ...corps, reservationsVues: prv.vu.reservations.map(r => Number(r.id)) };
+  if (remplace.length) envoi.remplace = remplace;
+  const groupe = document.querySelector('input[name="prvGroupe"]:checked');
+  if (groupe && groupe.value) envoi.reservationId = Number(groupe.value);
   try {
     const reponse = await apiRequest(API_ENDPOINTS.ops, { method: 'POST', body: JSON.stringify(envoi) });
-    if (aBlanc) {
-      privatiserErreur('');
-      privatiserMontrer(reponse);
-      return;
-    }
     smFenetreFermer();
-    toast((reponse.privatisation && reponse.privatisation.phrase) || 'Privatisation enregistrée.');
+    toast(remplace.length ? 'Privatisation modifiée.' : ((reponse.privatisation && reponse.privatisation.phrase) || 'Privatisation enregistrée.'));
     await privatisationRelire(corps.date);
+    if (retour) ouvrirListePrivatisations();
   } catch (error) {
     const payload = error && error.payload;
     // Une reservation arrivee pendant la lecture : la liste revient a jour, a relire avant d enregistrer.
     if (payload && payload.code === 'reservations_sur_la_plage' && Array.isArray(payload.reservations)) privatiserMontrer(payload, { garderLeChoix: true });
     privatiserErreur(error?.message || 'Privatisation impossible pour le moment. Réessayez.');
   } finally {
-    const b = document.getElementById('prvOk');
-    if (b) b.disabled = false;
+    privatiserBouton();
   }
+}
+
+// ── LES PRIVATISATIONS A VENIR (2026-11-20) : une fenetre, les jours dans l ordre, une ligne par
+// privatisation ; « Modifier » rouvre la fenetre remplie, « Retirer » demande confirmation. ──────
+function ouvrirListePrivatisations() {
+  if (!peutGeste('privatiser')) { toast('Votre rôle ne permet pas de voir les privatisations. Demandez à un responsable.'); return; }
+  smFenetreOuvrir({
+    titre: 'Privatisations à venir',
+    sous: 'Les plages fermées pour un groupe, de la plus proche à la plus lointaine.',
+    classe: 'prv-liste-fen',
+    corps: '<div class="prv-liste" id="prvListe" aria-live="polite"><p class="prv-attente">Lecture…</p></div><div class="bdg-actions prv-liste-pied"><button type="button" class="bdg-p" onclick="smFenetreFermer(); ouvrirPrivatiser()">Privatiser…</button></div>',
+  });
+  chargerListePrivatisations();
+}
+
+async function chargerListePrivatisations() {
+  const zone = document.getElementById('prvListe');
+  if (!zone) return;
+  let liste = [];
+  try {
+    liste = await lirePrivatisationsAVenir();
+  } catch (error) {
+    if (document.getElementById('prvListe')) zone.innerHTML = `<p class="bdg-hf-err">${escapeHtml(error?.message || 'Lecture impossible pour le moment. Réessayez.')}</p>`;
+    return;
+  }
+  if (!document.getElementById('prvListe')) return;
+  if (!liste.length) { zone.innerHTML = '<p class="prv-attente">Aucune privatisation à venir.</p>'; return; }
+  const parJour = new Map();
+  liste.forEach(x => { if (!parJour.has(x.date)) parJour.set(x.date, []); parJour.get(x.date).push(x); });
+  zone.innerHTML = [...parJour.entries()].map(([date, duJour]) => {
+    const mot = rsJourMot(date);
+    const longue = prvDateLongue(date);
+    return `<section class="prv-liste__jour"><h4>${escapeHtml(mot)}${longue.toLowerCase() !== mot.toLowerCase() ? `<span>${escapeHtml(longue)}</span>` : ''}</h4>${duJour.map(x => {
+      const p = privatisationDeLaListe(x);
+      const ids = escapeJsString(p.ids.join(','));
+      return `<div class="prv-liste__l" data-privatisation="${escapeHtml(p.ids.join(','))}"><span class="prv-liste__h"><b>${escapeHtml(prvHeureDite(p.debut))}</b><i aria-hidden="true"></i><b>${escapeHtml(prvHeureDite(p.fin))}</b></span><span class="prv-liste__t"><b>${escapeHtml(p.nom || 'Groupe privé')}</b><small>${escapeHtml(privatisationPortee(p))}</small></span><span class="pb-prive__gestes"><button type="button" class="pb-prive__b" onclick="modifierPrivatisationUi('${ids}', { depuisLaListe: true })">Modifier</button><button type="button" class="pb-prive__x" onclick="retirerPrivatisationUi('${ids}')">Retirer</button></span></div>`;
+    }).join('')}</section>`;
+  }).join('');
 }
 
 // LES PARAMETRES DU POSTE (2026-09-25). La page etait une maquette : trois
@@ -24401,7 +24888,7 @@ function togglePlanningActionsMenu(event) {
     <button type="button" onclick="telechargerSecours('feuille'); closeStaffFloatingMenus();">Imprimer la feuille de secours (PDF)</button>
     <button type="button" onclick="refreshStaffPlanning()">Actualiser les données</button>
     ${peutGeste('exporter') ? '<button type="button" onclick="exportStaffPlanningCsv()">Exporter le jour en CSV</button>' : ''}
-    ${peutGeste('privatiser') ? '<button type="button" data-privatiser onclick="closeStaffFloatingMenus(); ouvrirPrivatiser();">Privatiser…</button>' : ''}
+    ${peutGeste('privatiser') ? '<button type="button" data-privatiser onclick="closeStaffFloatingMenus(); ouvrirPrivatiser();">Privatiser…</button><button type="button" data-privatisations onclick="closeStaffFloatingMenus(); ouvrirListePrivatisations();">Privatisations à venir</button>' : ''}
     ${vue === 'all' || !peutGeste('reserver') ? '' : `<button type="button" onclick="openQuickBook({ date: state.currentDate, type: getStaffResourceView() === 'laser' ? 'laser' : 'bowling' }); closeStaffFloatingMenus();">Nouvelle réservation ici</button>`}
     ${vue === 'laser' && peutGeste('reserver') ? '<button type="button" onclick="lpReserverAuProchain(event); closeStaffFloatingMenus();">Réserver au prochain départ</button>' : ''}
     ${depart}

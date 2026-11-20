@@ -2678,14 +2678,37 @@ async function handlePost(req, res, providedBody = null, options = {}) {
       throw createHttpError(safeUserMessage(error, 'Privatisation non enregistrée pour le moment. Réessayez.'), error && error.expose ? (error.statusCode || 400) : 503, Boolean(error && error.expose));
     }
     if (!resultat.aBlanc) {
+      const remplacees = Array.isArray(resultat.privatisation.remplace) ? resultat.privatisation.remplace : [];
       noterAudit(options, {
         entityType: 'privatisation',
         entityId: (resultat.privatisation.ids || []).join(','),
-        changes: { privatisation: { before: null, after: `${resultat.privatisation.date} ${resultat.privatisation.startTime}-${resultat.privatisation.endTime} ${resultat.privatisation.nom}` } },
-        context: { reservationsSurLaPlage: resultat.reservations.length },
+        changes: { privatisation: { before: remplacees.length ? `remplace ${remplacees.join(',')}` : null, after: `${resultat.privatisation.date} ${resultat.privatisation.startTime}-${resultat.privatisation.endTime} ${resultat.privatisation.nom}` } },
+        context: { reservationsSurLaPlage: resultat.reservations.length, modifiee: remplacees.length > 0 },
       });
     }
     sendJson(res, 200, { ok: true, action, centerId: targetCenter, ...resultat });
+    return;
+  }
+
+  // LES PRIVATISATIONS A VENIR (2026-11-20) : la liste de la console, du jour du centre a la suite.
+  if (action === 'listerPrivatisations') {
+    const targetCenter = requireConcreteCenter('privatisation');
+    const db = require('../lib/database');
+    const { listerPrivatisations } = require('../lib/privatisation');
+    const { jourDuCentre } = require('../lib/center-facts');
+    const jour = jourDuCentre();
+    let privatisations;
+    try {
+      privatisations = await listerPrivatisations({
+        pool: getPool(),
+        centerId: targetCenter,
+        aujourdhui: jour ? jour.date : new Date().toISOString().slice(0, 10),
+        nomDActivite: (id) => db.nomDActiviteDuCentre(targetCenter, id),
+      });
+    } catch (error) {
+      throw createHttpError(safeUserMessage(error, 'Lecture des privatisations impossible pour le moment. Réessayez.'), error && error.expose ? 400 : 503, Boolean(error && error.expose));
+    }
+    sendJson(res, 200, { ok: true, action, centerId: targetCenter, privatisations });
     return;
   }
 
@@ -4306,7 +4329,8 @@ function getRequiredOpsPermission(method, action) {
   // manager et de l assistant manager, qui deplacent et corrigent deja les dossiers de la journee ;
   // la personne qui regle le centre (settings.manage) aussi, elle pose deja les fermetures. Jamais
   // le seul droit de reserver : la Staff bar ne ferme pas une soiree.
-  if (['privatiser', 'retirerPrivatisation'].includes(action)) return ['reservations.edit', 'settings.manage'];
+  // (la liste des privatisations a venir se lit avec le meme droit : c est l ecran de qui les pose)
+  if (['privatiser', 'retirerPrivatisation', 'listerPrivatisations'].includes(action)) return ['reservations.edit', 'settings.manage'];
   // Telemetrie d'erreurs : TOUT membre du staff peut rapporter (chaque role
   // reel porte au moins une permission de vue). Pas de permission dediee :
   // le rapport d'un bug ne doit jamais echouer pour cause de droits.

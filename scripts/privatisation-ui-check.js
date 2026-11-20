@@ -8,14 +8,18 @@
 // une table availability_blocks en memoire (scripts/privatisation-banc.js). Le samedi 16 janvier
 // 2027 a 15:10, un manager (reservations.edit, sans le droit de regler le centre).
 //
-//   [A] LE GESTE : « Privatiser… » dans le menu du planning ; la fenetre liste les reservations
-//       deja sur 18:00-22:00 (les memes que le serveur) avant d enregistrer, puis ecrit en une
-//       fois ; le bandeau du planning, la grille du bowling et le planning laser la disent.
+//   [A] LE GESTE : « Privatiser… » dans le menu du planning ; la fenetre (refaite le 2026-11-20)
+//       dessine la journee avec ses reservations, et liste d elle-meme, sans bouton a toucher,
+//       celles deja sur 18:00-22:00 (les memes que le serveur) avant d enregistrer, puis ecrit en
+//       une fois ; le bandeau du planning, la grille du bowling et le planning laser la disent.
 //   [B] AU COMPTOIR : Reserver a 19:30 dit « Privatisé : Anniversaire Dupont, de 18:00 à 22:00 »
 //       avant « Créer », sans offrir « Créer quand même » ; l horloge du bowling dit « privatisé ».
 //   [C] « Réserver pour Anniversaire Dupont » : le plan tient, pour le groupe prive, et ses heures
 //       se disent possibles dans sa privatisation.
-//   [D] « Retirer » depuis le bandeau : la privatisation part, le planning redevient libre.
+//   [H] « Modifier » depuis le bandeau : la fenetre revient remplie, 22:00 devient 23:00, et
+//       « Enregistrer » remplace la privatisation en une ecriture (une seule reste).
+//   [I] « Privatisations à venir » (menu « ⋯ ») la liste, et son « Modifier » la rouvre remplie.
+//   [D] « Retirer » depuis le bandeau, confirme : la privatisation part, le planning redevient libre.
 //   [E] LA STAFF BAR voit la privatisation, sans « Privatiser… » ni « Retirer ».
 //   [F] SANS PRIVATISATION, RIEN NE CHANGE : pas de bandeau, rien de grise, la barre garde sa
 //       hauteur.
@@ -77,6 +81,12 @@ const MUTATIONS = [
     de: "  const blocks = tous.filter(block => block.kind !== 'private');", vers: '  const blocks = tous;' },
   { nom: 'bandeau-vide-montre', lettre: 'F', cible: '[F] sans privatisation, pas de bandeau, rien de grise, la barre garde sa hauteur', fichier: APP,
     de: '  zone.hidden = !liste.length;', vers: '  zone.hidden = false;' },
+  { nom: 'jauge-sans-la-journee', lettre: 'A', cible: '[A] la fenetre dessine la journee : chaque reservation du jour, celles de la plage en fonce', fichier: APP,
+    de: '  privatiserJournee(jour);\n', vers: '' },
+  { nom: 'modifier-sans-remplace', lettre: 'H', cible: '[H] « Enregistrer » remplace la privatisation en une fois : une seule, 18:00 a 23:00, le bandeau la dit', fichier: APP,
+    de: '  if (remplace.length) envoi.remplace = remplace;\n', vers: '' },
+  { nom: 'liste-a-venir-vide', lettre: 'I', cible: '[I] « Privatisations à venir » la liste (18:00 a 23:00, son nom), et « Modifier » la rouvre remplie', fichier: APP,
+    de: '  privatisationsAVenir = Array.isArray(reponse && reponse.privatisations) ? reponse.privatisations : [];', vers: '  privatisationsAVenir = [];' },
 ];
 
 const lf = (t) => String(t).replace(/\r\n/g, '\n');
@@ -116,7 +126,7 @@ async function ouvrir(browser, role) {
       const json = (corps, status = 200) => new Response(JSON.stringify(corps), { status, headers: { 'content-type': 'application/json; charset=utf-8' } });
       if (u.pathname === '/api/ops' && me === 'POST') {
         const corps = init.body ? JSON.parse(init.body) : {};
-        if (corps.action === 'privatiser' || corps.action === 'retirerPrivatisation') {
+        if (corps.action === 'privatiser' || corps.action === 'retirerPrivatisation' || corps.action === 'listerPrivatisations') {
           window.__privatisationAppels.push(corps);
           const rep = await window.__vraiAppel('POST', '/api/ops', corps);
           return json(rep.json || {}, rep.statut);
@@ -195,21 +205,35 @@ async function scenarioManager(browser) {
     await page.locator('#prvDe').fill('18:00');
     await page.locator('#prvA').fill('22:00');
     await page.locator('#prvNom').fill(NOM);
-    await FX.repos(page, 150);
-    await photo(page, '1-privatiser-le-geste');
-    await page.locator('#prvOk').click();
-    await attendre(page, () => document.querySelector('#prvVu .prv-dit'));
+    // (la liste se lit d elle-meme ; « Privatiser » s allume quand elle est celle de la demande)
+    await attendre(page, () => { const b = document.getElementById('prvOk'); return b && !b.disabled && document.querySelector('#prvVu .prv-dit'); });
+    await FX.repos(page, 200);
+    await photo(page, '1-privatiser-la-fenetre');
     const attendus = await listeDuServeur();
     const vu = await page.evaluate(() => ({
-      phrase: ((document.querySelector('#prvVu .prv-phrase') || {}).textContent || '').trim(),
+      phrase: ((document.querySelector('#prvResume .prv-phrase') || {}).textContent || '').trim(),
       noms: Array.from(document.querySelectorAll('#prvVu .prv-resa b')).map((b) => b.textContent.trim()),
       dit: ((document.querySelector('#prvVu .prv-dit') || {}).textContent || '').trim(),
       bouton: (document.getElementById('prvOk') || {}).textContent || '',
+      actif: !(document.getElementById('prvOk') || {}).disabled,
     }));
-    ok(attendus.length >= 3 && vu.noms.join('|') === attendus.join('|') && /déjà sur ces heures/.test(vu.dit) && vu.bouton === 'Privatiser',
+    ok(attendus.length >= 3 && vu.noms.join('|') === attendus.join('|') && /déjà sur ces heures/.test(vu.dit) && vu.bouton === 'Privatiser' && vu.actif,
       '[A] avant d enregistrer, la fenetre liste les reservations deja sur ces heures, les memes que le serveur', { attendus, vu });
     ok(vu.phrase === `${PHRASE}.`, '[A] la fenetre dit la phrase que le planning et le comptoir diront', vu.phrase);
     ok(PB.privees().length === 0, '[A] voir ce qui est deja la n ecrit rien', PB.privees());
+    // LA JOURNEE DESSINEE : un trait par reservation du jour (la lecture a blanc de la journee
+    // entiere, faite ici au vrai serveur), en fonce celles que la plage ferme.
+    const ouverture = await page.evaluate((jour) => privatiserOuverture(jour), JOUR);
+    const hhmm = (m) => (m >= 1440 ? '24:00' : `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`);
+    const journee = await B.appeler(ops, 'POST', '/api/ops', { action: 'privatiser', centerId: 'libramont', aBlanc: true, date: JOUR, startTime: hhmm(ouverture.open), endTime: hhmm(ouverture.close), toutLeCentre: true, nom: 'Journée' });
+    const duJour = ((journee.json || {}).reservations || []).length;
+    const jauge = await page.evaluate(() => ({
+      traits: document.querySelectorAll('#prvJaugeResas .prv-trait').length,
+      fonces: document.querySelectorAll('#prvJaugeResas .prv-trait.is-touchee').length,
+      selection: Boolean(document.querySelector('#prvJaugeSel:not([hidden])')),
+    }));
+    ok(duJour > attendus.length && jauge.traits === duJour && jauge.fonces === attendus.length && jauge.selection,
+      '[A] la fenetre dessine la journee : chaque reservation du jour, celles de la plage en fonce', { duJour, attendus: attendus.length, jauge });
     await photo(page, '2-reservations-deja-sur-la-plage');
     await page.locator('#prvOk').click();
     await attendre(page, () => !document.getElementById('prvForm'));
@@ -290,8 +314,57 @@ async function scenarioManager(browser) {
     await page.evaluate(() => closeQuickBook());
     await FX.repos(page, 200);
 
-    // [D] RETIRER
+    // [H] MODIFIER depuis le bandeau
+    const avantIds = PB.privees().map((l) => Number(l.id));
+    await page.locator('#planningPrivatisations .pb-prive__b').first().click();
+    await page.waitForSelector('#prvForm', { timeout: 8000 });
+    const rempli = await page.evaluate(() => ({
+      titre: ((document.getElementById('bdgFenT') || {}).textContent || '').trim(),
+      jour: (document.getElementById('prvDate') || {}).value || '',
+      de: (document.getElementById('prvDe') || {}).value || '',
+      a: (document.getElementById('prvA') || {}).value || '',
+      nom: (document.getElementById('prvNom') || {}).value || '',
+      quoi: (document.querySelector('input[name="prvQuoi"]:checked') || {}).value || '',
+      bouton: ((document.getElementById('prvOk') || {}).textContent || '').trim(),
+    }));
+    ok(rempli.titre === 'Modifier la privatisation' && rempli.jour === JOUR && rempli.de === '18:00' && rempli.a === '22:00' && rempli.nom === NOM && rempli.quoi === 'centre' && rempli.bouton === 'Enregistrer',
+      '[H] « Modifier » rouvre la privatisation remplie : le jour, 18:00 a 22:00, le nom, tout le centre', rempli);
+    await page.locator('#prvA').fill('23:00');
+    await attendre(page, () => { const b = document.getElementById('prvOk'); return b && !b.disabled && document.querySelector('#prvVu .prv-dit'); });
+    await FX.repos(page, 200);
+    await photo(page, '6-modifier-la-privatisation');
+    await page.locator('#prvOk').click();
+    const PHRASE23 = `Privatisé : ${NOM}, de 18:00 à 23:00`;
+    await attendre(page, (p) => { const z = document.getElementById('planningPrivatisations'); return !document.getElementById('prvForm') && z && z.textContent.includes(p); }, PHRASE23);
+    const modifiee = PB.privees();
+    const bm = await bandeau(page);
+    ok(modifiee.length === 1 && /^18:00/.test(String(modifiee[0].start_time)) && /^23:00/.test(String(modifiee[0].end_time)) && modifiee[0].reason === NOM && !avantIds.includes(Number(modifiee[0].id)) && bm.texte.includes(PHRASE23) && bm.retirer === 1,
+      '[H] « Enregistrer » remplace la privatisation en une fois : une seule, 18:00 a 23:00, le bandeau la dit', { modifiee, bm });
+
+    // [I] LES PRIVATISATIONS A VENIR
+    const menuListe = await menuPlus(page);
+    await page.locator('.staff-action-popover button', { hasText: 'Privatisations à venir' }).first().click();
+    await attendre(page, () => document.querySelector('#prvListe .prv-liste__l'));
+    const lue = await page.evaluate(() => Array.from(document.querySelectorAll('#prvListe .prv-liste__l')).map((l) => l.textContent.replace(/\s+/g, ' ').trim()));
+    await photo(page, '7-privatisations-a-venir');
+    let rouverte = null;
+    if (lue.length) {
+      await page.locator('#prvListe .prv-liste__l .pb-prive__b').first().click();
+      await page.waitForSelector('#prvForm', { timeout: 8000 }).catch(() => {});
+      rouverte = await page.evaluate(() => ({ titre: ((document.getElementById('bdgFenT') || {}).textContent || '').trim(), a: (document.getElementById('prvA') || {}).value || '', nom: (document.getElementById('prvNom') || {}).value || '' }));
+      await page.locator('#prvForm .bdg-b').first().click();
+      await attendre(page, () => document.getElementById('prvListe'));
+    }
+    const revenue = await page.evaluate(() => Boolean(document.getElementById('prvListe')));
+    ok(menuListe.includes('Privatisations à venir') && lue.length === 1 && lue[0].includes(NOM) && /18:00/.test(lue[0]) && /23:00/.test(lue[0]) && /Tout le centre/.test(lue[0])
+      && rouverte && rouverte.titre === 'Modifier la privatisation' && rouverte.a === '23:00' && rouverte.nom === NOM && revenue,
+    '[I] « Privatisations à venir » la liste (18:00 a 23:00, son nom), et « Modifier » la rouvre remplie', { menuListe, lue, rouverte, revenue });
+    await page.evaluate(() => smFenetreFermer());
+    await FX.repos(page, 150);
+
+    // [D] RETIRER (la confirmation de la console, plus la boite du navigateur)
     await page.locator('#planningPrivatisations .pb-prive__x').first().click();
+    await page.locator('.staff-confirm [data-role="confirm-ok"]').click({ timeout: 5000 }).catch(() => {});
     await attendre(page, () => { const z = document.getElementById('planningPrivatisations'); return z && z.hidden; });
     await page.evaluate(() => pbChanger('bowling'));
     await FX.repos(page, 400);
@@ -313,7 +386,7 @@ async function scenarioBarre(browser) {
     await page.evaluate(() => closeStaffFloatingMenus());
     const b = await bandeau(page);
     const geste = await page.evaluate(() => peutGeste('privatiser'));
-    ok(menu.length > 0 && !menu.some((x) => /Privatiser/.test(x)) && b.vu && b.texte.includes(PHRASE) && b.retirer === 0 && geste === false,
+    ok(menu.length > 0 && !menu.some((x) => /Privatis(er|ations)/.test(x)) && b.vu && b.texte.includes(PHRASE) && b.retirer === 0 && geste === false,
       '[E] la Staff bar voit la privatisation, sans « Privatiser… » ni « Retirer »', { menu, b, geste });
   } finally { await finir(m, 'staff bar'); }
 }
@@ -371,13 +444,14 @@ async function scenarioEtablissement(browser) {
       && liste.fermetures.length === 1 && /Piste 3/.test(liste.fermetures[0]),
     '[G] Etablissement liste la privatisation en une ligne (ses deux activites), a cote des fermetures', liste);
     await page.locator('#avbList [data-privatisation] .availability-del').click();
+    await page.locator('.staff-confirm [data-role="confirm-ok"]').click({ timeout: 5000 }).catch(() => {});
     await attendre(page, () => !document.querySelector('#avbList [data-privatisation]'));
     const reste = { privees: PB.privees().length, fermetures: PB.table.lignes.filter((l) => l.kind === 'closure').length };
     ok(reste.privees === 0 && reste.fermetures === 1, '[G] « Retirer » dans Etablissement retire toute la privatisation, la fermeture reste', reste);
   } finally { await finir(m, 'etablissement'); }
 }
 
-const SCENARIOS = { G: scenarioEtablissement, A: scenarioManager, B: scenarioManager, C: scenarioManager, D: scenarioManager, E: scenarioBarre, F: scenarioSans };
+const SCENARIOS = { G: scenarioEtablissement, A: scenarioManager, B: scenarioManager, C: scenarioManager, D: scenarioManager, H: scenarioManager, I: scenarioManager, E: scenarioBarre, F: scenarioSans };
 
 async function main() {
   const http = await FX.servir({ port: PORT, transformer });
@@ -386,7 +460,7 @@ async function main() {
   try {
     if (!CONTRE) {
       for (const s of [scenarioManager, scenarioBarre, scenarioSans, scenarioEtablissement]) await s(browser);
-      console.log(`\n${echecs.length ? `privatisation-ui-check: ${echecs.length} ECHEC(S)` : 'privatisation-ui-check: ALL OK (le geste et ce qu il liste, le bandeau, la grille et le laser, la phrase au comptoir sans « Créer quand même », le dossier du groupe, le retrait, la Staff bar, rien ne change sans privatisation, Etablissement la liste et la retire en entier)'}`);
+      console.log(`\n${echecs.length ? `privatisation-ui-check: ${echecs.length} ECHEC(S)` : 'privatisation-ui-check: ALL OK (le geste, la journee dessinee et la liste lue d elle-meme, le bandeau, Modifier en une ecriture, les privatisations a venir, la grille et le laser, la phrase au comptoir sans « Créer quand même », le dossier du groupe, le retrait, la Staff bar, rien ne change sans privatisation, Etablissement la liste et la retire en entier)'}`);
       if (CAPTURES && !echecs.length) console.log(`images : ${CAPTURES}`);
       code = echecs.length ? 1 : 0;
     } else {

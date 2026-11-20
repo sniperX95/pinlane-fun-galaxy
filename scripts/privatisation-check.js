@@ -259,6 +259,40 @@ async function verifier(editions = []) {
   const fermeActivite = await m.appeler('POST', URL_RESA, MINIGOLF('17:30', { date: AUTRE_JOUR, name: 'Client', phone: '0470131313' }));
   ok(fermeActivite.statut === 201, '[I] une fermeture d activite garde sa regle d avant (la privatisation seule ferme toutes les activites)', `${fermeActivite.statut} ${fermeActivite.json.message || ''}`);
 
+  titre('[L] modifier une privatisation, et la liste de celles a venir (2026-11-20)');
+  // La soiree Lambert, posee puis modifiee : en une ecriture, l ancienne part et la nouvelle se pose.
+  const surLe = (corps) => privatiser({ date: AUTRE_JOUR, toutLeCentre: true, nom: 'Soirée Lambert', ...corps });
+  const vuesDe = async (corps) => ((await surLe({ ...corps, aBlanc: true })).json.reservations || []).map((r) => r.id);
+  const lambert = () => privees().filter((l) => l.date === AUTRE_JOUR && l.reason === 'Soirée Lambert');
+  const premiere = await surLe({ startTime: '20:00', endTime: '22:00', reservationsVues: await vuesDe({ startTime: '20:00', endTime: '22:00' }) });
+  const idsAvant = lambert().map((l) => Number(l.id));
+  ok(premiere.statut === 200 && idsAvant.length === 1, '[L] socle : la soirée Lambert posée de 20:00 à 22:00', `${premiere.statut} ${premiere.json.message || ''}`);
+  // Elle chevauche sa propre plage : sa modification ne se gene pas elle-meme.
+  const modif = await surLe({ startTime: '19:30', endTime: '23:00', remplace: idsAvant, reservationsVues: await vuesDe({ startTime: '19:30', endTime: '23:00', remplace: idsAvant }) });
+  const apresModif = lambert();
+  ok(modif.statut === 200 && apresModif.length === 1 && /^19:30/.test(String(apresModif[0].start_time)) && /^23:00/.test(String(apresModif[0].end_time)) && !apresModif.some((l) => idsAvant.includes(Number(l.id))),
+    '[L] modifier : la privatisation passe à 19:30-23:00, l ancienne est partie, une seule reste', { statut: modif.statut, message: modif.json.message, lignes: apresModif });
+  const perimee = await surLe({ startTime: '18:00', endTime: '23:00', remplace: idsAvant, reservationsVues: await vuesDe({ startTime: '18:00', endTime: '23:00', remplace: idsAvant }) });
+  const apresPerimee = lambert();
+  ok(perimee.statut === 409 && perimee.json.code === 'privatisation_changee' && apresPerimee.length === 1 && /^19:30/.test(String(apresPerimee[0].start_time)),
+    '[L] une modification d une privatisation qui a deja change ne s ecrit pas (409), rien ne bouge', { statut: perimee.statut, json: perimee.json, lignes: apresPerimee });
+  // Retiree sur un autre poste, puis « modifiee » ici : rien ne la recree.
+  const idsModifies = apresModif.map((l) => Number(l.id));
+  await appelerOps({ action: 'retirerPrivatisation', ids: idsModifies });
+  const fantome = await surLe({ startTime: '20:00', endTime: '21:00', remplace: idsModifies, reservationsVues: await vuesDe({ startTime: '20:00', endTime: '21:00', remplace: idsModifies }) });
+  ok(fantome.statut === 409 && fantome.json.code === 'privatisation_changee' && lambert().length === 0,
+    '[L] modifier une privatisation retiree entre-temps ne la recree pas (409), rien ne s ecrit', { statut: fantome.statut, json: fantome.json, lignes: lambert() });
+  await surLe({ startTime: '19:30', endTime: '23:00', reservationsVues: await vuesDe({ startTime: '19:30', endTime: '23:00' }) });
+  const liste = await appelerOps({ action: 'listerPrivatisations' });
+  const lues = Array.isArray(liste.json.privatisations) ? liste.json.privatisations : [];
+  ok(liste.statut === 200 && lues.some((p) => p.nom === 'Soirée Lambert' && p.date === AUTRE_JOUR && p.startTime === '19:30' && p.endTime === '23:00' && p.toutLeCentre),
+    '[L] la liste des privatisations à venir porte la soirée Lambert modifiée', lues);
+  ok(liste.statut === 200 && !lues.some((p) => /Travaux|Entretien|Courroie/.test(p.nom)), '[L] la liste ne montre que des privatisations, jamais une fermeture', lues);
+  m.changerSession(STAFF_BAR());
+  const listeBarre = await appelerOps({ action: 'listerPrivatisations' });
+  ok(listeBarre.statut === 403, '[L] la Staff bar ne lit pas la liste des privatisations (403)', `${listeBarre.statut}`);
+  m.changerSession(MANAGER());
+
   return echecs;
 }
 
@@ -276,7 +310,20 @@ const MUTATIONS = [
     { fichier: 'lib/reserver-fenetre.js', de: '  const fermeture = conflitDeFermeture(dossier, snapshot, request.date, groupe);', vers: '  const fermeture = null;' },
   ] },
   { nom: 'modifier-sans-garde', rouge: '[G] « Modifier » ne pose pas un dossier dans la privatisation', editions: [{ fichier: DB, de: '    if (privatisations.length) {', vers: '    if (false) {' }] },
-  { nom: 'droit-elargi', rouge: '[A] la Staff bar est refusee par le serveur (403), rien d ecrit', editions: [{ fichier: 'api/ops.js', de: "if (['privatiser', 'retirerPrivatisation'].includes(action)) return ['reservations.edit', 'settings.manage'];", vers: "if (['privatiser', 'retirerPrivatisation'].includes(action)) return ['reservations.view'];" }] },
+  { nom: 'droit-elargi', rouge: '[A] la Staff bar est refusee par le serveur (403), rien d ecrit', editions: [{ fichier: 'api/ops.js', de: "if (['privatiser', 'retirerPrivatisation', 'listerPrivatisations'].includes(action)) return ['reservations.edit', 'settings.manage'];", vers: "if (['privatiser', 'retirerPrivatisation', 'listerPrivatisations'].includes(action)) return ['reservations.view'];" }] },
+  { nom: 'modifier-garde-l-ancienne', rouge: '[L] modifier : la privatisation passe à 19:30-23:00, l ancienne est partie, une seule reste', editions: [{ fichier: 'lib/privatisation.js', de: '        const partis = await AB.retirerPrivatisationDans(client, { centerId, ids: p.remplace });', vers: '        const partis = p.remplace.length;' }] },
+  { nom: 'modifier-se-gene', rouge: '[L] modifier : la privatisation passe à 19:30-23:00, l ancienne est partie, une seule reste', editions: [{ fichier: 'lib/privatisation.js', de: '  const autres = p.remplace.length ? blocsDuJour.filter((bloc) => !p.remplace.includes(Number(bloc && bloc.id))) : blocsDuJour;', vers: '  const autres = blocsDuJour;' }] },
+  { nom: 'modifier-perimee-sans-sa-raison', rouge: '[L] une modification d une privatisation qui a deja change ne s ecrit pas (409), rien ne bouge', editions: [{ fichier: 'lib/privatisation.js', de: '    if (!p.remplace.every((id) => encore.has(id))) {', vers: '    if (false) {' }] },
+  // Deux gardes tiennent ce cas (la lecture avant, puis le retrait compte sous verrou) : les deux partent.
+  { nom: 'modifier-recree-une-retiree', rouge: '[L] modifier une privatisation retiree entre-temps ne la recree pas (409), rien ne s ecrit', editions: [
+    { fichier: 'lib/privatisation.js', de: '    if (!p.remplace.every((id) => encore.has(id))) {', vers: '    if (false) {' },
+    { fichier: 'lib/privatisation.js', de: '        if (partis !== p.remplace.length) {', vers: '        if (false) {' },
+  ] },
+  // Deux filtres tiennent ce cas (la lecture, puis le regroupement par jour) : les deux partent.
+  { nom: 'liste-avec-fermetures', rouge: '[L] la liste ne montre que des privatisations, jamais une fermeture', editions: [
+    { fichier: 'lib/availability-blocks.js', de: ".filter((bloc) => bloc.kind === 'private' && bloc.recurrence === 'once' && bloc.date && bloc.date >= depuis);", vers: ".filter((bloc) => bloc.recurrence === 'once' && bloc.date && bloc.date >= depuis);" },
+    { fichier: 'lib/privatisation.js', de: '.filter(AB.estPrivatisation).forEach((bloc) => {', vers: '.forEach((bloc) => {' },
+  ] },
   { nom: 'ecrit-sans-voir', rouge: '[A] sans les avoir vues, rien ne s ecrit (409, le nom du dossier dit)', editions: [{ fichier: 'lib/privatisation.js', de: '  const nonVues = (liste) => liste.filter((r) => !r.duGroupe && !p.reservationsVues.includes(r.id));', vers: '  const nonVues = () => [];' }] },
   { nom: 'nom-en-ligne', rouge: '[B] le client en ligne ne lit jamais le nom du groupe prive', editions: [{ fichier: 'lib/availability-blocks.js', de: "  if (canal === 'public') {", vers: '  if (false) {' }] },
   { nom: 'groupe-bloque-par-sa-privatisation', rouge: '[J] la reservation du groupe se deplace dans sa privatisation', editions: [{ fichier: DB, de: '  const blocks = sansLaPrivatisationDuGroupe(listeDesBlocages, { reservationId: payload.id });', vers: '  const blocks = listeDesBlocages;' }] },

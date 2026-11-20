@@ -32659,6 +32659,20 @@ function groupeExtraDossier(extra, nom) {
   return 'autres';
 }
 
+// CE QU UNE LIGNE PORTE EN PLUS DE SON NOM ET DE SON PRIX (2026-11-20, le P0 de l audit de
+// Modifier) : l article du catalogue, sa categorie, l heure de service, la note, son id et son
+// auteur. Toucher un seul extra renvoyait toutes les lignes refaites, sans rien de tout ca : le
+// serveur les prenait pour neuves (cleDeLigne), une ligne changee perdait son article, son heure
+// et sa note, et au niveau catalogue une ancienne ligne hors de la carte faisait tout refuser.
+// Chaque ligne editee garde donc les lignes du dossier dont elle vient (`garde.lignes`) et ce
+// qu elle valait a l ouverture (`garde.depart`) : intacte, elle les renvoie telles quelles ;
+// changee, elle part avec leur article (meme nom), leur categorie, leur heure et leur note
+// (extrasDepuisLignes). Deux lignes ne se lisent « × 2 » que si rien ne les separe.
+const EXTRA_GARDE = ['articleId', 'categorie'];
+function texteDeLExtra(valeur) {
+  return valeur === undefined || valeur === null ? '' : String(valeur).trim();
+}
+
 function extrasEditionDepuis(extras, pax) {
   const modele = { arcades: null, nourriture: [], boissons: [], autres: [] };
   const centimes = (v) => Math.round(v * 100) / 100;
@@ -32676,13 +32690,27 @@ function extrasEditionDepuis(extras, pax) {
     }
     const multiple = nom.match(/^(.*\S)\s*×\s*(\d+)$/);
     const choix = multiple ? multiple[1] : (nom || 'Extra');
-    const qte = multiple ? Math.max(1, Math.trunc(Number(multiple[2]))) : 1;
+    // (la quantite du libelle, sinon celle que la ligne porte)
+    const qteLue = Math.trunc(Number(extra.qte));
+    const qte = multiple ? Math.max(1, Math.trunc(Number(multiple[2]))) : (qteLue >= 1 ? qteLue : 1);
     const prix = String(centimes(montant / qte));
     const groupe = groupeExtraDossier(extra, choix);
     const parPersonne = extra.parPersonne === true;
-    const meme = !parPersonne && !offert && modele[groupe].find((l) => l.choix === choix && l.prix === prix && !l.parPersonne && !l.offert);
-    if (meme) meme.qte += qte;
-    else modele[groupe].push({ choix, qte, prix, ...(parPersonne ? { parPersonne: true } : {}), ...(offert ? { offert: true } : {}) });
+    const heure = texteDeLExtra(extra.heure);
+    const note = texteDeLExtra(extra.note);
+    const garde = { id: texteDeLExtra(extra.id) };
+    EXTRA_GARDE.forEach((cle) => { if (texteDeLExtra(extra[cle])) garde[cle] = texteDeLExtra(extra[cle]); });
+    const meme = !parPersonne && !offert && modele[groupe].find((l) => l.choix === choix && l.prix === prix && !l.parPersonne && !l.offert
+      && (l.heure || '') === heure && (l.note || '') === note && EXTRA_GARDE.every((cle) => (l.garde[cle] || '') === (garde[cle] || '')));
+    if (meme) {
+      meme.qte += qte;
+      meme.garde.depart.qte += qte;
+      meme.garde.lignes.push({ ...extra });
+      return;
+    }
+    const ligne = { choix, qte, prix, ...(heure ? { heure } : {}), ...(note ? { note } : {}), ...(parPersonne ? { parPersonne: true } : {}), ...(offert ? { offert: true } : {}) };
+    ligne.garde = { ...garde, depart: { choix, qte, prix, heure, note, parPersonne, offert }, lignes: [{ ...extra }] };
+    modele[groupe].push(ligne);
   });
   return modele;
 }
@@ -35736,8 +35764,39 @@ function extrasDepuisLignes(e, pax, arcadesComprises = false) {
       const nom = String(ligne.choix || '').trim();
       const qte = ligne.parPersonne ? groupe : Math.max(1, Math.trunc(Number(ligne.qte) || 1));
       if (!nom) return;
-      const valeur = Math.round(prix(ligne.prix) * qte * 100) / 100;
-      lignes.push({ id: `${nomGroupe}-${i + 1}`, name: `${nom} × ${qte}`, price: ligne.offert ? 0 : valeur, ...(ligne.parPersonne ? { parPersonne: true } : {}), ...(ligne.offert ? { offert: true, valeur } : {}) });
+      const unitaire = prix(ligne.prix);
+      const valeur = Math.round(unitaire * qte * 100) / 100;
+      const heure = String(ligne.heure || '').trim();
+      const note = String(ligne.note || '').trim();
+      // (les lignes du dossier dont elle vient, et ce qu elle valait a l ouverture : extrasEditionDepuis)
+      const garde = ligne.garde && typeof ligne.garde === 'object' ? ligne.garde : null;
+      const depart = garde && garde.depart;
+      const intacte = Boolean(depart && Array.isArray(garde.lignes) && garde.lignes.length && nom === depart.choix && qte === depart.qte
+        && Math.round(unitaire * 100) === Math.round(prix(depart.prix) * 100)
+        && Boolean(ligne.parPersonne) === Boolean(depart.parPersonne) && Boolean(ligne.offert) === Boolean(depart.offert));
+      if (intacte) {
+        // Intacte, elle repart telle que le dossier la porte : le serveur la reconnait et la
+        // garde entiere, son auteur compris. Une heure ou une note changee voyage avec elle.
+        const memeService = heure === (depart.heure || '') && note === (depart.note || '');
+        garde.lignes.forEach((l) => lignes.push(memeService ? { ...l } : { ...l, heure, note }));
+        return;
+      }
+      // Changee, elle garde son id, son article tant qu elle garde son nom, sa categorie, son
+      // heure et sa note ; une ligne neuve part avec la sorte ou elle a ete ajoutee.
+      const memeArticle = Boolean(depart && nom === depart.choix);
+      lignes.push({
+        id: (garde && garde.id) || `${nomGroupe}-${i + 1}`,
+        name: `${nom} × ${qte}`,
+        price: ligne.offert ? 0 : valeur,
+        ...(memeArticle && garde.articleId ? { articleId: garde.articleId } : {}),
+        categorie: (memeArticle && garde.categorie) || nomGroupe,
+        qte,
+        prixUnitaire: unitaire,
+        ...(heure ? { heure } : {}),
+        ...(note ? { note } : {}),
+        ...(ligne.parPersonne ? { parPersonne: true } : {}),
+        ...(ligne.offert ? { offert: true, valeur } : {}),
+      });
     });
   });
   return lignes;

@@ -269,6 +269,7 @@
     "test:programme-complet",
     "test:resa-lisible",
     "test:attribution-visible",
+    "test:modifier-complet",
     "test:compte-arrivee",
     "test:planning-recherche",
     "test:heures-du-dossier",

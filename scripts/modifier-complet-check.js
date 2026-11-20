@@ -42,6 +42,11 @@
 //        signees de la session et retire la videe ;
 //   [E3] la trace d un prix revu ne se montre pas a changer, et elle reste telle quelle, le mot du
 //        dossier aussi ;
+//   [T1] le numero d un dossier ne se vide pas : rien ne part, la fiche le dit sous le champ ;
+//   [T2] un numero trop court se dit en quittant le champ et ne part pas ; un numero qui tient
+//        efface la ligne ;
+//   [T3] le serveur redit la regle (422) a un poste reste sur une ancienne page ;
+//   [T4] un numero qui tient part et s ecrit ;
 //   [J1] aucune erreur JS.
 // --contre-preuves : chaque regle retiree (au code servi, en memoire ; le disque n est jamais
 // touche) fait rougir sa lettre.
@@ -514,11 +519,69 @@ async function scenarioNotes(browser) {
 }
 
 // ---------------------------------------------------------------------------
+// [T1] [T2] [T3] [T4] LE TELEPHONE.
+// ---------------------------------------------------------------------------
+const TEL = '0470 11 22 33';
+async function scenarioTelephoneFiche(browser) {
+  semer({ phone: TEL });
+  const serveur = B.monter({ mutations: mutation ? mutation.editions.filter((ed) => ed.serveur) : [], session: B.sessionDuRole('manager', { nom: 'Rachel' }) });
+  const { ctx, page, erreurs, journal } = await monter(browser, serveur);
+  const telEnBase = () => String((B.base.reservations.get(NOEL) || {}).phone || '');
+  const lire = () => page.evaluate(() => {
+    const c = document.getElementById('editPhoneInput');
+    const h = document.getElementById('editPhoneHint');
+    const err = document.getElementById('editError');
+    return { valeur: c ? c.value : null, invalide: c ? c.getAttribute('aria-invalid') : null, ligne: h && !h.hidden ? h.textContent.trim() : '', erreur: err && !err.hidden ? err.textContent.trim() : '', placeholder: c ? c.getAttribute('placeholder') : null };
+  });
+  const essayer = async () => { const avant = journal.length; await page.click('#posOverlay .es-save'); await page.waitForTimeout(700); return journal.length - avant; };
+  try {
+    await page.evaluate(({ id, tel }) => {
+      const r = state.reservations.find((x) => x.id === id);
+      const servi = window.__FIXTURE__.jours[window.__FIXTURE__.jour].find((x) => x.id === id);
+      [r, servi].filter(Boolean).forEach((d) => { d.phone = tel; });
+    }, { id: NOEL, tel: TEL });
+    await ouvrirModifier(page);
+    await page.evaluate(() => { const p = document.getElementById('editContactPli'); if (p) p.open = true; });
+    const a = await lire();
+    ok(a.valeur === TEL && a.placeholder === null && a.ligne === '', '[T1] le numero du dossier se lit, sans « Facultatif »', a);
+    await page.fill('#editPhoneInput', '');
+    const envoyes1 = await essayer();
+    const b = await lire();
+    ok(envoyes1 === 0 && /ne peut pas être vidé/.test(b.erreur) && /ne peut pas être vidé/.test(b.ligne) && b.invalide === 'true' && telEnBase() === TEL,
+      '[T1] vider le numero d un dossier ne part pas : la fiche le dit sous le champ', { envoyes: envoyes1, ...b, base: telEnBase() });
+    await page.fill('#editPhoneInput', '0470 12');
+    await page.keyboard.press('Tab');
+    const c = await lire();
+    const envoyes2 = await essayer();
+    ok(/pas valide/.test(c.ligne) && c.invalide === 'true' && envoyes2 === 0 && telEnBase() === TEL,
+      '[T2] un numero trop court se dit en quittant le champ, et ne part pas', { ...c, envoyes: envoyes2 });
+    await page.fill('#editPhoneInput', '0471 99 88 77');
+    const d = await lire();
+    ok(d.ligne === '' && d.invalide === null, '[T2] un numero qui tient efface la ligne', d);
+    const envois = await enregistrer(page, journal);
+    const r = envois.length ? envois[envois.length - 1] : null;
+    ok(r && r.statut === 200 && telEnBase() === '0471 99 88 77', '[T4] un numero qui tient part et s ecrit', r ? { statut: r.statut, json: r.statut === 200 ? '' : r.json, base: telEnBase() } : 'aucun envoi');
+    // [T3] le serveur redit la regle a un poste reste sur une ancienne page.
+    if (r && r.corps) {
+      semer({ phone: TEL });
+      const vide = await serveur.appeler('PATCH', '/api/staff-reservations', { ...r.corps, phone: '' });
+      const court = await serveur.appeler('PATCH', '/api/staff-reservations', { ...r.corps, phone: '12' });
+      ok(vide.statut === 422 && /vidé/.test(String(vide.json && vide.json.message)) && court.statut === 422 && /pas valide/.test(String(court.json && court.json.message)) && telEnBase() === TEL, '[T3] le serveur refuse un numero vide ou trop court (422, chacun sa phrase), rien ne s ecrit',
+        { vide: [vide.statut, vide.json && vide.json.message], court: [court.statut, court.json && court.json.message], base: telEnBase() });
+    }
+    ok(erreurs.length === 0, '[J1] aucune erreur JS (telephone)', erreurs.slice(0, 3));
+  } finally {
+    await ctx.close();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // LES CONTRE-PREUVES : une regle retiree, sa lettre rougit.
 // ---------------------------------------------------------------------------
 const FORMULE = ['formule'];
 const SERVICE = ['service'];
 const NOTES_E = ['notes'];
+const TELEPHONE = ['telephone'];
 const CSS = 'assets/pinlane-staff.css';
 const LIBRE = ['libre'];
 const CATALOGUE = ['catalogue'];
@@ -559,6 +622,11 @@ const MUTATIONS = [
   { nom: 'barre-muette-notes', lettre: 'E2', scenarios: NOTES_E, editions: [{ fichier: JS, de: '  modifs.push(...modifsNotesEdition());\n', vers: '' }] },
   { nom: 'note-videe-gardee', lettre: 'E2', scenarios: NOTES_E, editions: [{ fichier: JS, de: '    if (sans.has(n.le)) return null;\n', vers: '' }] },
   { nom: 'trace-montree', lettre: 'E3', scenarios: NOTES_E, editions: [{ fichier: JS, de: '  return notesEquipeEcrites(departsEdition().get(e)?.origine || r).filter((n) => n && n.le);', vers: '  return getReservationNotesEquipe(departsEdition().get(e)?.origine || r).filter((n) => n && n.le);' }] },
+  // Le telephone : le controle de la fiche, sa ligne, et celui du serveur.
+  { nom: 'telephone-libre', lettre: 'T1', scenarios: TELEPHONE, editions: [{ fichier: JS, de: "  if (touches.includes('phone')) {", vers: '  if (false) {' }] },
+  { nom: 'telephone-muet', lettre: 'T2', scenarios: TELEPHONE, editions: [{ fichier: JS, de: '  ligne.hidden = false;\n', vers: '' }] },
+  { nom: 'serveur-telephone-libre', lettre: 'T3', scenarios: TELEPHONE, editions: [{ fichier: API, serveur: true, de: "    if (!tape) throw createHttpError('Le téléphone du client ne peut pas être vidé.', 422);", vers: '' }] },
+  { nom: 'serveur-telephone-court', lettre: 'T3', scenarios: TELEPHONE, editions: [{ fichier: API, serveur: true, de: "    if (!require('../lib/telephone-du-client').telephoneValide(tape)) throw", vers: '    if (false) throw' }] },
   { nom: 'serveur-pose-l-existant', lettre: 'H3', scenarios: HEURE, editions: [{ fichier: API, serveur: true, de: '.filter((posee) => !dejaAuDossier(posee.activityId) && proposedItems', vers: '.filter((posee) => proposedItems' }] },
 ];
 
@@ -570,6 +638,7 @@ async function jouer(browser, noms) {
     if (nom === 'formule') await scenarioFormule(browser);
     if (nom === 'service') await scenarioService(browser);
     if (nom === 'notes') await scenarioNotes(browser);
+    if (nom === 'telephone') await scenarioTelephoneFiche(browser);
   }
 }
 
@@ -579,7 +648,7 @@ async function main() {
   const t0 = Date.now();
   try {
     if (!process.argv.includes('--contre-preuves')) {
-      await jouer(browser, ['libre', 'catalogue', 'heure', 'formule', 'service', 'notes']);
+      await jouer(browser, ['libre', 'catalogue', 'heure', 'formule', 'service', 'notes', 'telephone']);
     } else {
       console.log('[K] contre-preuves : chaque regle retiree fait rougir sa lettre');
       for (const m of MUTATIONS.filter((x) => !process.env.MC_MUTATIONS || liste(process.env.MC_MUTATIONS).includes(x.nom))) {

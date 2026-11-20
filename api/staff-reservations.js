@@ -705,6 +705,14 @@ async function calculerLaModification({ body, current, session, requestedCenterI
     ...body,
     centerId: requestedCenterId,
   };
+  // LE TELEPHONE DU DOSSIER (2026-11-20, la regle de la creation, lib/telephone-du-client.js) : un
+  // numero change doit tenir, et le numero d un dossier ne se vide pas. Seul un numero change se juge :
+  // un ancien numero qui ne tient pas ne bloque pas les autres changements.
+  if (Object.prototype.hasOwnProperty.call(patch, 'phone') && String(patch.phone ?? '').trim() !== String(current.phone ?? '').trim()) {
+    const tape = String(patch.phone ?? '').trim();
+    if (!tape) throw createHttpError('Le téléphone du client ne peut pas être vidé.', 422);
+    if (!require('../lib/telephone-du-client').telephoneValide(tape)) throw createHttpError('Ce numéro de téléphone n’est pas valide, 8 chiffres au moins.', 422);
+  }
   // LES DROITS DU DOSSIER (2026-11-03, lib/droits-reservation.js). La raison
   // du prix ne s ecrit pas telle quelle : elle part dans la note du serveur.
   // Un prix vide ne dit rien (toNumber les lisait 0), des notes nulles non

@@ -33570,6 +33570,34 @@ function notesEquipeEditionHtml(r) {
           </div>`;
 }
 
+// LE TELEPHONE DANS MODIFIER (2026-11-20, la regle de Reserver) : vide, il ne passe que si le dossier
+// n en avait pas ; tape, il tient (8 chiffres au moins apres l indicatif, 15 au plus).
+function refusTelephoneEdition(valeur, avant) {
+  const tape = String(valeur || '').trim();
+  if (!tape) return String(avant || '').trim() ? 'Le téléphone du client ne peut pas être vidé.' : '';
+  return rvTelephoneValide(tape) ? '' : 'Ce numéro de téléphone n’est pas valide, 8 chiffres au moins.';
+}
+
+// Sous le champ, une ligne : elle se montre en quittant le champ (ou a l enregistrement), et part des
+// que le numero tient. Le pli du contact s ouvre pour la montrer.
+function peindreTelephoneEdition(dire) {
+  const e = state.editState;
+  const r = state.selectedRes;
+  const champ = document.getElementById('editPhoneInput');
+  const ligne = document.getElementById('editPhoneHint');
+  if (!e || !r || !champ || !ligne) return;
+  const origine = departsEdition().get(e)?.origine || r;
+  const change = String(e.phone || '').trim() !== String(origine.phone || '').trim();
+  const refus = change ? refusTelephoneEdition(e.phone, origine.phone) : '';
+  if (!refus) { ligne.hidden = true; ligne.textContent = ''; champ.removeAttribute('aria-invalid'); return; }
+  if (!dire && ligne.hidden) return;
+  ligne.textContent = refus;
+  ligne.hidden = false;
+  champ.setAttribute('aria-invalid', 'true');
+  const pli = document.getElementById('editContactPli');
+  if (pli && !pli.open) { pli.open = true; editContactOuvert = true; }
+}
+
 // L occasion du dossier : un choix, ou aucun (un second clic le retire).
 function setEditOccasion(valeur) {
   const e = state.editState;
@@ -34841,7 +34869,8 @@ ${!adapte || (!isLaserRes && !editNeedsLanes && String(rf.type || '') !== 'formu
               <div class="fm-pli-corps">
                 <div class="fm-champ">
                   <label class="lbl" for="editPhoneInput">Téléphone</label>
-                  <input id="editPhoneInput" class="input" type="tel" value="${escapeHtml(e.phone)}" autocomplete="off" oninput="setEditField('phone', this.value)" placeholder="Facultatif">
+                  <input id="editPhoneInput" class="input" type="tel" value="${escapeHtml(e.phone)}" autocomplete="off" aria-describedby="editPhoneHint" oninput="setEditField('phone', this.value); peindreTelephoneEdition(false)" onblur="peindreTelephoneEdition(true)"${String(r.phone || '').trim() ? '' : ' placeholder="Facultatif"'}>
+                  <p class="field-hint is-hors" id="editPhoneHint" hidden></p>
                 </div>
                 <div class="fm-champ">
                   <label class="lbl" for="editEmailInput">E-mail</label>
@@ -35009,6 +35038,15 @@ function preparerModificationEdition(options = {}) {
   if (accompagnants !== Math.trunc(Number(origine.companions) || 0)) champsSaisis.companions = accompagnants;
   const touches = Object.keys(champsSaisis)
     .filter((champ) => valeurReservationComparable(champsSaisis[champ]) !== valeurReservationComparable(origine[champ]));
+  // LE TELEPHONE COMME A LA CREATION (2026-11-20, rvTelephoneValide) : un numero change doit tenir,
+  // et celui d un dossier ne se vide pas. Le serveur redit la regle (calculerLaModification).
+  if (touches.includes('phone')) {
+    const refus = refusTelephoneEdition(es.phone, origine.phone);
+    if (refus) {
+      if (!options.aBlanc) peindreTelephoneEdition(true);
+      return { erreur: refus };
+    }
+  }
   const lanesFinales = requiresLanes ? lanes : [];
   const pistesTouchees = valeurReservationComparable(lanesFinales) !== valeurReservationComparable(origine.lanes || []);
 

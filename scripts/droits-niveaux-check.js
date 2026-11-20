@@ -500,7 +500,9 @@ async function groupeParties(mutations = []) {
   x = await m.modifier(roleDePrix('non'), { id: 501, startTime: '16:00', allowPastStart: true });
   v(x.statut === 200 && Number(enBase(501).base_price) === 20 && enBase(501).start_time === '16:00', '[J] une heure de plus ne rouvre pas la base d un ancien tarif', `${dire(x)} base ${enBase(501).base_price}`);
   // Un programme sur ce centre : le moteur calcule sa base, elle ne se reprend pas.
-  x = await essai(roleDePrix('non'), { program: [{ activityId: 'bowling', duration: 1 }, { activityId: 'laser_game', games: 1 }], allowPastStart: true });
+  // (le bowling y a son heure, 15:00, celle du dossier : depuis le 2026-11-20 le serveur refuse en 422
+  // un programme que le plan ne tient pas, et un bowling sans heure n a pas de plan)
+  x = await essai(roleDePrix('non'), { program: [{ activityId: 'bowling', duration: 1 }, { activityId: 'laser_game', games: 1 }], heuresPosees: { bowling: '15:00' }, allowPastStart: true });
   v(x.statut === 200 && Number(enBase(501).base_price) > 28 && Number(enBase(501).base_price) === Number(enBase(501).price), '[J] un programme garde la base du moteur, pas le tarif du bowling seul', `${dire(x)} base ${enBase(501).base_price} prix ${enBase(501).price}`);
   B.base.centers = [];
   return liste;

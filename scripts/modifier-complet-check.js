@@ -540,7 +540,13 @@ async function scenarioTelephoneFiche(browser) {
     const c = document.getElementById('editPhoneInput');
     const h = document.getElementById('editPhoneHint');
     const err = document.getElementById('editError');
-    return { valeur: c ? c.value : null, invalide: c ? c.getAttribute('aria-invalid') : null, ligne: h && !h.hidden ? h.textContent.trim() : '', erreur: err && !err.hidden ? err.textContent.trim() : '', placeholder: c ? c.getAttribute('placeholder') : null };
+    // (la couleur de la ligne, comparee au rouge des erreurs de la console)
+    const temoin = document.createElement('span');
+    temoin.style.color = 'var(--danger)';
+    document.body.appendChild(temoin);
+    const danger = getComputedStyle(temoin).color;
+    temoin.remove();
+    return { valeur: c ? c.value : null, invalide: c ? c.getAttribute('aria-invalid') : null, ligne: h && !h.hidden ? h.textContent.trim() : '', couleur: h && !h.hidden ? getComputedStyle(h).color : '', danger, erreur: err && !err.hidden ? err.textContent.trim() : '', placeholder: c ? c.getAttribute('placeholder') : null };
   });
   const essayer = async () => { const avant = journal.length; await page.click('#posOverlay .es-save'); await page.waitForTimeout(700); return journal.length - avant; };
   try {
@@ -564,6 +570,7 @@ async function scenarioTelephoneFiche(browser) {
     const envoyes2 = await essayer();
     ok(/pas valide/.test(c.ligne) && c.invalide === 'true' && envoyes2 === 0 && telEnBase() === TEL,
       '[T2] un numero trop court se dit en quittant le champ, et ne part pas', { ...c, envoyes: envoyes2 });
+    ok(Boolean(c.couleur) && c.couleur === c.danger, '[T2] la ligne du numero refuse se lit en rouge, comme une erreur', { couleur: c.couleur, danger: c.danger });
     await page.fill('#editPhoneInput', '0471 99 88 77');
     const d = await lire();
     ok(d.ligne === '' && d.invalide === null, '[T2] un numero qui tient efface la ligne', d);
@@ -779,6 +786,7 @@ const MUTATIONS = [
   // Le telephone : le controle de la fiche, sa ligne, et celui du serveur.
   { nom: 'telephone-libre', lettre: 'T1', scenarios: TELEPHONE, editions: [{ fichier: JS, de: "  if (touches.includes('phone')) {", vers: '  if (false) {' }] },
   { nom: 'telephone-muet', lettre: 'T2', scenarios: TELEPHONE, editions: [{ fichier: JS, de: '  ligne.hidden = false;\n', vers: '' }] },
+  { nom: 'telephone-ligne-grise', lettre: 'T2', scenarios: TELEPHONE, editions: [{ fichier: CSS, de: 'body:is(.staff-mode, .admin-mode) .fx-modal #editPhoneHint { font-size: 13px; font-weight: 600; color: var(--danger); }', vers: '' }] },
   { nom: 'serveur-telephone-court', lettre: 'T3', scenarios: TELEPHONE, editions: [{ fichier: API, serveur: true, de: "    if (tape && !require('../lib/telephone-du-client').telephoneValide(tape)) throw", vers: '    if (false) throw' }] },
   // L espacement du laser : absent, sans effet, la pause au mauvais endroit.
   { nom: 'espacement-absent', lettre: 'G1', scenarios: ESPACEMENT, editions: [{ fichier: JS, de: '${areneEditionHtml()}${espacementLaserEditionHtml(r)}', vers: '${areneEditionHtml()}' }] },

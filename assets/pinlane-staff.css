@@ -20052,6 +20052,8 @@ body:is(.staff-mode, .admin-mode) .fx-modal .dossier-formula-origin strong { fon
    le dit sous le menu, du ton de l avis « heures recalculees ». */
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-formule { max-width: 440px; margin: -2px 0 10px; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm .fm-formule .field-hint.is-hors { font-size: 13px; font-weight: 600; color: var(--warning); }
+/* (un numero refuse se lit comme une erreur, en rouge, sous son champ) */
+body:is(.staff-mode, .admin-mode) .fx-modal #editPhoneHint { font-size: 13px; font-weight: 600; color: var(--danger); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-replan { display: none; margin: -4px 0 12px; font-size: 13px; font-weight: 600; line-height: 1.45; color: var(--warning); }
 /* « À LA CARTE | ACCÈS ILLIMITÉ » DANS MODIFIER (2026-11-20) : un selecteur a deux choix, celui de la
    fenetre Reserver (le choix pris en blanc sur la piste grise), et la phrase commune dessous. Le

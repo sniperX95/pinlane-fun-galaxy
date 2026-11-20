@@ -33322,7 +33322,7 @@ function renderEditExtras(r) {
     </div>` : '';
   const groupes = EXTRAS_GROUPES.filter(([groupe]) => modele[groupe].length).map(([groupe, titre, invite]) => `<div class="fm-x-groupe" role="group" aria-label="${titre}">
       <span class="fm-x-titre">${titre}</span>
-      ${modele[groupe].map((l, i) => `<div class="fm-x-ligne">
+      ${modele[groupe].map((l, i) => `<div class="fm-x-ligne" data-x="${groupe}-${i}">
         ${champ(groupe, i, 'choix', l.choix, `list="fmx-${groupe}" placeholder="${invite}" aria-label="${titre} : ${invite.toLowerCase()}"`)}
         ${l.parPersonne ? `<span class="fm-x-qte fm-x-tous" id="fmxQte-${groupe}-${i}">${qteLigneExtra(l)}</span>` : champ(groupe, i, 'qte', l.qte, 'type="number" min="1" max="999" inputmode="numeric" aria-label="Quantité"')}
         <span class="fm-euro">${champ(groupe, i, 'prix', l.prix, `type="number" min="0" step="0.5" inputmode="decimal" placeholder="Prix" aria-label="Prix à l’unité en ${nomsMonnaie()}"`)}<span aria-hidden="true">${signeMonnaie()}</span></span>
@@ -33331,6 +33331,7 @@ function renderEditExtras(r) {
         <span class="fm-x-opts">
           <button type="button" class="fm-x-opt${l.parPersonne ? ' is-on' : ''}" aria-pressed="${Boolean(l.parPersonne)}" onclick="basculerEditExtra('${groupe}',${i},'parPersonne')">Par personne</button>
           ${niveauStaff('prix') === 'non' ? '' : `<button type="button" class="fm-x-opt${l.offert ? ' is-on' : ''}" aria-pressed="${Boolean(l.offert)}" onclick="basculerEditExtra('${groupe}',${i},'offert')">Offert</button>`}
+          ${serviceLigneExtraHtml(groupe, i, l)}
         </span>
       </div>`).join('')}
     </div>`).join('');
@@ -33354,7 +33355,50 @@ function setEditExtra(groupe, i, cle, valeur) {
   const ligne = modele && modele[groupe] && modele[groupe][i];
   if (!ligne) return;
   ligne[cle] = valeur;
+  if (cle === 'choix') relierArticleExtra(groupe, i, ligne);
   majEditExtras();
+}
+
+// L HEURE DE SERVICE ET LA NOTE D UN EXTRA (2026-11-20, Ansar : « modifier tout complet », comme
+// Reserver). Elles se lisent et se changent sur la ligne : deux pizzas servies a deux heures ne se
+// ressemblent plus. Une boisson du catalogue (heure: false) n a pas d heure, sauf celle qu elle porte.
+const comparableExtra = (texte) => String(texte ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[\u2019`]/g, "'").toLowerCase().replace(/\s+/g, ' ').trim();
+function articleCatalogueExtra(id, nom) {
+  const { centre, articles } = catalogueSurMesureConsole;
+  if (!Array.isArray(articles) || centre !== getCurrentStaffCenterId()) return null;
+  if (id) return articles.find((a) => a.id === id) || null;
+  const cle = comparableExtra(nom);
+  return cle ? articles.find((a) => comparableExtra(a.nom) === cle) || null : null;
+}
+
+function articleDeLaLigneExtra(l) {
+  const id = (l.article && l.article.id) || (l.garde && l.garde.depart && String(l.choix || '').trim() === l.garde.depart.choix ? l.garde.articleId : '');
+  return articleCatalogueExtra(id, id ? '' : l.choix);
+}
+
+function serviceLigneExtraHtml(groupe, i, l) {
+  const article = articleDeLaLigneExtra(l);
+  const nom = escapeHtml(String(l.choix || '').trim() || 'cette ligne');
+  const heure = !article || article.heure !== false || l.heure
+    ? `<label class="fm-x-servir"><span>Servir à</span><input class="input fm-x-heure" type="time" step="300" value="${escapeHtml(l.heure || '')}" aria-label="Servir ${nom} à" oninput="setEditExtra('${groupe}',${i},'heure',this.value)"></label>`
+    : '';
+  return `${heure}<input class="input fm-x-note" maxlength="160" placeholder="Note" value="${escapeHtml(l.note || '')}" aria-label="Note sur ${nom}" oninput="setEditExtra('${groupe}',${i},'note',this.value)">`;
+}
+
+// LE NOM D UN ARTICLE DU CENTRE RELIE LA LIGNE (2026-11-20, comme Reserver) : sans casse ni accents.
+// Elle part avec son id, sa categorie et son nom de la carte ; son prix de la carte remplit le prix
+// tant qu on n en a pas tape un autre. Un article « a saisir » (0) laisse le prix a taper.
+function relierArticleExtra(groupe, i, ligne) {
+  const article = articleCatalogueExtra('', ligne.choix);
+  if (!article) { delete ligne.article; return; }
+  ligne.article = { id: article.id, categorie: article.categorie, nom: article.nom };
+  const libre = String(ligne.prix ?? '').trim() === '' || (ligne.prixDeLaCarte !== undefined && String(ligne.prix) === ligne.prixDeLaCarte);
+  if (Number(article.prix) > 0 && libre) {
+    ligne.prix = String(article.prix);
+    ligne.prixDeLaCarte = ligne.prix;
+    const champ = document.querySelector(`#posOverlay .fm-extras [data-x="${groupe}-${i}"] .fm-x-prix`);
+    if (champ && document.activeElement !== champ) champ.value = ligne.prix;
+  }
 }
 
 // Une crepe, ou une crepe pour tout le monde. Offerte, la ligne reste et vaut 0 €.
@@ -33555,6 +33599,15 @@ function modifsExtrasEdition() {
     if (a.prix !== l.prix) return `${l.nom} ${formatMoneyCentimes(a.prix)} → ${formatMoneyCentimes(l.prix)}`;
     return a.reglage !== l.reglage ? `${l.nom} modifiées` : '';
   }).filter(Boolean);
+  // (l heure de service et la note d une ligne du dossier : « Pizza Margherita à 17:30 », « Note Duvel »)
+  EXTRAS_GROUPES.forEach(([groupe]) => (e.extrasEdites[groupe] || []).forEach((l) => {
+    const depart = l.garde && l.garde.depart;
+    const nom = String(l.choix || '').trim();
+    if (!depart || !nom) return;
+    const heure = String(l.heure || '').trim();
+    if (heure !== (depart.heure || '')) changes.push(heure ? `${nom} à ${heure}` : `${nom} sans heure`);
+    if (String(l.note || '').trim() !== (depart.note || '')) changes.push(`Note ${nom}`);
+  }));
   return [ajouts.length ? `Ajout : ${ajouts.join(', ')}` : '', retraits.length ? `Retrait : ${retraits.join(', ')}` : '', ...changes].filter(Boolean);
 }
 
@@ -36391,12 +36444,13 @@ function extrasDepuisLignes(e, pax, arcadesComprises = false) {
       // Changee, elle garde son id, son article tant qu elle garde son nom, sa categorie, son
       // heure et sa note ; une ligne neuve part avec la sorte ou elle a ete ajoutee.
       const memeArticle = Boolean(depart && nom === depart.choix);
+      const relie = ligne.article && ligne.article.id ? ligne.article : null;
       lignes.push({
         id: (garde && garde.id) || `${nomGroupe}-${i + 1}`,
-        name: `${nom} × ${qte}`,
+        name: `${(relie && relie.nom) || nom} × ${qte}`,
         price: ligne.offert ? 0 : valeur,
-        ...(memeArticle && garde.articleId ? { articleId: garde.articleId } : {}),
-        categorie: (memeArticle && garde.categorie) || nomGroupe,
+        ...(relie ? { articleId: relie.id } : memeArticle && garde.articleId ? { articleId: garde.articleId } : {}),
+        categorie: (relie && relie.categorie) || (memeArticle && garde.categorie) || nomGroupe,
         qte,
         prixUnitaire: unitaire,
         ...(heure ? { heure } : {}),

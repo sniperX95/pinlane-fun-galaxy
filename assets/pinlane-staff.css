@@ -20186,6 +20186,18 @@ body:is(.staff-mode, .admin-mode) .fx-modal .fm-x-opts { grid-column: 1 / -1; di
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-x-opt { min-height: 32px; padding: 0 12px; border: 1px solid var(--line); border-radius: 8px; background: transparent; font-size: 13px; font-weight: 500; color: var(--muted); cursor: pointer; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-x-opt.is-on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-x-opt:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 2px; }
+/* L HEURE DE SERVICE ET LA NOTE D UN EXTRA (2026-11-20) : des champs de la console sur la rangee
+   des options, rien de plus. Au telephone, la note prend la largeur et les champs le doigt. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-x-opts { align-items: center; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-x-servir { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .fm-x-opts .input { min-height: 32px; height: 32px; padding: 0 10px; font-size: 13px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .fm-x-opts .fm-x-heure { width: 108px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .fm-x-opts .fm-x-note { flex: 1 1 140px; min-width: 0; }
+@media (max-width: 760px) {
+  body:is(.staff-mode, .admin-mode) .fx-modal .fm .fm-x-opts .input { min-height: 44px; height: 44px; font-size: 16px; }
+  body:is(.staff-mode, .admin-mode) .fx-modal .fm .fm-x-opts .fm-x-heure { width: 124px; }
+  body:is(.staff-mode, .admin-mode) .fx-modal .fm .fm-x-opts .fm-x-note { flex-basis: 100%; }
+}
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-x-tous { display: inline-flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 500; font-variant-numeric: tabular-nums; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-prix-formule { margin: 0 0 10px; font-size: 14px; line-height: 1.35; color: var(--muted); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-prix-formule b { color: var(--text); font-weight: 600; }

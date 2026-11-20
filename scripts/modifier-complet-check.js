@@ -29,6 +29,13 @@
 //   [F1] un dossier a la carte (Famille Noel, bowling) a son menu « Formule », « À la carte » en tete ;
 //   [F2] choisir une formule du centre en fait une formule (indice, barre), « Enregistrer » l ecrit ;
 //   [F3] « À la carte » rend le dossier tel qu il etait : aucune modification ;
+//   [D1] chaque extra dit son heure de service et sa note (les deux pizzas ne se ressemblent plus) ;
+//        une boisson du catalogue (heure: false) n a pas d heure ;
+//   [D2] l heure et la note se changent sur la ligne, la barre du bas le dit, la base les ecrit
+//        et la ligne garde son auteur ;
+//   [D3] un nom du catalogue (« crêpe au sucre ») relie la ligne a l article : son prix de la carte,
+//        son id, sa categorie et son nom partent avec elle ;
+//   [D4] au telephone, rien ne deborde et l heure et la note se touchent au doigt (44 px) ;
 //   [J1] aucune erreur JS.
 // --contre-preuves : chaque regle retiree (au code servi, en memoire ; le disque n est jamais
 // touche) fait rougir sa lettre.
@@ -125,6 +132,7 @@ async function monter(browser, serveur, { appareil = 'ordinateur', theme = 'dark
   const m = await FX.monter(browser, {
     fixture: 'pic', appareil, theme, port: PORT, heure: '15:10',
     avantChargement: async (page) => {
+      await page.exposeFunction('__fixtureLecture', async (chemin) => lectureCatalogue(chemin));
       await page.exposeFunction('__fixtureServeur', async (corps) => {
         const rep = await serveur.appeler('PATCH', '/api/staff-reservations', corps);
         journal.push({ corps, statut: rep.statut, json: rep.json });
@@ -358,9 +366,97 @@ async function scenarioFormule(browser) {
 }
 
 // ---------------------------------------------------------------------------
+// [D1] [D2] [D3] [D4] L HEURE, LA NOTE ET L ARTICLE D UN EXTRA.
+// ---------------------------------------------------------------------------
+// Le catalogue du centre tel que api/ops.js le sert (surMesureCatalogue), lu dans le vrai code.
+function lectureCatalogue(chemin) {
+  if (!/^\/api\/ops\?action=surMesureCatalogue/.test(String(chemin))) return null;
+  const cc = require(path.join(ROOT, 'lib/center-config.js'));
+  return { ok: true, surMesure: cc.surMesureChoisissable(cc.catalogueSurMesure('libramont')), formulesGardees: [] };
+}
+function lireService() {
+  const groupes = {};
+  document.querySelectorAll('#posOverlay .fm-extras .fm-x-groupe').forEach((g) => {
+    groupes[g.getAttribute('aria-label')] = Array.from(g.querySelectorAll('.fm-x-ligne')).map((l) => {
+      const h = l.querySelector('.fm-x-heure');
+      const n = l.querySelector('.fm-x-note');
+      return [l.querySelector('.fm-x-choix').value, h ? h.value : null, n ? n.value : null];
+    });
+  });
+  return groupes;
+}
+async function catalogueCharge(page) {
+  await page.waitForFunction(() => catalogueSurMesureConsole && Array.isArray(catalogueSurMesureConsole.articles) && catalogueSurMesureConsole.articles.length > 0, null, { timeout: 8000 }).catch(() => null);
+  await page.evaluate(() => renderPos());
+  await page.waitForTimeout(150);
+}
+async function scenarioService(browser) {
+  semer();
+  const serveur = B.monter({ mutations: mutation ? mutation.editions.filter((ed) => ed.serveur) : [], session: B.sessionDuRole('manager', { nom: 'Rachel' }) });
+  const { ctx, page, erreurs, journal } = await monter(browser, serveur);
+  try {
+    await ouvrirModifier(page);
+    await catalogueCharge(page);
+    const a = await page.evaluate(lireService);
+    ok(pareil(a.Nourriture, [['Pizza Margherita', '16:30', 'sans basilic'], ['Pizza Margherita', '17:00', ''], ['Nachos Together', '', ''], ['Gâteau chocolat', '17:00', 'bougies 7 ans']]),
+      '[D1] chaque extra dit son heure de service et sa note : les deux pizzas ne se ressemblent plus', a.Nourriture);
+    ok(pareil(a.Boissons, [['Duvel', null, 'bien fraîches'], ['Cruche Bière', '', '']]),
+      '[D1] une boisson du catalogue n a pas d heure, sa note se lit', a.Boissons);
+
+    await page.locator(`${LIGNE('Nourriture', 0)} >> .fm-x-heure`).fill('17:30');
+    await page.locator(`${LIGNE('Boissons', 0)} >> .fm-x-note`).fill('une au citron');
+    await page.waitForTimeout(150);
+    const barre = await page.evaluate(() => (document.getElementById('editModifs') || {}).textContent || '');
+    ok(/Pizza Margherita à 17:30/.test(barre) && /Note Duvel/.test(barre), '[D2] la barre du bas dit l heure et la note changees', barre);
+
+    // [D3] un nom du catalogue, tape sans majuscule : la ligne prend l article et son prix de la carte.
+    await page.click('#posOverlay .fm-extras .fm-ajout[onclick*="nourriture"]');
+    await page.keyboard.type('crêpe au sucre');
+    await page.waitForTimeout(150);
+    const prix = await page.locator(`${LIGNE('Nourriture', 4)} >> .fm-x-prix`).inputValue();
+    ok(prix === '6', '[D3] « crêpe au sucre » prend le prix de la carte (6 €)', prix);
+
+    const envois = await enregistrer(page, journal);
+    const r = envois.length ? envois[envois.length - 1] : null;
+    const lignes = (enBase(NOEL) || {}).extras || [];
+    const parId = (id) => lignes.find((l) => l.id === id) || {};
+    ok(r && r.statut === 200 && parId('pizza-margherita-1').heure === '17:30' && parId('pizza-margherita-1').par === 'Lucas' && parId('pizza-margherita-2').heure === '17:00'
+      && parId('duvel-5').note === 'une au citron' && parId('duvel-5').par === 'Lucas',
+      '[D2] en base, la pizza passe a 17:30 et la note des Duvel change, leur auteur reste', r ? { statut: r.statut, json: r.statut === 200 ? '' : r.json, lignes: lignes.slice(0, 5) } : 'aucun envoi');
+    const crepe = lignes.find((l) => /cr[eê]pe/i.test(l.name)) || {};
+    ok(crepe.articleId === 'crepe-au-sucre' && crepe.categorie === 'nourriture' && crepe.name === 'Crêpe au sucre × 1' && Number(crepe.price) === 6,
+      '[D3] en base, la crepe est l article du catalogue, a son nom et son prix', crepe);
+    ok(erreurs.length === 0, '[J1] aucune erreur JS (service)', erreurs.slice(0, 3));
+  } finally {
+    await ctx.close();
+  }
+  // [D4] au telephone : rien ne deborde, les champs se touchent au doigt.
+  semer();
+  const serveur2 = B.monter({ mutations: [], session: B.sessionDuRole('manager', { nom: 'Rachel' }) });
+  const m = await monter(browser, serveur2, { appareil: 'telephone', theme: 'light' });
+  try {
+    await ouvrirModifier(m.page);
+    await catalogueCharge(m.page);
+    const d = await m.page.evaluate(() => {
+      const sec = document.querySelector('#posOverlay .fm-extras');
+      const vw = document.documentElement.clientWidth;
+      const champs = Array.from(sec.querySelectorAll('.fm-x-opts .input')).map((n) => { const b = n.getBoundingClientRect(); return [Math.round(b.width), Math.round(b.height)]; });
+      const debordent = Array.from(sec.querySelectorAll('.fm-x-ligne, .fm-x-ligne *')).filter((n) => { const b = n.getBoundingClientRect(); return b.width && (b.right > vw + 1 || b.left < -1); }).length;
+      return { vw, champs, debordent };
+    });
+    ok(d.debordent === 0 && d.champs.length >= 7 && d.champs.every(([l, h]) => h >= 44 && l >= 44), `[D4] telephone (${d.vw} px) : rien ne deborde, l heure et la note se touchent au doigt`, d);
+    ok(m.erreurs.length === 0, '[J1] aucune erreur JS (service, telephone)', m.erreurs.slice(0, 3));
+  } finally {
+    await m.ctx.close();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // LES CONTRE-PREUVES : une regle retiree, sa lettre rougit.
 // ---------------------------------------------------------------------------
 const FORMULE = ['formule'];
+const SERVICE = ['service'];
+const CSS = 'assets/pinlane-staff.css';
 const LIBRE = ['libre'];
 const CATALOGUE = ['catalogue'];
 const HEURE = ['heure'];
@@ -373,8 +469,8 @@ const MUTATIONS = [
   { nom: 'heures-fondues', lettre: 'X1', scenarios: LIBRE, editions: [{ fichier: JS, de: "      && (l.heure || '') === heure && (l.note || '') === note && EXTRA_GARDE", vers: '      && EXTRA_GARDE' }] },
   // La quantite lue seulement dans le nom.
   { nom: 'quantite-du-nom', lettre: 'X1', scenarios: LIBRE, editions: [{ fichier: JS, de: ' : (qteLue >= 1 ? qteLue : 1);', vers: ' : 1;' }] },
-  { nom: 'article-perdu', lettre: 'X2', scenarios: LIBRE, editions: [{ fichier: JS, de: '        ...(memeArticle && garde.articleId ? { articleId: garde.articleId } : {}),\n', vers: '' }] },
-  { nom: 'categorie-perdue', lettre: 'X2', scenarios: LIBRE, editions: [{ fichier: JS, de: '        categorie: (memeArticle && garde.categorie) || nomGroupe,\n', vers: '        categorie: nomGroupe,\n' }] },
+  { nom: 'article-perdu', lettre: 'X2', scenarios: LIBRE, editions: [{ fichier: JS, de: '        ...(relie ? { articleId: relie.id } : memeArticle && garde.articleId ? { articleId: garde.articleId } : {}),\n', vers: '        ...(relie ? { articleId: relie.id } : {}),\n' }] },
+  { nom: 'categorie-perdue', lettre: 'X2', scenarios: LIBRE, editions: [{ fichier: JS, de: '        categorie: (relie && relie.categorie) || (memeArticle && garde.categorie) || nomGroupe,\n', vers: '        categorie: (relie && relie.categorie) || nomGroupe,\n' }] },
   { nom: 'heure-perdue', lettre: 'X2', scenarios: LIBRE, editions: [{ fichier: JS, de: '        ...(heure ? { heure } : {}),\n        ...(note ? { note } : {}),\n', vers: '' }] },
   { nom: 'id-refait', lettre: 'X2', scenarios: LIBRE, editions: [{ fichier: JS, de: '        id: (garde && garde.id) || `${nomGroupe}-${i + 1}`,\n', vers: '        id: `${nomGroupe}-${i + 1}`,\n' }] },
   // L heure d une activite ajoutee : pas de champ, pas d envoi, pas de pose, pas de refus, et le serveur qui pose aussi l existant.
@@ -387,6 +483,13 @@ const MUTATIONS = [
   { nom: 'carte-sans-menu', lettre: 'F1', scenarios: FORMULE, editions: [{ fichier: JS, de: "  if (!origine || e.versProgrammeNormal) return '';", vers: "  if (!origine || !formuleDOrigineEdition(origine) || e.versProgrammeNormal) return '';" }] },
   { nom: 'sans-a-la-carte', lettre: 'F1', scenarios: FORMULE, editions: [{ fichier: JS, de: '  const aLaCarte = !formuleDOrigineEdition(origine) ?', vers: '  const aLaCarte = false ?' }] },
   { nom: 'retour-impossible', lettre: 'F3', scenarios: FORMULE, editions: [{ fichier: JS, de: "  if (!e || !r || !origine || (!formule && String(id || '') !== '')) return;", vers: '  if (!e || !r || !origine || !formule) return;' }] },
+  // L heure et la note d un extra : cachees, oubliees, muettes, sans catalogue, trop petites au doigt.
+  { nom: 'service-cache', lettre: 'D1', scenarios: SERVICE, editions: [{ fichier: JS, de: '          ${serviceLigneExtraHtml(groupe, i, l)}\n', vers: '' }] },
+  { nom: 'boisson-a-l-heure', lettre: 'D1', scenarios: SERVICE, editions: [{ fichier: JS, de: '  const heure = !article || article.heure !== false || l.heure', vers: '  const heure = true' }] },
+  { nom: 'service-intact-oublie', lettre: 'D2', scenarios: SERVICE, editions: [{ fichier: JS, de: "        const memeService = heure === (depart.heure || '') && note === (depart.note || '');", vers: '        const memeService = true;' }] },
+  { nom: 'barre-muette-service', lettre: 'D2', scenarios: SERVICE, editions: [{ fichier: JS, de: "    if (heure !== (depart.heure || '')) changes.push(", vers: '    if (false) changes.push(' }] },
+  { nom: 'sans-catalogue', lettre: 'D3', scenarios: SERVICE, editions: [{ fichier: JS, de: "  if (cle === 'choix') relierArticleExtra(groupe, i, ligne);\n", vers: '' }] },
+  { nom: 'telephone-petit', lettre: 'D4', scenarios: SERVICE, editions: [{ fichier: CSS, de: '  body:is(.staff-mode, .admin-mode) .fx-modal .fm .fm-x-opts .input { min-height: 44px; height: 44px; font-size: 16px; }\n', vers: '' }] },
   { nom: 'serveur-pose-l-existant', lettre: 'H3', scenarios: HEURE, editions: [{ fichier: API, serveur: true, de: '.filter((posee) => !dejaAuDossier(posee.activityId) && proposedItems', vers: '.filter((posee) => proposedItems' }] },
 ];
 
@@ -396,6 +499,7 @@ async function jouer(browser, noms) {
     if (nom === 'catalogue') await scenarioCatalogue(browser);
     if (nom === 'heure') await scenarioHeure(browser);
     if (nom === 'formule') await scenarioFormule(browser);
+    if (nom === 'service') await scenarioService(browser);
   }
 }
 
@@ -405,7 +509,7 @@ async function main() {
   const t0 = Date.now();
   try {
     if (!process.argv.includes('--contre-preuves')) {
-      await jouer(browser, ['libre', 'catalogue', 'heure', 'formule']);
+      await jouer(browser, ['libre', 'catalogue', 'heure', 'formule', 'service']);
     } else {
       console.log('[K] contre-preuves : chaque regle retiree fait rougir sa lettre');
       for (const m of MUTATIONS.filter((x) => !process.env.MC_MUTATIONS || liste(process.env.MC_MUTATIONS).includes(x.nom))) {

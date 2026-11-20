@@ -339,6 +339,27 @@
     return etat;
   }
 
+  // LES HEURES PRIVATISEES (2026-11-20, Ansar : « pour privatisé faut que ça grisille aussi sur
+  // le planning complet »). Les blocages « private » du jour, les memes que le bandeau et la grille
+  // du bowling (getAvailabilityBlocksForDate). Une demi-heure qu une privatisation de tout le centre
+  // touche se hachure, se dit « privatisé » et ne se reserve plus d un toucher ; celle d une
+  // activite seule le dit sur la case de l heure (« Laser privatisé »), le reste du centre ouvert.
+  function gfPrivees(jour) {
+    var blocs = typeof getAvailabilityBlocksForDate === 'function' ? (getAvailabilityBlocksForDate(jour) || []) : [];
+    var liste = blocs.filter(function (b) { return b && b.kind === 'private'; }).map(function (b) {
+      var a = typeof availabilityBlockStartMin === 'function' ? availabilityBlockStartMin(b) : null;
+      var z = typeof availabilityBlockEndMin === 'function' ? availabilityBlockEndMin(b) : null;
+      return { debut: a == null ? 0 : a / 60, fin: z == null ? 24 : z / 60, nom: b.reason || '', centre: b.scopeType === 'center', ref: String(b.scopeRef || '') };
+    });
+    return function (b) {
+      var touche = liste.filter(function (p) { return p.debut < b + 0.5 - 1e-6 && p.fin > b + 1e-6; });
+      if (!touche.length) return null;
+      var centre = touche.filter(function (p) { return p.centre; })[0];
+      var p = centre || touche[0];
+      return { centre: Boolean(centre), refs: centre ? [] : touche.map(function (x) { return x.ref; }), dit: 'Privatisé : ' + (p.nom || 'groupe privé') + ', de ' + gpHeure(p.debut) + ' à ' + gpHeure(p.fin) };
+    };
+  }
+
   // LA CHARGE D UNE DEMI-HEURE (2026-10-27), sur son filet : le bowling dont
   // toutes les pistes sont prises, le depart laser plein. Le reste du temps,
   // rien : la couleur ne sert qu a l exception (Resy rougit son quart d heure
@@ -523,6 +544,7 @@
       fenetre: typeof getPlanningWindow === 'function' ? getPlanningWindow(jour) : { open: 10, close: 22, closed: false },
       etat: jour === auj ? gpEtatCentre(groupes, laser, maintenant) : null,
       charge: gpCharge(laser),
+      prive: gfPrivees(jour),
     };
   }
 
@@ -1365,16 +1387,22 @@
   // compte tout le centre.
   function gfBlocCase(m, part, compte, bande) {
     var classes = 'gf-bloc' + (bande ? ' is-bande' : '') + (part.quand ? ' is-' + part.quand : '');
+    var prive = m.prive ? m.prive(part.b) : null;
+    if (prive && prive.centre) classes += ' is-prive';
     var attr = ' rowspan="' + Math.max(1, part.lignes.length) + '"';
     // (la barre de l heure tombe dans la demi-heure : ce qui suit reste dans son bloc)
     if (part.suite) return '<td class="' + classes + ' is-suite"' + attr + '></td>';
     var heure = gpHeure(part.b);
     // (ce qui est passe n a plus rien a offrir, un jour ferme non plus)
-    var ouvert = part.quand !== 'passe' && !(m.fenetre && m.fenetre.closed) && !(m.maintenant == null && state.currentDate < todayStr());
+    var ouvert = part.quand !== 'passe' && !(m.fenetre && m.fenetre.closed) && !(m.maintenant == null && state.currentDate < todayStr()) && !(prive && prive.centre);
     var place = ouvert ? m.charge.place(part.b) : null;
     var seule = part.lignes.length < 2;
     var lignes = [];
+    // (privatise : le mot remplace « complet », la ressource n est pas pleine, elle est prise)
+    var privees = prive ? m.colonnes.filter(function (col) { return prive.centre || col.activites.some(function (a) { return prive.refs.indexOf(a) >= 0; }); }) : [];
+    if (prive) lignes.push({ html: '<span class="gf-bloc__prive" title="' + gpEsc(prive.dit) + '">' + gpEsc(prive.centre || !privees.length ? 'privatisé' : privees.map(function (c) { return c.titre; }).join(', ') + ' privatisé') + '</span>', hauteur: 1 });
     m.colonnes.forEach(function (col) {
+      if (privees.indexOf(col) >= 0) return;
       var plein = m.charge(part.b, col);
       if (plein) lignes.push({ html: '<span class="gf-bloc__plein" title="' + gpEsc(plein.bulle) + '">' + gpEsc(seule ? plein.texte : col.titre + ' ' + plein.texte) + '</span>', hauteur: seule ? 1 : 2 });
     });
@@ -1529,7 +1557,7 @@
       if (!part) { poser('maintenant', gfMaintenant(nbCol, dansLibre)); return; }
       if (!part.lignes.length) {
         dansLibre = !q && m.maintenant != null && part.b <= m.maintenant + 1e-6 && m.maintenant < part.b + 0.5 - 1e-6;
-        poser('libre:' + part.b, '<tr class="gf-libre is-bloc">' + gfBlocCase(m, part, { groupes: 0, pers: 0 }, false) + '<td class="gf-libre__l" colspan="' + (nbCol - 1) + '">' + (dansLibre ? gfMaintenantDansLibre(part.b) : '') + '</td></tr>');
+        poser('libre:' + part.b, '<tr class="gf-libre is-bloc' + ((m.prive && m.prive(part.b) || {}).centre ? ' is-prive' : '') + '">' + gfBlocCase(m, part, { groupes: 0, pers: 0 }, false) + '<td class="gf-libre__l" colspan="' + (nbCol - 1) + '">' + (dansLibre ? gfMaintenantDansLibre(part.b) : '') + '</td></tr>');
         return;
       }
       dansLibre = false;

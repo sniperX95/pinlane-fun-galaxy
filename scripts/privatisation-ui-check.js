@@ -57,6 +57,12 @@ const JOURNEE = (liste) => liste.filter((r) => GARDES.has(Number(r.id)));
 
 const APP = 'assets/app-main.js';
 const MUTATIONS = [
+  { nom: 'complet-sans-hachures', lettre: 'A', cible: '[A] le planning complet hachure chaque demi-heure privatisee, dit « privatisé », et elle ne se reserve pas d un toucher', fichier: 'assets/pinlane-planning-global.js',
+    de: "    if (prive && prive.centre) classes += ' is-prive';\n", vers: '' },
+  { nom: 'hachures-sans-css', lettre: 'A', cible: '[A] le planning complet hachure chaque demi-heure privatisee, dit « privatisé », et elle ne se reserve pas d un toucher', fichier: 'assets/pinlane-planning-global.css',
+    de: '.gf-t td.gf-bloc.is-prive, .gf-t tr.gf-libre.is-prive > td.gf-libre__l { background: repeating-linear-gradient(45deg, var(--subtle), var(--subtle) 7px, var(--surface) 7px, var(--surface) 14px); }', vers: '' },
+  { nom: 'prive-reservable', lettre: 'A', cible: '[A] le planning complet hachure chaque demi-heure privatisee, dit « privatisé », et elle ne se reserve pas d un toucher', fichier: 'assets/pinlane-planning-global.js',
+    de: ' && !(prive && prive.centre);\n', vers: ';\n' },
   { nom: 'bandeau-muet', lettre: 'A', cible: `[A] le planning dit la privatisation : bandeau « ${PHRASE} », tout le centre`, fichier: APP,
     de: "  const liste = state.view === 'staff' ? privatisationsGroupees(getAvailabilityBlocksForDate(state.currentDate), state.currentDate) : [];", vers: '  const liste = [];' },
   { nom: 'journee-sans-fermetures', lettre: 'A', cible: `[A] le planning dit la privatisation : bandeau « ${PHRASE} », tout le centre`, fichier: APP,
@@ -263,6 +269,18 @@ async function scenarioManager(browser) {
     ok(laser > 0, '[A] le planning laser dit les departs privatises, au nom du groupe', laser);
     await page.evaluate(() => pbChanger('all'));
     await FX.repos(page, 300);
+    // LE PLANNING COMPLET (2026-11-20, Ansar : « pour privatisé faut que ça grisille aussi sur le
+    // planning complet ») : chaque demi-heure de 18:00 a 21:30 hachuree (le fond se lit calcule),
+    // dite « privatisé » et plus « complet », sans bouton pour reserver ; avant 18:00, rien.
+    const complet = await page.evaluate(() => Array.from(document.querySelectorAll('.gf-t td.gf-bloc[data-gf-bloc]')).filter((td) => td.getClientRects().length).map((td) => ({
+      h: td.dataset.gfBloc, prive: td.classList.contains('is-prive'), texte: td.textContent.replace(/\s+/g, ' ').trim(),
+      bouton: Boolean(td.querySelector('button')), hachure: getComputedStyle(td).backgroundImage.includes('repeating-linear-gradient'),
+    })));
+    const dedans = complet.filter((c) => c.h >= '18:00' && c.h < '22:00');
+    const avant = complet.filter((c) => c.h < '18:00');
+    ok(dedans.length >= 4 && dedans.every((c) => c.prive && c.hachure && /privatisé/.test(c.texte) && !/complet/.test(c.texte) && !c.bouton) && avant.length > 0 && avant.every((c) => !c.prive && !c.hachure),
+      '[A] le planning complet hachure chaque demi-heure privatisee, dit « privatisé », et elle ne se reserve pas d un toucher', { dedans, avantPrives: avant.filter((c) => c.prive || c.hachure).map((c) => c.h) });
+    await photo(page, '3b-planning-complet-privatise');
 
     // [B] AU COMPTOIR
     await page.evaluate((jour) => openQuickBook({ date: jour, startTime: '19:30', type: 'bowling', pax: 4 }), JOUR);
@@ -411,7 +429,7 @@ async function scenarioSans(browser) {
         z.remove();
         const sans = barre.getBoundingClientRect().height;
         parent.insertBefore(z, suivant);
-        return { affiche: getComputedStyle(z).display, enfants: z.children.length, avec, sans, prive: document.querySelectorAll('.planning-blocked.is-prive').length };
+        return { affiche: getComputedStyle(z).display, enfants: z.children.length, avec, sans, prive: document.querySelectorAll('.planning-blocked.is-prive, .gf-t .is-prive').length };
       });
       ok(f.affiche === 'none' && f.enfants === 0 && f.avec === f.sans && f.prive === 0,
         '[F] sans privatisation, pas de bandeau, rien de grise, la barre garde sa hauteur', { vue, ...f });
@@ -465,7 +483,10 @@ async function main() {
       code = echecs.length ? 1 : 0;
     } else {
       let mordent = 0;
-      for (const m of MUTATIONS) {
+      // (PRIVATISATION_UI_SEULES=nom,nom : seulement ces contre-preuves)
+      const seules = String(process.env.PRIVATISATION_UI_SEULES || '').split(',').filter(Boolean);
+      const liste = MUTATIONS.filter((x) => !seules.length || seules.includes(x.nom));
+      for (const m of liste) {
         const source = lf(fs.readFileSync(path.join(ROOT, m.fichier), 'utf8'));
         if (source.split(m.de).length !== 2) { console.log(`FAIL  contre-preuve ${m.nom} : son ancre n est pas unique dans ${m.fichier}`); continue; }
         mutation = m;
@@ -474,8 +495,8 @@ async function main() {
         mutation = null;
         if (echecs.includes(m.cible)) { mordent += 1; console.log(`ok    contre-preuve ${m.nom} : « ${m.cible} » rougit`); } else console.log(`FAIL  contre-preuve ${m.nom} : « ${m.cible} » reste vert (${echecs.length} autre(s) rouge(s) : ${(echecs[0] || '').slice(0, 140)})`);
       }
-      console.log(`\nprivatisation-ui-check --contre-preuves : ${mordent}/${MUTATIONS.length} mordent`);
-      code = mordent === MUTATIONS.length ? 0 : 1;
+      console.log(`\nprivatisation-ui-check --contre-preuves : ${mordent}/${liste.length} mordent`);
+      code = mordent === liste.length ? 0 : 1;
     }
   } finally {
     await browser.close();

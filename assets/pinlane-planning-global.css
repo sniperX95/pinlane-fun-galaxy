@@ -793,3 +793,8 @@ button.gf-bloc__in:focus-visible { outline: 2px solid var(--console-focus); outl
   .pb-direct { width: 120px; }
   .gf-c, .pb-k { padding: 0 4px; }
 }
+/* LES HEURES PRIVATISEES (2026-11-20, Ansar : « pour privatisé faut que ça grisille aussi sur le
+   planning complet ») : les hachures du bandeau « Privatisé » (#planningPrivatisations .pb-prive)
+   sur la case de la demi-heure et ses lignes vides ; un groupe deja la garde sa ligne lisible. */
+.gf-t td.gf-bloc.is-prive, .gf-t tr.gf-libre.is-prive > td.gf-libre__l { background: repeating-linear-gradient(45deg, var(--subtle), var(--subtle) 7px, var(--surface) 7px, var(--surface) 14px); }
+.gf-t .gf-bloc__in .gf-bloc__prive { font-weight: 600; color: var(--muted); white-space: normal; }

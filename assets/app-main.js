@@ -1298,8 +1298,9 @@ function usageDesPistesDuJour(date, ignoreId) {
 // groupe, puis la piste la moins utilisee du jour (la paire entamee se complete
 // a une heure pres), puis le tour du jour. Pour la meme journee, la piste
 // montree est celle que le serveur garde. `graine` : les pistes que le groupe
-// garde (allocateLanesIncludingSeed) ; la regle ne choisit que celles qui manquent.
-function allocateLanes(n, date, startTime, duration, ignoreId, graine = []) {
+// a deja (allocateLanesIncludingSeed), gardees si un bloc cote a cote les
+// contient ; `fermes` : celles choisies a la main, toujours gardees (2026-11-21).
+function allocateLanes(n, date, startTime, duration, ignoreId, graine = [], fermes = []) {
   if (n === 0) return [];
   const occ = getOccupiedLanes(date, startTime, duration, ignoreId);
   const laneCount = getAvailabilityLaneCount();
@@ -1314,7 +1315,21 @@ function allocateLanes(n, date, startTime, duration, ignoreId, graine = []) {
     date,
     coteACote: getAvailabilitySessionCenter()?.resources?.bowling?.preferAdjacentLanes !== false,
     graine,
+    fermes,
   });
+}
+
+// LE PARTAGE SE DIT (2026-11-21, le gerant : « ça ne les met plus côte à
+// côte »). Des pistes qui ne se suivent pas : la phrase du staff (« pistes 3 et
+// 6 : aucune paire côte à côte n’est libre »), jugee sur les pistes libres a
+// cette heure, celles du groupe comprises (assets/pinlane-pistes.js). '' sinon.
+function pistesSepareesConsole(pistes, date, startTime, duration, ignoreId, fermes = []) {
+  if (!window.PinlanePistes || typeof window.PinlanePistes.pistesSeparees !== 'function') return '';
+  const occ = getOccupiedLanes(date, startTime, duration, ignoreId);
+  const laneCount = getAvailabilityLaneCount();
+  const libres = [];
+  for (let i = 1; i <= laneCount; i++) if (!occ.has(i) && state.laneStatuses[i] !== 'maintenance') libres.push(i);
+  return window.PinlanePistes.pistesSeparees({ pistes, libres, fermes });
 }
 
 // Alloue N pistes libres en GARDANT les pistes déjà choisies (« graines ») :
@@ -1323,13 +1338,15 @@ function allocateLanes(n, date, startTime, duration, ignoreId, graine = []) {
 // que allocateLanes (assets/pinlane-pistes.js, sa graine) : une paire entière
 // pour 2, côte à côte pour un groupe, puis la moins utilisée du jour. Ici
 // finissait « la première libre » après la graine (2026-11-18) : la console
-// montrait une piste que la règle n'aurait pas prise.
-function allocateLanesIncludingSeed(n, seedLanes, date, startTime, duration, ignoreId) {
+// montrait une piste que la règle n'aurait pas prise. Depuis le 21/11, la graine
+// cède devant le côté à côte ; `fermes` (les pistes touchées à la main) restent.
+function allocateLanesIncludingSeed(n, seedLanes, date, startTime, duration, ignoreId, fermes = []) {
   if (n <= 0) return [];
   const occ = getOccupiedLanes(date, startTime, duration, ignoreId);
   const laneCount = getAvailabilityLaneCount();
   const isFree = (l) => l >= 1 && l <= laneCount && !occ.has(l) && state.laneStatuses[l] !== 'maintenance';
-  return allocateLanes(n, date, startTime, duration, ignoreId, [...new Set((seedLanes || []).map(Number))].filter(isFree));
+  const libres = (liste) => [...new Set((liste || []).map(Number))].filter(isFree);
+  return allocateLanes(n, date, startTime, duration, ignoreId, libres(seedLanes), libres(fermes));
 }
 
 function getBowlingCandidateWindows(startTime, duration, lanes, opsPlan = null) {
@@ -32079,7 +32096,19 @@ function renderPosCaisse(r) {
 // silence : une piste attribuee reste attribuee tant que personne ne la
 // decoche, parce qu'une piste qui disparait sans un mot est une surprise au
 // comptoir.
+// LE PARTAGE SE DIT AUSSI DANS MODIFIER (2026-11-21) : des pistes qui ne se
+// suivent pas, et pourquoi (pistesSepareesConsole), apres le conseil.
 function editLaneAdvice(r, e) {
+  const conseil = conseilPistesEdition(r, e);
+  const jour = state.selectedRes && (!e.date || e.date === state.selectedRes.date) ? state.selectedRes : null;
+  const pistes = parseLaneInput(e.lanesStr);
+  const separees = jour && pistes.length > 1 && reservationNeedsLanes(r.type, r.formuleId)
+    ? pistesSepareesConsole(pistes, jour.date, debutBowlingEdition(r, e), Number(e.duration || jour.duration || 0), jour.id, e.pistesALaMain ? pistes : [])
+    : '';
+  return separees ? `${conseil} ${separees.charAt(0).toUpperCase()}${separees.slice(1)}.` : conseil;
+}
+
+function conseilPistesEdition(r, e) {
   const capacity = getEditBowlingCapacityNeed(r, e);
   const requis = reservationNeedsLanes(r.type, r.formuleId) ? capacity.requiredCount : 0;
   if (capacity.aLaMain && requis) return `${capacity.players} joueur${capacity.players > 1 ? 's' : ''} sur ${requis} piste${requis > 1 ? 's' : ''}, à la main. Comptez environ ${capacity.bowlingCapacity.estimatedMinutes} min par piste à 10 min par joueur.`;
@@ -36456,7 +36485,10 @@ function reconcileQuickLaneSelection() {
   }
   if (besoin <= 1 || current.length >= besoin) return;
   const duree = visite ? rvBowlingDuree() : s.duration;
-  const extended = allocateLanesIncludingSeed(besoin, current, s.date, heure, duree);
+  // (les pistes touchees a la main restent ; celles que la fenetre avait
+  // ajoutees cedent devant un bloc cote a cote, 2026-11-21)
+  const main = (s.lanesALaMain || []).map(Number).filter((l) => current.map(Number).includes(l));
+  const extended = allocateLanesIncludingSeed(besoin, current, s.date, heure, duree, undefined, main);
   if (extended && extended.length >= besoin) s.lanes = extended;
 }
 
@@ -38521,7 +38553,12 @@ function rvEtapesDuBillet() {
       const main = !aLaMain.length ? (ligne.foulee ? ', dans la foulée' : '')
         : aLaMain.length >= pistes.length ? (pistes.length > 1 ? ', choisies à la main' : ', choisie à la main')
           : `, dont ${rvListePistes(aLaMain)} ${aLaMain.length > 1 ? 'choisies' : 'choisie'} à la main`;
-      if (debut) etapes.push({ id, h: debut, debut: timeToNum(debut), fin: fin ? timeToNum(fin) : timeToNum(debut) + 1, q: `Bowling · ${rvHeuresLabel(rvBowlingDuree())}`, d: `${pistes.length ? `${pistes.length > 1 ? 'pistes' : 'piste'} ${rvListePistes(pistes)}` : 'pistes à attribuer'}${main}` });
+      // Des pistes qui ne se suivent pas disent pourquoi (2026-11-21) : « pistes
+      // 3 et 6 : aucune paire côte à côte n’est libre ».
+      const separees = debut && pistes.length > 1 ? pistesSepareesConsole(pistes, s.date, debut, rvBowlingDuree(), undefined, aLaMain) : '';
+      const pistesDites = separees ? `${separees}${separees.includes('à la main') ? '' : main}`
+        : `${pistes.length ? `${pistes.length > 1 ? 'pistes' : 'piste'} ${rvListePistes(pistes)}` : 'pistes à attribuer'}${main}`;
+      if (debut) etapes.push({ id, h: debut, debut: timeToNum(debut), fin: fin ? timeToNum(fin) : timeToNum(debut) + 1, q: `Bowling · ${rvHeuresLabel(rvBowlingDuree())}`, d: pistesDites });
       return;
     }
     const etape = plan ? (plan.etapes || []).find((e) => e.activite === id) : null;

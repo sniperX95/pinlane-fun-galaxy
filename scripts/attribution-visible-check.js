@@ -392,8 +392,10 @@ async function scenarioModifier(browser) {
   // [A10] Taper « 1 » puis « 8 » : jamais une piste a l ecran.
   const t = await jouerModifier(browser, { id: KEVIN, gestes: [taperJoueurs('18'), attendre, lire] });
   const tl = t.lus[0];
-  ok(tl.pax === 18 && /^3,4,\d$/.test(tl.lanes) && tl.puces === tl.lanes && tl.vues.every((v) => nbPistes(v) !== 1) && tl.eclats.length === 1 && tl.eclats[0] === `+${tl.lanes.split(',')[2]}`,
-    '[A10] « 1 » puis « 8 » : les pastilles ne montrent jamais une piste, une seule s eclaire (celle de 18 joueurs)', tl);
+  // (depuis le 21/11, un groupe de 3 pistes les recoit cote a cote : la 2 et la 5 prises a 18:30, le groupe de
+  // 3-4 passe sur 6-7-8 au lieu de 3, 4 et 6 ; scripts/pistes-cote-a-cote-check.js)
+  ok(tl.pax === 18 && tl.lanes === '6,7,8' && tl.puces === tl.lanes && tl.vues.every((v) => nbPistes(v) !== 1) && [...tl.eclats].sort().join() === ['-3', '-4', '+6', '+7', '+8'].sort().join(),
+    '[A10] « 1 » puis « 8 » : les pastilles ne montrent jamais une piste ; a 18 joueurs le groupe passe cote a cote sur 6-7-8, les pastilles qui bougent s eclairent', tl);
   ok(tl.focus === 'editPaxInput', '[A11] apres la frappe, le focus est toujours dans le champ Joueurs', tl.focus);
 
   // [A12] Le serveur a le dernier mot. Son calcul a blanc ecrit d autres pistes (un
@@ -700,7 +702,9 @@ async function scenarioGraine(browser) {
   const T = [1, 2, 3, 4, 5, 6, 7, 8];
   const c = (o) => JSON.stringify(P.choisirPistes({ pistes: 8, usage: {}, date: JOUR, ...o }));
   ok(c({ libres: T, nombre: 2, graine: [4] }) === '[3,4]' && c({ libres: T, nombre: 2, graine: [5] }) === '[5,6]', '[G1] une piste et une de plus : sa voisine de paire (4 donne 3 et 4, 5 donne 5 et 6)', [c({ libres: T, nombre: 2, graine: [4] }), c({ libres: T, nombre: 2, graine: [5] })]);
-  ok(c({ libres: [3, 4, 6, 7, 8], nombre: 3, graine: [3, 4] }) === '[3,4,6]' && c({ libres: T, nombre: 7, graine: [8] }) === '[2,3,4,5,6,7,8]', '[G1] la graine reste, la regle choisit celles qui manquent (cote a cote)', [c({ libres: [3, 4, 6, 7, 8], nombre: 3, graine: [3, 4] }), c({ libres: T, nombre: 7, graine: [8] })]);
+  // Depuis le 21/11 (le gerant : « ça ne les met plus côte à côte »), la graine cede devant un bloc cote a cote :
+  // 3-4 qui passe a 3 pistes, la 5 prise, part sur 6-7-8 au lieu de 3, 4 et 6 (scripts/pistes-cote-a-cote-check.js).
+  ok(c({ libres: [3, 4, 6, 7, 8], nombre: 3, graine: [3, 4] }) === '[6,7,8]' && c({ libres: T, nombre: 7, graine: [8] }) === '[2,3,4,5,6,7,8]', '[G1] la graine reste quand un bloc cote a cote la contient, sinon le groupe passe sur un bloc cote a cote', [c({ libres: [3, 4, 6, 7, 8], nombre: 3, graine: [3, 4] }), c({ libres: T, nombre: 7, graine: [8] })]);
   ok(JSON.parse(c({ libres: T, nombre: 1, graine: [3, 4] })).every((p) => [3, 4].includes(p)) && c({ libres: [1, 3], nombre: 2, graine: [9] }) === '[1,3]' && c({ libres: [1], nombre: 2, graine: [1] }) === 'null',
     '[G1] trop de graine : la regle choisit parmi elle ; une graine prise ne compte pas ; il en manque : null', [c({ libres: T, nombre: 1, graine: [3, 4] }), c({ libres: [1, 3], nombre: 2, graine: [9] })]);
   // Le groupe qui baisse (2026-11-19) : le meilleur bloc parmi ses pistes, juge sur

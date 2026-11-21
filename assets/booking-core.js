@@ -1048,9 +1048,21 @@ function applyReservationFormulaChoiceToSteps(steps, reservation) {
 // (« 2 de trop »). Une formule ou un laser garde son estimation : pour eux, le
 // serveur retient bien ces armes (lib/database, resourceBlocksFromReservation).
 function planLaisseLeLaserAPlacer(reservation) {
-  if (!reservation || reservation.type === 'formule' || reservation.type === 'laser' || reservation.formuleId) return false;
+  if (!reservation || reservation.type === 'laser') return false;
+  if ((reservation.type === 'formule' || reservation.formuleId) && !laserAjouteALaFormule(reservation)) return false;
   const pass = reservation.opsPlan?.laserPassPlan;
   return Boolean(pass) && (pass.pendingPasses || []).length > 0 && !(pass.scheduledPasses || []).length;
+}
+
+// UN LASER AJOUTE A UNE FORMULE ADAPTEE (2026-11-20, lib/formule-adaptee.js) : la formule reste sa
+// formule, mais sa carte n a pas de laser (la Formule 3) ; il se lit comme celui d une visite. Le
+// serveur ne lui estime aucune session (formulaFallbackLaserBlocks lit la carte) : son plan fait foi.
+function laserAjouteALaFormule(reservation) {
+  if (!/\(adapt[ée]e\)/i.test(String(reservation.label || '')) || !(getProgramLaserGameCount(reservation) > 0)) return false;
+  const carte = resolveDisplayFormule(reservation.formuleId);
+  // (un acces illimite garde ses regles, lib/formule-comptoir.js)
+  if (!carte || (typeof estFormuleIllimitee === 'function' && estFormuleIllimitee(carte))) return false;
+  return typeof getFormulaLaserGameCount === 'function' && getFormulaLaserGameCount(applyReservationFormulaChoice(carte, reservation)) === 0;
 }
 
 function getFormulaLaserFallbackWindows(reservation) {
@@ -1058,6 +1070,9 @@ function getFormulaLaserFallbackWindows(reservation) {
   // 'laser'. Une visite dont le plan n'a pas pu etre calcule doit quand meme
   // montrer sa session estimee, comme une formule.
   if (!(reservation?.type === 'formule' || reservation?.formuleId || getProgramLaserGameCount(reservation) > 0)) return [];
+  // (une formule adaptee dont le programme n a plus de laser, la Formule 1 sans le sien : rien a estimer,
+  // comme le serveur, lib/formule-adaptee.js laserRetireDeLaFormule)
+  if (/\(adapt[ée]e\)/i.test(String(reservation.label || '')) && (reservation.program?.items || []).length && !getProgramLaserGameCount(reservation)) return [];
   const formule = reservation.formuleId ? applyReservationFormulaChoice(FORMULES.find(x => x.id === reservation.formuleId), reservation) : null;
   const laserItem = (reservation.program?.items || []).find(item => item?.activityId === 'laser_game');
   // Extra games remain pending: a missing plan must never fabricate their hour

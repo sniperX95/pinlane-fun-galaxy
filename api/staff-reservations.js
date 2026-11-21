@@ -875,6 +875,31 @@ async function calculerLaModification({ body, current, session, requestedCenterI
       ops.startTime = `${String(Math.floor(premiere / 60)).padStart(2, '0')}:${String(premiere % 60).padStart(2, '0')}`;
     }
   }
+  // UNE FORMULE ADAPTEE RESTE SA FORMULE (2026-11-20, dossier 1953 de Gembloux, lib/formule-adaptee.js).
+  // Le moteur la planifie depuis sa formule (buildAdaptedFormula : sa table, ses boissons), mais son
+  // programme la relisait en visite a la carte : son type, sa formule et son prix partaient. Elle garde
+  // sa formule ; sa reference est le prix de la formule plus ce que la carte n a pas, a son prix du
+  // catalogue (baseDuServeur la lit plus bas), et le prix suit en gardant l ajustement en place. Un
+  // formuleId vide envoye quitte la formule (un acces illimite redevenu un programme normal).
+  const formuleGardee = shouldReplan && ops.program && String(patch.type ?? current.type) === 'formule'
+    ? require('../lib/formule-adaptee').formuleAdaptable({ ...operationalRequest, program: ops.program })
+    : null;
+  if (formuleGardee) {
+    const { LIBELLE_ADAPTE, contenuAdapte, referenceDeLaFormuleAdaptee } = require('../lib/formule-adaptee');
+    const reference = referenceDeLaFormuleAdaptee({ formule: formuleGardee, dossier: { ...operationalRequest, ...ops }, programme: ops.program, laneCount: ops.laneCount });
+    ops.type = 'formule';
+    ops.formuleId = String(operationalRequest.formuleId || operationalRequest.formulaId);
+    // (ce qu elle comprend est dans son prix : le programme ne compte que ce que la carte n a pas)
+    ops.program = { ...ops.program, price: reference.ajouts.montant, priceComplete: reference.ajouts.complet };
+    ops.basePrice = reference.total;
+    ops.price = Object.prototype.hasOwnProperty.call(patch, 'price')
+      ? Number(patch.price)
+      : prixQuiSuit({ current, base: reference.total, extras: patch.extras ?? current.extras ?? [], pax: patch.pax ?? current.pax });
+    if (contenuAdapte(formuleGardee, ops.program) && !LIBELLE_ADAPTE.test(String(ops.label || ''))) ops.label = `${formuleGardee.name} (adaptée)`.slice(0, 160);
+    // (ses pistes sont celles du plan quand le corps n en porte aucune : la carte de la Formule 5 n en a pas)
+    const pistesDuPlan = (ops.opsPlan?.resourceBlocks || []).filter((block) => block.resourceType === 'bowling_lane').flatMap((block) => block.lanes || []).map(Number);
+    if (Array.isArray(patch.lanes) && !patch.lanes.length && pistesDuPlan.length) patch.lanes = [...new Set(pistesDuPlan)];
+  }
   if (shouldReplan && JSON.stringify((patch.lanes ?? current.lanes ?? []).map(Number))
     === JSON.stringify((current.lanes || []).map(Number))) {
     const allocated = (ops.opsPlan?.resourceBlocks || []).filter((block) => block.resourceType === 'bowling_lane')

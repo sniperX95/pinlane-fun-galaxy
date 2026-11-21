@@ -67,6 +67,8 @@
 //        qui ne l est pas, et « À enregistrer » ne garde que le reste ;
 //   [W7] un dossier deja casse (ecrit par l ancien serveur : le programme porte un Bowling que son
 //        plan n a pas) se repare dans Modifier : une heure au Bowling et « Enregistrer » ;
+//   [W8] apres le chemin en deux fois, le minigolf garde en base sa marque « heure posee » (le
+//        deplacement la pose, le recalcul la garde ; une visite sans elle relit son minigolf « Libre ») ;
 //   [L1] une heure recalculee se lit « 13:55 → 14:25 » ; l heure choisie d un Bowling ajoute se lit a
 //        gauche ; sous un verdict qui refuse, rien n est barre ; dans Infos, les deux cruches disent
 //        14:40 une fois ;
@@ -789,6 +791,7 @@ function dossierEnBase(id) {
     bowling: blocs.filter((b) => b.resourceType === 'bowling_lane').map((b) => `${hm(b)}|${(b.lanes || []).join('+')}`),
     laser: blocs.filter((b) => b.resourceType === 'laser_arena').map(hm),
     golf: (plan.timeline || []).filter((e) => e && e.type === 'activity' && e.activityId === GOLF && e.flexible !== true).map(hm),
+    golfMarque: (plan.timeline || []).filter((e) => e && e.type === 'activity' && e.activityId === GOLF && e.flexible !== true).map((e) => e.heurePosee === true),
   };
 }
 async function ouvrirDossier(page, r, onglet) {
@@ -962,6 +965,12 @@ async function scenarioGembloux(browser) {
     const m3 = await modifierLu(page);
     ok([...e3a, ...e3b].every((x) => x.statut === 200) && b3.items.includes('bowling') && pareil(b3.bowling, ['15:30|1']) && pareil(b3.golf, ['14:30']) && memeLecture(m3, i3, b3) && i3.fin === '16:30',
       '[W3] en deux fois, le Bowling garde son heure et Infos et Modifier se lisent pareil', { base: b3, infos: i3, modifier: m3, statuts: [...e3a, ...e3b].map((x) => x.statut) });
+    // [W8] La marque de l heure posee, en base. La Formule 5 adaptee lit ses heures sur son plan
+    // (2026-11-20, lib/formule-adaptee.js) : sans la marque, rien ne change a l ecran pour elle ; une visite,
+    // elle, relit « Libre » un minigolf qui l a perdue (getEtapeAvant). Le deplacement la pose et le recalcul
+    // de l ajout du Bowling la garde. (Lue en base, pas a la page : apres un enregistrement, la page garde
+    // parfois l ancien plan, une course de la console vue aussi sur c5526ce quand ce scenario tourne seul.)
+    ok(pareil(b3.golf, ['14:30']) && pareil(b3.golfMarque, [true]), '[W8] en base, le minigolf pose a 14:30 garde sa marque « heure posee » apres l ajout du Bowling', { golf: b3.golf, marque: b3.golfMarque });
 
     // [W7] Un dossier deja casse (le programme porte un Bowling que son plan n a pas, comme 1953) se
     // repare dans Modifier : le Bowling y a son champ « Heure », une heure et « Enregistrer ».
@@ -1059,8 +1068,8 @@ const MUTATIONS = [
   { nom: 'heure-seule-encore', lettre: 'W1', scenarios: GEMBLOUX, editions: [{ fichier: JS, de: '  const changees = heuresChangeesEdition();\n  const points = pointsHeureEdition(r);\n', vers: "  const changees = heuresChangeesEdition();\n  if (resumeModifsEdition().length > modifsHeuresEdition().length) return { heures: true, erreur: 'Une heure d’activité s’enregistre seule. Enregistrez d’abord l’heure, puis le reste.' };\n  const points = pointsHeureEdition(r);\n" }] },
   { nom: 'reste-oublie', lettre: 'W1', scenarios: GEMBLOUX, editions: [{ fichier: JS, de: '  const envoi = reste ? preparerModificationEdition() : null;', vers: '  const envoi = null;' }] },
   { nom: 'ancre-oubliee', lettre: 'W1', scenarios: GEMBLOUX, editions: [{ fichier: API, serveur: true, de: '  const ancres = ancresDuMoteur(heuresAPoser);\n', vers: '  const ancres = {};\n' }] },
-  { nom: 'deplace-sans-marque', lettre: 'W2', scenarios: GEMBLOUX, editions: [{ fichier: 'lib/reservation-activity-move.js', serveur: true, de: '    replacement = block => ({ ...timed(block, start(block) + delta), heurePosee: true });', vers: '    replacement = block => timed(block, start(block) + delta);' }] },
-  { nom: 'posee-perdue-au-recalcul', lettre: 'W3', scenarios: GEMBLOUX, editions: [{ fichier: 'lib/reservation-ops.js', serveur: true, de: '      ...(tenue.heurePosee === true ? { heurePosee: true } : {}),\n', vers: '' }] },
+  { nom: 'deplace-sans-marque', lettre: 'W8', scenarios: GEMBLOUX, editions: [{ fichier: 'lib/reservation-activity-move.js', serveur: true, de: '    replacement = block => ({ ...timed(block, start(block) + delta), heurePosee: true });', vers: '    replacement = block => timed(block, start(block) + delta);' }] },
+  { nom: 'posee-perdue-au-recalcul', lettre: 'W8', scenarios: GEMBLOUX, editions: [{ fichier: 'lib/reservation-ops.js', serveur: true, de: '      ...(tenue.heurePosee === true ? { heurePosee: true } : {}),\n', vers: '' }] },
   { nom: 'programme-sans-plan', lettre: 'W4', scenarios: GEMBLOUX, editions: [{ fichier: API, serveur: true, de: '  if (shouldReplan && ops.planAvailable === false && patch.program && (heuresAPoser.length || !memesActivites(current, proposedItems))) {\n', vers: '  if (false) {\n' }] },
   { nom: 'verdict-sans-reste', lettre: 'W4', scenarios: GEMBLOUX, editions: [{ fichier: JS, de: '      const reste = !envoi.erreur && resumeModifsEdition().length > modifsHeuresEdition().length ? preparerModificationEdition({ aBlanc: true }) : null;', vers: '      const reste = null;' }] },
   { nom: 'barre-perimee', lettre: 'W6', scenarios: GEMBLOUX, editions: [{ fichier: JS, de: "      if (barre) { barre.innerHTML = resumeModifsEditionHtml(); barre.classList.toggle('is-vide', !resumeModifsEdition().length); }\n", vers: '' }] },

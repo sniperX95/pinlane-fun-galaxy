@@ -248,7 +248,9 @@ const SCENARIOS_S = [
   { nom: 'visite avec une partie de laser en plus pour 4, 9 -> 10 joueurs', id: 1622, geste: { pax: 10 }, extraLaser: { games: 2, participants: 4 } },
   { nom: 'formule a la personne, 10 -> 11 joueurs', id: 1602, geste: { pax: 11 } },
   { nom: 'formule sur pistes, 10 -> 11 joueurs', id: 1604, geste: { pax: 11 } },
-  { nom: 'formule adaptee, laser retire', id: 1604, geste: { retirer: 'laser_game' } },
+  // (2026-11-20, dossier 1953, lib/formule-adaptee.js : une formule adaptee reste sa formule, retirer une de
+  // ses activites ne baisse pas son prix ; le comptoir le baisse a la main)
+  { nom: 'formule adaptee, laser retire', id: 1604, geste: { retirer: 'laser_game' }, prixGarde: true },
 ];
 
 async function groupeS(browser, noms = null) {
@@ -268,8 +270,8 @@ async function groupeS(browser, noms = null) {
         `[S] ${s.nom} : l estimation de la console tombe sur la base du moteur plus les extras, au centime`, detail);
       ok(envois.length === 1 && sansPrixNiRaison(envoi.corps), `[S] ${s.nom} : le PATCH ne porte ni prix ni raison`,
         { envois: envois.length, price: envoi.corps && envoi.corps.price, prixRaison: envoi.corps && envoi.corps.prixRaison });
-      ok(envoi.statut === 200 && centimes(apres.price) === centimes(lu.champ) && centimes(apres.price) !== centimes(avant.price),
-        `[S] ${s.nom} : le serveur ecrit le prix que le champ annonce`, detail);
+      ok(envoi.statut === 200 && centimes(apres.price) === centimes(lu.champ) && (s.prixGarde ? centimes(apres.price) === centimes(avant.price) : centimes(apres.price) !== centimes(avant.price)),
+        `[S] ${s.nom} : le serveur ecrit le prix que le champ annonce${s.prixGarde ? ', celui de la formule' : ''}`, detail);
       ok(envoi.statut === 200 && apres.notesPrix.length === avant.notesPrix.length,
         `[S] ${s.nom} : un role a 5 % passe, sans note de prix`,
         { statut: envoi.statut, code: envoi.json && envoi.json.code, message: envoi.json && envoi.json.message, notes: apres.notesPrix.slice(avant.notesPrix.length) });

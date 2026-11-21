@@ -365,7 +365,7 @@ const MUTATIONS = [
   // Le total tape ignore : la reference est facturee.
   { nom: 'total-tape-ignore', lettre: 'P1', editions: [{ fichier: FENETRE, serveur: true, de: '  request.price = envoye !== null ? envoye : prixAvecExtras(reference.total, request.extras);', vers: '  request.price = prixAvecExtras(reference.total, request.extras);' }] },
   // « Adapter à ce groupe » promet encore « même prix ».
-  { nom: 'meme-prix-promis', lettre: 'T3', editions: [{ fichier: JS, de: "'retirer ou ajouter une activité, un ajout se paie'", vers: "'retirer ou ajouter une activité, même prix'" }] },
+  { nom: 'meme-prix-promis', lettre: 'T3', editions: [{ fichier: JS, de: "'retirer ou ajouter une activité, un ajout se paie à son prix'", vers: "'retirer ou ajouter une activité, même prix'" }] },
 ];
 
 async function main() {

@@ -32401,8 +32401,8 @@ function activitesDeLaFormuleEdition(formule) {
 // LES ACTIVITES AJOUTEES A UNE FORMULE ADAPTEE, chiffrees a part (2026-11-20,
 // lib/formule-adaptee.js) : celles que le programme porte et que la carte n a
 // pas, quand la reference du dossier les compte, le prix de la formule plus le
-// leur. Une formule adaptee « au même prix » (la fenetre Reserver) les comprend
-// dans son prix : null, elle se lit comme avant.
+// leur. Une formule adaptee « au même prix » (la fenetre Reserver avant le
+// 2026-11-21) les comprend dans son prix : null, elle se lit comme avant.
 function ajoutsDeLaFormuleAdaptee(r, base) {
   if (!r || r.type !== 'formule' || !r.formuleId || !/\(adapt[ée]e\)/i.test(String(r.label || ''))) return null;
   const items = r.program && Array.isArray(r.program.items) ? r.program.items : [];
@@ -37608,7 +37608,38 @@ function getQuickBookSummaryActivites() {
   const laneCount = quickBookState.autoAssign ? getQuickBookLaneNeed().requiredCount : quickBookState.lanes.length;
   const total = getBasePrice(quickBookState.type, quickBookState.duration, laneCount, quickBookState.pax, quickBookState.formuleId, quickBookState.date);
   const detail = laneCount ? `${laneCount} piste${laneCount > 1 ? 's' : ''} prévue${laneCount > 1 ? 's' : ''}` : 'Sans piste';
-  return { total, detail };
+  // (une formule adaptee : ce que sa carte n a pas s y ajoute, a son prix, rvAjoutsALaFormule)
+  const ajouts = quickBookState.type === 'formule' ? rvAjoutsALaFormule() : null;
+  return { total: ajouts ? Math.round((ajouts.prixFormule + ajouts.montant) * 100) / 100 : total, detail };
+}
+
+// UNE ACTIVITE AJOUTEE A LA FORMULE SE PAIE (2026-11-21, la regle de Modifier, lib/formule-adaptee.js).
+// La Formule 5 a laquelle Reserver ajoutait un Bowling restait a 156 EUR, « au même prix » : le Bowling
+// partait offert. La formule garde son prix, par joueur ou par piste ; ce que sa carte n a pas s y
+// ajoute, a son prix du catalogue, sur sa ligne. Retirer une activite ne baisse rien : le comptoir
+// baisse le total a la main, avec sa raison (« Sans minigolf », rvRaisonsPrix). Le plan du serveur fait
+// foi (ses lignesPrix, celles de Modifier) ; avant lui, l estimation de ce poste. null : une formule
+// telle quelle, un acces illimite, ou rien d ajoute.
+function rvAjoutsALaFormule() {
+  const s = quickBookState;
+  const formule = rvFormule();
+  if (!s || !formule || !s.adaptee || !s.visit || estFormuleIllimitee(formule)) return null;
+  const comprises = activitesDeLaFormuleEdition(formule);
+  const ids = rvActivites().filter((id) => !comprises.has(id));
+  if (!ids.length) return null;
+  const plan = rvPlanCourant();
+  const lignes = plan && Array.isArray(plan.lignesPrix) ? plan.lignesPrix : [];
+  const duPlan = (id) => lignes.find((l) => l && l.activite === id);
+  const ajoutees = ids.map((id) => {
+    const ligne = duPlan(id);
+    const montant = ligne ? ligne.prix : rsTarifInconnu(id) ? null : rsMontantLigne(id);
+    return { id, montant: montant == null ? null : Number(montant) };
+  });
+  const ligneFormule = duPlan('formule');
+  const pistes = s.autoAssign ? getQuickBookLaneNeed().requiredCount : (s.lanes || []).length;
+  const prixFormule = ligneFormule && ligneFormule.prix != null ? Number(ligneFormule.prix) : Number(getBasePrice('formule', s.duration, pistes, s.pax, s.formuleId, s.date)) || 0;
+  const connues = ajoutees.filter((a) => a.montant != null);
+  return { prixFormule, ajoutees, montant: Math.round(connues.reduce((somme, a) => somme + a.montant, 0) * 100) / 100, complet: connues.length === ajoutees.length };
 }
 
 function toggleQuickBookMore() {
@@ -40466,8 +40497,9 @@ function rsMontantTouche(id, quantite) {
   } catch (e) { return null; }
 }
 
-// Ce que la touche affiche. Dans une formule, le prix reste celui de la formule : ajouter
-// une activite ou changer une duree ne le bouge pas, la touche ne promet donc rien.
+// Ce que la touche affiche. Dans une formule, la touche ne promet rien : ce que sa carte
+// comprend reste dans son prix, une activite ajoutee dit le sien au ticket, celui du
+// serveur (rvAjoutsALaFormule).
 function rsPrixTouche(id, quantite) {
   if (quickBookState.type === 'formule') return '';
   if (rsTarifInconnu(id)) return 'sur place';
@@ -40515,7 +40547,9 @@ function rsTotalTicket() {
     const ids = !rvFormule() && !plan ? rvActivites() : [];
     const inconnues = ids.filter((id) => rsSansTarif.has(id) || rsMontantLigne(id) == null);
     const retire = inconnues.reduce((somme, id) => somme + (Number(rsMontantLigne(id)) || 0), 0);
-    return { total: Math.round((rvTotalReference() - retire) * 100) / 100, complet: !inconnues.length };
+    // (une activite ajoutee a la formule sans tarif se regle sur place, rvAjoutsALaFormule)
+    const ajouts = rvFormule() ? rvAjoutsALaFormule() : null;
+    return { total: Math.round((rvTotalReference() - retire) * 100) / 100, complet: !inconnues.length && (!ajouts || ajouts.complet) };
   }
   const complet = plan.lignesPrix.every((l) => !l || l.prix != null);
   return { total: Math.round((Number(plan.prix) || 0) * 100) / 100, complet };
@@ -43275,7 +43309,7 @@ function rsLigneFormuleHtml() {
   if (rsNiveau('formule') === 'oui') {
     gestes.push(s.adaptee
       ? rsPetite(`Revenir à ${nom}`, false, 'rsFixer(() => rvAdapterFormule(false))', 'id="rsRevenir"', 'telle qu’au catalogue')
-      : rsPetite('Adapter à ce groupe', false, 'rsFixer(() => rvAdapterFormule(true))', 'id="rvAdapter"', 'retirer ou ajouter une activité, même prix'));
+      : rsPetite('Adapter à ce groupe', false, 'rsFixer(() => rvAdapterFormule(true))', 'id="rvAdapter"', 'retirer ou ajouter une activité, un ajout se paie'));
   }
   // Un anniversaire en formule commande ses pizzas : le sur mesure est a un toucher.
   if (rsNiveau('surmesure') !== 'non') gestes.push(rsPetite('Sur mesure', false, "rsOuvrirMesure('','formule')", 'id="rsFormuleMesure"', 'nourriture, boissons, gâteau'));
@@ -43464,7 +43498,13 @@ function rsRecuHtml() {
   const extras = quickExtrasTotal();
   if (f) {
     const quantite = f.type === 'per_lane' ? '' : `${rvPluriel(joueurs, 'joueur')} × ${formatMoneyCentimes(f.price)}`;
-    lignes.push([`${rvNomFormule(f)}${s.adaptee ? ', adaptée' : ''}`, quantite, rsEuros(rvTotalReference() - extras)]);
+    // (une formule adaptee : la formule a son prix, puis chaque activite ajoutee au sien, rvAjoutsALaFormule)
+    const ajouts = rvAjoutsALaFormule();
+    lignes.push([`${rvNomFormule(f)}${s.adaptee ? ', adaptée' : ''}`, quantite, rsEuros(ajouts ? ajouts.prixFormule : rvTotalReference() - extras)]);
+    (ajouts ? ajouts.ajoutees : []).forEach(({ id, montant }) => {
+      const prix = montant != null ? rsEuros(montant) : 'sur place';
+      lignes.push([id === 'bowling' ? `Bowling ${rvHeuresLabel(rvBowlingDuree())}` : id === 'laser_game' ? `Laser, ${rvPluriel(rvPartiesLaser(), 'partie')}` : rvNomActivite(id), montant != null ? rsCalculLigne(id, prix) : '', prix]);
+    });
   } else {
     rvActivites().forEach((id) => {
       const prix = rsPrixDeLigne(id);
@@ -43605,8 +43645,12 @@ function rsLignesActivites() {
   const chevauche = rvChevauchements(ids);
   const combien = rsEtat().faits.combien;
   const lignes = [];
+  // (une formule adaptee : la formule a son prix, chaque activite que sa carte n a pas le sien, rvAjoutsALaFormule)
+  const ajouts = formule ? rvAjoutsALaFormule() : null;
   if (formule) {
-    const montant = rvTotalReference() - quickExtrasTotal();
+    const montant = ajouts ? ajouts.prixFormule : rvTotalReference() - quickExtrasTotal();
+    const joueursF = Math.max(1, Number(s.pax) || 1);
+    const calculF = ajouts && formule.type !== 'per_lane' && Math.abs(Number(formule.price) * joueursF - ajouts.prixFormule) < 0.5 ? `${rvPluriel(joueursF, 'joueur')} × ${formatMoneyCentimes(formule.price)}` : '';
     const nomF = `${rvNomFormule(formule)}${s.adaptee ? ', adaptée' : ''}`;
     const choix = !s.adaptee && s.formuleChoix && Array.isArray(formule.choices) ? formule.choices.find((c) => c.id === s.formuleChoix) : null;
     const refus = rvRefusDuPlan();
@@ -43620,7 +43664,7 @@ function rsLignesActivites() {
     const illimite = estFormuleIllimitee(formule) && !s.adaptee;
     const acces = illimite ? ((rvPlanCourant() || {}).acces || null) : null;
     const dit = illimite ? `${phraseDuChoixIllimite(formule, rsChoixIllimite(formule), acces)}.` : '';
-    const detail = ko ? rsPhrase(ko.d) : illimite ? dit : s.adaptee ? '' : [rsDetailFormule(etapes), choix ? choix.label : ''].filter(Boolean).join(', ');
+    const detail = ko ? rsPhrase(ko.d) : illimite ? dit : s.adaptee ? calculF : [rsDetailFormule(etapes), choix ? choix.label : ''].filter(Boolean).join(', ');
     const detailsAcces = illimite && !ko && acces ? acces.gardes.map((g) => g.courte) : [];
     const prixF = montant > 0 && combien ? rsEuros(montant) : '';
     const verdictF = !ko && !s.adaptee ? rsVerdictDesCandidats(ids[0], 0, s.startTime) : null;
@@ -43650,7 +43694,9 @@ function rsLignesActivites() {
     const detail = meme ? rsPhraseChevauche(heures[id].heure, meme) : ko ? rsPhrase(e.find((x) => x.ko).d) : rsDetailLigne(id, e, heures[id], ids);
     const plus = ko ? '' : rsPartage(id, e);
     const apres = ko ? '' : rsPlusDuTicket(id, heures[id]);
-    const prix = s.adaptee || !combien ? '' : prixFormule != null ? 'compris' : rsPrixDeLigne(id);
+    // (dans une formule adaptee, ce qu elle comprend est dans son prix ; une activite ajoutee dit le sien)
+    const ajout = ajouts ? ajouts.ajoutees.find((a) => a.id === id) : null;
+    const prix = !combien ? '' : ajout ? (ajout.montant != null ? rsEuros(ajout.montant) : 'sur place') : s.adaptee ? '' : prixFormule != null ? 'compris' : rsPrixDeLigne(id);
     // L activite qui a suivi le geste d avant le dit, au-dessus de sa nouvelle heure (rsNoterDeplacement).
     const bouge = s.deplace && s.deplace.id === id && heures[id] && heures[id].heure === s.deplace.apres ? `Déplacé de ${s.deplace.avant} à ${s.deplace.apres}` : '';
     lignes.push(rsLigne({ cle: `a-${id}`, action: 'rsOuvrirLigne(this.dataset.activite)', data: `data-activite="${escapeHtml(id)}"`, icone: rsIcone(id), nom, detail, plus, apres, ko, prix, bouge, aria: rsAriaLigne(nom, [bouge, detail, plus, apres].filter(Boolean).join(', '), prix), retirer: retirable ? 'rsRetirer(this.dataset.activite)' : '' }));

@@ -1192,8 +1192,9 @@ async function scenarioS9(browser) {
     await m.finir('S9 seances');
   }
   if (joue('formule')) {
-    // Un role qui adapte les formules : un toucher ajoute l activite a la formule, au meme
-    // prix (le role qui ne le peut pas : [S6]).
+    // Un role qui adapte les formules : un toucher ajoute l activite a la formule ; la formule
+    // garde son prix, l activite ajoutee dit le sien (2026-11-21, reserver-formule-ajout-check ;
+    // le role qui ne le peut pas : [S6]).
     const m = await ouvrirConsole(browser);
     const { page } = m;
     await page.locator('.btn-new').click();
@@ -1210,8 +1211,10 @@ async function scenarioS9(browser) {
       prix: ((document.querySelector('#rsL-a-formule em') || {}).textContent || '').trim(),
       ids: rvActivites(),
       billard: Boolean(document.querySelector('#rsL-a-billards')),
+      prixBillard: ((document.querySelector('#rsL-a-billards em') || {}).textContent || '').trim(),
     }));
-    ok(/adaptée/.test(adaptee.formule) && adaptee.billard && adaptee.ids.includes('billards') && Boolean(prixAvant) && adaptee.prix === prixAvant, '[S9] direction : une activite touchee adapte la formule, au meme prix', { prixAvant, ...adaptee });
+    ok(/adaptée/.test(adaptee.formule) && adaptee.billard && adaptee.ids.includes('billards') && Boolean(prixAvant) && adaptee.prix === prixAvant && /\d|sur place/.test(adaptee.prixBillard),
+      '[S9] direction : une activite touchee adapte la formule ; la formule garde son prix, le billard dit le sien', { prixAvant, ...adaptee });
     await avecTelephone(page);
     await page.locator('#rvCreer').click();
     const [r] = await nouveaux(page, m.avant);

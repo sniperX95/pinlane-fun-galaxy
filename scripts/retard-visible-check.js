@@ -5,6 +5,9 @@
 // aussi, on doit comprendre que c est en retard ». Puis : le retard reste lisible apres
 // « Arrivé » et « Payé », et un groupe pointe apres son heure, sans retard note, ouvre une
 // fenetre qui dit le retard et la nouvelle heure de chaque activite, jugee par le serveur.
+// Puis (le gerant, le 21/11) : « Arrivé » et « Payé » s enregistrent TOUT DE SUITE, en un geste,
+// comme avant ; le serveur note le retard avec le statut ; la fenetre s ouvre ENSUITE pour
+// proposer le decalage ; fermee, le statut et le retard note restent, seules les heures restent.
 //   [A] AU PLANNING COMPLET, un groupe en retard (Hugo, attendu a 15:00, il est 15:20) : sa
 //       ligne porte le filet rouge, CHAQUE case d activite aussi (filet et heure en rouge),
 //       la pastille « En retard · 20 min » (rouge, AA) et « prévu 15:00 » ; la minute qui
@@ -15,25 +18,30 @@
 //       ligne, chaque case et la pastille « En retard · 15 min » sont rouges, la fiche dit
 //       « En retard de 15 min · prévu à 16:00 » en rouge et marque son programme ;
 //       le compteur « En retard » la compte et y mene ;
-//   [C] LA FENETRE A L ARRIVEE (Hugo, le minigolf bloque de 16:20 a 16:40) : « Arrivé » ouvre
-//       « Le groupe arrive avec 20 min de retard » avant toute ecriture ; le minigolf « Ne passe
-//       pas », sa raison en mots, les arcades passent ; pas de « Tout décaler » ; « Décaler ce
-//       qui passe » ecrit en UN PATCH le statut, le retard et l heure des arcades, le minigolf
-//       garde 16:05 ; la marque « Arrivé avec 20 min de retard » reste rouge sur la ligne,
-//       chaque case et la fiche, et l historique la dit ; apres « Payé » aussi ;
+//   [C] LA FENETRE APRES L ARRIVEE (Hugo, le minigolf bloque de 16:20 a 16:40) : « Arrivé »
+//       s ecrit tout de suite, un PATCH de statut seul, le groupe arrive en base avec son retard
+//       de 20 min note, les heures intactes ; la fenetre s ouvre ENSUITE, « Arrivé avec 20 min de
+//       retard » ; le minigolf « Ne passe pas », sa raison en mots, les arcades passent ; pas de
+//       « Tout décaler » ; « Décaler ce qui passe » ecrit les heures seules, sans statut, le
+//       retard compte une fois, le minigolf garde 16:05 ; la marque « Arrivé avec 20 min de
+//       retard » reste rouge sur la ligne, chaque case et la fiche, et l historique la dit ;
+//       apres « Payé » aussi, sans nouvelle fenetre ;
 //   [D] LA PLAINE EST LIBRE TOUTE LA JOURNEE (le gerant, le 21/11 : « il n'y a pas d'heure, c'est
 //       vraiment libre tout le temps ») : Hugo, sa plaine bloquee de 15:15 a 15:45 ; la fenetre ne
-//       la montre pas et ne dit jamais « Ne passe pas » pour elle ; tout passe, « Tout décaler »
-//       seul, une ecriture ; la plaine garde 15:00, le programme de la fiche la dit « Libre » ;
+//       la montre pas et ne dit jamais « Ne passe pas » pour elle ; tout passe, « Tout décaler »,
+//       le statut d abord puis une ecriture des heures ; la plaine garde 15:00, le programme de la
+//       fiche la dit « Libre » ;
 //   [H] LA BULLE « ILS ARRIVENT DANS » DU PLANNING : la meme fenetre, jamais l ancien plan en
 //       cascade (il deplacait d autres groupes) ; « Garder les heures » n ecrit que ce dossier ;
 //   [S] L ENCHAINEMENT (le gerant, le 21/11) : un F1 serre (Bowling 13:15, Arcades 30 min dans la
 //       formule mais 15 au plan, Laser 14:30), « Retard » +15 min puis « Tout décaler » : chaque
 //       activite garde sa vraie duree, les arcades finissent avant le laser (pousse a 15:00),
 //       aucun chevauchement ; des arcades en credits passent « libre », sans heure ;
-//   [P] « PAYÉ » EN RETARD (Clara, bowling a 15:00, la piste 6 prise a 16:30) : la fenetre,
-//       rien ne passe, « Garder les heures » seul ; payee, le retard note, le bowling garde
-//       son heure, la marque reste ;
+//   [P] « PAYÉ » EN RETARD (Clara, bowling a 15:00, la piste 6 prise a 16:30) : paye tout de
+//       suite, le retard note avec ; la fenetre ensuite : son bowling manque (15:00, avant son
+//       arrivee a 15:20) n est pas « commence », il se propose a 15:30 et ne passe pas ;
+//       « Garder les heures » seul, il ferme sans rien ecrire ; le bowling garde son heure, la
+//       marque reste ;
 //   [E] UN GROUPE A L HEURE (Sacha) : « Arrivé » n ouvre aucune fenetre, aucun rouge apres ;
 //   [F] LE SERVEUR : la simulation n ecrit rien ; « Tout décaler » avec une heure qui ne passe
 //       pas est refuse (409) et rien ne s ecrit, ni le statut, ni le retard, ni une heure ;
@@ -44,7 +52,8 @@
 //       un groupe sur place garde son bowling commence, seule la suite se decale ; l ancien plan
 //       en cascade (applyReservationScheduleUpdates) refuse de deplacer le groupe qui joue ;
 //   [T] AU TELEPHONE (390 px) : la fenetre tient dans l ecran, ses boutons pleine largeur et
-//       au doigt (44 px), la fiche ne deborde pas ; la croix ferme sans rien ecrire ;
+//       au doigt (44 px), la fiche ne deborde pas ; la croix la ferme : le statut et le retard
+//       note restent ecrits, seules les heures ne bougent pas ;
 //   [J] aucune erreur JS.
 // La vraie console (scripts/planning-v3-fixtures.js, samedi « pic » de Fun Galaxy Libramont
 // a 15:20) ; ses PATCH et ses calculs a blanc partent au VRAI handler api/staff-reservations.js,
@@ -154,11 +163,26 @@ function enBase(id) {
 // LE MONTAGE : la console a 15:20, le vrai handler derriere chaque PATCH et chaque calcul
 // a blanc ; ce qui part est note.
 // ---------------------------------------------------------------------------
+// L HEURE DU SERVEUR EST CELLE DE LA CONSOLE (2026-11-21) : le serveur note le retard d un groupe
+// pointe apres son heure (lib/retard-arrivee.js, retardALArrivee), a l heure du centre ; sur le
+// banc, sa montre est reglee sur celle de la page (UTC+1 en janvier), puis rendue (jouer).
+let horlogeVraie = null;
+function reglerHorlogeServeur(hhmm) {
+  const montre = require(path.join(ROOT, LIB)).__horloge;
+  if (!horlogeVraie) horlogeVraie = { montre, instant: montre.instant };
+  const [h, m] = hhmm.split(':').map(Number);
+  montre.instant = () => new Date(`${JOUR}T${String(h - 1).padStart(2, '0')}:${String(m).padStart(2, '0')}:00Z`);
+}
+function rendreHorlogeServeur() {
+  if (horlogeVraie) horlogeVraie.montre.instant = horlogeVraie.instant;
+  horlogeVraie = null;
+}
 async function monter(browser, { blocs = [], appareil = 'ordinateur', theme = 'light', heure = HEURE, reecrire = null } = {}) {
   const journee = FIXTURE.staffState.reservations.map((r) => (reecrire ? reecrire(r) : r));
   B.semer(journee.map(ligneDepuis));
   BLOCS = blocs;
   const serveur = B.monter({ mutations: mutation ? mutation.editions.filter((ed) => ed.serveur) : [], session: B.sessionDuRole('manager', { nom: 'Rachel' }) });
+  reglerHorlogeServeur(heure);
   const patchs = [];
   const blancs = [];
   const { ctx, page, erreurs } = await FX.monter(browser, {
@@ -392,11 +416,13 @@ async function scenarioArrivee(browser) {
     await cliquerArrive(page, HUGO);
     await attendreVerdict(page);
     const f = await lireFenetre(page);
+    const pointe = enBase(HUGO);
     const parNom = (n) => (f && f.etapes.find((e) => e.cle === n || e.nom === n)) || null;
-    ok(f && f.titre === 'Le groupe arrive avec 20 min de retard' && f.modal && /prévu à 15:00, il est 15:20/.test(f.sous) && /noté/.test(f.sous),
-      '[C] « Arrivé » sur un groupe en retard ouvre la fenetre : « Le groupe arrive avec 20 min de retard », prévu à 15:00', f);
-    ok(patchs.length === 0 && JSON.stringify(enBase(HUGO)) === JSON.stringify(depart) && blancs.some((b) => b.dryRun === true && b.retard),
-      '[C] la fenetre ouverte, rien n est ecrit : seul le calcul a blanc est parti', { patchs, blancs: blancs.length });
+    ok(patchs.length === 1 && Object.keys(patchs[0]).filter((k) => !['id', 'centerId', 'baseUpdatedAt'].includes(k)).join() === 'status' && patchs[0].status === 'arrived'
+      && pointe.statut === 'arrived' && pointe.retard && pointe.retard.minutes === 20 && pointe.retard.de === '15:00' && JSON.stringify(pointe.heures) === JSON.stringify(depart.heures),
+    '[C] « Arrivé » s ecrit tout de suite, en un geste : un PATCH de statut seul, le groupe arrive en base, son retard de 20 min note avec, les heures intactes', { patchs, pointe, depart: depart.heures });
+    ok(f && f.titre === 'Arrivé avec 20 min de retard' && f.modal && /prévu à 15:00, il est 15:20/.test(f.sous) && /noté/.test(f.sous) && blancs.some((b) => b.dryRun === true && b.retard && b.retard.minutes === 20 && b.retard.de === '15:00'),
+      '[C] la fenetre du retard s ouvre ENSUITE : « Arrivé avec 20 min de retard », prévu à 15:00, jugee par le serveur', { f, blancs: blancs.length });
     const minigolf = parNom('minigolf_blacklight');
     const arcades = parNom('arcade_time');
     ok(minigolf && minigolf.mot === 'Ne passe pas' && /16:05 → 16:25/.test(minigolf.heures) && /16:2\d/.test(minigolf.raison) && /Reste à 16:05/.test(minigolf.raison),
@@ -413,20 +439,22 @@ async function scenarioArrivee(browser) {
     await attendreFermee(page);
     await FX.repos(page, 300);
     const base = enBase(HUGO);
-    ok(patchs.length === 1 && patchs[0].status === 'arrived' && patchs[0].retard && patchs[0].retard.choix === 'passe' && patchs[0].retard.cles.join() === 'arcade_time',
-      '[C] « Décaler ce qui passe » : UN seul PATCH porte le statut, le retard et l heure des arcades', patchs);
+    const decale = patchs[1] || {};
+    ok(patchs.length === 2 && !('status' in decale) && decale.retard && decale.retard.choix === 'passe' && decale.retard.dejaNote === true && decale.retard.cles.join() === 'arcade_time',
+      '[C] « Décaler ce qui passe » : un PATCH des heures seules, sans statut, sur le retard deja note', patchs);
     ok(base.statut === 'arrived' && base.retard && base.retard.minutes === 20 && base.retard.de === '15:00' && base.heures.playground === '15:00' && base.heures.minigolf_blacklight === '16:05' && base.heures.arcade_time === '17:15',
-      '[C] en base : arrive, retard de 20 min note, arcades 17:15, le minigolf garde 16:05, la plaine 15:00', base);
+      '[C] en base : arrive, retard de 20 min compte une fois, arcades 17:15, le minigolf garde 16:05, la plaine 15:00', base);
     const ligne = await lireLigne(page, HUGO);
     ok(ligne && /\bis-rt-arrive\b/.test(ligne.cls) && rouge(ligne) && casesRouges(ligne, false) && ligne.arrive === 'Arrivé avec 20 min de retard' && ligne.arriveCouleur === ligne.D && ligne.arriveAA >= 4.5 && !ligne.pastille,
       '[C] apres « Arrivé », la marque reste : filet, chaque case et « Arrivé avec 20 min de retard » en rouge', ligne);
     const fiche = await lireFiche(page, HUGO);
     ok(/^Arrivé avec 20 min de retard · prévu à 15:00/.test(fiche.texte) && fiche.etat === 'arrive' && fiche.couleur === fiche.D && fiche.etapes.every((e) => e.ombre.includes(fiche.D)),
       '[C] la fiche garde la marque rouge « Arrivé avec 20 min de retard », le programme aussi', fiche);
-    const audit = serveur.journal.audits.find((a) => a.action === 'noterRetard');
     const H = require(path.join(ROOT, 'lib/historique-dossier.js'));
-    const entree = audit ? H.entreeDuJournal({ ...audit, occurredAt: new Date(), outcome: 'success' }, String(HUGO)) : null;
-    ok(entree && entree.quoi.some((q) => /^Arrivé avec 20 min de retard/.test(q)), '[C] l historique du dossier le dit : « Arrivé avec 20 min de retard »', entree || serveur.journal.audits.map((a) => a.action));
+    const dit = (action) => { const a = serveur.journal.audits.find((x) => x.action === action); const e = a ? H.entreeDuJournal({ ...a, occurredAt: new Date(), outcome: 'success' }, String(HUGO)) : null; return e ? e.quoi : []; };
+    const histoire = { pointage: dit('setReservationStatus'), decalage: dit('noterRetard') };
+    ok(histoire.pointage.some((q) => /^Arrivé avec 20 min de retard/.test(q)) && histoire.decalage.some((q) => /^Heures décalées du retard de 20 min, sauf celles qui ne passaient pas/.test(q)),
+      '[C] l historique du dossier le dit : « Arrivé avec 20 min de retard », puis les heures decalees', histoire);
     // « Payé » : la marque reste.
     await page.locator('#posOverlay .res-status-btn.paid', { hasText: 'Carte' }).first().click();
     await attendreBase(HUGO, (b) => b.statut === 'paid');
@@ -461,8 +489,9 @@ async function scenarioToutEtPaye(browser) {
     await attendreFermee(page);
     await FX.repos(page, 300);
     const base = enBase(HUGO);
-    ok(patchs.length === 1 && patchs[0].retard.choix === 'tout' && base.statut === 'arrived' && base.retard && base.retard.minutes === 20 && base.heures.playground === '15:00' && base.heures.minigolf_blacklight === '16:25' && base.heures.arcade_time === '17:15',
-      '[D] « Tout décaler » : une ecriture, arrive, retard note, le minigolf et les arcades decales, la plaine reste', { patchs, base });
+    ok(patchs.length === 2 && patchs[0].status === 'arrived' && !patchs[0].retard && patchs[1].retard && patchs[1].retard.choix === 'tout' && patchs[1].retard.dejaNote === true && !('status' in patchs[1])
+      && base.statut === 'arrived' && base.retard && base.retard.minutes === 20 && base.heures.playground === '15:00' && base.heures.minigolf_blacklight === '16:25' && base.heures.arcade_time === '17:15',
+    '[D] « Tout décaler » : le statut d abord, puis une ecriture des heures ; le minigolf et les arcades decales, la plaine reste', { patchs, base });
     const programme = await page.evaluate((id) => {
       closePos();
       openPos(id);
@@ -477,20 +506,24 @@ async function scenarioToutEtPaye(browser) {
     const caseReserver = await page.evaluate(() => (typeof rsCaseDuContenuHtml === 'function' ? rsCaseDuContenuHtml({ texte: 'Accès à la plaine de jeux', id: '' }) : ''));
     ok(/is-libre/.test(caseReserver) && />libre</.test(caseReserver) && !/\d{2}:\d{2}|data-heure-bouton/.test(caseReserver),
       '[D] dans Réserver, la case de la plaine d une formule dit « libre », sans heure a choisir', caseReserver);
-    // [P] Clara, en retard, paie : la fenetre s ouvre, rien ne passe.
+    // [P] Clara, en retard, paie : payee tout de suite, la fenetre ensuite, rien ne passe.
     await page.evaluate((id) => { closePos(); openPos(id); }, CLARA);
+    const avantClara = patchs.length;
     await page.locator('#posOverlay .res-status-btn.paid', { hasText: 'Carte' }).first().click();
     await attendreVerdict(page);
     const g = await lireFenetre(page);
-    ok(g && g.titre === 'Le groupe arrive avec 20 min de retard' && g.etapes.length === 1 && g.etapes[0].mot === 'Ne passe pas' && /15:00 → 15:30/.test(g.etapes[0].heures) && g.etapes[0].raison.length > 20 && g.boutons.map((b) => b.choix).join() === 'garder' && g.boutons[0].plein,
-      '[P] « Payé » en retard ouvre la fenetre ; le bowling ne passe pas, sa raison ; « Garder les heures » seul', g);
+    const paye = patchs.slice(avantClara);
+    const payee = enBase(CLARA);
+    ok(paye.length === 1 && paye[0].status === 'paid' && paye[0].paymentMethod === 'Carte Bancaire' && !paye[0].retard && payee.statut === 'paid' && payee.retard && payee.retard.minutes === 20 && payee.heures.bowling === '15:00',
+      '[P] « Payé » s ecrit tout de suite, en un geste, son retard de 20 min note avec', { paye, payee });
+    ok(g && g.titre === 'Arrivé avec 20 min de retard' && g.etapes.length === 1 && g.etapes[0].mot === 'Ne passe pas' && /15:00 → 15:30/.test(g.etapes[0].heures) && g.etapes[0].raison.length > 20 && g.boutons.map((b) => b.choix).join() === 'garder' && g.boutons[0].plein,
+      '[P] la fenetre s ouvre ensuite ; le bowling manque se propose a 15:30 et ne passe pas, sa raison ; « Garder les heures » seul', g);
     await page.locator('#retardFenetre [data-rt-choix="garder"]').click();
     await attendreFermee(page);
     await FX.repos(page, 300);
     const clara = enBase(CLARA);
-    const envoi = patchs[patchs.length - 1];
-    ok(clara.statut === 'paid' && clara.moyen === 'Carte Bancaire' && clara.retard && clara.retard.minutes === 20 && clara.heures.bowling === '15:00' && envoi.status === 'paid' && envoi.paymentMethod === 'Carte Bancaire' && envoi.retard.choix === 'garder' && envoi.retard.cles.length === 0,
-      '[P] payee par carte, le retard note, le bowling garde 15:00, en une ecriture', { clara, envoi });
+    ok(patchs.length === avantClara + 1 && clara.statut === 'paid' && clara.moyen === 'Carte Bancaire' && clara.retard && clara.retard.minutes === 20 && clara.heures.bowling === '15:00',
+      '[P] « Garder les heures » ferme sans rien ecrire : payee par carte, le retard note, le bowling garde 15:00', { clara, patchs: patchs.slice(avantClara) });
     const fiche = await lireFiche(page, CLARA);
     await fermerFiche(page);
     const ligne = await lireLigne(page, CLARA);
@@ -707,6 +740,7 @@ async function scenarioTelephone(browser) {
     await page.evaluate((id) => { closePos(); openPos(id); }, HUGO);
     const fiche = await lireFiche(page, HUGO);
     ok(/^En retard de 20 min/.test(fiche.texte) && !fiche.deborde, '[T] au telephone, le bandeau de la fiche se lit sans deborder', fiche);
+    const depart = enBase(HUGO);
     await page.locator('#posOverlay .fz-arrivee-ligne').first().click();
     await attendreVerdict(page);
     const f = await lireFenetre(page);
@@ -716,7 +750,10 @@ async function scenarioTelephone(browser) {
     ok(principal && principal.plein, '[T] au telephone, le bouton principal en bas', f && f.boutons);
     await page.locator('#retardFenetre .rt-fermer').click();
     await attendreFermee(page);
-    ok(patchs.length === 0 && enBase(HUGO).statut === 'pending' && !enBase(HUGO).retard, '[T] la croix ferme la fenetre sans rien ecrire', { patchs, base: enBase(HUGO) });
+    await FX.repos(page, 200);
+    const base = enBase(HUGO);
+    ok(patchs.length === 1 && patchs[0].status === 'arrived' && !patchs[0].retard && base.statut === 'arrived' && base.retard && base.retard.minutes === 20 && JSON.stringify(base.heures) === JSON.stringify(depart.heures),
+      '[T] la croix ferme la fenetre : le statut et le retard note restent, seules les heures ne bougent pas', { patchs, base, depart: depart.heures });
     ok(erreurs.length === 0, '[J] aucune erreur JS (telephone)', erreurs);
   } finally { BLOCS = []; await ctx.close(); }
 }
@@ -732,14 +769,21 @@ const MUTATIONS = [
   { nom: 'minutes-absentes', lettre: 'A', scenarios: ['planning'], editions: [{ fichier: PG, de: "      var texte = 'En retard · ' + (typeof dureeDuRetard === 'function' ? dureeDuRetard(min) : min + ' min');", vers: "      var texte = 'En retard';" }] },
   { nom: 'groupe-a-l-heure-en-rouge', lettre: 'A', scenarios: ['planning'], editions: [{ fichier: JS, de: '    if (!(moment && moment.late) && !annonce) return null;', vers: '' }] },
   { nom: 'fiche-sans-bandeau', lettre: 'A', scenarios: ['planning'], editions: [{ fichier: JS, de: '    ${bandeauBloquant || ficheBandeauRetard(r, moment)}\n', vers: '    ${bandeauBloquant}\n' }] },
-  { nom: 'fenetre-absente', lettre: 'C', scenarios: ['arrivee'], editions: [{ fichier: JS, de: ' && !corrigeMoyen && fenetreRetardAOuvrir(current)) {', vers: ' && !corrigeMoyen && false) {' }] },
+  { nom: 'fenetre-absente', lettre: 'C', scenarios: ['arrivee'], editions: [{ fichier: JS, de: "    if (note) ouvrirFenetreRetard(payload.reservation, { mode: 'arrivee', minutes: note.minutes, de: note.from });\n", vers: '' }] },
+  // (la regle du 21/11 retiree : la fenetre s ouvre avant le statut, qui attend le choix)
+  { nom: 'fenetre-avant-le-statut', lettre: 'C', scenarios: ['arrivee'], editions: [{ fichier: JS, de: "  if (isReservationMutationInFlight(id, 'status', status)) return;", vers: "  if (['arrived', 'paid'].includes(status) && !options.sansAnnulation && isUpcomingReservationStatus(current.status)) { ouvrirFenetreRetard(current, { mode: 'annonce', minutes: 20 }); return; }\n  if (isReservationMutationInFlight(id, 'status', status)) return;" }] },
+  // (le statut s ecrit sans son retard : fermee, la fenetre ne laisse plus le retard note)
+  { nom: 'retard-pas-note-avec-le-statut', lettre: 'T', scenarios: ['telephone'], editions: [{ fichier: BASE, serveur: true, de: '    const retard = retardALArrivee(current, { status: input.status });', vers: '    const retard = null;' }] },
+  // (le decalage apres l arrivee rajoute les minutes deja notees : 40 au lieu de 20)
+  { nom: 'retard-compte-deux-fois', lettre: 'C', scenarios: ['arrivee'], editions: [{ fichier: LIB, serveur: true, de: '  if (dejaNote && existant && !existant.cleared) {', vers: '  if (false) {' }] },
+  // (une activite manquee avant l arrivee du groupe en retard comptee « commencee » : plus rien a decaler)
+  { nom: 'arrivee-en-retard-gelee', lettre: 'P', scenarios: ['tout'], editions: [{ fichier: LIB, serveur: true, de: '(surPlace(current) && etape.debut <= maintenant && etape.debut >= arrivee);', vers: '(surPlace(current) && etape.debut <= maintenant);' }] },
   { nom: 'decale-ce-qui-ne-passe-pas', lettre: 'C', scenarios: ['arrivee'], editions: [{ fichier: LIB, serveur: true, de: '      etapes[i] = { passe: false, raison: phraseDuRefus(error.message) };', vers: "      dossier = require('./reservation-activity-move').buildActivityMove(dossier, move);\n      etapes[i] = { passe: true };" }] },
   { nom: 'retard-oublie-apres-arrivee', lettre: 'C', scenarios: ['arrivee'], editions: [{ fichier: JS, de: "  if ((r.status === 'arrived' || r.status === 'paid') && annonce) return { etat: 'arrive', annonce, prevu: prevuNote };", vers: '' }] },
-  { nom: 'retard-oublie-en-base', lettre: 'C', scenarios: ['arrivee'], editions: [{ fichier: BASE, serveur: true, de: '    payload.opsPlan = planAvecRetard(payload.opsPlan, current, { minutes: input.minutes, de: input.de, decale: moves.length > 0 });', vers: '' }] },
+  { nom: 'retard-oublie-en-base', lettre: 'B', scenarios: ['planning'], editions: [{ fichier: BASE, serveur: true, de: '    payload.opsPlan = planAvecRetard(payload.opsPlan, current, { minutes: input.minutes, de: input.de, decale: moves.length > 0, dejaNote: Boolean(note) });', vers: '' }] },
   { nom: 'retard-oublie-apres-paye', lettre: 'P', scenarios: ['tout'], editions: [{ fichier: JS, de: "  if ((r.status === 'arrived' || r.status === 'paid') && annonce) return { etat: 'arrive', annonce, prevu: prevuNote };", vers: "  if (r.status === 'arrived' && annonce) return { etat: 'arrive', annonce, prevu: prevuNote };" }] },
   { nom: 'tout-decaler-toujours', lettre: 'C', scenarios: ['arrivee'], editions: [{ fichier: JS, de: '    : toutPasse ? `<button', vers: '    : true ? `<button' }] },
   { nom: 'ecriture-partielle', lettre: 'F', scenarios: ['serveur'], editions: [{ fichier: BASE, serveur: true, de: '      if (!jugement.toutPasse) {\n', vers: '      if (false) {\n' }] },
-  { nom: 'ecriture-en-deux-fois', lettre: 'C', scenarios: ['arrivee'], editions: [{ fichier: JS, de: "    const payload = await apiRequest(API_ENDPOINTS.staffReservations, { method: 'PATCH', body: JSON.stringify({ id: r.id, centerId: r.centerId || getCurrentStaffCenterId(), baseUpdatedAt: r.updatedAt, ...(etat.status ? { status: etat.status } : {}),", vers: "    const statutSeul = etat.status ? await apiRequest(API_ENDPOINTS.staffReservations, { method: 'PATCH', body: JSON.stringify({ id: r.id, centerId: r.centerId || getCurrentStaffCenterId(), baseUpdatedAt: r.updatedAt, status: etat.status }) }) : null;\n    const payload = await apiRequest(API_ENDPOINTS.staffReservations, { method: 'PATCH', body: JSON.stringify({ id: r.id, centerId: r.centerId || getCurrentStaffCenterId(), baseUpdatedAt: statutSeul ? statutSeul.reservation.updatedAt : r.updatedAt," }] },
   { nom: 'bouton-retard-ancien-calcul', lettre: 'B', scenarios: ['planning'], editions: [{ fichier: JS, de: 'onclick="ouvrirRetardFiche(${id}, ${m}, event)">+${m} min</button>', vers: 'onclick="openDelayImpact(${id}, ${m}, event)">+${m} min</button>' }] },
   { nom: 'compteur-sans-le-retard-note', lettre: 'B', scenarios: ['planning'], editions: [{ fichier: JS, de: "  if (etat === 'upcoming' && m && (m.late || (getReservationDelayFlag(r) && !retardPousseDe(r)))) return 'late';", vers: "  if (etat === 'upcoming' && m && m.late) return 'late';" }] },
   { nom: 'duree-des-arcades-ignoree', lettre: 'S', scenarios: ['enchainement'], editions: [{ fichier: LIB, serveur: true, de: '    finPrecedente = debut + dureeReelle(current, etape);', vers: '    finPrecedente = debut + (etape.fin - etape.debut);' }] },
@@ -748,7 +792,7 @@ const MUTATIONS = [
   { nom: 'telephone-boutons-etroits', lettre: 'T', scenarios: ['telephone'], editions: [{ fichier: 'assets/pinlane-staff.css', de: '  .rt-bouton { width: 100%; min-height: 44px; }\n', vers: '' }] },
   // [G] un calcul qui deplace une activite commencee : la sienne, puis celle d un groupe qui joue
   // (le controle ne le compte plus, comme le calcul qui l a pousse de la piste 1 a la piste 5).
-  { nom: 'activite-commencee-deplacee', lettre: 'G', scenarios: ['gel'], editions: [{ fichier: LIB, serveur: true, de: '  const commencee = (etape) => gelees.has(etape.cle) || (surPlace(current) && etape.debut <= maintenant);', vers: '  const commencee = (etape) => gelees.has(etape.cle);' }] },
+  { nom: 'activite-commencee-deplacee', lettre: 'G', scenarios: ['gel'], editions: [{ fichier: LIB, serveur: true, de: '  const commencee = (etape) => gelees.has(etape.cle) || (surPlace(current) && etape.debut <= maintenant && etape.debut >= arrivee);', vers: '  const commencee = (etape) => gelees.has(etape.cle);' }] },
   { nom: 'plan-en-cascade-sans-garde', lettre: 'G', scenarios: ['gel'], editions: [{ fichier: BASE, serveur: true, de: "    require('./retard-arrivee').refuserSiUnGroupeQuiJoueBouge(merged, safeDate);\n", vers: '' }] },
   // [D] la plaine de jeux remise a une heure : au calcul, au programme de la fiche, dans Réserver.
   { nom: 'plaine-a-heure', lettre: 'D', scenarios: ['tout'], editions: [{ fichier: LIB, serveur: true, de: '    if (LIBRES_TOUTE_LA_JOURNEE.includes(id)) return;\n', vers: '' }] },
@@ -769,14 +813,16 @@ const MUTATIONS = [
 
 async function jouer(browser, noms) {
   for (const nom of noms) {
-    if (nom === 'planning') await scenarioPlanning(browser);
-    if (nom === 'arrivee') await scenarioArrivee(browser);
-    if (nom === 'tout') await scenarioToutEtPaye(browser);
-    if (nom === 'serveur') await scenarioServeur();
-    if (nom === 'telephone') await scenarioTelephone(browser);
-    if (nom === 'enchainement') await scenarioEnchainement(browser);
-    if (nom === 'gel') await scenarioGel();
-    if (nom === 'bulle') await scenarioBulle(browser);
+    try {
+      if (nom === 'planning') await scenarioPlanning(browser);
+      if (nom === 'arrivee') await scenarioArrivee(browser);
+      if (nom === 'tout') await scenarioToutEtPaye(browser);
+      if (nom === 'serveur') await scenarioServeur();
+      if (nom === 'telephone') await scenarioTelephone(browser);
+      if (nom === 'enchainement') await scenarioEnchainement(browser);
+      if (nom === 'gel') await scenarioGel();
+      if (nom === 'bulle') await scenarioBulle(browser);
+    } finally { rendreHorlogeServeur(); }
   }
 }
 

@@ -2562,8 +2562,16 @@ function reservationRenderSignature(r) {
     absentAt: r.absentAt || '',
     amountPaid: r.amountPaid ?? null,
     discountReason: r.discountReason || '',
-    companions: Number(r.companions) || 0
+    companions: Number(r.companions) || 0,
+    // Le retard note se dessine aussi (2026-11-21) : la pastille, la marque « Arrivé avec 12 min de
+    // retard », le rouge des cases. Absent, le retard que le serveur note avec « Arrivé » ne se
+    // voyait qu au tic d une minute.
+    retard: empreinteRetard(r)
   };
+}
+function empreinteRetard(r) {
+  const flag = r && r.opsPlan && r.opsPlan.delayFlag;
+  return flag ? `${Number(flag.minutes) || 0}|${flag.from || ''}|${flag.cleared ? 1 : 0}|${Number(flag.sourceId) || 0}` : '';
 }
 
 function getCurrentStaffReservationsForUi() {
@@ -2664,6 +2672,7 @@ function getSelectedReservationSignature() {
     absentAt: state.selectedRes.absentAt || '',
     amountPaid: state.selectedRes.amountPaid ?? null,
     discountReason: state.selectedRes.discountReason || '',
+    retard: empreinteRetard(state.selectedRes),
     activeTab: state.activeTab,
     editState: state.editState ? {
       name: state.editState.name,
@@ -13470,6 +13479,10 @@ function getStaffTerrainStatus(reservation, phase, item = null, board = null) {
   if (phase === 'closing' && upcoming && !groupeAJoue(reservation)) return { label: 'Non pointé', tone: 'unmarked' };
   if (isReservationAwaitingReview(reservation)) return { label: 'À vérifier', tone: 'review' };
   if (reservation.status === 'paid') return { label: 'Payé', tone: 'paid' };
+  // LE RETARD NOTE RESTE APRES « Arrivé » (2026-11-21, le gerant) : la carte le dit, comme le
+  // planning et la fiche (retardDuGroupe).
+  const rt = phase !== 'upcoming' ? retardDuGroupe(reservation, null) : null;
+  if (rt && rt.etat === 'arrive') return { label: texteDuRetard(rt, NaN), tone: 'late' };
   return null;
 }
 
@@ -26456,24 +26469,18 @@ function texteDuRetard(rt, maintenant) {
   return rt.etat === 'arrive' ? `Arrivé avec ${dureeDuRetard(n)} de retard` : `En retard · ${dureeDuRetard(n)}`;
 }
 
-// LA FENETRE DU RETARD (2026-11-21, lib/retard-arrivee.js). « Arrivé » ou « Payé » sur un groupe
-// en retard sans retard note : avant d ecrire, elle dit « Le groupe arrive avec 12 min de retard »
-// (de l heure prevue de sa premiere activite a maintenant, l heure du centre), puis la nouvelle
+// LA FENETRE DU RETARD (2026-11-21, lib/retard-arrivee.js). Elle dit le retard, puis la nouvelle
 // heure de chaque activite a venir, jugee par le serveur sans rien ecrire (simulerRetard, le
 // controle du verdict de « Modifier »), et trois choix : « Tout décaler » si tout passe,
-// « Décaler ce qui passe » (le reste garde son heure), « Garder les heures ». Chacun note le
-// retard : le statut, le retard et les heures s ecrivent en une fois (PATCH retard). La croix
-// ferme sans rien ecrire. « Retard » de la fiche ouvre la meme fenetre, sans statut.
+// « Décaler ce qui passe » (le reste garde son heure), « Garder les heures ».
+//   - APRES « Arrivé » OU « Payé » (le gerant, le 21/11 : ils s enregistrent tout de suite, en un
+//     geste, comme avant ; la fenetre s ouvre ENSUITE). Le serveur a note le retard avec le statut
+//     (setReservationStatus) : elle s ouvre sur ce retard-la, « Arrivé avec 12 min de retard ».
+//     Decaler ecrit les heures seules (PATCH retard, `dejaNote`) ; « Garder les heures » et la
+//     croix ferment, le statut et le retard restent ecrits, seules les heures ne bougent pas.
+//   - « Retard » DE LA FICHE et la bulle du planning, avant l arrivee : chaque choix note le retard
+//     et les heures en une ecriture ; la croix ferme sans rien ecrire.
 let fenetreRetard = null;
-function fenetreRetardAOuvrir(r) {
-  if (!r || !isUpcomingReservationStatus(r.status) || r.absentAt || r.date !== todayStr()) return false;
-  if (getReservationDelayFlag(r) && !retardPousseDe(r)) return false;
-  const moment = getStaffReservationMoments([r], r.date).get(String(r.id));
-  return Boolean(moment && moment.late);
-}
-function minutesArriveeEnRetard(r) {
-  return Math.max(1, Math.min(240, Math.round((currentTimeDecimal() - premiereHeureDuGroupe(r)) * 60)));
-}
 // LES NOUVELLES HEURES SE CALCULENT AU SERVEUR (lib/retard-arrivee.js, etapesDuRetard) : la vraie
 // duree de chaque activite (le contenu de la formule, sinon le catalogue), la suite poussee pour
 // ne jamais commencer avant la fin de la precedente, des arcades en argent rendues « libre ». La
@@ -26488,8 +26495,8 @@ async function ouvrirFenetreRetard(r, reglage) {
   const minutes = Math.max(1, Math.min(240, Math.round(Number(reglage.minutes) || 0)));
   const prevu = premiereHeureDuGroupe(r);
   const etat = {
-    id: Number(r.id), mode: reglage.mode, status: reglage.status || '', paymentMethod: reglage.paymentMethod || '',
-    minutes, de: hhmmDuRetard(Math.round((Number.isFinite(prevu) ? prevu : 0) * 60)),
+    id: Number(r.id), mode: reglage.mode,
+    minutes, de: reglage.de || hhmmDuRetard(Math.round((Number.isFinite(prevu) ? prevu : 0) * 60)),
     faites: [...new Set(getGroupeProgramme(r).filter(etape => etape.fait).map(cleHeureEtape).filter(Boolean))],
     noms: nomsDuRetard(r), etapes: null, erreur: '', envoi: false, retour: document.activeElement,
     feuille: Boolean(document.activeElement && document.activeElement.closest && document.activeElement.closest('#globalPlanningGridWrap')),
@@ -26538,17 +26545,21 @@ function rendreFenetreRetard(ouverture = false) {
     : toutPasse ? `<button type="button" class="rt-bouton est-plein" data-rt-choix="tout" onclick="choisirRetard('tout')"${etat.envoi ? ' disabled' : ''}>Tout décaler</button>`
       : `<button type="button" class="rt-bouton est-plein" data-rt-choix="passe" onclick="choisirRetard('passe')"${etat.envoi ? ' disabled' : ''}>Décaler ce qui passe</button>`;
   const garder = `<button type="button" class="rt-bouton${decaler ? '' : ' est-plein'}" data-rt-choix="garder" onclick="choisirRetard('garder')"${etat.envoi ? ' disabled' : ''}>Garder les heures</button>`;
-  const titre = etat.mode === 'arrivee' ? `Le groupe arrive avec ${dureeDuRetard(etat.minutes)} de retard` : `Retard de ${dureeDuRetard(etat.minutes)}`;
-  const quand = etat.mode === 'arrivee' ? `prévu à ${etat.de}, il est ${formatClockDisplay(currentTimeDecimal())}` : `prévu à ${etat.de}`;
-  const etatTexte = etat.erreur ? `${etat.erreur} Le retard se note, les heures restent.`
+  // (apres « Arrivé » ou « Payé », le statut et le retard sont deja ecrits : fermer garde les heures)
+  const arrivee = etat.mode === 'arrivee';
+  const titre = arrivee ? `Arrivé avec ${dureeDuRetard(etat.minutes)} de retard` : `Retard de ${dureeDuRetard(etat.minutes)}`;
+  const quand = arrivee ? `prévu à ${etat.de}, il est ${formatClockDisplay(currentTimeDecimal())}` : `prévu à ${etat.de}`;
+  const sous = arrivee ? 'L’arrivée et le retard sont notés sur le dossier. Fermer garde les heures.' : 'Le retard est noté sur le dossier, quel que soit le choix.';
+  const note = arrivee ? 'le retard est noté' : 'le retard se note';
+  const etatTexte = etat.erreur ? `${etat.erreur} ${arrivee ? 'Le retard est noté' : 'Le retard se note'}, les heures restent.`
     : !etapes ? 'Vérification au planning…'
-      : !etapes.length ? 'Plus aucune activité à venir : le retard se note, rien ne bouge.'
+      : !etapes.length ? `Plus aucune activité à venir : ${note}, rien ne bouge.`
         : toutPasse ? 'Toutes les activités passent à leur nouvelle heure, chacune après la fin de la précédente.'
           : passent ? 'Ce qui ne passe pas garde son heure.' : 'Aucune activité ne passe à sa nouvelle heure : elles gardent leur heure.';
   hote.innerHTML = `<div class="rt-fenetre" role="dialog" aria-modal="true" aria-labelledby="rtTitre" aria-describedby="rtSous" tabindex="-1">
       <div class="rt-tete"><h3 class="rt-titre" id="rtTitre">${escapeHtml(titre)}</h3>
-        <button type="button" class="close-btn rt-fermer" aria-label="Fermer sans rien enregistrer" onclick="fermerFenetreRetard()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
-      <p class="rt-sous" id="rtSous">${escapeHtml(r.name || 'Groupe')} · ${escapeHtml(quand)}. Le retard est noté sur le dossier, quel que soit le choix.</p>
+        <button type="button" class="close-btn rt-fermer" aria-label="${arrivee ? 'Fermer, les heures restent' : 'Fermer sans rien enregistrer'}" onclick="fermerFenetreRetard()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+      <p class="rt-sous" id="rtSous">${escapeHtml(r.name || 'Groupe')} · ${escapeHtml(quand)}. ${escapeHtml(sous)}</p>
       ${lignes ? `<ol class="rt-etapes">${lignes}</ol>` : ''}
       <p class="rt-etat" role="status">${escapeHtml(etatTexte)}</p>
       <div class="rt-pied">${garder}${decaler}</div>
@@ -26568,12 +26579,15 @@ function rendreLeFocusDuRetard(etat) {
   const ligne = etat.feuille ? document.querySelector(`#globalPlanningGridWrap .gf-r[data-gf-id="${etat.id}"]`) : null;
   if (ligne) ligne.focus();
 }
-// Le choix : une seule ecriture (statut, retard note, heures qui passent), puis l ecran.
+// Le choix : une seule ecriture (le retard note, les heures qui passent), puis l ecran. Apres
+// « Arrivé » ou « Payé », le retard est deja ecrit : garder ferme, decaler n ecrit que les heures.
 async function choisirRetard(choix) {
   const etat = fenetreRetard;
   if (!etat || etat.envoi) return;
   const r = state.reservations.find(x => Number(x.id) === etat.id) || (state.selectedRes && Number(state.selectedRes.id) === etat.id ? state.selectedRes : null);
   if (!r) { fermerFenetreRetard(); return; }
+  const dejaNote = etat.mode === 'arrivee';
+  if (dejaNote && choix === 'garder') { fermerFenetreRetard(); return; }
   const etapes = etat.erreur ? null : etat.etapes;
   if (choix === 'tout' && !(etapes && etapes.length && etapes.every(e => e.passe))) return;
   // (les activites que la fenetre a montrees : le serveur refait leurs heures et les rejuge)
@@ -26582,18 +26596,18 @@ async function choisirRetard(choix) {
   etat.envoi = true;
   rendreFenetreRetard();
   try {
-    const payload = await apiRequest(API_ENDPOINTS.staffReservations, { method: 'PATCH', body: JSON.stringify({ id: r.id, centerId: r.centerId || getCurrentStaffCenterId(), baseUpdatedAt: r.updatedAt, ...(etat.status ? { status: etat.status } : {}), ...(etat.status === 'paid' ? { paymentMethod: etat.paymentMethod } : {}), retard: { minutes: etat.minutes, de: etat.de, faites: etat.faites, choix, cles } }) });
+    const payload = await apiRequest(API_ENDPOINTS.staffReservations, { method: 'PATCH', body: JSON.stringify({ id: r.id, centerId: r.centerId || getCurrentStaffCenterId(), baseUpdatedAt: r.updatedAt, retard: { minutes: etat.minutes, de: etat.de, faites: etat.faites, choix, cles, ...(dejaNote ? { dejaNote: true } : {}) } }) });
     if (!payload || !payload.ok || !payload.reservation || Number(payload.reservation.id) !== etat.id) throw new Error('Le serveur n’a pas confirmé le retard. Actualisez le dossier.');
     if (fenetreRetard === etat) fenetreRetard = null;
     rendreFenetreRetard();
     upsertReservationInState(payload.reservation);
-    markReservationMutation(etat.id, payload.reservation, ['status', 'paymentMethod', 'opsPlan', 'startTime', 'lanes']);
+    markReservationMutation(etat.id, payload.reservation, ['opsPlan', 'startTime', 'lanes']);
     if (state.selectedRes && Number(state.selectedRes.id) === etat.id) state.selectedRes = payload.reservation;
     save();
     renderStaffData();
     renderPos();
     rendreLeFocusDuRetard(etat);
-    toast(`${payload.reservation.name || 'Groupe'} : retard de ${dureeDuRetard(etat.minutes)} noté${cles.length ? ', heures décalées' : ''}.`);
+    toast(dejaNote ? `${payload.reservation.name || 'Groupe'} : heures décalées du retard de ${dureeDuRetard(etat.minutes)}.` : `${payload.reservation.name || 'Groupe'} : retard de ${dureeDuRetard(etat.minutes)} noté${cles.length ? ', heures décalées' : ''}.`);
   } catch (error) {
     if (fenetreRetard !== etat) return;
     etat.envoi = false;
@@ -26604,13 +26618,20 @@ async function choisirRetard(choix) {
     rendreFenetreRetard();
   }
 }
-// « Retard » de la fiche : la meme fenetre, avec les minutes touchees ; « Arrivé maintenant »
-// pointe le groupe avec elles.
-function ouvrirRetardFiche(id, minutes, ev, arrive = false) {
+// « Retard » de la fiche : la meme fenetre, avec les minutes touchees.
+function ouvrirRetardFiche(id, minutes, ev) {
   if (ev) ev.stopPropagation();
   const r = state.reservations.find(x => Number(x.id) === Number(id)) || (state.selectedRes && Number(state.selectedRes.id) === Number(id) ? state.selectedRes : null);
   if (!r) return;
-  ouvrirFenetreRetard(r, arrive && isUpcomingReservationStatus(r.status) ? { mode: 'arrivee', status: 'arrived', minutes } : { mode: 'annonce', minutes });
+  ouvrirFenetreRetard(r, { mode: 'annonce', minutes });
+}
+// LE RETARD QUE LE STATUT VIENT DE NOTER (setReservationStatus, lib/retard-arrivee.js) : le
+// dossier d avant n en avait pas, celui que le serveur renvoie en porte un, a lui.
+function retardNoteParLeStatut(avant, apres) {
+  const note = getReservationDelayFlag(apres);
+  if (!note || retardPousseDe(apres)) return null;
+  const deja = getReservationDelayFlag(avant);
+  return deja && !retardPousseDe(avant) ? null : note;
 }
 function ouvrirRetardFicheAutre(id, ev) {
   const champ = document.getElementById('delayCustomMinutes');
@@ -29963,12 +29984,6 @@ async function setReservationStatusDirect(id, status, ev, options = {}) {
     }
     return;
   }
-  // LE GROUPE ARRIVE EN RETARD (2026-11-21) : la fenetre du retard ecrit le statut avec le retard
-  // note et les heures choisies (ouvrirFenetreRetard).
-  if (['arrived', 'paid'].includes(status) && !options.sansAnnulation && !corrigeMoyen && fenetreRetardAOuvrir(current)) {
-    ouvrirFenetreRetard(current, { mode: 'arrivee', status, paymentMethod: moyenDemande, minutes: minutesArriveeEnRetard(current) });
-    return;
-  }
   // Anti double-envoi : même statut déjà en vol → on ignore. La résa affiche
   // déjà la valeur voulue (optimiste), inutile de re-PATCH.
   if (isReservationMutationInFlight(id, 'status', status)) return;
@@ -30033,6 +30048,11 @@ async function setReservationStatusDirect(id, status, ev, options = {}) {
     // chemin du retour. « Arrivé » et « Payé » laissent quelques secondes un
     // toast qui porte « Annuler » ; c est le seul message d un statut reussi.
     if (!options.sansAnnulation && ['arrived', 'paid'].includes(status)) proposerAnnulationGeste(versionEcrite, payload.reservation);
+    // LE GROUPE ARRIVE EN RETARD (2026-11-21, le gerant : « Arrivé » et « Payé » s enregistrent tout
+    // de suite, la fenetre du retard s ouvre ENSUITE pour proposer le decalage). Le serveur a note
+    // son retard avec le statut ; fermee, la fenetre laisse le statut et le retard, les heures restent.
+    const note = !options.sansAnnulation && ['arrived', 'paid'].includes(status) ? retardNoteParLeStatut(versionEcrite, payload.reservation) : null;
+    if (note) ouvrirFenetreRetard(payload.reservation, { mode: 'arrivee', minutes: note.minutes, de: note.from });
   }).catch(error => {
     if (!isLatestRequest()) return;
     // Le refus remet ce que le serveur dit (un autre poste a ecrit : sa version), sinon
@@ -31078,9 +31098,9 @@ function renderNoteEquipeBouton(r) {
   return `<button type="button" class="fx-outil gc-note-ouvrir" title="Note pour l’équipe" aria-expanded="${ouvert}" data-pl-focus="fiche.note.ouvrir.${id}" onclick="ouvrirNoteEquipe(${id}, event)">${FICHE_ICONE_NOTE}<span>Note<span class="fz-long"> pour l’équipe</span></span></button>`;
 }
 
-// LE RETARD, OUVERT JUSTE SOUS SON BOUTON : les minutes d un toucher, puis le
-// plan du serveur avant toute validation (openDelayImpact). Un groupe deja en
-// retard garde « Arrivé maintenant ».
+// LE RETARD, OUVERT JUSTE SOUS SON BOUTON : les minutes d un toucher, puis la
+// fenetre du retard avant toute ecriture (ouvrirRetardFiche). Un groupe deja en
+// retard garde « Arrivé maintenant » : le pointage d abord, la fenetre ensuite.
 function ficheRetardPanneau(r, late) {
   const id = Number(r.id);
   const minutes = [5, 10, 15, 20, 30].map(m => `<button type="button" class="delay-chip" onclick="ouvrirRetardFiche(${id}, ${m}, event)">+${m} min</button>`).join('');
@@ -31088,7 +31108,7 @@ function ficheRetardPanneau(r, late) {
       <p class="fx-retard-titre">Retard du groupe</p>
       <p class="pos-note">Choisissez les minutes. Le nouveau programme s’affiche avant d’être validé.</p>
       <div class="delay-control-actions">
-        ${late > 0 ? `<button type="button" class="delay-chip delay-chip-now" onclick="ouvrirRetardFiche(${id}, ${late}, event, true)">Arrivé maintenant (+${late} min)</button>` : ''}${minutes}
+        ${late > 0 ? `<button type="button" class="delay-chip delay-chip-now" onclick="setReservationStatusDirect(${id}, 'arrived', event)">Arrivé maintenant (+${late} min)</button>` : ''}${minutes}
       </div>
       <div class="delay-custom-row">
         <label class="visually-hidden" for="delayCustomMinutes">Retard en minutes</label>

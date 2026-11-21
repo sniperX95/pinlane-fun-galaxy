@@ -305,7 +305,7 @@ async function arrive(browser) {
     ok(Boolean(avant.premier), '[B] le montage : il y a un premier « Arrivé » a faire', avant.premier);
     const pax = await page.evaluate((id) => Number(document.querySelector(`[data-gf-id="${id}"] td.gf-n b`).textContent), avant.premier);
     await page.locator('.is-premier [data-gf-arrive]').click();
-    // (un groupe en retard : « Arrivé » ouvre d abord la fenetre du retard, 2026-11-21)
+    // (un groupe en retard : « Arrivé » s ecrit tout de suite, la fenetre du retard peut suivre, 2026-11-21)
     await page.locator('#retardFenetre [data-rt-choix="garder"]').click({ timeout: 4000 }).catch(() => null);
     await page.waitForFunction((id) => document.querySelector(`[data-gf-id="${id}"] [data-compte-id]`), avant.premier, { timeout: 8000 }).catch(() => null);
     await FX.repos(page, 200);
@@ -389,7 +389,7 @@ async function nom(browser) {
     const avant = await page.evaluate(() => window.__FIXTURE__.patchs.length);
     await page.keyboard.press('Enter');
     await FX.repos(page, 200);
-    // (pointer un groupe en retard ouvre d abord la fenetre du retard, 2026-11-21 : elle compte)
+    // (pointer un groupe s ecrit tout de suite ; la fenetre du retard qui suivrait compte aussi, 2026-11-21)
     const apres = await page.evaluate(() => window.__FIXTURE__.patchs.length + (document.getElementById('retardFenetre') ? 1 : 0));
     ok(avant === apres, '[D] Entree ne pointe rien s il reste plusieurs groupes', { terme, avant, apres });
     await page.keyboard.press('Escape');

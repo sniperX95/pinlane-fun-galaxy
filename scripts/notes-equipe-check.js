@@ -71,7 +71,7 @@ function verifier(sources) {
       'const notesEquipeBrouillons = new Map();',
       'const notesEquipeOuvertes = new Set();',
       ...['lireNoteEquipeLigne', 'getReservationNotesEquipe', 'getReservationNoteText', 'getReservationNoteParts',
-        'hasReservationNote', 'getReservationDelayFlag', 'getReservationNoteTitre', 'formatNoteEquipeQuand', 'quandNoteEnPhrase', 'bulleAuteurNote', 'ficheDroitsNotes', 'renderNoteEquipeBouton', 'renderGroupeNotes', 'getReservationValidationTexte', 'nomDeLaFormuleAchetee', 'getGroupeEncadres', 'renderGroupeEncadres',
+        'hasReservationNote', 'getReservationDelayFlag', 'retardPousseDe', 'getReservationNoteTitre', 'formatNoteEquipeQuand', 'quandNoteEnPhrase', 'bulleAuteurNote', 'ficheDroitsNotes', 'renderNoteEquipeBouton', 'renderGroupeNotes', 'getReservationValidationTexte', 'nomDeLaFormuleAchetee', 'getGroupeEncadres', 'renderGroupeEncadres',
         // La carte lit les notes ecrites par l equipe et la derniere modification
         // (2026-11-03) ; sans le planning, la regle de repli de notesEquipeEcrites.
         'notesEquipeEcrites', 'essentielDuDossier', 'texteDerniereModif', 'quandDerniereModif'].map((n) => extraire(sources.app, n)),

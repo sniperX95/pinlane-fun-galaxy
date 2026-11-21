@@ -625,10 +625,12 @@ async function simulerRetard(req, res, corps) {
   }
 }
 
-// LE RETARD D UN GROUPE, D UN GESTE (2026-11-21). Le choix de la fenetre : le statut (« Arrivé »,
-// « Payé »), le retard note et les heures qui passent s ecrivent ensemble, ou rien
-// (lib/database.js, ecrireRetard). Pointer ou encaisser demande les droits du statut seul ;
-// noter un retard sans statut, ou deplacer une heure, ceux du glisser du planning.
+// LE RETARD D UN GROUPE, D UN GESTE (2026-11-21). Le choix de la fenetre : le retard note et les
+// heures qui passent s ecrivent ensemble, ou rien (lib/database.js, ecrireRetard). Apres
+// « Arrivé » ou « Payé », le retard est deja note avec le statut (setReservationStatus) : la
+// fenetre ne fait plus que decaler (`dejaNote`), sans statut. Pointer ou encaisser demande les
+// droits du statut seul ; noter un retard sans statut, ou deplacer une heure, ceux du glisser du
+// planning.
 async function patcherRetard(req, res, body, current, requestedCenterId) {
   const { lireRetard } = require('../lib/retard-arrivee');
   const enTrop = Object.keys(body).filter((cle) => !['id', 'centerId', 'center_id', 'baseUpdatedAt', 'status', 'paymentMethod', 'retard'].includes(cle));
@@ -636,6 +638,7 @@ async function patcherRetard(req, res, body, current, requestedCenterId) {
   const centre = current.centerId || 'libramont';
   const statut = Object.prototype.hasOwnProperty.call(body, 'status') ? String(body.status || '') : '';
   const lu = lireRetard(body.retard, { ecriture: true });
+  if (lu.dejaNote && statut) throw createHttpError('Le statut est déjà enregistré : la fenêtre ne fait que décaler les heures.', 422);
   const session = await requireStaffPermission(req, res, statut ? ['reservations.status', 'reservations.edit'] : ['planning.drag', 'reservations.edit'], { centerId: centre });
   if (!session) return;
   if (requestedCenterId !== centre) throw createHttpError('Une réservation reste dans son centre : annulez-la et recréez-la dans l autre.', 422);
@@ -652,9 +655,9 @@ async function patcherRetard(req, res, body, current, requestedCenterId) {
   if (lu.cles.length && dateValide(current.date) && current.date < aujourdhuiABruxelles() && !sessionHasPermission(session, 'planning.past')) throw createHttpError('Changer un jour passé ne fait pas partie de votre rôle.', 403);
   await warmCenterKnowledge();
   const { ecrireRetard } = require('../lib/database');
-  const reservation = await ecrireRetard({ id: current.id, baseUpdatedAt: body.baseUpdatedAt, status: statut, paymentMethod: moyen, minutes: lu.minutes, de: lu.de, faites: lu.faites, choix: lu.choix, cles: lu.cles, modifiePar: nomDeSession(session) });
+  const reservation = await ecrireRetard({ id: current.id, baseUpdatedAt: body.baseUpdatedAt, status: statut, paymentMethod: moyen, minutes: lu.minutes, de: lu.de, faites: lu.faites, choix: lu.choix, cles: lu.cles, dejaNote: lu.dejaNote, modifiePar: nomDeSession(session) });
   const automation = await refreshReservationAutomation(current, reservation, { reason: statut ? 'reservation_status_updated' : 'activity_moved' });
-  const audit = await writeAuditLog({ centerId: centre, ...actorFromSession(session), surface: 'api/staff-reservations.js', action: 'noterRetard', method: 'PATCH', entityType: 'reservation', entityId: current.id, outcome: 'success', changes: buildReservationAuditChanges(current, reservation), context: contexteRegistre(current, reservation, { retard: { minutes: lu.minutes, de: lu.de, statut, choix: lu.choix, decalees: lu.cles.length } }), requestId: newRequestId() });
+  const audit = await writeAuditLog({ centerId: centre, ...actorFromSession(session), surface: 'api/staff-reservations.js', action: 'noterRetard', method: 'PATCH', entityType: 'reservation', entityId: current.id, outcome: 'success', changes: buildReservationAuditChanges(current, reservation), context: contexteRegistre(current, reservation, { retard: { minutes: lu.minutes, de: lu.de, statut, choix: lu.choix, decalees: lu.cles.length, ...(lu.dejaNote ? { dejaNote: true } : {}) } }), requestId: newRequestId() });
   const secours = lu.cles.length ? await copierAuSecours(reservation, 'modifiee', current, session) : '';
   const avertissements = [audit.warning, secours].filter(Boolean);
   sendJson(res, 200, { ok: true, reservation, automation, ...(avertissements.length ? { warnings: avertissements } : {}) });
@@ -1367,7 +1370,10 @@ const traiter = async (req, res) => {
         }
         const reservation = await setReservationStatus({ id: current.id, centerId: requestedCenterId, baseUpdatedAt: body.baseUpdatedAt, status: body.status, ...(Object.prototype.hasOwnProperty.call(body, 'paymentMethod') || Object.prototype.hasOwnProperty.call(body, 'payment_method') ? { paymentMethod: body.paymentMethod ?? body.payment_method } : {}) });
         const automation = await refreshReservationAutomation(current, reservation, { reason: 'reservation_status_updated' });
-        const auditStatus = await writeAuditLog({ centerId: requestedCenterId, ...actorFromSession(session), surface: 'api/staff-reservations.js', action: 'setReservationStatus', method: 'PATCH', entityType: 'reservation', entityId: current.id, outcome: 'success', changes: buildReservationAuditChanges(current, reservation), context: contexteRegistre(current, reservation), requestId: newRequestId() });
+        // (le retard note avec le statut, lib/retard-arrivee.js : l historique le dit)
+        const { retardNote } = require('../lib/retard-arrivee');
+        const noteALArrivee = !retardNote(current) && retardNote(reservation);
+        const auditStatus = await writeAuditLog({ centerId: requestedCenterId, ...actorFromSession(session), surface: 'api/staff-reservations.js', action: 'setReservationStatus', method: 'PATCH', entityType: 'reservation', entityId: current.id, outcome: 'success', changes: buildReservationAuditChanges(current, reservation), context: contexteRegistre(current, reservation, noteALArrivee ? { retard: { minutes: noteALArrivee.minutes, de: noteALArrivee.from, statut: reservation.status } } : {}), requestId: newRequestId() });
         const changeAnnulation = (body.status === 'cancelled') !== (current.status === 'cancelled');
         const avertSecours = changeAnnulation ? await copierAuSecours(reservation, body.status === 'cancelled' ? 'annulee' : 'restauree', current, session) : '';
         const avertissements = [auditStatus.warning, avertSecours].filter(Boolean);

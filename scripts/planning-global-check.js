@@ -746,8 +746,8 @@ async function gestes(browser) {
     // [G1] « Arrivé » ecrit le pointage
     const id = await page.evaluate(() => { const b = document.querySelector('#globalPlanningGridWrap tr.is-retard [data-gf-arrive]'); return b && b.getAttribute('data-gf-arrive'); });
     await page.locator(`#globalPlanningGridWrap [data-gf-arrive="${id}"]`).click();
-    // (un groupe en retard : la fenetre du retard s ouvre, « Garder les heures » le pointe,
-    // scripts/retard-visible-check.js)
+    // (un groupe en retard : « Arrivé » s ecrit tout de suite ; quand le serveur a note son retard,
+    // la fenetre du retard s ouvre ensuite et « Garder les heures » la ferme, scripts/retard-visible-check.js)
     const garder = page.locator('#retardFenetre [data-rt-choix="garder"]');
     if (await garder.count()) await garder.click();
     await FX.repos(page, 600);

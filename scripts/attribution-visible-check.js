@@ -775,8 +775,8 @@ const MUTATIONS = [
   { nom: 'reduit-ignore', lettre: 'M1', scenarios: ['reduit'], editions: [{ fichier: JS, de: "  if (!bouton || typeof bouton.animate !== 'function' || !mouvement || mouvement.reduit()) return;", vers: "  if (!bouton || typeof bouton.animate !== 'function' || !mouvement) return;" }] },
   // Le bloc d un groupe qui baisse, juge sur ses seules pistes (le choix d avant).
   { nom: 'graine-jugee-seule', lettre: 'G1', scenarios: ['graine'], editions: [{ fichier: REGLE, de: '    const estLibre = new Set(libres);', vers: '    const estLibre = new Set(graine.length >= nombre ? graine : libres);' }] },
-  { nom: 'graine-ignoree', lettre: 'G1', scenarios: ['graine'], editions: [{ fichier: REGLE, de: '    if (graine.length) candidats.splice(0, candidats.length, ...autourDeLaGraine(graine, libres, nombre));\n', vers: '' }] },
-  { nom: 'console-premiere-libre', lettre: 'G1', scenarios: ['graine'], editions: [{ fichier: JS, de: '  return allocateLanes(n, date, startTime, duration, ignoreId, [...new Set((seedLanes || []).map(Number))].filter(isFree));', vers: '  const libres = []; for (let i = 1; i <= laneCount; i++) if (isFree(i)) libres.push(i);\n  return [...new Set([...(seedLanes || []).map(Number).filter(isFree), ...libres])].slice(0, n).sort((a, b) => a - b);' }] },
+  { nom: 'graine-ignoree', lettre: 'G1', scenarios: ['graine'], editions: [{ fichier: REGLE, de: '    const garde = (groupe) => groupe.filter((piste) => graine.includes(piste)).length;', vers: '    const garde = () => 0;' }] },
+  { nom: 'console-premiere-libre', lettre: 'G1', scenarios: ['graine'], editions: [{ fichier: JS, de: '  return allocateLanes(n, date, startTime, duration, ignoreId, libres(seedLanes), libres(fermes));', vers: '  const toutes = []; for (let i = 1; i <= laneCount; i++) if (isFree(i)) toutes.push(i);\n  return [...new Set([...libres(seedLanes), ...toutes])].slice(0, n).sort((a, b) => a - b);' }] },
 ];
 
 async function jouer(browser, noms) {

@@ -32520,7 +32520,7 @@ function getEditPrixEstime() {
   if (!extras.length) return estime;
   const total = Math.round((estime.total + sumExtras(extras)) * 100) / 100;
   const joueurs = Math.max(1, Number(state.editState.pax) || 1);
-  return { ...estime, total, lignes: [...estime.lignes, ...extras.map((x) => ({ nom: x.name || 'Extra', detail: '', montant: Number(x.price) || 0 }))], parPersonne: Math.round(total / joueurs) };
+  return { ...estime, total, lignes: [...estime.lignes, ...extras.map((x) => ({ nom: x.name || 'Extra', detail: '', montant: Number(x.price) || 0, ...(x.aPayer === true ? { aPayer: true } : {}) }))], parPersonne: Math.round(total / joueurs) };
 }
 
 function ensureEditProgram(r) {
@@ -33608,7 +33608,8 @@ function renderEditPrix(r) {
 // « Bowling 1h · 2 pistes · 78 € » explique pourquoi passer de 12 a 13
 // joueurs ajoute 39 EUR ; sans lui, le montant a l air arbitraire.
 function lignesDetailPrixHtml(estime) {
-  return estime.lignes.map(l => `<li><span>${escapeHtml(l.nom)}${l.detail ? ` <em>${escapeHtml(l.detail)}</em>` : ''}</span><b>${l.montant == null ? 'sur place' : `${Math.round((l.montant) * 100) / 100} ${signeMonnaie()}`}</b></li>`).join('');
+  // (une ligne a payer n a pas de montant : « À payer », jamais « 0 € »)
+  return estime.lignes.map(l => `<li><span>${escapeHtml(l.nom)}${l.detail ? ` <em>${escapeHtml(l.detail)}</em>` : ''}</span>${l.aPayer ? '<b class="pl-a-payer">À payer</b>' : `<b>${l.montant == null ? 'sur place' : `${Math.round((l.montant) * 100) / 100} ${signeMonnaie()}`}</b>`}</li>`).join('');
 }
 
 // NOURRITURE ET EXTRAS DANS L ONGLET MODIFIER (2026-10-27, Movsar : « faut

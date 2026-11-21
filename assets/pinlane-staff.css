@@ -20031,7 +20031,8 @@ body:is(.staff-mode, .admin-mode) .fx-modal .fx-historique > summary { display: 
   body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .gc-step { grid-template-columns: 24px 46px 40px minmax(0, 1fr); gap: 8px; }
   body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .gc-step-time { font-size: 17px; }
   body:is(.staff-mode, .admin-mode) .fx-modal .fz-photo { width: 40px; height: 30px; }
-  body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .gc-step :is(.gc-step-state, .gc-step-price) { grid-column: 4; }
+  /* (la pastille « À payer » se range sous le nom : la regle des cartes la fixait au premier rang, 2026-11-21) */
+  body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .gc-step :is(.gc-step-state, .gc-step-price) { grid-column: 4; grid-row: auto; justify-self: start; }
   body:is(.staff-mode, .admin-mode) .fx-modal .fz-montant { font-size: 36px; }
 }
 @media (prefers-reduced-motion: reduce) {

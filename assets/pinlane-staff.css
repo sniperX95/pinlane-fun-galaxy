@@ -9942,6 +9942,13 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv.rs .rs-porte.rs-illimite em span { font-size: 15px; font-weight: 600; line-height: 1.2; }
 .qb-modal.rv.rs .rs-porte.rs-illimite em small { font-size: 12px; font-weight: 400; line-height: 1.2; color: var(--muted); }
 .qb-modal.rv.rs .rs-porte.rs-illimite.is-on { background: var(--accent-soft); }
+/* SANS OFFRE (2026-11-21) : la porte de sa creation se range entre Formules et Sur mesure, encadree de bleu,
+   son nom et « à créer ici » l un sous l autre pour laisser a Formules sa ligne entiere ; une rangee de
+   plus faisait defiler la fenetre a 1366 x 768. */
+.qb-modal.rv.rs .rs-portes.is-trois { grid-template-columns: minmax(0, 1fr) auto auto; }
+.qb-modal.rv.rs .rs-porte.rs-illimite.is-a-creer { gap: 8px; padding: 0 10px 0 14px; }
+.qb-modal.rv.rs .rs-porte-2l { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.qb-modal.rv.rs .rs-porte.rs-illimite.is-a-creer .rs-porte-l { order: 0; flex: none; font-size: 12.5px; line-height: 1.2; }
 /* LA PAGE DE L ACCES ILLIMITE, UN SEUL BLOC (2026-11-20) : le nom et la phrase a gauche, le prix par
    joueur et le total a droite, puis les activites comprises en vraies photos, chacune son etiquette.
    Ce qui se joue une fois a heure fixe se lit plus fort que « à volonté ». */
@@ -9987,6 +9994,57 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 @media (prefers-reduced-motion: reduce) { :is(.qb-modal.rv.rs, #editAcces) :is(.rs-ill-t, .rs-ill-ph) { transition: none; } }
 /* (au telephone, quatre colonnes : le bowling et le laser cote a cote, puis les autres quatre par rangee) */
 @media (max-width: 600px) { :is(.qb-modal.rv.rs, #editAcces) .rs-ill-acts { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px 6px; } }
+/* L ACCES ILLIMITE CREE SUR PLACE (2026-11-21) : sans offre au catalogue, la page de la porte et Modifier
+   (#editAcces) le creent, cadre de bleu comme l acces. Le nom et ce qu il faut faire, le prix par joueur
+   a droite, la duree, les activites en tuiles, puis ce que lira le comptoir et le bouton, encadre (le
+   geste plein reste « Créer » la reservation ou « Enregistrer » le dossier). Sans le droit, la phrase
+   qui dit qui le cree tient dans un cadre gris. */
+:is(.qb-modal.rv.rs, #editAcces) .rs-ill-nv { box-sizing: border-box; display: grid; gap: 14px; width: 100%; margin: 4px 0 12px; padding: 14px 16px 16px; border-radius: 14px; box-shadow: inset 0 0 0 1.5px var(--accent); }
+:is(.qb-modal.rv.rs, #editAcces) .rs-ill-nv p { margin: 0; }
+:is(.qb-modal.rv.rs, #editAcces) .rs-ill-nv-t { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+:is(.qb-modal.rv.rs, #editAcces) .rs-ill-nv-n { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+:is(.qb-modal.rv.rs, #editAcces) .rs-ill-nv-n b { font-size: 17px; font-weight: 600; line-height: 1.25; color: var(--accent-strong); }
+:is(.qb-modal.rv.rs, #editAcces) .rs-ill-nv-n span { max-width: 460px; font-size: 14px; line-height: 1.4; color: var(--muted); }
+:is(.qb-modal.rv.rs, #editAcces) .rs-ill-nv-prix { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; cursor: text; }
+:is(.qb-modal.rv.rs, #editAcces) .rs-ill-nv-prix > span:first-child { font-size: 13px; font-weight: 500; line-height: 1.2; color: var(--muted); }
+:is(.qb-modal.rv.rs, #editAcces) .rs-ill-nv-champ { display: flex; align-items: center; gap: 6px; font-size: 15px; color: var(--text); }
+:is(.qb-modal.rv.rs, #editAcces) :is(.rs-ill-nv-champ input, .rs-ill-nv-autre) { box-sizing: border-box; width: 96px; height: 44px; margin: 0; padding: 0 12px; border: 1px solid var(--control-border, var(--line)); border-radius: 10px; background: var(--surface); box-shadow: none; outline: none; color: var(--text); font: inherit; font-size: 15px; }
+:is(.qb-modal.rv.rs, #editAcces) .rs-ill-nv-champ input { -moz-appearance: textfield; appearance: textfield; text-align: right; }
+:is(.qb-modal.rv.rs, #editAcces) .rs-ill-nv-champ input::-webkit-outer-spin-button, :is(.qb-modal.rv.rs, #editAcces) .rs-ill-nv-champ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+:is(.qb-modal.rv.rs, #editAcces) :is(.rs-ill-nv-champ input, .rs-ill-nv-autre):focus { border-color: var(--console-focus, var(--accent)); }
+:is(.qb-modal.rv.rs, #editAcces) .rs-ill-nv-autre { width: auto; min-width: 104px; cursor: pointer; }
+:is(.qb-modal.rv.rs, #editAcces) .rs-ill-nv-l { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; }
+:is(.qb-modal.rv.rs, #editAcces) .rs-ill-nv-l.is-acts { flex-wrap: nowrap; align-items: flex-start; }
+:is(.qb-modal.rv.rs, #editAcces) .rs-ill-nv-lbl { flex: none; width: 70px; font-size: 13px; font-weight: 500; line-height: 1.2; color: var(--muted); }
+:is(.qb-modal.rv.rs, #editAcces) .rs-ill-nv-l.is-acts .rs-ill-nv-lbl { padding-top: 8px; }
+:is(.qb-modal.rv.rs, #editAcces) .rs-ill-nv-l.is-acts .rs-ill-acts { flex: 1 1 auto; min-width: 0; }
+:is(.qb-modal.rv.rs, #editAcces) .rs-ill-nv-seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: 10px; background: var(--rs-touche, var(--subtle)); }
+:is(.qb-modal.rv.rs, #editAcces) .rs-ill-nv-seg button { height: 34px; padding: 0 14px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font: inherit; font-size: 14px; font-weight: 500; line-height: 1; white-space: nowrap; cursor: pointer; }
+:is(.qb-modal.rv.rs, #editAcces) .rs-ill-nv-seg button[aria-checked="true"] { background: var(--surface); color: var(--text); font-weight: 600; box-shadow: var(--shadow-sm), 0 0 0 1px var(--rs-ligne, var(--line)); cursor: default; }
+:is(.qb-modal.rv.rs, #editAcces) .rs-ill-nv-seg button:not([aria-checked="true"]):hover { color: var(--text); }
+:is(.qb-modal.rv.rs, #editAcces) .rs-ill-nv-ko { font-size: 13px; font-weight: 550; line-height: 1.35; color: var(--danger); }
+:is(.qb-modal.rv.rs, #editAcces) .rs-ill-nv-pied { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+:is(.qb-modal.rv.rs, #editAcces) .rs-ill-nv-dit { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+:is(.qb-modal.rv.rs, #editAcces) .rs-ill-nv-dit b { font-size: 14px; font-weight: 600; line-height: 1.35; color: var(--text); }
+:is(.qb-modal.rv.rs, #editAcces) .rs-ill-nv-dit small { font-size: 12.5px; line-height: 1.35; color: var(--muted); }
+:is(.qb-modal.rv.rs, #editAcces) .rs-ill-nv-creer { flex: none; height: 44px; padding: 0 18px; border: 1px solid var(--control-border, var(--line)); border-radius: 10px; background: var(--surface); color: var(--text); font: inherit; font-size: 15px; font-weight: 600; line-height: 1; white-space: nowrap; cursor: pointer; }
+:is(.qb-modal.rv.rs, #editAcces) .rs-ill-nv-creer:disabled { color: var(--muted); cursor: default; }
+:is(.qb-modal.rv.rs, #editAcces) :is(.rs-ill-nv-seg button, .rs-ill-nv-creer):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+:is(.qb-modal.rv.rs, #editAcces) .rs-ill-nv-mot { box-sizing: border-box; width: 100%; margin: 4px 0 12px; padding: 14px 16px; border-radius: 14px; box-shadow: inset 0 0 0 1px var(--rs-ligne, var(--line)); font-size: 15px; line-height: 1.45; color: var(--text); }
+/* (la colonne de Reserver ecarte ses rangees pour remplir sa hauteur : sous la carte ou la phrase, plus
+   courtes qu elle, la place libre va en bas, les joueurs et le jour restent serres en haut ; l id
+   l emporte sur celui de :is(…, #editAcces)) */
+#quickBookOverlay .qb-modal.rv.rs :is(.rs-ill-nv, .rs-ill-nv-mot) { margin-bottom: auto; }
+@media (hover: hover) { :is(.qb-modal.rv.rs, #editAcces) .rs-ill-nv-creer:not(:disabled):hover { background: var(--rs-touche, var(--subtle)); } }
+@media (pointer: coarse) { :is(.qb-modal.rv.rs, #editAcces) .rs-ill-nv-seg button { height: 44px; } }
+/* (au telephone : le prix passe sous le nom, chaque rangee sous son mot, le bouton sur toute la largeur) */
+@media (max-width: 600px) {
+  :is(.qb-modal.rv.rs, #editAcces) :is(.rs-ill-nv-t, .rs-ill-nv-pied) { flex-direction: column; align-items: stretch; }
+  :is(.qb-modal.rv.rs, #editAcces) .rs-ill-nv-prix { align-items: flex-start; }
+  :is(.qb-modal.rv.rs, #editAcces) .rs-ill-nv-l.is-acts { flex-direction: column; align-items: stretch; }
+  :is(.qb-modal.rv.rs, #editAcces) .rs-ill-nv-l.is-acts .rs-ill-nv-lbl { padding-top: 0; }
+  :is(.qb-modal.rv.rs, #editAcces) .rs-ill-nv-creer { width: 100%; }
+}
 /* (l acces illimite au ticket n a pas d icone : la case reste, vide, pour aligner les noms) */
 .qb-modal.rv.rs .rs-tk-i:empty { visibility: hidden; }
 
@@ -10341,7 +10399,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
   /* (a l etroit, « Ajouter toutes les activités » passe sous les tuiles) */
   .qb-modal.rv.rs .rs-petits-l { flex-direction: column; align-items: stretch; }
   .qb-modal.rv.rs .rs-petits-l > .rs-toutes { align-self: flex-start; }
-  .qb-modal.rv.rs .rs-portes, .qb-modal.rv.rs .rs-fs-g { grid-template-columns: minmax(0, 1fr); }
+  .qb-modal.rv.rs .rs-portes, .qb-modal.rv.rs .rs-fs-g, .qb-modal.rv.rs .rs-portes.is-trois { grid-template-columns: minmax(0, 1fr); }
   .qb-modal.rv.rs .rs-porte-l { white-space: normal; }
   /* (l acces illimite a l etroit : le nom et le prix sur une ligne, sa promesse dessous) */
   .qb-modal.rv.rs .rs-porte.rs-illimite { flex-wrap: wrap; row-gap: 2px; padding: 10px 14px; }

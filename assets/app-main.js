@@ -13484,7 +13484,7 @@ function getStaffTerrainTiming(item, phase, board) {
 // qui a deja paye (rien a encaisser en fin de partie).
 function getStaffTerrainStatus(reservation, phase, item = null, board = null) {
   const upcoming = isUpcomingReservationStatus(reservation.status || 'pending');
-  if (phase === 'late') return { label: item && board ? `En retard · ${formatStaffTerrainDelay(board.now - heurePrevueDuRetard(item))}` : 'En retard', tone: 'late' };
+  if (phase === 'late') return { label: item && board ? `En retard · ${dureeDuRetard(retardDuMoment(reservation, { late: true, item, now: board.now }).minutes)}` : 'En retard', tone: 'late' };
   if (phase === 'closing' && upcoming && !groupeAJoue(reservation)) return { label: 'Non pointé', tone: 'unmarked' };
   if (isReservationAwaitingReview(reservation)) return { label: 'À vérifier', tone: 'review' };
   if (reservation.status === 'paid') return { label: 'Payé', tone: 'paid' };
@@ -26477,6 +26477,16 @@ function texteDuRetard(rt, maintenant) {
   const n = minutesDuRetard(rt, maintenant);
   return rt.etat === 'arrive' ? `Arrivé avec ${dureeDuRetard(n)} de retard` : `En retard · ${dureeDuRetard(n)}`;
 }
+// UN SEUL NOMBRE DE MINUTES DE RETARD SUR TOUT L ECRAN (2026-11-21) : celui de la pastille, du
+// bandeau de la fiche et de la note du serveur (retardDuGroupe, minutesDuRetard), avec son heure
+// prevue. L alerte de la carte, le Terrain et l etape d arrivee de la fiche le lisent ici : comptes
+// depuis la table d anniversaire mise en place avant le groupe, ils disaient « Attendu à 14:50, il
+// y a 31 min » sous « En retard de 21 min · prévu à 15:00 » ; un retard annonce par le groupe
+// (20 min) y devenait les 8 min passees depuis son heure (scripts/retard-deux-copies-check.js).
+function retardDuMoment(r, moment) {
+  const rt = retardDuGroupe(r, moment);
+  return { prevu: rt && Number.isFinite(rt.prevu) ? rt.prevu : heurePrevueDuRetard(moment.item), minutes: minutesDuRetard(rt, maintenantDuDossier(r)) };
+}
 
 // LA FENETRE DU RETARD (2026-11-21, lib/retard-arrivee.js). Elle dit le retard, puis la nouvelle
 // heure de chaque activite a venir, jugee par le serveur sans rien ecrire (simulerRetard, le
@@ -29472,11 +29482,11 @@ function renderGroupeActions(r, moment) {
 // LE BANDEAU DU MOMENT : ce qui ne va pas, en haut de la carte, en mots.
 function renderGroupeAlerte(r, moment) {
   if (moment && moment.late) {
-    const depuis = formatStaffTerrainDelay(moment.now - moment.item.start);
+    const retard = retardDuMoment(r, moment);
     // « Appeler » vit avec les gestes de la carte (renderGroupeActions), sur la
     // meme ligne qu « Arrivé » : dans le bandeau il passait a la ligne et
     // allongeait chaque carte en retard (2026-10-05).
-    return `<div class="gc-alert is-late"><b>En retard · ${escapeHtml(depuis)}</b><span>Attendu à ${formatClockDisplay(moment.item.start)}, pas encore arrivé</span></div>`;
+    return `<div class="gc-alert is-late"><b>En retard · ${escapeHtml(dureeDuRetard(retard.minutes))}</b><span>Attendu à ${formatClockDisplay(retard.prevu)}, pas encore arrivé</span></div>`;
   }
   if (moment && moment.etat === 'closing' && isUpcomingReservationStatus(r.status) && !groupeAJoue(r)) {
     return '<div class="gc-alert is-unmarked"><b>Non pointé</b><span>Fini sans être pointé arrivé : peut-être pas venu</span></div>';
@@ -30711,8 +30721,12 @@ function fichePhraseMoment(r, moment, droits = ficheDroits()) {
     const texte = getReservationValidationTexte(r);
     return `${texte.raison ? `${texte.raison} ` : ''}Pas encore confirmée au client.${droits.valider ? '' : ' Un responsable doit la valider.'}`;
   }
-  if (moment && moment.late) return `Attendu à ${formatClockDisplay(moment.item.start)}, il y a ${formatStaffTerrainDelay(moment.now - moment.item.start)}`;
-  if (groupeEnRetardAuPlanning(r, moment)) return `Attendu à ${formatClockDisplay(moment.item.start)}, jamais pointé`;
+  // L ARRIVEE EN RETARD DIT UNE HEURE ET DES MINUTES QUI VONT ENSEMBLE (2026-11-21) : l heure prevue
+  // du retard, celle du bandeau et de la pastille (retardDuMoment), et le temps passe depuis elle ;
+  // jamais l arrivee conseillee (14:50) avec les minutes d une autre heure.
+  const prevuDuRetard = groupeEnRetardAuPlanning(r, moment) ? retardDuMoment(r, moment).prevu : null;
+  if (moment && moment.late) return `Attendu à ${formatClockDisplay(prevuDuRetard)}, il y a ${dureeDuRetard(Math.max(1, Math.round((moment.now - prevuDuRetard) * 60)))}`;
+  if (groupeEnRetardAuPlanning(r, moment)) return `Attendu à ${formatClockDisplay(prevuDuRetard)}, jamais pointé`;
   if (r.status === 'paid') {
     if (moment && moment.etat === 'done') return `Visite terminée à ${formatClockDisplay(span.end)}`;
     return aujourdhui && span.end <= currentTimeDecimal()
@@ -30723,6 +30737,12 @@ function fichePhraseMoment(r, moment, droits = ficheDroits()) {
   if (moment && moment.etat === 'closing') return `Visite finie à ${formatClockDisplay(span.end)}`;
   if (aujourdhui) {
     const dans = span.start - currentTimeDecimal();
+    // L ARRIVEE CONSEILLEE PASSEE, LE DEBUT PAS ENCORE (2026-11-21) : la table d anniversaire tenue
+    // 10 min avant le debut (l en-tete : « Arrivée 14:50, début 15:00 »). Entre les deux, ni rouge, ni
+    // minutes, ni « retard » : le groupe est attendu, ses activites commencent a l heure d ou un
+    // retard se compterait (premiereHeureDuGroupe).
+    const debut = premiereHeureDuGroupe(r);
+    if (dans <= 0 && Number.isFinite(debut) && debut > span.start + 1 / 120) return `Attendu maintenant, début à ${formatClockDisplay(debut)}`;
     return dans <= 5 / 60 ? `Attendu maintenant, à ${formatClockDisplay(span.start)}` : `Arrive dans ${formatStaffTerrainDelay(dans)}, à ${formatClockDisplay(span.start)}`;
   }
   if (!r.date) return '';
@@ -30940,7 +30960,8 @@ function ficheArrivee(r, moment, droits) {
   const pax = Math.trunc(Number(r.pax) || 0);
   const enRetard = groupeEnRetardAuPlanning(r, moment);
   const suivant = ficheGesteSuivant(r, moment) === 'arrive';
-  const attendu = `Attendu à ${formatClockDisplay(span.start)}`;
+  // (en retard, l heure du retard, celle du bandeau et de la carte, jamais l arrivee conseillee)
+  const attendu = `Attendu à ${formatClockDisplay(enRetard ? retardDuMoment(r, moment).prevu : span.start)}`;
   // La demande a verifier dit sa raison dans le bandeau : ici, l heure seule.
   let phrase = isReservationAwaitingReview(r) ? attendu : (fichePhraseMoment(r, moment, droits) || attendu);
   if (!arrive && !/\d:\d\d/.test(phrase)) phrase = `${phrase}, ${attendu.charAt(0).toLowerCase()}${attendu.slice(1)}`;

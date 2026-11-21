@@ -180,8 +180,11 @@ function lireFiche({ nom, contact }) {
     danger,
     warning,
     appel: Boolean(m.querySelector('.fz-bandeau a.fx-appel[href^="tel:"], .fz-arrivee a.fx-appel[href^="tel:"]')),
-    retard: mo && mo.late ? Math.max(1, Math.round((mo.now - mo.item.start) * 60)) : 0,
-    attendu: mo && mo.item ? formatClockDisplay(mo.item.start) : '',
+    // (en retard, l heure prevue du retard, celle du bandeau et de la pastille, et les minutes depuis
+    // elle ; sinon l arrivee conseillee, et entre elle et le debut, « Attendu maintenant, début à »)
+    retard: mo && mo.late ? Math.max(1, Math.round((mo.now - retardDuMoment(r, mo).prevu) * 60)) : 0,
+    attendu: mo && mo.item ? formatClockDisplay(groupeEnRetardAuPlanning(r, mo) ? retardDuMoment(r, mo).prevu : mo.item.start) : '',
+    debutApres: mo && mo.item && !groupeEnRetardAuPlanning(r, mo) && r.date === todayStr() && mo.now >= mo.item.start && premiereHeureDuGroupe(r) > mo.item.start + 1 / 120 ? formatClockDisplay(premiereHeureDuGroupe(r)) : '',
     fin: mo && mo.item ? formatClockDisplay(mo.item.end) : '',
     telephone: Boolean(r.phone),
     argent: ligne(m.querySelector('.fz-caisse .pos-act-money')),
@@ -312,7 +315,7 @@ function juger(f, label, appareil) {
   const attendu = {
     'Sur place': new RegExp(`^Fin prévue à ${f.fin}$`),
     'À clôturer': new RegExp(`^Visite finie à ${f.fin}`),
-    'À venir': new RegExp(`^(Arrive dans .+|Attendu maintenant), à ${f.attendu}$`),
+    'À venir': f.debutApres ? new RegExp(`^Attendu maintenant, début à ${f.debutApres}$`) : new RegExp(`^(Arrive dans .+|Attendu maintenant), à ${f.attendu}$`),
     'En retard': new RegExp(`^Attendu à ${f.attendu}, (il y a (${f.retard} min|\\d+ h( \\d\\d)?)|jamais pointé)$`),
     'À vérifier': /Pas encore confirmée au client\./,
   }[f.pastille];
@@ -420,7 +423,7 @@ const MUTATIONS = [
   { nom: 'occasion-en-pastille', lettre: 'T2', scenarios: ORDI, editions: [{ fichier: CSS, de: '.fx-modal .fx-etiquette { display: inline; padding: 0; border-radius: 0; background: none;', vers: '.fx-modal .fx-etiquette { display: inline; padding: 3px 8px; border-radius: 6px; background: var(--subtle);' }] },
   { nom: 'pastille-redite', lettre: 'E1', scenarios: ORDI, editions: [{ fichier: JS, de: "      : `Fin prévue à ${formatClockDisplay(span.end)}`;", vers: "      : `Sur place, fin prévue à ${formatClockDisplay(span.end)}`;" }] },
   { nom: 'arrivee-redit-la-pastille', lettre: 'E1', scenarios: ORDI, editions: [{ fichier: JS, de: "<b>${arrive ? 'Groupe arrivé' : 'Arrivée du groupe'}</b>", vers: "<b>${arrive ? 'Sur place' : 'À venir, en retard'}</b>" }] },
-  { nom: 'retard-sans-minutes', lettre: 'E2', scenarios: ORDI, editions: [{ fichier: JS, de: '  if (moment && moment.late) return `Attendu à ${formatClockDisplay(moment.item.start)}, il y a ${formatStaffTerrainDelay(moment.now - moment.item.start)}`;', vers: "  if (moment && moment.late) return 'Pas encore arrivé';" }] },
+  { nom: 'retard-sans-minutes', lettre: 'E2', scenarios: ORDI, editions: [{ fichier: JS, de: '  if (moment && moment.late) return `Attendu à ${formatClockDisplay(prevuDuRetard)}, il y a ${dureeDuRetard(Math.max(1, Math.round((moment.now - prevuDuRetard) * 60)))}`;', vers: "  if (moment && moment.late) return 'Pas encore arrivé';" }] },
   { nom: 'retard-sans-couleur', lettre: 'E3', scenarios: ORDI, editions: [{ fichier: CSS, de: '.fx-modal .fz-arrivee-texte .fx-moment.is-retard { font-weight: 650; color: var(--danger); }', vers: '.fx-modal .fz-arrivee-texte .fx-moment.is-retard { font-weight: 650; }' }] },
   { nom: 'appel-perdu', lettre: 'E3', scenarios: ORDI, editions: [{ fichier: JS, de: "${enRetard ? ficheAppeler(r) : ''}${compte}${pasVenu}</div>`;", vers: '${compte}${pasVenu}</div>`;' }] },
   { nom: 'paye-dans-l-addition', lettre: 'A1', scenarios: ORDI, editions: [{ fichier: JS, de: '<dl class="gc-bill-lines">${addition.lignes.map(', vers: '<dl class="gc-bill-lines"><div><dt>${paid ? \'Payé\' : \'À encaisser\'}</dt><dd></dd></div>${addition.lignes.map(' }] },

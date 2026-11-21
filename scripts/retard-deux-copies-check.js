@@ -20,6 +20,15 @@
 // Trouve a sa premiere passe : la console comptait le retard depuis la table d anniversaire mise en
 // place avant le groupe (« En retard · 1 min » a 14:55 pour un groupe attendu a 15:00, que le serveur
 // ne notait pas) ; elle compte depuis l heure du groupe (heurePrevueDuRetard).
+// UN SEUL NOMBRE SUR TOUT L ECRAN, CELUI DU SERVEUR (2026-11-21, la suite). Pour chaque cas en retard,
+// l alerte de la carte (« En retard · 5 min », « Attendu à 15:00, pas encore arrivé »), l etape
+// d arrivee de la fiche (« Attendu à 15:00, il y a 5 min ») et le Terrain disent l heure et les
+// minutes notees par le serveur, comme la pastille ; hors retard, aucun ne dit « retard » ni « il y
+// a ». Un groupe accueilli avant son debut (la table d anniversaire a 14:50, le debut a 15:00) :
+// « Arrive dans 10 min, à 14:50 » avant l arrivee conseillee, « Attendu maintenant, début à 15:00 »
+// entre elle et le seuil. [A] LE RETARD ANNONCE : le groupe a appele (« 20 min », note, heures
+// gardees) ; a 15:08, la pastille, la carte et le Terrain disent 20 min (le serveur n en notera pas
+// d autre a l arrivee), l etape « Attendu à 15:00, il y a 8 min ».
 // La console vraie (scripts/planning-v3-fixtures.js, fuseau Europe/Brussels), l heure posee cas
 // par cas ; le serveur, sa vraie fonction, a la meme heure (son horloge reglee). Les dossiers sont
 // ceux de la journee « pic », passes par le vrai moteur, puis deplaces a l heure du cas.
@@ -90,11 +99,12 @@ const SACHA = 1604; // F1 : accueil 15:20, bowling 15:30, arcades 16:35, laser 1
 const MANON = 1618; // laser 15:30
 const CAMILLE = 1603; // F7 : table 15:20, plaine 15:30, arcades en credits
 
-// { lettre, nom, r, instant, seuil (5 par defaut), attendu: minutes ou null }
+// { lettre, nom, r, instant, seuil (5 par defaut), attendu: minutes ou null, etape: la phrase de
+// l etape d arrivee attendue mot pour mot, quand le cas la fixe }
 const CAS = [];
-const cas = (lettre, nom, r, instant, attendu, seuil = 5) => CAS.push({ lettre, nom, r, instant, attendu, seuil });
-// [S] le seuil, sur un bowling de 15:00.
-[[0, null], [1, null], [4, null], [5, 5], [6, 6], [12, 12]].forEach(([d, a]) => cas('S', `bowling 15:00, ${d} min apres, seuil 5`, dossier(CLARA, { date: HIVER }), bruxelles(HIVER, hm(900 + d)), a));
+const cas = (lettre, nom, r, instant, attendu, seuil = 5, etape = null) => CAS.push({ lettre, nom, r, instant, attendu, seuil, etape });
+// [S] le seuil, sur un bowling de 15:00 (sans accueil avant : l etape garde son heure).
+[[0, null], [1, null], [4, null], [5, 5], [6, 6], [12, 12]].forEach(([d, a]) => cas('S', `bowling 15:00, ${d} min apres, seuil 5`, dossier(CLARA, { date: HIVER }), bruxelles(HIVER, hm(900 + d)), a, 5, a === null ? 'Attendu maintenant, à 15:00' : null));
 [[9, null], [10, 10], [11, 11]].forEach(([d, a]) => cas('S', `bowling 15:00, ${d} min apres, seuil 10 regle au centre`, dossier(CLARA, { date: HIVER }), bruxelles(HIVER, hm(900 + d)), a, 10));
 [[-1, null], [0, 1], [3, 3]].forEach(([d, a]) => cas('S', `bowling 15:00, ${d} min, seuil 0 (des la minute pile)`, dossier(CLARA, { date: HIVER }), bruxelles(HIVER, hm(900 + d)), a, 0));
 // [E] l etat du groupe, 12 min apres.
@@ -102,10 +112,16 @@ cas('E', 'deja paye', dossier(CLARA, { date: HIVER, status: 'paid', extra: { pay
 cas('E', 'deja pointe arrive', dossier(CLARA, { date: HIVER, status: 'arrived' }), bruxelles(HIVER, '15:12'), null);
 cas('E', 'note absent', dossier(CLARA, { date: HIVER, extra: { absentAt: `${HIVER}T14:10:00.000Z` } }), bruxelles(HIVER, '15:12'), null);
 cas('E', 'son bowling deja coche', dossier(CLARA, { date: HIVER, extra: { activityProgress: { 'bowling-1': { done: true, doneAt: `${HIVER}T14:05:00.000Z`, by: 'Rachel' } } } }), bruxelles(HIVER, '15:12'), null);
-// [F] les formules, autour de leur heure prevue.
-[[4, null], [5, 5], [12, 12]].forEach(([d, a]) => cas('F', `F1 (accueil 15:20, bowling 15:30), ${d} min apres 15:30`, dossier(SACHA, { date: HIVER }), bruxelles(HIVER, hm(930 + d)), a));
-[[-6, null], [-5, null], [4, null], [5, 5], [12, 12]].forEach(([d, a]) => cas('F', `F8 (table 14:50, arrivee 15:00), ${d} min autour de 15:00`, dossier(HUGO, { date: HIVER }), bruxelles(HIVER, hm(900 + d)), a));
-[[-5, null], [12, 12]].forEach(([d, a]) => cas('F', `F7 (table 15:20, arrivee 15:30, arcades en credits), ${d} min autour de 15:30`, dossier(CAMILLE, { date: HIVER }), bruxelles(HIVER, hm(930 + d)), a));
+// [F] les formules, autour de leur heure prevue. L etape d arrivee d un groupe accueilli avant son
+// debut : « Arrive dans » avant l arrivee conseillee, la phrase neutre entre elle et le seuil.
+// (Sacha est une demande a verifier : son etape dit l heure seule ; son accueil de 15:20 n ouvre pas
+// sa visite, qui commence au bowling)
+[[4, null, 'Attendu à 15:30'], [5, 5], [12, 12]].forEach(([d, a, etape]) => cas('F', `F1 (accueil 15:20, bowling 15:30), ${d} min apres 15:30`, dossier(SACHA, { date: HIVER }), bruxelles(HIVER, hm(930 + d)), a, 5, etape));
+[[-20, null, 'Arrive dans 10 min, à 14:50'], [-6, null, 'Attendu maintenant, début à 15:00'], [-5, null, 'Attendu maintenant, début à 15:00'], [4, null, 'Attendu maintenant, début à 15:00'], [5, 5], [12, 12]].forEach(([d, a, etape]) => cas('F', `F8 (table 14:50, arrivee 15:00), ${d} min autour de 15:00`, dossier(HUGO, { date: HIVER }), bruxelles(HIVER, hm(900 + d)), a, 5, etape));
+[[-5, null, 'Attendu maintenant, début à 15:30'], [12, 12]].forEach(([d, a, etape]) => cas('F', `F7 (table 15:20, arrivee 15:30, arcades en credits), ${d} min autour de 15:30`, dossier(CAMILLE, { date: HIVER }), bruxelles(HIVER, hm(930 + d)), a, 5, etape));
+// (une demande a verifier : l etape dit l heure seule, sa raison est dans le bandeau ; en retard,
+// l heure du retard, pas l arrivee conseillee)
+cas('F', 'F8 en demande a verifier (table 14:50, arrivee 15:00), 12 min apres 15:00', dossier(HUGO, { date: HIVER, extra: { validationStatus: 'staff_review' } }), bruxelles(HIVER, '15:12'), 12);
 [[4, null], [5, 5]].forEach(([d, a]) => cas('F', `laser seul 15:30, ${d} min apres`, dossier(MANON, { date: HIVER }), bruxelles(HIVER, hm(930 + d)), a));
 // [M] minuit : un bowling de 22:00 (la veille au soir), un de 00:15 (le lendemain matin).
 cas('M', 'bowling 22:00, 22:12 le soir meme', dossier(CLARA, { date: HIVER, decalage: 420 }), bruxelles(HIVER, '22:12'), 12);
@@ -135,23 +151,38 @@ function chargerServeur(editions) {
   m._compile(src, fichier);
   return m.exports;
 }
+// La note du serveur ({ minutes, de }), ou null.
 function verdictServeur(R, c) {
   R.__horloge.instant = () => new Date(c.instant);
   // (le seuil par defaut, celui que le serveur lit lui-meme ; un autre, comme le centre le regle)
-  const note = R.retardALArrivee(JSON.parse(JSON.stringify(c.r)), { status: 'arrived', ...(c.seuil !== 5 ? { seuil: c.seuil } : {}) });
-  return note ? note.minutes : null;
+  return R.retardALArrivee(JSON.parse(JSON.stringify(c.r)), { status: 'arrived', ...(c.seuil !== 5 ? { seuil: c.seuil } : {}) });
 }
-// La console : la page, a l heure du cas, le seuil du centre pose comme l ecran Etablissement.
+// La console : la page, a l heure du cas, le seuil du centre pose comme l ecran Etablissement. Son
+// verdict et ses minutes, puis ce que chaque ecran en dit : la pastille, l alerte de la carte,
+// l etape d arrivee de la fiche, le Terrain.
 async function verdictConsole(page, c) {
   await page.clock.setFixedTime(new Date(c.instant));
   return page.evaluate(({ r, seuil }) => {
-    /* global staffCenterConfigCache, getCurrentStaffCenterId, getStaffReservationMoments, retardDuGroupe, minutesDuRetard, maintenantDuDossier */
+    /* global staffCenterConfigCache, getCurrentStaffCenterId, getStaffReservationMoments, retardDuGroupe, minutesDuRetard, maintenantDuDossier, texteDuRetard, renderGroupeAlerte, ficheArrivee, ficheDroits, getStaffTerrainStatus, isReservationAwaitingReview */
     const centre = staffCenterConfigCache && Array.isArray(staffCenterConfigCache.centers) ? staffCenterConfigCache.centers.find((x) => x.id === getCurrentStaffCenterId()) : null;
     if (centre) centre.accueil = Object.assign({}, centre.accueil || {}, { lateThresholdMinutes: seuil });
     state.staffAccueil = { lateThresholdMinutes: seuil };
     const m = getStaffReservationMoments([r], r.date).get(String(r.id));
-    if (!m || !m.late) return null;
-    return minutesDuRetard(retardDuGroupe(r, m), maintenantDuDossier(r));
+    const html = (s) => { const d = document.createElement('div'); d.innerHTML = s || ''; return d; };
+    const lire = (el) => (el ? el.textContent.replace(/\s+/g, ' ').trim() : '');
+    const alerte = html(m ? renderGroupeAlerte(r, m) : '');
+    const etape = html(m ? ficheArrivee(r, m, ficheDroits(r)) : '');
+    const rt = m ? retardDuGroupe(r, m) : null;
+    return {
+      minutes: m && m.late ? minutesDuRetard(rt, maintenantDuDossier(r)) : null,
+      pastille: rt ? texteDuRetard(rt, maintenantDuDossier(r)) : '',
+      alerteTitre: lire(alerte.querySelector('.gc-alert b')),
+      alerteTexte: lire(alerte.querySelector('.gc-alert span')),
+      alerte: lire(alerte),
+      etape: lire(etape.querySelector('.fx-moment')),
+      terrain: m && m.late ? getStaffTerrainStatus(r, 'late', m.item, { now: m.now }).label : '',
+      revue: isReservationAwaitingReview(r),
+    };
   }, { r: c.r, seuil: c.seuil });
 }
 
@@ -169,11 +200,32 @@ async function jouer(browser) {
   try {
     const dit = (n) => (n === null ? 'pas en retard' : `${n} min`);
     for (const c of CAS) {
-      const serveur = verdictServeur(R, c);
-      const console_ = await verdictConsole(page, c);
-      ok(serveur === console_ && console_ === c.attendu,
-        `[${c.lettre}] ${c.nom} : la console et le serveur disent ${dit(c.attendu)}`, { console: dit(console_), serveur: dit(serveur), attendu: dit(c.attendu), instant: c.instant });
+      const note = verdictServeur(R, c);
+      const serveur = note ? note.minutes : null;
+      const vu = await verdictConsole(page, c);
+      ok(serveur === vu.minutes && vu.minutes === c.attendu,
+        `[${c.lettre}] ${c.nom} : la console et le serveur disent ${dit(c.attendu)}`, { console: dit(vu.minutes), serveur: dit(serveur), attendu: dit(c.attendu), instant: c.instant });
+      if (note && c.attendu !== null) {
+        // En retard : chaque ecran dit l heure et les minutes de la note du serveur.
+        const n = `${note.minutes} min`;
+        ok(vu.pastille === `En retard · ${n}` && vu.alerteTitre === `En retard · ${n}` && vu.terrain === `En retard · ${n}` && vu.alerteTexte === `Attendu à ${note.de}, pas encore arrivé`,
+          `[${c.lettre}] ${c.nom} : la pastille, la carte et le Terrain disent « En retard · ${n} », attendu à ${note.de}`, vu);
+        const etape = vu.revue ? `Attendu à ${note.de}` : `Attendu à ${note.de}, il y a ${n}`;
+        ok(vu.etape === etape, `[${c.lettre}] ${c.nom} : l etape d arrivee dit « ${etape} »`, vu.etape);
+      } else {
+        ok(!/retard/i.test(vu.alerte) && !/retard|il y a/i.test(vu.etape) && !vu.terrain && !vu.pastille,
+          `[${c.lettre}] ${c.nom} : ni la pastille, ni la carte, ni l etape, ni le Terrain ne parlent de retard`, vu);
+      }
+      if (c.etape) ok(vu.etape === c.etape, `[${c.lettre}] ${c.nom} : l etape d arrivee dit « ${c.etape} »`, vu.etape);
     }
+    // [A] le retard annonce par le groupe, note a 14:58, les heures gardees ; 15:08.
+    const annonce = dossier(CLARA, { date: HIVER });
+    annonce.opsPlan = { ...annonce.opsPlan, delayFlag: { minutes: 20, from: '15:00', to: '', origin: null, flaggedAt: `${HIVER}T13:58:00.000Z`, cleared: false } };
+    const ca = { r: annonce, instant: bruxelles(HIVER, '15:08'), seuil: 5 };
+    const va = await verdictConsole(page, ca);
+    ok(verdictServeur(R, ca) === null && va.pastille === 'En retard · 20 min' && va.alerteTitre === 'En retard · 20 min' && va.terrain === 'En retard · 20 min' && va.alerteTexte === 'Attendu à 15:00, pas encore arrivé',
+      '[A] retard annonce de 20 min, 15:08 : la pastille, la carte et le Terrain disent 20 min, le nombre note (le serveur n en note pas d autre)', va);
+    ok(va.etape === 'Attendu à 15:00, il y a 8 min', '[A] retard annonce, 15:08 : l etape dit « Attendu à 15:00, il y a 8 min »', va.etape);
     const enRetard = CAS.filter((c) => c.attendu !== null).length;
     ok(enRetard >= 10 && CAS.length - enRetard >= 10, '[K] la matrice compte des deux verdicts', { enRetard, total: CAS.length });
     ok(erreurs.length === 0, '[J] aucune erreur JS', erreurs);
@@ -191,6 +243,20 @@ const MUTATIONS = [
   { nom: 'console-depuis-la-table', editions: [{ fichier: JS, de: '    else if (board.now - heurePrevueDuRetard(item) >= seuil - 1e-9) late.push(item);', vers: '    else if (board.now - item.start >= seuil - 1e-9) late.push(item);' }] },
   // La console qui met en retard un groupe deja paye ou deja pointe (son statut n est plus lu).
   { nom: 'console-paye-en-retard', editions: [{ fichier: JS, de: "    if (!isUpcomingReservationStatus(item.reservation.status || 'pending') || item.start > board.now || groupeAJoue(item.reservation)) present.push(item);", vers: '    if (item.start > board.now || groupeAJoue(item.reservation)) present.push(item);' }] },
+  // L alerte de la carte qui compte depuis la table (avant le 2026-11-21 : « En retard · 31 min,
+  // Attendu à 14:50 » quand la pastille disait 21 min, prevu 15:00).
+  { nom: 'alerte-depuis-la-table', editions: [{ fichier: JS, de: '    return `<div class="gc-alert is-late"><b>En retard · ${escapeHtml(dureeDuRetard(retard.minutes))}</b><span>Attendu à ${formatClockDisplay(retard.prevu)}, pas encore arrivé</span></div>`;', vers: '    return `<div class="gc-alert is-late"><b>En retard · ${escapeHtml(formatStaffTerrainDelay(moment.now - moment.item.start))}</b><span>Attendu à ${formatClockDisplay(moment.item.start)}, pas encore arrivé</span></div>`;' }] },
+  // L etape d arrivee de la fiche qui compte depuis la table (« Attendu à 14:50, il y a 31 min »).
+  { nom: 'etape-depuis-la-table', editions: [{ fichier: JS, de: '  if (moment && moment.late) return `Attendu à ${formatClockDisplay(prevuDuRetard)}, il y a ${dureeDuRetard(Math.max(1, Math.round((moment.now - prevuDuRetard) * 60)))}`;', vers: '  if (moment && moment.late) return `Attendu à ${formatClockDisplay(moment.item.start)}, il y a ${formatStaffTerrainDelay(moment.now - moment.item.start)}`;' }] },
+  // L etape d une demande a verifier qui garde l arrivee conseillee en retard (« Attendu à 14:50 »).
+  { nom: 'etape-a-verifier-depuis-la-table', editions: [{ fichier: JS, de: '  const attendu = `Attendu à ${formatClockDisplay(enRetard ? retardDuMoment(r, moment).prevu : span.start)}`;', vers: '  const attendu = `Attendu à ${formatClockDisplay(span.start)}`;' }] },
+  // L etape qui garde l arrivee conseillee passee jusqu au retard (« Attendu maintenant, à 14:50 » a 14:55).
+  { nom: 'etape-entre-deux-heures', editions: [{ fichier: JS, de: '    if (dans <= 0 && Number.isFinite(debut) && debut > span.start + 1 / 120) return `Attendu maintenant, début à ${formatClockDisplay(debut)}`;\n', vers: '' }] },
+  // Le Terrain qui compte depuis la table.
+  { nom: 'terrain-depuis-la-table', editions: [{ fichier: JS, de: '`En retard · ${dureeDuRetard(retardDuMoment(reservation, { late: true, item, now: board.now }).minutes)}`', vers: '`En retard · ${formatStaffTerrainDelay(board.now - item.start)}`' }] },
+  // La carte, puis le Terrain, qui oublient le retard annonce : les minutes passees seules.
+  { nom: 'alerte-sans-l-annonce', editions: [{ fichier: JS, de: '<b>En retard · ${escapeHtml(dureeDuRetard(retard.minutes))}</b>', vers: '<b>En retard · ${escapeHtml(formatStaffTerrainDelay(moment.now - retard.prevu))}</b>' }] },
+  { nom: 'terrain-sans-l-annonce', editions: [{ fichier: JS, de: '`En retard · ${dureeDuRetard(retardDuMoment(reservation, { late: true, item, now: board.now }).minutes)}`', vers: '`En retard · ${formatStaffTerrainDelay(board.now - heurePrevueDuRetard(item))}`' }] },
   // Le serveur qui attend une minute de plus que le seuil.
   { nom: 'serveur-seuil-depasse', editions: [{ fichier: LIB, serveur: true, de: '  if (minutes < seuil) return null;', vers: '  if (minutes <= seuil) return null;' }] },
   // Le serveur a l heure d UTC.
@@ -218,7 +284,7 @@ async function main() {
         try { await jouer(browser); } catch (e) { rouges.push(`crash ${e.message}`); }
         silence = false;
         mutation = null;
-        const vus = rouges.slice(garde).filter((l) => /^\[[SEFMZ]\]/.test(l));
+        const vus = rouges.slice(garde).filter((l) => /^\[[SEFMZA]\]/.test(l));
         rouges.length = garde;
         echecs = avant;
         ok(vus.length > 0, `[K] mutation ${m.nom} : le controle rougit (${vus.length} cas)`, vus.slice(0, 2).join(' ; ') || 'rien n a rougi');

@@ -12,7 +12,10 @@
 //       ligne porte le filet rouge, CHAQUE case d activite aussi (filet et heure en rouge),
 //       la pastille « En retard · 20 min » (rouge, AA) et « prévu 15:00 » ; la minute qui
 //       passe la fait courir ; un groupe a l heure n a aucun rouge ; un seul rouge, le jeton
-//       --danger (couleur calculee egale a celle du jeton), sans animation ;
+//       --danger (couleur calculee egale a celle du jeton), sans animation ; sa fiche (un
+//       anniversaire, la table a 14:50) dit un seul nombre : le bandeau « En retard de 21 min ·
+//       prévu à 15:00 », l etape d arrivee « Attendu à 15:00, il y a 21 min », et l en-tete garde
+//       l arrivee conseillee, « Arrivée 14:50, début 15:00 » ;
 //   [B] « Retard » DE LA FICHE (Louise, 16:00, a l heure) : +15 min ouvre la fenetre du
 //       retard (le meme calcul), « Garder les heures » note le retard en une ecriture ; la
 //       ligne, chaque case et la pastille « En retard · 15 min » sont rouges, la fiche dit
@@ -283,8 +286,10 @@ const LIRE = `
     const titre = b ? b.querySelector('.fz-retard__titre') : null;
     const etapes = [...document.querySelectorAll('#posOverlay .fx-programme .gc-step')];
     const corps = document.querySelector('#posOverlay .edit-modal');
+    const lire = (el) => (el ? el.textContent.replace(/\\s+/g, ' ').trim() : '');
     return {
       D, texte: b ? b.textContent.replace(/\\s+/g, ' ').trim() : '', etat: b ? b.getAttribute('data-retard-etat') : '',
+      etapeArrivee: lire(document.querySelector('#posOverlay .fz-arrivee .fx-moment')), tete: lire(document.querySelector('#posOverlay .dossier-head')),
       couleur: titre ? getComputedStyle(titre).color : '', aa: __rv.contraste(titre), premier: Boolean(b && b === b.parentElement.firstElementChild),
       etapes: etapes.map((li) => ({ ombre: getComputedStyle(li).boxShadow, heure: li.querySelector('.gc-step-time:not(.is-free)') ? getComputedStyle(li.querySelector('.gc-step-time:not(.is-free)')).color : '' })),
       deborde: corps ? corps.scrollWidth > corps.clientWidth + 1 : false,
@@ -359,6 +364,8 @@ async function scenarioPlanning(browser) {
       '[A] la fiche du groupe en retard : le bandeau rouge « En retard de 21 min · prévu à 15:00 » (AA)', ficheHugo);
     ok(ficheHugo.etapes.length >= 3 && ficheHugo.etapes.every((e) => e.ombre.includes(ficheHugo.D)) && ficheHugo.etapes.filter((e) => e.heure).every((e) => e.heure === ficheHugo.D),
       '[A] chaque activite du programme de la fiche porte le rouge', ficheHugo.etapes);
+    ok(ficheHugo.etapeArrivee === 'Attendu à 15:00, il y a 21 min' && /Arrivée 14:50, début 15:00/.test(ficheHugo.tete),
+      '[A] l anniversaire avec table : l etape d arrivee dit « Attendu à 15:00, il y a 21 min », l heure et le nombre du bandeau ; l en-tete garde « Arrivée 14:50 », l heure conseillee', { etape: ficheHugo.etapeArrivee, tete: ficheHugo.tete.slice(0, 140) });
     await photo(page, 'fiche-groupe-en-retard', '#posOverlay .edit-modal');
     await fermerFiche(page);
 
@@ -816,6 +823,8 @@ const MUTATIONS = [
   { nom: 'minutes-absentes', lettre: 'A', scenarios: ['planning'], editions: [{ fichier: PG, de: "      var texte = 'En retard · ' + (typeof dureeDuRetard === 'function' ? dureeDuRetard(min) : min + ' min');", vers: "      var texte = 'En retard';" }] },
   { nom: 'groupe-a-l-heure-en-rouge', lettre: 'A', scenarios: ['planning'], editions: [{ fichier: JS, de: '    if (!(moment && moment.late) && !annonce) return null;', vers: '' }] },
   { nom: 'fiche-sans-bandeau', lettre: 'A', scenarios: ['planning'], editions: [{ fichier: JS, de: '    ${bandeauBloquant || ficheBandeauRetard(r, moment)}\n', vers: '    ${bandeauBloquant}\n' }] },
+  // L etape d arrivee qui compte depuis la table d anniversaire (« Attendu à 14:50, il y a 31 min »).
+  { nom: 'etape-fiche-depuis-la-table', lettre: 'A', scenarios: ['planning'], editions: [{ fichier: JS, de: '  if (moment && moment.late) return `Attendu à ${formatClockDisplay(prevuDuRetard)}, il y a ${dureeDuRetard(Math.max(1, Math.round((moment.now - prevuDuRetard) * 60)))}`;', vers: '  if (moment && moment.late) return `Attendu à ${formatClockDisplay(moment.item.start)}, il y a ${formatStaffTerrainDelay(moment.now - moment.item.start)}`;' }] },
   { nom: 'fenetre-absente', lettre: 'C', scenarios: ['arrivee'], editions: [{ fichier: JS, de: "    if (note) ouvrirFenetreRetard(payload.reservation, { mode: 'arrivee', minutes: note.minutes, de: note.from });\n", vers: '' }] },
   // (la regle du 21/11 retiree : la fenetre s ouvre avant le statut, qui attend le choix)
   { nom: 'fenetre-avant-le-statut', lettre: 'C', scenarios: ['arrivee'], editions: [{ fichier: JS, de: "  if (isReservationMutationInFlight(id, 'status', status)) return;", vers: "  if (['arrived', 'paid'].includes(status) && !options.sansAnnulation && isUpcomingReservationStatus(current.status)) { ouvrirFenetreRetard(current, { mode: 'annonce', minutes: 20 }); return; }\n  if (isReservationMutationInFlight(id, 'status', status)) return;" }] },

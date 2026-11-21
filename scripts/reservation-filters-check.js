@@ -526,8 +526,8 @@ async function main() {
       },
       {
         nom: 'le retard perd sa pastille',
-        de: '  if (moment && moment.late) {\n    const depuis',
-        vers: '  if (false) {\n    const depuis',
+        de: '  if (moment && moment.late) {\n    const retard = retardDuMoment(r, moment);',
+        vers: '  if (false) {\n    const retard = retardDuMoment(r, moment);',
         attendu: /^\[2\]/,
       },
       {

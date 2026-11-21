@@ -139,6 +139,7 @@ const DEROGATIONS = [
   // L abonnement Pinlane d un client : le prix de Pinlane, en euros.
   { f: 'lib/platform-clients.js', l: 'Prix mensuel invalide (0 a 100000 EUR, ou vide pour effacer).', raison: 'abonnement Pinlane, facture en euros' },
   { f: 'assets/app-main.js', l: "euro: '€', pound: '£'", raison: 'decodage de l entite &euro; dans un mail recu' },
+  { f: 'assets/app-main.js', l: "return /^arcade/.test(id) && /credit|", raison: 'reconnait des arcades vendues en argent dans le libelle d une formule (10 euros d arcades), aucun montant affiche' },
   // Les comparaisons au code de l euro : seul un centre hors euro change quelque chose.
   { f: 'lib/garde-bilan.js', l: "...(deviseDuCentre !== 'EUR' ? { monnaie: deviseDuCentre } : {}),", raison: 'le bilan dit la monnaie d un centre hors euro' },
   // Les lectures de montants dans un texte : elles reconnaissent l euro ET le franc.

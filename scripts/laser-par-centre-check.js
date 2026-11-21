@@ -63,7 +63,8 @@ function verifier() {
   const heures = { regular: { 0: { open: '10:00', close: '22:00' }, 1: null, 2: { open: '14:00', close: '22:00' }, 3: { open: '12:00', close: '22:00' }, 4: { open: '14:00', close: '22:00' }, 5: { open: '14:00', close: '24:00' }, 6: { open: '10:00', close: '24:00' } }, holiday: { 0: { open: '10:00', close: '22:00' }, 1: { open: '10:00', close: '22:00' }, 2: { open: '10:00', close: '22:00' }, 3: { open: '10:00', close: '22:00' }, 4: { open: '10:00', close: '22:00' }, 5: { open: '10:00', close: '24:00' }, 6: { open: '10:00', close: '24:00' } } };
   knowledge.applyCenterOverrides(new Map([['gembloux', { defaultSchedule: heures, resources: { laser: { weaponCount: 20, parallelLaunches: 6, canSplitGroupsCleanly: true, requiresCompleteGroupBeforeLaunch: false } } }]]));
 
-  const JOUR = '2026-11-21';
+  // (un samedi a venir : le 21/11/2026, jour du lancement, a 15:00 est devenu le passe et le moteur le refuse)
+  const JOUR = '2027-11-20';
   let id = 100;
   const dossier = (centerId, pax, plan) => ({ id: id += 1, date: JOUR, centerId, status: 'confirmed', type: 'laser', pax, startTime: plan.startTime, duration: 0.5, games: 1, opsPlan: plan });
   const laser = (centerId, pax, startTime, reservations = []) => planLaser({ centerId, date: JOUR, pax, games: 1, startTime, requestedStartTime: startTime, channel: 'staff' }, { reservations, laneStatuses: {}, blocks: [] }).recommended;

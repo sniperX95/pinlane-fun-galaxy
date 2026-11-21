@@ -172,6 +172,9 @@ const ETAPES = {
     v('arrivé : une onde passe sur la ligne', (await compter(page, '.pl-onde')) >= 1);
     await calmer(page);
     v('arrivé : l onde ne laisse rien derrière elle', await page.evaluate(() => !document.querySelector('.pl-onde')));
+    // (un groupe en retard : « Arrivé » ouvre d abord la fenetre du retard, 2026-11-21 ; elle
+    // se ferme par son choix, sinon elle couvre les gestes suivants)
+    if (await page.locator('#retardFenetre').count()) await page.locator('#retardFenetre [data-rt-choix="garder"]').click({ timeout: 4000 }).catch(() => null);
   },
   async barres({ page }, v) {
     await calmer(page);

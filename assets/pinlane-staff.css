@@ -17889,6 +17889,58 @@ button.pv2-cal-cell:focus-visible {
 .gc-retard small { margin-left: 6px; font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .gc-retard-btn { flex: none; min-height: 34px; padding: 0 12px; border: 1px solid var(--danger); border-radius: var(--radius-md); background: transparent; color: var(--danger); font: 600 12.5px/1 var(--font-ui); cursor: pointer; }
 .gc-retard-btn:hover { background: color-mix(in srgb, var(--danger) 14%, transparent); }
+/* LE RETARD EN TETE DE LA FICHE ET SUR CHAQUE ACTIVITE (2026-11-21, ficheBandeauRetard). Un seul
+   rouge, --danger, sans clignotement ni halo. En cours : le bandeau plein pale, son filet, les
+   heures du programme en rouge. Arrive avec du retard : cercle d un trait, filet plus fin. */
+.fz-retard { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px; margin: 0 0 12px; padding: 10px 12px 10px 16px; border-radius: var(--radius-md); background: var(--danger-soft); box-shadow: inset 4px 0 0 var(--danger); color: var(--danger); }
+.fz-retard p { flex: 1 1 220px; min-width: 0; margin: 0; font-size: 15px; line-height: 22px; font-variant-numeric: tabular-nums; }
+.fz-retard__titre { font-weight: 700; }
+.fz-retard__prevu { font-weight: 600; }
+.fz-retard.is-arrive { background: transparent; box-shadow: inset 0 0 0 1px var(--danger), inset 3px 0 0 var(--danger); }
+.fz-retard.is-arrive .fz-retard__titre { font-weight: 600; }
+.fz-retard__retirer { flex: none; min-height: 36px; padding: 0 12px; border: 1px solid var(--control-border); border-radius: var(--radius-md); background: var(--surface); color: var(--text); font: 600 13px/1 var(--font-ui); cursor: pointer; }
+.fz-retard__retirer:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 2px; }
+.fx-programme.is-retard-encours .gc-step { box-shadow: inset 3px 0 0 var(--danger); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme.is-retard-encours .gc-step-time:not(.is-free) { color: var(--danger); }
+.fx-programme.is-retard-arrive .gc-step { box-shadow: inset 2px 0 0 var(--danger); }
+/* LA FENETRE DU RETARD (2026-11-21, ouvrirFenetreRetard) : les boutons de la console, le second
+   encadre puis le principal bleu plein, a droite dans un pied pale ; au telephone, pleine largeur,
+   le principal en bas. */
+.rt-fond { position: fixed; inset: 0; z-index: 900; display: grid; place-items: center; padding: 16px; background: color-mix(in srgb, #000 45%, transparent); }
+.rt-fenetre { box-sizing: border-box; width: min(540px, 100%); max-height: calc(100dvh - 32px); overflow: auto; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); color: var(--text); font-family: var(--font-ui); box-shadow: 0 18px 48px rgb(0 0 0 / 0.28); }
+.rt-fenetre:focus { outline: none; }
+.rt-tete { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 18px 20px 0; }
+.rt-titre { margin: 0; color: var(--danger); font-size: 18px; font-weight: 700; line-height: 24px; }
+.rt-fermer { flex: none; }
+.rt-sous { margin: 6px 20px 0; color: var(--muted); font-size: 14px; line-height: 20px; }
+.rt-etapes { display: grid; gap: 8px; margin: 14px 0 0; padding: 0 20px; list-style: none; }
+.rt-etape { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: baseline; column-gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; font-size: 14px; line-height: 20px; }
+.rt-etape__nom { min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+.rt-etape__heures { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rt-etape__heures s { color: var(--muted); }
+.rt-etape__mot { color: var(--muted); font-size: 13px; font-weight: 700; white-space: nowrap; }
+.rt-etape.is-passe .rt-etape__mot { color: var(--success); }
+.rt-etape.is-bloque { border-color: var(--danger); }
+.rt-etape.is-bloque .rt-etape__mot { color: var(--danger); }
+.rt-etape__raison { grid-column: 1 / -1; margin: 6px 0 0; color: var(--text); font-size: 13px; line-height: 18px; }
+.rt-etat { margin: 12px 20px 0; color: var(--muted); font-size: 13px; line-height: 18px; }
+.rt-pied { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; margin-top: 18px; padding: 14px 20px; border-top: 1px solid var(--line); border-radius: 0 0 14px 14px; background: var(--subtle); }
+.rt-bouton { min-height: 40px; padding: 0 16px; border: 1px solid var(--control-border); border-radius: var(--radius-md); background: var(--surface); color: var(--text); font: 600 14px/1 var(--font-ui); cursor: pointer; }
+.rt-bouton.est-plein { border-color: var(--console-selected); background: var(--console-selected); color: #fff; }
+.rt-bouton:disabled { opacity: 0.55; cursor: default; }
+.rt-bouton:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 2px; }
+@media (max-width: 560px) {
+  .rt-fond { place-items: end center; padding: 0; }
+  .rt-fenetre { width: 100%; max-height: 92dvh; border-radius: 14px 14px 0 0; }
+  .rt-tete { padding: 16px 16px 0; }
+  .rt-sous, .rt-etat { margin-inline: 16px; }
+  .rt-etapes { padding: 0 16px; }
+  .rt-etape { grid-template-columns: minmax(0, 1fr) auto; }
+  .rt-etape__heures { grid-column: 1; }
+  .rt-etape__mot { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
+  .rt-pied { flex-direction: column; padding: 12px 16px; border-radius: 0; }
+  .rt-bouton { width: 100%; min-height: 44px; }
+}
 .gc-retard-btn:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 2px; }
 @media (max-width: 560px) { .gc-retard-btn { min-height: 44px; } }
 

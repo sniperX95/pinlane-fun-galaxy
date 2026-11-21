@@ -941,7 +941,7 @@ async function ligne(browser) {
     const payes = g.reste.filter((r) => r.statut === 'paid');
     ok(payes.length > 0 && payes.every((r) => /payé/.test(r.t)), '[J] « payé » quand il l est', payes.slice(0, 3));
     ok(g.entetes.includes('Reste') && g.entetes.includes('Joueurs') && g.entetes.includes('À faire'), '[J] les colonnes Joueurs, Reste, À faire', g.entetes);
-    ok(g.retards.length > 0 && g.retards.every((r) => r.b && r.hauteur >= 32 && /^\+/.test(r.texte)), '[J] le retard est sur la ligne du nom, 32 px au moins', g.retards.slice(0, 3));
+    ok(g.retards.length > 0 && g.retards.every((r) => r.b && r.hauteur >= 32 && /^En retard · /.test(r.texte)), '[J] le retard est sur la ligne du nom, 32 px au moins', g.retards.slice(0, 3));
     ok(g.horsDuNom === 0 && g.barre <= 4, '[J] le retard n occupe plus de colonne', { hors: g.horsDuNom, barre: g.barre });
     ok(g.retards.every((r) => { const c = r.couleur.match(/[0-9.]+/g).map(Number); return c[0] > c[1] * 1.6; }), '[J] le retard est en rouge', g.retards[0]);
     ok(g.cols.length > 0 && g.pleines.length === g.cols.length, '[J] une colonne d activite vide toute la journee est retiree', { cols: g.cols, pleines: g.pleines });
@@ -1026,7 +1026,7 @@ async function couleurs(browser) {
     ok(c.n > 0 && c.nues === c.n, '[K] une activite en cours ne peint pas sa case : seule l heure', c);
     // Le seul bouton plein : le retard le plus recent, pas le plus ancien.
     const p = await page.evaluate(() => {
-      const min = (t) => { const m = /^\+(?:(\d+) min|(\d+)h(\d{2}))$/.exec(t || ''); return m ? (m[1] ? Number(m[1]) : Number(m[2]) * 60 + Number(m[3])) : NaN; };
+      const min = (t) => { const m = /^En retard · (?:(\d+) min|(\d+) h (\d{2}))$/.exec(t || ''); return m ? (m[1] ? Number(m[1]) : Number(m[2]) * 60 + Number(m[3])) : NaN; };
       const lignes = Array.from(document.querySelectorAll('.gf-r.is-retard')).filter((tr) => tr.querySelector('[data-gf-arrive]'));
       const pleins = Array.from(document.querySelectorAll('.gf-gb--arrive')).filter((b) => getComputedStyle(b).backgroundColor === getComputedStyle(document.querySelector('.gf-r.is-premier .gf-gb--arrive')).backgroundColor);
       const retards = lignes.map((tr) => min(tr.querySelector('[data-gf-retard]').textContent));
@@ -1836,7 +1836,7 @@ const MUTATIONS = [
   { nom: 'paye-muet', lettre: 'J', scenarios: ['ligne'], editions: SEUL(PG, "      h = (regle ? gfDu(regle) : '') + '<span class=\"gf-du__paye\">payé</span>';", "      h = regle ? gfDu(regle) : '';") },
   { nom: 'montant-cache-avant-l-arrivee', lettre: 'J', scenarios: ['ligne'], editions: SEUL(PG, '      else h = gfDu(du);\n', "      else h = g.teinte === 'conf' ? '' : gfDu(du);\n") },
   // (ancre suivie le 2026-11-07 : le retard est un bouton avec le droit, un texte sans)
-  { nom: 'retard-hors-du-nom', lettre: 'J', scenarios: ['ligne'], editions: SEUL(PG, '    if (g.retard && m.maintenant != null) {', '    if (false) {') },
+  { nom: 'retard-hors-du-nom', lettre: 'J', scenarios: ['ligne'], editions: SEUL(PG, '    } else if ((g.retard || g.rt) && m.maintenant != null) {', '    } else if (false) {') },
   { nom: 'retard-sans-cible', lettre: 'J', scenarios: ['ligne'], editions: SEUL(PGC, '.gf-h__retard { appearance: none; flex: none; display: inline-flex; align-items: center; min-height: 32px;', '.gf-h__retard { appearance: none; flex: none; display: inline-flex; align-items: center; min-height: 20px;') },
   { nom: 'retard-pas-rouge', lettre: 'J', scenarios: ['ligne'], editions: SEUL(PGC, 'background: transparent; color: var(--gf-rouge); font: inherit; font-size: 13px; font-weight: 700; line-height: 20px; white-space: nowrap; cursor: pointer; }', 'background: transparent; color: var(--muted); font: inherit; font-size: 13px; font-weight: 700; line-height: 20px; white-space: nowrap; cursor: pointer; }') },
   { nom: 'colonnes-vides-gardees', lettre: 'J', scenarios: ['ligne'], editions: SEUL(PG, '    var utilisees = colonnes.filter(function (c) { return c.groupes > 0; }).concat(inconnues);', '    var utilisees = colonnes.concat(inconnues);') },

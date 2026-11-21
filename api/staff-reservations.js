@@ -584,6 +584,82 @@ async function deplacerABlanc(req, res, corps) {
   }
 }
 
+// LE RETARD D UN GROUPE, A BLANC (2026-11-21, lib/retard-arrivee.js). La fenetre du retard
+// demande ici ce que donnerait chaque nouvelle heure : le meme controle que le verdict de
+// « Modifier » (deplacerABlanc), sur la journee relue, fermetures et blocages compris. Rien ne
+// s ecrit. La reponse dit, activite par activite, si elle passe, sinon pourquoi.
+async function simulerRetard(req, res, corps) {
+  const { lireRetard, etapesDuRetard, jugerDeplacements, maintenantDuJour, sansLesGroupesQuiJouent } = require('../lib/retard-arrivee');
+  if (!corps.id) throw createHttpError('Reservation manquante.', 400);
+  const current = await getReservationById(corps.id);
+  if (!current) throw createHttpError('Reservation introuvable.', 404);
+  const centre = current.centerId || 'libramont';
+  const session = await requireStaffPermission(req, res, ['reservations.status', 'reservations.edit', 'planning.drag'], { centerId: centre });
+  if (!session) return null;
+  try {
+    const lu = lireRetard(corps);
+    if (!corps.baseUpdatedAt || !memeVersion(current.updatedAt, lireVersionAttendue(corps.baseUpdatedAt))) throw reservationModifieeEntreTemps(current);
+    const { buildActivityMove } = require('../lib/reservation-activity-move');
+    const { validateActivityMoveResources } = require('../lib/database');
+    const snapshot = await readStaffState(current.date, centre, { avecBlocages: true, avecFermetures: true });
+    const autres = snapshot.reservations.filter(row => Number(row.id) !== Number(current.id));
+    // (une activite commencee est gelee, la sienne comme celle d un groupe qui joue)
+    const maintenant = maintenantDuJour(current.date);
+    const essayer = (base, move) => {
+      const essai = buildActivityMove(base, move);
+      sansLesGroupesQuiJouent(current, move, autres, maintenant, () => {
+        try { validateActivityMoveResources(essai, move, autres, snapshot.laneStatuses, snapshot.blocks || [], current.date); }
+        catch (error) { if (!error.statusCode) error.statusCode = 409; throw error; }
+      });
+      return essai;
+    };
+    const etapes = etapesDuRetard(current, { ...lu, maintenant });
+    const jugement = jugerDeplacements(current, etapes.map((etape) => etape.move), essayer);
+    return {
+      ok: true, dryRun: true, retard: true, toutPasse: jugement.toutPasse,
+      etapes: etapes.map(({ move, ...etape }, i) => ({ ...etape, ...jugement.etapes[i] })),
+    };
+  } catch (error) {
+    if (!error || !error.statusCode || error.statusCode >= 500 || estErreurInfra(error)) throw error;
+    return { ok: true, dryRun: true, retard: true, refus: { message: String(error.message), statut: error.statusCode, ...(error.code ? { code: error.code } : {}) } };
+  }
+}
+
+// LE RETARD D UN GROUPE, D UN GESTE (2026-11-21). Le choix de la fenetre : le statut (« Arrivé »,
+// « Payé »), le retard note et les heures qui passent s ecrivent ensemble, ou rien
+// (lib/database.js, ecrireRetard). Pointer ou encaisser demande les droits du statut seul ;
+// noter un retard sans statut, ou deplacer une heure, ceux du glisser du planning.
+async function patcherRetard(req, res, body, current, requestedCenterId) {
+  const { lireRetard } = require('../lib/retard-arrivee');
+  const enTrop = Object.keys(body).filter((cle) => !['id', 'centerId', 'center_id', 'baseUpdatedAt', 'status', 'paymentMethod', 'retard'].includes(cle));
+  if (enTrop.length) throw createHttpError('Un retard ne modifie aucun autre choix du dossier.', 422);
+  const centre = current.centerId || 'libramont';
+  const statut = Object.prototype.hasOwnProperty.call(body, 'status') ? String(body.status || '') : '';
+  const lu = lireRetard(body.retard, { ecriture: true });
+  const session = await requireStaffPermission(req, res, statut ? ['reservations.status', 'reservations.edit'] : ['planning.drag', 'reservations.edit'], { centerId: centre });
+  if (!session) return;
+  if (requestedCenterId !== centre) throw createHttpError('Une réservation reste dans son centre : annulez-la et recréez-la dans l autre.', 422);
+  if (statut && !['arrived', 'paid'].includes(statut)) throw createHttpError('Un retard se note à l’arrivée ou à l’encaissement.', 422);
+  const moyen = Object.prototype.hasOwnProperty.call(body, 'paymentMethod') ? String(body.paymentMethod || '') : '';
+  if ((statut === 'paid') !== Boolean(moyen) || (moyen && !['Carte', 'Carte Bancaire', 'Espèces', 'Comptoir'].includes(moyen))) throw createHttpError('Moyen de paiement invalide.', 422);
+  if (current.status === 'cancelled' || current.absentAt) throw createHttpError('Ce dossier est annulé ou noté absent : aucun retard ne s’y note.', 422);
+  if (statut && lu.cles.length && !(await requireStaffPermission(req, res, ['planning.drag', 'reservations.edit'], { centerId: centre }))) return;
+  if (statut === 'paid' && !(await requireStaffPermission(req, res, 'payments.markPaid', { centerId: centre }))) return;
+  for (const cle of lu.cles) {
+    const droit = /^laser_game/.test(cle) ? 'planning.laser' : (cle === 'bowling' ? 'planning.bowling' : '');
+    if (droit && !sessionHasPermission(session, droit)) throw createHttpError('Ce planning ne fait pas partie de votre rôle.', 403);
+  }
+  if (lu.cles.length && dateValide(current.date) && current.date < aujourdhuiABruxelles() && !sessionHasPermission(session, 'planning.past')) throw createHttpError('Changer un jour passé ne fait pas partie de votre rôle.', 403);
+  await warmCenterKnowledge();
+  const { ecrireRetard } = require('../lib/database');
+  const reservation = await ecrireRetard({ id: current.id, baseUpdatedAt: body.baseUpdatedAt, status: statut, paymentMethod: moyen, minutes: lu.minutes, de: lu.de, faites: lu.faites, choix: lu.choix, cles: lu.cles, modifiePar: nomDeSession(session) });
+  const automation = await refreshReservationAutomation(current, reservation, { reason: statut ? 'reservation_status_updated' : 'activity_moved' });
+  const audit = await writeAuditLog({ centerId: centre, ...actorFromSession(session), surface: 'api/staff-reservations.js', action: 'noterRetard', method: 'PATCH', entityType: 'reservation', entityId: current.id, outcome: 'success', changes: buildReservationAuditChanges(current, reservation), context: contexteRegistre(current, reservation, { retard: { minutes: lu.minutes, de: lu.de, statut, choix: lu.choix, decalees: lu.cles.length } }), requestId: newRequestId() });
+  const secours = lu.cles.length ? await copierAuSecours(reservation, 'modifiee', current, session) : '';
+  const avertissements = [audit.warning, secours].filter(Boolean);
+  sendJson(res, 200, { ok: true, reservation, automation, ...(avertissements.length ? { warnings: avertissements } : {}) });
+}
+
 // UN AUTRE ORDRE POUR UN DOSSIER ENREGISTRE (2026-11-18, Marius, Gembloux : « l algo ne
 // change pas en se disant : finalement, le bowling, je vais le remettre en dernier »). La meme
 // arrivee, les memes activites, les memes joueurs, l ordre libre (lib/autre-ordre.js), joue a
@@ -1114,6 +1190,14 @@ const traiter = async (req, res) => {
         if (blanc) sendJson(res, 200, blanc);
         return;
       }
+      // La fenetre du retard (simulerRetard) : chaque nouvelle heure, jugee sans rien ecrire.
+      if (body.dryRun === true && body.retard && typeof body.retard === 'object' && !Array.isArray(body.retard)) {
+        if (!(await requireAnyStaffSession(req, res))) return;
+        await warmCenterKnowledge();
+        const blanc = await simulerRetard(req, res, body.retard);
+        if (blanc) sendJson(res, 200, blanc);
+        return;
+      }
       const session = await requireStaffPermission(req, res, 'reservations.create', { centerId: body.centerId || body.center_id });
       if (!session) return;
       await warmCenterKnowledge();
@@ -1153,6 +1237,10 @@ const traiter = async (req, res) => {
       if (!current) throw createHttpError('Reservation introuvable.', 404);
 
       const requestedCenterId = body.centerId || body.center_id || current.centerId || 'libramont';
+      if (Object.prototype.hasOwnProperty.call(body, 'retard')) {
+        await patcherRetard(req, res, body, current, requestedCenterId);
+        return;
+      }
       // L encaisse et l absence (0056) sont des gestes d accueil : meme droit
       // de base que changer un statut (l encaisse redemande payments.markPaid).
       const gesteAccueil = Object.keys(body).filter((key) => !['id', 'centerId', 'center_id', 'baseUpdatedAt'].includes(key));

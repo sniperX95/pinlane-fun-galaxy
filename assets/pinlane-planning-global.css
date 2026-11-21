@@ -7,7 +7,7 @@
    ambre arrive, vert paye, gris fini ou pas venu, rouge retard), jamais celle d une
    activite. Clair, moderne, rayons de 8 a 12 px, un seul bleu plein ; aucun degrade,
    biseau ni reflet ; une ombre pour le seul bouton qui flotte. */
-.gf { --gf-survol: color-mix(in srgb, var(--text) 6%, var(--surface)); --gf-rouge: color-mix(in srgb, var(--danger) 78%, var(--text)); --gf-rouge-pale: var(--danger-soft); position: relative; display: flex; flex-direction: column; min-width: 0; font-family: var(--font-ui); font-variant-numeric: tabular-nums; color: var(--text); container: feuille / inline-size; }
+.gf { --gf-survol: color-mix(in srgb, var(--text) 6%, var(--surface)); --gf-rouge: var(--danger); --gf-rouge-pale: var(--danger-soft); position: relative; display: flex; flex-direction: column; min-width: 0; font-family: var(--font-ui); font-variant-numeric: tabular-nums; color: var(--text); container: feuille / inline-size; }
 [data-theme='dark'] .gf { --gf-survol: color-mix(in srgb, var(--text) 9%, var(--surface)); }
 
 /* LES TEINTES DE STATUT : celles des cartes du planning bowling et du planning
@@ -357,6 +357,23 @@ button.gf-bloc__in:focus-visible { outline: 2px solid var(--console-focus); outl
 .gf-h__retard span { padding: 0 5px; border-radius: 6px; background: var(--gf-rouge-pale); }
 .gf-h__retard:hover span { text-decoration: underline; text-underline-offset: 2px; }
 .gf-h__retard:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 1px; }
+/* LE RETARD SE LIT EN ROUGE, LA LIGNE ET CHAQUE ACTIVITE (2026-11-21, le gerant : « genre rouge
+   bien visible, le temps bien visible, toutes les activites aussi »). Un seul rouge, le jeton
+   --danger, sans clignotement ni halo : un filet a gauche du groupe et de chaque activite, les
+   heures du groupe en rouge, la pastille « En retard · 12 min » cerclee, l heure prevue a cote.
+   Arrive avec du retard : le filet et « Arrivé avec 12 min de retard », plus sobres. */
+.gf-h__retard [data-gf-retard] { box-shadow: inset 0 0 0 1px var(--danger); color: var(--danger); }
+/* (a l etroit, l heure prevue passe sous la pastille, jamais hors de la case) */
+.gf-h__retard:not(.is-arrive) { flex: 0 1 auto; min-width: 0; flex-wrap: wrap; column-gap: 6px; white-space: normal; }
+.gf-h__retard > span, .gf-h__prevu { white-space: nowrap; }
+.gf-h__prevu { color: var(--text); font-size: 12px; font-weight: 600; }
+.gf-h__retard.is-arrive { flex: 0 1 auto; min-width: 0; white-space: normal; padding: 0 6px; border-radius: 6px; box-shadow: inset 0 0 0 1px var(--danger); color: var(--danger); font-weight: 600; cursor: default; }
+.gf-t .gf-r.is-rt > td.gf-h { background: var(--danger); }
+.gf-t .gf-r.is-rt { border-left-color: var(--danger); }
+.gf-t .gf-r.is-rt-arrive > td.gf-nom { box-shadow: inset 2px 0 0 var(--danger); }
+.gf-r.is-rt .gf-a .gf-x { box-shadow: inset 3px 0 0 var(--danger); }
+.gf-r.is-rt .gf-a .gf-x .gf-x__t { background: var(--danger-soft); color: var(--danger); font-weight: 700; }
+.gf-r.is-rt-arrive .gf-a .gf-x { box-shadow: inset 2px 0 0 var(--danger); }
 /* La piste reprise apres un groupe en retard (2026-11-06) : la suite du retard, en mots,
    sans fond ; le meme toucher. */
 .gf-h__reprise { appearance: none; flex: none; display: inline-flex; align-items: center; min-height: 32px; margin-block: -6px; padding: 0; border: 0; background: transparent; color: var(--gf-rouge); font: inherit; font-size: 12px; font-weight: 600; line-height: 20px; white-space: nowrap; cursor: pointer; }

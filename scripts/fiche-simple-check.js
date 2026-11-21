@@ -205,7 +205,9 @@ function lireFiche({ nom, contact }) {
     total: ligne(m.querySelector('.gc-bill-total')),
     principal: principal ? Array.from(principal.children).map((c) => (c.matches('.gc-notes') ? 'notes' : c.matches('.fx-programme') ? 'programme' : c.className)) : [],
     cote: cote ? Array.from(cote.children).map((c) => (c.matches('.gc-notes') ? 'notes' : c.matches('.fz-caisse') ? 'caisse' : c.matches('.fx-client') ? 'client' : c.matches('.fx-historique') ? 'historique' : c.matches('.fx-pli') ? 'pli' : c.className)) : [],
-    ordre: feuille ? Array.from(feuille.children).map((c) => (c.matches('.fz-bandeau') ? 'bandeau' : c.matches('.gc-notes') ? 'notes' : c.matches('.fx-colonnes') ? 'colonnes' : c.matches('.pos-absent') ? 'absent' : c.matches('.fx-retard') ? 'retard' : c.className)) : [],
+    ordre: feuille ? Array.from(feuille.children).map((c) => (c.matches('.fz-bandeau') ? 'bandeau' : c.matches('.gc-notes') ? 'notes' : c.matches('.fx-colonnes') ? 'colonnes' : c.matches('.pos-absent') ? 'absent' : c.matches('.fx-retard') ? 'retard' : c.matches('.fz-retard') ? 'bandeau-retard' : c.className)) : [],
+    // (le bandeau rouge du retard, 2026-11-21 : scripts/retard-visible-check.js)
+    bandeauRetard: typeof retardDuGroupe === 'function' && Boolean(retardDuGroupe(r, mo)),
     attenduNotes: Boolean(String(r.notes || '').trim()),
     formuleCatalogue,
     outils: Array.from(m.querySelectorAll('.dossier-head .fx-outils .fx-outil')).map((b) => ({ t: txt(b), vu: vuEnTete(b), rouge: b.classList.contains('is-retard'), encadre: parseFloat(getComputedStyle(b).borderTopWidth) >= 1 })),
@@ -336,9 +338,10 @@ function juger(f, label, appareil) {
   // [C1] (le pli Historique ferme la colonne, 2026-11-03 : la session de la
   // fixture, Direction, a le niveau « historique » ; la demande a verifier a
   // son bandeau au-dessus des colonnes)
-  ok(JSON.stringify(f.ordre) === JSON.stringify((f.pastille === 'À vérifier' ? ['bandeau'] : []).concat(['colonnes']))
+  // (un groupe en retard : le bandeau rouge du retard, sauf quand celui de ce qui bloque le dit deja)
+  ok(JSON.stringify(f.ordre) === JSON.stringify((f.pastille === 'À vérifier' ? ['bandeau'] : f.bandeauRetard ? ['bandeau-retard'] : []).concat(['colonnes']))
     && JSON.stringify(f.principal) === JSON.stringify((f.attenduNotes ? ['notes'] : []).concat(['programme'])) && JSON.stringify(f.cote) === JSON.stringify(['caisse', 'client', 'historique']),
-    `[C1] ${label} : ${f.pastille === 'À vérifier' ? 'le bandeau, puis ' : ''}a gauche ${f.attenduNotes ? 'les notes et ' : ''}le programme, a droite la caisse, le client, l historique`, { ordre: f.ordre, principal: f.principal, cote: f.cote });
+    `[C1] ${label} : ${f.pastille === 'À vérifier' ? 'le bandeau, puis ' : f.bandeauRetard ? 'le bandeau du retard, puis ' : ''}a gauche ${f.attenduNotes ? 'les notes et ' : ''}le programme, a droite la caisse, le client, l historique`, { ordre: f.ordre, principal: f.principal, cote: f.cote });
   if (ordi && f.attenduNotes) ok(f.notesHaut !== null && f.notesHaut < f.corpsBas - 40, `[C1] ${label} : les notes se lisent sans faire defiler`, { notes: f.notesHaut, bas: f.corpsBas });
   // [P1]
   ok(f.arrivee && f.arrivee.avantLesActivites && f.arrivee.coche === f.pointe && f.arrivee.touchable === !f.paye,

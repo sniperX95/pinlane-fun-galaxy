@@ -438,6 +438,7 @@
     "test:retards-places",
     "test:retards-console",
     "test:retard-verrou",
+    "test:retard-visible",
     "test:comptoir-dotation",
     "test:attente-verrou",
     "test:confirmation-en-file",

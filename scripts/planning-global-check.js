@@ -148,7 +148,7 @@ function lireFeuille() {
       // l heure hors demi-heure devant le nom)
       h: (ecrite ? ecrite.textContent : h.getAttribute('data-gf-heure')) || '',
       hEcrite: Boolean(ecrite),
-      retard: (tr.querySelector('.gf-nom__l .gf-h__retard') || {}).textContent || '',
+      retard: (tr.querySelector('.gf-nom__l [data-gf-retard]') || {}).textContent || '',
       nom: nom ? nom.textContent : '',
       coupe: nom ? nom.scrollWidth > nom.clientWidth + 1 || nom.scrollHeight > nom.clientHeight + 1 || getComputedStyle(nom).textOverflow === 'ellipsis' : true,
       formule: (tr.querySelector('.gf-formule') || {}).textContent || '',
@@ -311,7 +311,8 @@ function pistes(liste) {
   l.forEach((p) => { const d = m[m.length - 1]; if (d && p === d[1] + 1) d[1] = p; else m.push([p, p]); });
   return m.map((x) => (x[0] === x[1] ? String(x[0]) : `${x[0]}-${x[1]}`)).join(', ');
 }
-function retardCourt(n) { return n < 60 ? `+${n} min` : `+${Math.floor(n / 60)}h${p2(n % 60)}`; }
+// (la pastille du retard, assets/pinlane-planning-global.js : « En retard · 12 min », puis « 1 h 05 »)
+function retardCourt(n) { return `En retard · ${n < 60 ? `${n} min` : `${Math.floor(n / 60)} h ${p2(n % 60)}`}`; }
 function heureDe(g) { const d = minutesDe(g.startTime); return d == null ? g.span.start : d; }
 
 // L etat attendu d une activite a heure (la regle de la feuille, redite).
@@ -679,7 +680,7 @@ async function nuit(page, s, label) {
   const minuit = groupes.find((l) => /Laser de minuit/.test(l.nom));
   const soir = groupes.find((l) => l.h === '21:00' && (l.cases.bowling || []).length);
   ok(groupes.length === n && idx === f.lignes.length - 1 && f.lignes[idx].h === '00:20', `[N2] ${label} : la soiree de la veille reste, la barre de 00:20 sous sa derniere ligne`, { groupes: groupes.length, n, idx, h: idx >= 0 ? f.lignes[idx].h : null });
-  ok(nocturne && /\bis-retard\b/.test(nocturne.cls) && nocturne.retard === '+50 min' && nocturne.cases.bowling[0].etat === 'retard', `[N2] ${label} : la nocturne de 23:30 est en retard de 50 min, son bowling n est pas fini`, nocturne && { retard: nocturne.retard, bowling: nocturne.cases.bowling });
+  ok(nocturne && /\bis-retard\b/.test(nocturne.cls) && nocturne.retard === 'En retard · 50 min' && nocturne.cases.bowling[0].etat === 'retard', `[N2] ${label} : la nocturne de 23:30 est en retard de 50 min, son bowling n est pas fini`, nocturne && { retard: nocturne.retard, bowling: nocturne.cases.bowling });
   ok(minuit && minuit.cases.laser.map((x) => `${x.t}:${x.etat}`).join() === '23:30:retard,00:00:retard', `[N2] ${label} : le laser de minuit jamais pointe : ses deux parties restent en retard`, minuit && minuit.cases.laser);
   ok(soir && soir.cases.bowling.every((x) => x.etat === 'retard'), `[N2] ${label} : le bowling de 21:00, jamais pointe, reste en retard`, soir && soir.cases.bowling);
 }
@@ -717,7 +718,7 @@ async function gestes(browser) {
       r.frais = d.innerHTML;
       return r;
     });
-    const plusUne = (t) => { const m = /^\+(?:(\d+) min|(\d+)h(\d{2}))$/.exec(t); const n = m ? (m[1] ? Number(m[1]) : Number(m[2]) * 60 + Number(m[3])) : NaN; return retardCourt(n + 1); };
+    const plusUne = (t) => { const m = /^En retard · (?:(\d+) min|(\d+) h (\d{2}))$/.exec(t); const n = m ? (m[1] ? Number(m[1]) : Number(m[2]) * 60 + Number(m[3])) : NaN; return retardCourt(n + 1); };
     ok(apres.ecritures === 0 && apres.memeLigne && apres.pastille === '15:11' && avant.retards.length > 0 && apres.retards.join() === avant.retards.map(plusUne).join(), `[H1] ${label} : la minute ne reecrit pas la feuille ; la pastille et les minutes de retard avancent en place`, { ecritures: apres.ecritures, memeLigne: apres.memeLigne, pastille: apres.pastille, avant: avant.retards.slice(0, 3), apres: apres.retards.slice(0, 3) });
     ok(apres.html === apres.frais, `[H1] ${label} : la feuille apres la minute est celle d un rendu frais a la meme heure`);
 
@@ -745,6 +746,10 @@ async function gestes(browser) {
     // [G1] « Arrivé » ecrit le pointage
     const id = await page.evaluate(() => { const b = document.querySelector('#globalPlanningGridWrap tr.is-retard [data-gf-arrive]'); return b && b.getAttribute('data-gf-arrive'); });
     await page.locator(`#globalPlanningGridWrap [data-gf-arrive="${id}"]`).click();
+    // (un groupe en retard : la fenetre du retard s ouvre, « Garder les heures » le pointe,
+    // scripts/retard-visible-check.js)
+    const garder = page.locator('#retardFenetre [data-rt-choix="garder"]');
+    if (await garder.count()) await garder.click();
     await FX.repos(page, 600);
     const g1 = await page.evaluate((id) => {
       const tr = document.querySelector(`#globalPlanningGridWrap tr[data-gf-id="${id}"]`);

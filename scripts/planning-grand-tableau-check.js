@@ -151,12 +151,12 @@ const lignesDuJour = (page) => page.evaluate(() => Array.from(document.querySele
   pax: Number(tr.querySelector('td.gf-n b').textContent),
   cls: tr.className,
   etat: tr.querySelector('.gf-etat').textContent.replace(/\s+/g, ' ').trim(),
-  retard: (tr.querySelector('.gf-h__retard') || {}).textContent || '',
+  retard: (tr.querySelector('[data-gf-retard]') || {}).textContent || '',
   pasVenu: Boolean(tr.querySelector('[data-gf-absent]')),
   caisse: (tr.querySelector('.gf-nom__caisse') || {}).textContent || '',
   du: (tr.querySelector('.gf-du') || {}).textContent || '',
 })));
-const minutesDe = (retard) => { const m = /^\+(?:(\d+) min|(\d+)h(\d{2}))$/.exec(retard); return m ? (m[1] ? Number(m[1]) : Number(m[2]) * 60 + Number(m[3])) : NaN; };
+const minutesDe = (retard) => { const m = /^En retard · (?:(\d+) min|(\d+) h (\d{2}))$/.exec(retard); return m ? (m[1] ? Number(m[1]) : Number(m[2]) * 60 + Number(m[3])) : NaN; };
 const ouvertures = (page) => page.evaluate(() => ({
   fiche: !document.getElementById('posOverlay').classList.contains('hidden'),
   reserver: !document.getElementById('quickBookOverlay').classList.contains('hidden'),
@@ -267,9 +267,10 @@ async function densite(browser) {
       r.surface = tout('#globalPlanningGridWrap *').length - tout('#globalPlanningGridWrap tr.gf-libre, #globalPlanningGridWrap tr.gf-libre *').length;
       r.lignes = tout('.gf-r').length;
       r.geste = Array.from(new Set(tout('.gf-gb--arrive, .gf-gb--etat').map((b) => { const x = b.getBoundingClientRect(); return `${Math.round(innerWidth - x.right)}/${Math.round(x.width)}`; })));
-      // La barre de gauche : une couleur par statut, jamais deux pour le meme.
+      // La barre de gauche : une couleur par statut, jamais deux pour le meme. (un groupe en
+      // retard a la sienne, le rouge du retard, 2026-11-21 : scripts/retard-visible-check.js)
       const couleurs = {};
-      tout('.gf-r').forEach((tr) => { const t = /\bt-(\w+)/.exec(tr.className)[1]; (couleurs[t] = couleurs[t] || new Set()).add(getComputedStyle(tr.querySelector('td.gf-h')).backgroundColor); });
+      tout('.gf-r').forEach((tr) => { const t = tr.classList.contains('is-rt') ? 'retard' : /\bt-(\w+)/.exec(tr.className)[1]; (couleurs[t] = couleurs[t] || new Set()).add(getComputedStyle(tr.querySelector('td.gf-h')).backgroundColor); });
       r.statuts = Object.keys(couleurs).map((t) => [t, couleurs[t].size]);
       r.distinctes = new Set(Object.values(couleurs).flatMap((s) => Array.from(s))).size;
       return r;
@@ -304,6 +305,8 @@ async function arrive(browser) {
     ok(Boolean(avant.premier), '[B] le montage : il y a un premier « Arrivé » a faire', avant.premier);
     const pax = await page.evaluate((id) => Number(document.querySelector(`[data-gf-id="${id}"] td.gf-n b`).textContent), avant.premier);
     await page.locator('.is-premier [data-gf-arrive]').click();
+    // (un groupe en retard : « Arrivé » ouvre d abord la fenetre du retard, 2026-11-21)
+    await page.locator('#retardFenetre [data-rt-choix="garder"]').click({ timeout: 4000 }).catch(() => null);
     await page.waitForFunction((id) => document.querySelector(`[data-gf-id="${id}"] [data-compte-id]`), avant.premier, { timeout: 8000 }).catch(() => null);
     await FX.repos(page, 200);
     const apres = await lire();
@@ -386,7 +389,8 @@ async function nom(browser) {
     const avant = await page.evaluate(() => window.__FIXTURE__.patchs.length);
     await page.keyboard.press('Enter');
     await FX.repos(page, 200);
-    const apres = await page.evaluate(() => window.__FIXTURE__.patchs.length);
+    // (pointer un groupe en retard ouvre d abord la fenetre du retard, 2026-11-21 : elle compte)
+    const apres = await page.evaluate(() => window.__FIXTURE__.patchs.length + (document.getElementById('retardFenetre') ? 1 : 0));
     ok(avant === apres, '[D] Entree ne pointe rien s il reste plusieurs groupes', { terme, avant, apres });
     await page.keyboard.press('Escape');
     await FX.repos(page, 150);

@@ -26415,10 +26415,13 @@ function hhmmDuRetard(minutes) {
 function jeuDuRetard(activityId) {
   return Boolean(activityId) && activityId !== 'party_table' && activityId !== 'arcade_credit' && !/^service_/.test(activityId);
 }
-// L heure prevue du groupe : sa premiere activite a heure, sinon son arrivee.
+// L heure prevue du groupe : sa premiere activite a heure, ou son arrivee quand elle vient avant (une
+// premiere activite libre toute la journee, la plaine de jeux, 2026-11-21).
 function premiereHeureDuGroupe(r) {
   const debuts = getGroupeProgramme(r).filter(etape => jeuDuRetard(etape.activityId) && !etape.libre && !etape.aPlacer).map(etape => etape.start).filter(v => v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v))).map(Number);
-  return debuts.length ? Math.min(...debuts) : heureDuRetard(r && r.startTime);
+  const arrivee = heureDuRetard(r && r.startTime);
+  if (Number.isFinite(arrivee)) debuts.push(arrivee);
+  return debuts.length ? Math.min(...debuts) : null;
 }
 function retardDuGroupe(r, moment) {
   if (!r || r.status === 'cancelled' || r.absentAt) return null;
@@ -28408,9 +28411,11 @@ function lpIlsSontLa(id, ev) {
   setReservationStatusDirect(id, 'arrived', ev);
 }
 
+// (le meme calcul que la fiche et le grand tableau : la fenetre du retard, seul ce dossier s ecrit ;
+// l ancien plan en cascade deplacait d autres groupes, 2026-11-21)
 function lpDecaler(id, minutes, ev) {
   if (ev) ev.stopPropagation();
-  openDelayImpact(id, minutes, ev);
+  ouvrirRetardFiche(id, minutes, ev);
 }
 
 function lpPasVenus(id, ev) {
@@ -29030,6 +29035,8 @@ function getGroupeProgramme(r) {
   // 16:30 ») se lisait comme un rendez-vous. Elles sont libres, « à volonté », comme la phrase du
   // ticket et le grand tableau ; le bowling et le laser gardent leurs pistes et leurs departs.
   // (typeof : des gates lisent getGroupeProgramme seule, sans le reste de la console)
+  // LA PLAINE DE JEUX EST LIBRE TOUTE LA JOURNEE (2026-11-21, le gerant : « il n'y a pas d'heure,
+  // c'est vraiment libre tout le temps ») : « Libre » au programme, jamais une heure.
   const accesIllimite = typeof illimiteDeSaCarte === 'function' && illimiteDeSaCarte(r);
   getStaffFormulaTimedItems(r)
     .filter(item => item.activityId !== 'bowling' && item.activityId !== 'laser_game')
@@ -29040,9 +29047,9 @@ function getGroupeProgramme(r) {
       quoi: accesIllimite ? 'à volonté' : '',
       ou: '',
       groupe: '',
-      start: accesIllimite ? null : item.start,
-      end: accesIllimite ? null : item.end,
-      ...(accesIllimite ? { libre: true, volonte: true } : {}),
+      start: accesIllimite || item.activityId === 'playground' ? null : item.start,
+      end: accesIllimite || item.activityId === 'playground' ? null : item.end,
+      ...(accesIllimite ? { libre: true, volonte: true } : item.activityId === 'playground' ? { libre: true } : {}),
       fait: Boolean(item.done),
       coche: item.key,
       exige: true,
@@ -31530,7 +31537,8 @@ function openDelayImpactCustom(id, ev) {
     if (ev) ev.stopPropagation();
     return;
   }
-  openDelayImpact(id, minutes, ev);
+  // (la fenetre du retard, plus l ancien plan en cascade : 2026-11-21)
+  ouvrirRetardFiche(id, minutes, ev);
 }
 
 async function openDelayImpact(id, delayMinutes, ev) {
@@ -34897,8 +34905,9 @@ function pointsHeureEdition(r) {
   });
   // LES ACTIVITES LIBRES (2026-11-19, Ansar : « même quand c'est Libre, on doit pouvoir modifier ») :
   // une heure sans valeur, qu on donne ici ; ni le bowling ni le laser (ils tiennent toujours une heure).
-  // (ni les jetons d arcades remis au bar, ni la table d anniversaire, ni les boissons : rien ne s y joue a une heure)
-  programme.filter(etape => etape.libre && etape.activityId && !['bowling', 'laser_game', 'party_table', 'arcade_credit'].includes(etape.activityId) && !/^service_/.test(etape.activityId)).forEach((etape) => {
+  // (ni les jetons d arcades remis au bar, ni la table d anniversaire, ni les boissons : rien ne s y joue a une heure ;
+  // ni la plaine de jeux, libre toute la journee, 2026-11-21)
+  programme.filter(etape => etape.libre && etape.activityId && !['bowling', 'laser_game', 'party_table', 'arcade_credit', 'playground'].includes(etape.activityId) && !/^service_/.test(etape.activityId)).forEach((etape) => {
     if (points.has(etape.activityId)) return;
     points.set(etape.activityId, { cle: etape.activityId, activityId: etape.activityId, unite: '', start: null, fin: null, libre: true, nom: etape.nom || nomActiviteHeureEdition(etape.activityId) });
   });
@@ -34938,6 +34947,8 @@ function peutChangerHeureEdition(r, activityId) {
   if (!state.editState || !r || state.activeTab !== 'modifier' || r.status === 'cancelled' || formuleChangeeEdition() || state.editState.versProgrammeNormal) return false;
   // La table d anniversaire tient une salle, les boissons se servent au bar.
   if (!activityId || activityId === 'party_table' || /^service_/.test(activityId)) return false;
+  // La plaine de jeux est libre toute la journee : pas d heure a lui donner (2026-11-21).
+  if (activityId === 'playground') return false;
   // Une piste ou une arene gardee a volonte (lib/a-volonte.js) n a pas d heure a deplacer : elle
   // est au groupe toute la visite.
   if ((r.opsPlan && Array.isArray(r.opsPlan.resourceBlocks) ? r.opsPlan.resourceBlocks : []).some((bloc) => bloc && bloc.aVolonte && bloc.activityId === activityId)) return false;
@@ -43356,6 +43367,8 @@ function rvPosable(id, ids = rvActivites()) {
   if (i < 0 || id === 'party_table' || id === 'arcade_credit' || /^service_/.test(id)) return false;
   // (des arcades vendues en argent n ont pas d heure calculable : libres, rvArcadesEnArgent)
   if (rvArcadesEnArgent(id)) return false;
+  // (la plaine de jeux est libre toute la journee : jamais d heure a poser, 2026-11-21, le gerant)
+  if (id === 'playground') return false;
   // Un acces illimite se joue a volonte pendant la visite (pistes et armes gardees, le reste libre) :
   // aucune heure ne s y pose a la main (le serveur refuse celle d une activite gardee).
   if (rvFormuleIllimitee()) return false;
@@ -43459,7 +43472,10 @@ function rsCasesDuContenu(carte) {
   return cases;
 }
 
+// (la case de la plaine de jeux dit « libre » : elle n a jamais d heure, 2026-11-21, le gerant :
+// « c'est accès toute la journée, il n'y a pas d'heure »)
 function rsCaseDuContenuHtml({ texte, id }) {
+  if (!id && getFormulaActivityIds({ desc: [texte] }).includes('playground')) return `<li class="is-libre">${escapeHtml(texte)}<span class="rs-cc-libre">libre</span></li>`;
   if (!id) return `<li>${escapeHtml(texte)}</li>`;
   const sid = escapeHtml(id);
   const ligne = rvHeuresDesLignes()[id] || {};

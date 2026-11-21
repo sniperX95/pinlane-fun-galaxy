@@ -1769,8 +1769,10 @@
     var premier = bulle.querySelector('button');
     if (premier) premier.focus({ preventScroll: true });
   }
-  // « On arrive dans 20 minutes » : le retard annonce compte depuis l heure de la ligne,
-  // le plan de retard de la console (openDelayImpact) dit ce que ca bouscule.
+  // « On arrive dans 20 minutes » : le retard annonce compte depuis l heure de la ligne. La fenetre
+  // du retard (ouvrirRetardFiche, lib/retard-arrivee.js) juge chaque heure au serveur, gele les
+  // activites commencees et n ecrit que ce dossier (2026-11-21 : l ancien plan en cascade avait
+  // deplace un groupe en pleine partie). Le focus revient au retard touche.
   function gfBulleRetard(wrap, bouton, e) {
     var m = wrap._gfModele;
     var id = bouton.getAttribute('data-gf-retarder');
@@ -1778,7 +1780,10 @@
     if (!g || m.maintenant == null) return;
     var deja = gfMinutesDeRetard(g, m);
     var choix = [10, 20, 30].map(function (n) { return '<button type="button" data-gf-choix="' + n + '">' + n + ' min</button>'; }).join('');
-    gfBulle(bouton, e, '<div class="staff-action-popover-title">Ils arrivent dans</div>' + choix, function (n, ev) { openDelayImpact(Number(id), Math.min(240, deja + Number(n)), ev); });
+    gfBulle(bouton, e, '<div class="staff-action-popover-title">Ils arrivent dans</div>' + choix, function (n, ev) {
+      if (bouton.isConnected) bouton.focus({ preventScroll: true });
+      ouvrirRetardFiche(Number(id), Math.min(240, deja + Number(n)), ev);
+    });
   }
   function gfApresEncaisser() {
     if (String(state.searchTerm || '').trim()) gfViderRecherche();

@@ -15,13 +15,18 @@
 //       ligne, chaque case et la pastille « En retard · 15 min » sont rouges, la fiche dit
 //       « En retard de 15 min · prévu à 16:00 » en rouge et marque son programme ;
 //       le compteur « En retard » la compte et y mene ;
-//   [C] LA FENETRE A L ARRIVEE (Hugo, la plaine bloquee de 15:15 a 15:45) : « Arrivé » ouvre
-//       « Le groupe arrive avec 20 min de retard » avant toute ecriture ; la plaine « Ne passe
-//       pas », sa raison en mots, le minigolf et les arcades passent ; pas de « Tout décaler » ;
-//       « Décaler ce qui passe » ecrit en UN PATCH le statut, le retard et ces deux heures, la
-//       plaine garde 15:00 ; la marque « Arrivé avec 20 min de retard » reste rouge sur la
-//       ligne, chaque case et la fiche, et l historique la dit ; apres « Payé » aussi ;
-//   [D] TOUT PASSE (Hugo, sans blocage) : « Tout décaler » seul, une ecriture, tout bouge ;
+//   [C] LA FENETRE A L ARRIVEE (Hugo, le minigolf bloque de 16:20 a 16:40) : « Arrivé » ouvre
+//       « Le groupe arrive avec 20 min de retard » avant toute ecriture ; le minigolf « Ne passe
+//       pas », sa raison en mots, les arcades passent ; pas de « Tout décaler » ; « Décaler ce
+//       qui passe » ecrit en UN PATCH le statut, le retard et l heure des arcades, le minigolf
+//       garde 16:05 ; la marque « Arrivé avec 20 min de retard » reste rouge sur la ligne,
+//       chaque case et la fiche, et l historique la dit ; apres « Payé » aussi ;
+//   [D] LA PLAINE EST LIBRE TOUTE LA JOURNEE (le gerant, le 21/11 : « il n'y a pas d'heure, c'est
+//       vraiment libre tout le temps ») : Hugo, sa plaine bloquee de 15:15 a 15:45 ; la fenetre ne
+//       la montre pas et ne dit jamais « Ne passe pas » pour elle ; tout passe, « Tout décaler »
+//       seul, une ecriture ; la plaine garde 15:00, le programme de la fiche la dit « Libre » ;
+//   [H] LA BULLE « ILS ARRIVENT DANS » DU PLANNING : la meme fenetre, jamais l ancien plan en
+//       cascade (il deplacait d autres groupes) ; « Garder les heures » n ecrit que ce dossier ;
 //   [S] L ENCHAINEMENT (le gerant, le 21/11) : un F1 serre (Bowling 13:15, Arcades 30 min dans la
 //       formule mais 15 au plan, Laser 14:30), « Retard » +15 min puis « Tout décaler » : chaque
 //       activite garde sa vraie duree, les arcades finissent avant le laser (pousse a 15:00),
@@ -36,7 +41,8 @@
 //       groupe en pleine partie, de la piste 1 a la piste 5) : un groupe joue piste 1 depuis
 //       10 min, un autre arrive en retard et demande « Tout décaler » : refuse, « Bowling 15:30 :
 //       la piste 1 est prise par un groupe qui joue. », la piste 1 et son heure ne bougent pas ;
-//       un groupe sur place garde son bowling commence, seule la suite se decale ;
+//       un groupe sur place garde son bowling commence, seule la suite se decale ; l ancien plan
+//       en cascade (applyReservationScheduleUpdates) refuse de deplacer le groupe qui joue ;
 //   [T] AU TELEPHONE (390 px) : la fenetre tient dans l ecran, ses boutons pleine largeur et
 //       au doigt (44 px), la fiche ne deborde pas ; la croix ferme sans rien ecrire ;
 //   [J] aucune erreur JS.
@@ -111,6 +117,7 @@ function ligneDepuis(r) {
   };
 }
 const BLOC_PLAINE = { id: 91, center_id: 'libramont', scope_type: 'activity', scope_ref: 'playground', recurrence: 'once', date: JOUR, day_of_week: null, date_from: null, date_until: null, start_time: '15:15', end_time: '15:45', reason: 'Entretien', created_by: 'gate' };
+const BLOC_MINIGOLF = { ...BLOC_PLAINE, id: 92, scope_ref: 'minigolf_blacklight', start_time: '16:20', end_time: '16:40' };
 let BLOCS = [];
 const pgBanc = require(require.resolve('pg', { paths: [ROOT] }));
 const requeteAvant = pgBanc.Client.prototype.query;
@@ -379,7 +386,7 @@ async function scenarioPlanning(browser) {
 // [C] la fenetre a l arrivee, une activite qui ne passe pas ; puis « Payé ».
 // ---------------------------------------------------------------------------
 async function scenarioArrivee(browser) {
-  const { ctx, page, erreurs, serveur, patchs, blancs } = await monter(browser, { blocs: [BLOC_PLAINE] });
+  const { ctx, page, erreurs, serveur, patchs, blancs } = await monter(browser, { blocs: [BLOC_MINIGOLF] });
   try {
     const depart = enBase(HUGO);
     await cliquerArrive(page, HUGO);
@@ -390,13 +397,12 @@ async function scenarioArrivee(browser) {
       '[C] « Arrivé » sur un groupe en retard ouvre la fenetre : « Le groupe arrive avec 20 min de retard », prévu à 15:00', f);
     ok(patchs.length === 0 && JSON.stringify(enBase(HUGO)) === JSON.stringify(depart) && blancs.some((b) => b.dryRun === true && b.retard),
       '[C] la fenetre ouverte, rien n est ecrit : seul le calcul a blanc est parti', { patchs, blancs: blancs.length });
-    const plaine = parNom('playground');
     const minigolf = parNom('minigolf_blacklight');
     const arcades = parNom('arcade_time');
-    ok(plaine && plaine.mot === 'Ne passe pas' && /15:00 → 15:20/.test(plaine.heures) && /indisponible de 15:20 à 16:20/.test(plaine.raison) && /Reste à 15:00/.test(plaine.raison),
-      '[C] la plaine ne passe pas : sa raison en mots, elle garde 15:00', plaine);
-    ok(minigolf && minigolf.mot === 'Passe' && /16:05 → 16:25/.test(minigolf.heures) && arcades && arcades.mot === 'Passe' && /16:55 → 17:15/.test(arcades.heures),
-      '[C] le minigolf (16:25) et les arcades (17:15) passent', { minigolf, arcades });
+    ok(minigolf && minigolf.mot === 'Ne passe pas' && /16:05 → 16:25/.test(minigolf.heures) && /16:2\d/.test(minigolf.raison) && /Reste à 16:05/.test(minigolf.raison),
+      '[C] le minigolf ne passe pas : sa raison en mots, il garde 16:05', minigolf);
+    ok(arcades && arcades.mot === 'Passe' && /16:55 → 17:15/.test(arcades.heures) && f.etapes.length === 2,
+      '[C] les arcades passent (17:15) ; la plaine, libre, n est pas dans la fenetre', f && f.etapes);
     const choix = f ? f.boutons.map((b) => b.choix) : [];
     const principal = f ? f.boutons.find((b) => b.plein) : null;
     ok(choix.join() === 'garder,passe' && principal && principal.choix === 'passe' && principal.fond === principal.bleu && f.boutons.find((b) => b.choix === 'garder').fond !== principal.bleu,
@@ -407,10 +413,10 @@ async function scenarioArrivee(browser) {
     await attendreFermee(page);
     await FX.repos(page, 300);
     const base = enBase(HUGO);
-    ok(patchs.length === 1 && patchs[0].status === 'arrived' && patchs[0].retard && patchs[0].retard.choix === 'passe' && patchs[0].retard.cles.join() === 'minigolf_blacklight,arcade_time',
-      '[C] « Décaler ce qui passe » : UN seul PATCH porte le statut, le retard et les deux heures', patchs);
-    ok(base.statut === 'arrived' && base.retard && base.retard.minutes === 20 && base.retard.de === '15:00' && base.heures.playground === '15:00' && base.heures.minigolf_blacklight === '16:25' && base.heures.arcade_time === '17:15',
-      '[C] en base : arrive, retard de 20 min note, minigolf 16:25, arcades 17:15, la plaine garde 15:00', base);
+    ok(patchs.length === 1 && patchs[0].status === 'arrived' && patchs[0].retard && patchs[0].retard.choix === 'passe' && patchs[0].retard.cles.join() === 'arcade_time',
+      '[C] « Décaler ce qui passe » : UN seul PATCH porte le statut, le retard et l heure des arcades', patchs);
+    ok(base.statut === 'arrived' && base.retard && base.retard.minutes === 20 && base.retard.de === '15:00' && base.heures.playground === '15:00' && base.heures.minigolf_blacklight === '16:05' && base.heures.arcade_time === '17:15',
+      '[C] en base : arrive, retard de 20 min note, arcades 17:15, le minigolf garde 16:05, la plaine 15:00', base);
     const ligne = await lireLigne(page, HUGO);
     ok(ligne && /\bis-rt-arrive\b/.test(ligne.cls) && rouge(ligne) && casesRouges(ligne, false) && ligne.arrive === 'Arrivé avec 20 min de retard' && ligne.arriveCouleur === ligne.D && ligne.arriveAA >= 4.5 && !ligne.pastille,
       '[C] apres « Arrivé », la marque reste : filet, chaque case et « Arrivé avec 20 min de retard » en rouge', ligne);
@@ -437,22 +443,40 @@ async function scenarioArrivee(browser) {
 }
 
 // ---------------------------------------------------------------------------
-// [D] tout passe ; [P] « Payé » en retard, rien ne passe.
+// [D] la plaine libre, tout passe ; [P] « Payé » en retard, rien ne passe.
 // ---------------------------------------------------------------------------
 async function scenarioToutEtPaye(browser) {
-  const { ctx, page, erreurs, patchs } = await monter(browser);
+  // (la plaine bloquee de 15:15 a 15:45 : libre toute la journee, elle ne compte pas)
+  const { ctx, page, erreurs, patchs } = await monter(browser, { blocs: [BLOC_PLAINE] });
   try {
     await cliquerArrive(page, HUGO);
     await attendreVerdict(page);
     const f = await lireFenetre(page);
-    ok(f && f.etapes.length === 3 && f.etapes.every((e) => e.mot === 'Passe') && f.boutons.map((b) => b.choix).join() === 'garder,tout' && f.boutons.find((b) => b.choix === 'tout').plein,
+    const plaine = f ? f.etapes.filter((e) => e.cle === 'playground' || /plaine|playground/i.test(e.nom + ' ' + e.raison)) : [];
+    ok(f && plaine.length === 0 && !f.etapes.some((e) => e.mot === 'Ne passe pas'),
+      '[D] la plaine de jeux, libre toute la journee : jamais dans la fenetre, jamais « Ne passe pas »', f && f.etapes);
+    ok(f && f.etapes.map((e) => e.cle).join() === 'minigolf_blacklight,arcade_time' && f.etapes.every((e) => e.mot === 'Passe') && f.boutons.map((b) => b.choix).join() === 'garder,tout' && f.boutons.find((b) => b.choix === 'tout').plein,
       '[D] tout passe : « Tout décaler » en bleu plein, et « Garder les heures »', f);
     await page.locator('#retardFenetre [data-rt-choix="tout"]').click();
     await attendreFermee(page);
     await FX.repos(page, 300);
     const base = enBase(HUGO);
-    ok(patchs.length === 1 && patchs[0].retard.choix === 'tout' && base.statut === 'arrived' && base.retard && base.retard.minutes === 20 && base.heures.playground === '15:20' && base.heures.minigolf_blacklight === '16:25' && base.heures.arcade_time === '17:15',
-      '[D] « Tout décaler » : une ecriture, arrive, retard note, chaque activite a sa nouvelle heure', { patchs, base });
+    ok(patchs.length === 1 && patchs[0].retard.choix === 'tout' && base.statut === 'arrived' && base.retard && base.retard.minutes === 20 && base.heures.playground === '15:00' && base.heures.minigolf_blacklight === '16:25' && base.heures.arcade_time === '17:15',
+      '[D] « Tout décaler » : une ecriture, arrive, retard note, le minigolf et les arcades decales, la plaine reste', { patchs, base });
+    const programme = await page.evaluate((id) => {
+      closePos();
+      openPos(id);
+      const li = [...document.querySelectorAll('#posOverlay .fx-programme .gc-step')].find((x) => /plaine|playground/i.test(x.textContent));
+      const t = li ? li.querySelector('.gc-step-time') : null;
+      const dit = t ? t.textContent.replace(/\s+/g, ' ').trim() : '';
+      closePos();
+      return { vu: Boolean(li), libre: Boolean(t && t.classList.contains('is-free')), dit };
+    }, HUGO);
+    ok(programme.vu && programme.libre && /^Libre\b/.test(programme.dit) && !/\d{2}:\d{2}/.test(programme.dit),
+      '[D] au programme de la fiche, la plaine dit « Libre », sans heure', programme);
+    const caseReserver = await page.evaluate(() => (typeof rsCaseDuContenuHtml === 'function' ? rsCaseDuContenuHtml({ texte: 'Accès à la plaine de jeux', id: '' }) : ''));
+    ok(/is-libre/.test(caseReserver) && />libre</.test(caseReserver) && !/\d{2}:\d{2}|data-heure-bouton/.test(caseReserver),
+      '[D] dans Réserver, la case de la plaine d une formule dit « libre », sans heure a choisir', caseReserver);
     // [P] Clara, en retard, paie : la fenetre s ouvre, rien ne passe.
     await page.evaluate((id) => { closePos(); openPos(id); }, CLARA);
     await page.locator('#posOverlay .res-status-btn.paid', { hasText: 'Carte' }).first().click();
@@ -484,14 +508,14 @@ async function scenarioToutEtPaye(browser) {
 // ---------------------------------------------------------------------------
 async function scenarioServeur() {
   B.semer(FIXTURE.staffState.reservations.map(ligneDepuis));
-  BLOCS = [BLOC_PLAINE];
+  BLOCS = [BLOC_MINIGOLF];
   try {
     const serveur = B.monter({ mutations: mutation ? mutation.editions.filter((ed) => ed.serveur) : [], session: B.sessionDuRole('manager', { nom: 'Rachel' }) });
     const hugo = FIXTURE.staffState.reservations.find((x) => x.id === HUGO);
-    const toutes = ['playground', 'minigolf_blacklight', 'arcade_time'];
+    const toutes = ['minigolf_blacklight', 'arcade_time'];
     const depart = JSON.stringify(enBase(HUGO));
     const sim = await serveur.appeler('POST', '/api/staff-reservations', { dryRun: true, centerId: 'libramont', retard: { id: HUGO, baseUpdatedAt: hugo.updatedAt, minutes: 20, de: '15:00' } });
-    ok(sim.statut === 200 && sim.json.retard === true && sim.json.etapes.map((e) => `${e.cle}:${e.apres}:${e.passe}`).join() === 'playground:15:20:false,minigolf_blacklight:16:25:true,arcade_time:17:15:true' && JSON.stringify(enBase(HUGO)) === depart,
+    ok(sim.statut === 200 && sim.json.retard === true && sim.json.etapes.map((e) => `${e.cle}:${e.apres}:${e.passe}`).join() === 'minigolf_blacklight:16:25:false,arcade_time:17:15:true' && JSON.stringify(enBase(HUGO)) === depart,
       '[F] la simulation juge chaque heure et n ecrit rien', { statut: sim.statut, json: sim.json });
     const tout = await serveur.appeler('PATCH', '/api/staff-reservations', { id: HUGO, centerId: 'libramont', baseUpdatedAt: hugo.updatedAt, status: 'arrived', retard: { minutes: 20, de: '15:00', choix: 'tout', cles: toutes } });
     ok(tout.statut === 409 && JSON.stringify(enBase(HUGO)) === depart, '[F] « Tout décaler » avec une heure qui ne passe pas : refuse, rien ne s ecrit (ni statut, ni retard, ni heure)', { statut: tout.statut, json: tout.json, base: enBase(HUGO) });
@@ -507,7 +531,7 @@ async function scenarioServeur() {
     ok(bar.statut === 403 && JSON.stringify(enBase(HUGO)) === depart, '[F] decaler une heure demande le droit du glisser du planning : refuse au bar, rien d ecrit', { statut: bar.statut, json: bar.json });
     const barGarde = await serveur.appeler('PATCH', '/api/staff-reservations', { id: HUGO, centerId: 'libramont', baseUpdatedAt: hugo.updatedAt, status: 'arrived', retard: { minutes: 20, de: '15:00', choix: 'garder', cles: [] } });
     const apresBar = enBase(HUGO);
-    ok(barGarde.statut === 200 && apresBar.statut === 'arrived' && apresBar.retard && apresBar.retard.minutes === 20 && apresBar.heures.playground === '15:00',
+    ok(barGarde.statut === 200 && apresBar.statut === 'arrived' && apresBar.retard && apresBar.retard.minutes === 20 && apresBar.heures.minigolf_blacklight === '16:05' && apresBar.heures.playground === '15:00',
       '[F] le bar pointe le groupe et note son retard, les heures restent', { statut: barGarde.statut, json: barGarde.json, base: apresBar });
   } catch (error) {
     if (error instanceof Mordu) throw error;
@@ -612,6 +636,17 @@ async function scenarioGel() {
     const b = enBase(CLARA);
     ok(garder.statut === 200 && pistesDuPlan(LOUISE) === departA && b.statut === 'arrived' && b.retard && b.retard.minutes === 40 && b.heures.bowling === '14:30',
       '[G] « Garder les heures » : le retard note, le groupe qui joue garde sa piste 1 et son heure', { statut: garder.statut, json: garder.json, a: pistesDuPlan(LOUISE), b });
+    // L ANCIEN PLAN EN CASCADE (api/ops.js delayApply, l assistant s en sert encore) : le defaut vu en
+    // vrai, le groupe qui joue pousse de la piste 1 a la piste 5. Refuse, rien ne bouge.
+    const a = journee.find((x) => x.id === LOUISE);
+    const plan5 = JSON.parse(JSON.stringify(a.opsPlan));
+    [...plan5.resourceBlocks, ...plan5.timeline].filter((x) => x && (x.resourceType === 'bowling_lane' || x.activityId === 'bowling')).forEach((x) => { x.lanes = [5]; });
+    let refusCascade = null;
+    try {
+      await require(path.join(ROOT, BASE)).applyReservationScheduleUpdates({ centerId: 'libramont', date: JOUR, updates: [{ id: LOUISE, startTime: '15:00', lanes: [5], opsPlan: plan5 }] });
+    } catch (error) { refusCascade = error; }
+    ok(refusCascade && refusCascade.statusCode === 409 && /joue, il ne bouge pas/.test(refusCascade.message) && pistesDuPlan(LOUISE) === departA,
+      '[G] l ancien plan en cascade ne pousse pas le groupe qui joue de la piste 1 a la piste 5 : refuse, rien ne bouge', { message: refusCascade && refusCascade.message, a: pistesDuPlan(LOUISE) });
 
     // [G] le groupe EN RETARD lui-meme, sur place : son bowling commence ne bouge pas, la suite oui.
     const f1 = FIXTURE.staffState.reservations.map(f1Serre).map((r) => (r.id === SACHA_F1 ? { ...r, status: 'arrived' } : r));
@@ -636,10 +671,38 @@ async function scenarioGel() {
 }
 
 // ---------------------------------------------------------------------------
+// [H] la bulle « Ils arrivent dans » du planning : la fenetre du retard, ce dossier seul.
+// ---------------------------------------------------------------------------
+async function scenarioBulle(browser) {
+  const { ctx, page, erreurs, patchs, blancs } = await monter(browser);
+  try {
+    const autres = () => JSON.stringify([...B.base.reservations.values()].filter((row) => Number(row.id) !== HUGO).map((row) => [row.id, new Date(row.updated_at).toISOString(), row.start_time, row.lanes]));
+    const avantAutres = autres();
+    await page.locator(`#globalPlanningGridWrap [data-gf-retarder="${HUGO}"]`).first().click();
+    await FX.repos(page, 200);
+    const bulle = await page.evaluate(() => [...document.querySelectorAll('.staff-action-popover button')].map((b) => b.textContent.trim()));
+    ok(bulle.join() === '10 min,20 min,30 min', '[H] le retard du planning ouvre sa bulle « Ils arrivent dans » : 10, 20, 30 min', bulle);
+    await page.locator('.staff-action-popover button', { hasText: '10 min' }).click();
+    await attendreVerdict(page);
+    const f = await lireFenetre(page);
+    const ancien = await page.evaluate(() => { const o = document.getElementById('delayOverlay'); return Boolean(o && !o.classList.contains('hidden') && o.innerHTML.trim()); });
+    ok(f && f.titre === 'Retard de 30 min' && f.modal && f.etapes.length >= 1 && !ancien && blancs.some((x) => x.dryRun && x.retard && Number(x.retard.id) === HUGO && x.retard.minutes === 30),
+      '[H] « 10 min » : la fenetre du retard (les 20 min qui courent + 10), jugee au serveur ; jamais l ancien plan en cascade', { f, ancien, blancs: blancs.length });
+    await page.locator('#retardFenetre [data-rt-choix="garder"]').click();
+    await attendreFermee(page);
+    await FX.repos(page, 250);
+    const base = enBase(HUGO);
+    ok(patchs.length === 1 && patchs[0].retard && patchs[0].retard.choix === 'garder' && base.retard && base.retard.minutes === 30 && autres() === avantAutres,
+      '[H] « Garder les heures » : une ecriture, ce dossier seul, aucun autre groupe ne bouge', { patchs, base });
+    ok(erreurs.length === 0, '[J] aucune erreur JS (bulle)', erreurs);
+  } finally { await ctx.close(); }
+}
+
+// ---------------------------------------------------------------------------
 // [T] au telephone, 390 px.
 // ---------------------------------------------------------------------------
 async function scenarioTelephone(browser) {
-  const { ctx, page, erreurs, patchs } = await monter(browser, { appareil: 'telephone', blocs: [BLOC_PLAINE] });
+  const { ctx, page, erreurs, patchs } = await monter(browser, { appareil: 'telephone', blocs: [BLOC_MINIGOLF] });
   try {
     await page.evaluate((id) => { closePos(); openPos(id); }, HUGO);
     const fiche = await lireFiche(page, HUGO);
@@ -686,6 +749,17 @@ const MUTATIONS = [
   // [G] un calcul qui deplace une activite commencee : la sienne, puis celle d un groupe qui joue
   // (le controle ne le compte plus, comme le calcul qui l a pousse de la piste 1 a la piste 5).
   { nom: 'activite-commencee-deplacee', lettre: 'G', scenarios: ['gel'], editions: [{ fichier: LIB, serveur: true, de: '  const commencee = (etape) => gelees.has(etape.cle) || (surPlace(current) && etape.debut <= maintenant);', vers: '  const commencee = (etape) => gelees.has(etape.cle);' }] },
+  { nom: 'plan-en-cascade-sans-garde', lettre: 'G', scenarios: ['gel'], editions: [{ fichier: BASE, serveur: true, de: "    require('./retard-arrivee').refuserSiUnGroupeQuiJoueBouge(merged, safeDate);\n", vers: '' }] },
+  // [D] la plaine de jeux remise a une heure : au calcul, au programme de la fiche, dans Réserver.
+  { nom: 'plaine-a-heure', lettre: 'D', scenarios: ['tout'], editions: [{ fichier: LIB, serveur: true, de: '    if (LIBRES_TOUTE_LA_JOURNEE.includes(id)) return;\n', vers: '' }] },
+  { nom: 'plaine-a-heure-au-programme', lettre: 'D', scenarios: ['tout'], editions: [
+    { fichier: JS, de: "      start: accesIllimite || item.activityId === 'playground' ? null : item.start,", vers: '      start: accesIllimite ? null : item.start,' },
+    { fichier: JS, de: "      end: accesIllimite || item.activityId === 'playground' ? null : item.end,", vers: '      end: accesIllimite ? null : item.end,' },
+    { fichier: JS, de: "      ...(accesIllimite ? { libre: true, volonte: true } : item.activityId === 'playground' ? { libre: true } : {}),", vers: '      ...(accesIllimite ? { libre: true, volonte: true } : {}),' },
+  ] },
+  { nom: 'plaine-a-heure-dans-reserver', lettre: 'D', scenarios: ['tout'], editions: [{ fichier: JS, de: "  if (!id && getFormulaActivityIds({ desc: [texte] }).includes('playground')) return `<li class=\"is-libre\">${escapeHtml(texte)}<span class=\"rs-cc-libre\">libre</span></li>`;\n", vers: '' }] },
+  // [H] la bulle du planning qui rouvre l ancien plan en cascade.
+  { nom: 'bulle-ancien-plan', lettre: 'H', scenarios: ['bulle'], editions: [{ fichier: PG, de: 'ouvrirRetardFiche(Number(id), Math.min(240, deja + Number(n)), ev);', vers: 'openDelayImpact(Number(id), Math.min(240, deja + Number(n)), ev);' }] },
   { nom: 'groupe-qui-joue-pousse', lettre: 'G', scenarios: ['gel'], editions: [
     { fichier: LIB, serveur: true, de: '  if (enJeu && enJeu.exclusif) throw refus(enJeu.phrase, 409);', vers: '' },
     { fichier: 'api/staff-reservations.js', serveur: true, de: '        try { validateActivityMoveResources(essai, move, autres, snapshot.laneStatuses, snapshot.blocks || [], current.date); }', vers: "        try { validateActivityMoveResources(essai, move, autres.filter((o) => !['arrived', 'paid'].includes(o.status)), snapshot.laneStatuses, snapshot.blocks || [], current.date); }" },
@@ -702,6 +776,7 @@ async function jouer(browser, noms) {
     if (nom === 'telephone') await scenarioTelephone(browser);
     if (nom === 'enchainement') await scenarioEnchainement(browser);
     if (nom === 'gel') await scenarioGel();
+    if (nom === 'bulle') await scenarioBulle(browser);
   }
 }
 
@@ -711,7 +786,7 @@ async function main() {
   const t0 = Date.now();
   try {
     if (!process.argv.includes('--contre-preuves')) {
-      await jouer(browser, liste(process.env.RV_SCENARIOS) || ['planning', 'arrivee', 'tout', 'serveur', 'enchainement', 'gel', 'telephone']);
+      await jouer(browser, liste(process.env.RV_SCENARIOS) || ['planning', 'arrivee', 'tout', 'serveur', 'enchainement', 'gel', 'bulle', 'telephone']);
     } else {
       console.log('[K] contre-preuves : chaque regle retiree fait rougir sa lettre');
       for (const m of MUTATIONS.filter((x) => !process.env.RV_MUTATIONS || liste(process.env.RV_MUTATIONS).includes(x.nom))) {

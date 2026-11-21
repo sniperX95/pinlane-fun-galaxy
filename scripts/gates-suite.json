@@ -235,6 +235,7 @@
     "test:fondateur-invisible",
     "test:fondateur-historiques",
     "test:pistes-reparties",
+    "test:pistes-cote-a-cote",
     "test:autre-ordre",
     "test:tour-controle",
     "test:migrations-attendues",

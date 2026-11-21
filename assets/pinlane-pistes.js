@@ -15,11 +15,26 @@
    lib/database.js), la console par window.PinlanePistes : pour la meme journee,
    le comptoir montre la piste que le serveur gardera.
 
+   COTE A COTE D ABORD (2026-11-21, le gerant de Fun Galaxy : « ça ne met plus
+   des pistes ensemble quand c'est des groupes qui ont plusieurs personnes [...]
+   ça ne les met plus côte à côte »). La graine (les pistes qu un dossier modifie
+   a deja, « Ils sont N », une piste ajoutee par la fenetre) passait AVANT : un
+   groupe qui grandissait gardait sa piste 4 et prenait la 6, les pistes 3 et 5
+   prises, alors que 1-2 et 7-8 etaient libres. Avec l equilibre, les groupes
+   d une piste ne s empilent plus sur les premieres pistes : la voisine d une
+   piste est plus souvent prise, et le groupe s eparpillait. Maintenant un groupe
+   de N pistes recoit N pistes qui se suivent ; la graine n est gardee que si un
+   bloc cote a cote la contient ; l equilibre choisit QUEL bloc. Seules les
+   pistes choisies a la main (`fermes`) restent toujours, comme le staff les a
+   touchees. Aucun bloc libre a cette heure : le partage qui laisse le moins de
+   trous, et pistesSeparees le dit au staff (« pistes 3 et 6 : aucune paire cote
+   a cote n est libre »).
+
    Parmi les pistes libres sur la fenetre (chaque appelant les compte comme
    avant : occupees, maintenance, blocage), dans cet ordre :
-     1. ce qu un groupe exige, comme avant : un groupe de 2 prend une paire
-        entiere (1-2, 3-4...) ; un groupe plus grand prend des pistes cote a
-        cote (le moins d ecart possible) ;
+     1. ce qu un groupe exige : des pistes cote a cote (le moins de trous
+        possible), puis les pistes de sa graine gardees, puis, pour un groupe
+        de 2, une paire entiere (1-2, 3-4...) ;
      2. l equilibre : on ecarte ce qui a deja servi une heure de plus que la
         piste libre la moins utilisee de la journee (minutes deja reservees) ;
      3. parmi ce qui reste, ce qui garde les paires entieres pour les groupes
@@ -117,12 +132,73 @@
     return groupes;
   }
 
+  // Des numeros qui se suivent : 3-4-5, jamais 3-5.
+  function seSuivent(pistes) {
+    return pistes.every((piste, i) => i === 0 || piste === pistes[i - 1] + 1);
+  }
+
+  // Les pistes qui manquent entre la premiere et la derniere d un groupe trie
+  // (0 : cote a cote).
+  function trous(groupe) {
+    return groupe.length ? groupe[groupe.length - 1] - groupe[0] - (groupe.length - 1) : 0;
+  }
+
+  // Des numeros de piste lus d une liste : entiers positifs, sans doublon.
+  function lirePistes(liste) {
+    return [...new Set((Array.isArray(liste) ? liste : []).map(Number))]
+      .filter((piste) => Number.isInteger(piste) && piste > 0);
+  }
+
+  // Les blocs de `nombre` pistes libres qui se suivent, dans l ordre des numeros.
+  function blocsCoteACote(libres, nombre) {
+    const triees = lirePistes(libres).sort((a, b) => a - b);
+    const blocs = [];
+    for (let i = 0; i + nombre <= triees.length; i += 1) {
+      const groupe = triees.slice(i, i + nombre);
+      if (seSuivent(groupe)) blocs.push(groupe);
+    }
+    return blocs;
+  }
+
+  // « 3 et 6 », « 2, 4 et 7 ».
+  function enumerer(pistes) {
+    return pistes.length > 2 ? `${pistes.slice(0, -1).join(', ')} et ${pistes[pistes.length - 1]}` : pistes.join(' et ');
+  }
+
+  // LE PARTAGE SE DIT (2026-11-21). Des pistes qui ne se suivent pas, en une
+  // phrase pour le staff : « pistes 3 et 6 : aucune paire côte à côte n’est
+  // libre ». Rien quand elles se suivent, ni quand un bloc cote a cote etait
+  // libre sans piste choisie a la main (le staff a pose ces pistes lui-meme),
+  // ni quand toutes l ont ete.
+  // options : pistes (celles du groupe), libres (les pistes libres sur la
+  // fenetre, celles du groupe comprises), fermes (celles choisies a la main).
+  function pistesSeparees(options) {
+    const o = options || {};
+    const pistes = lirePistes(o.pistes).sort((a, b) => a - b);
+    if (pistes.length < 2 || seSuivent(pistes)) return '';
+    const libres = lirePistes([...(Array.isArray(o.libres) ? o.libres : []), ...pistes]);
+    const liste = enumerer(pistes);
+    if (!blocsCoteACote(libres, pistes.length).length) {
+      return pistes.length === 2
+        ? `pistes ${liste} : aucune paire côte à côte n’est libre`
+        : `pistes ${liste} : aucun bloc de ${pistes.length} pistes côte à côte n’est libre`;
+    }
+    const fermes = lirePistes(o.fermes).filter((piste) => pistes.includes(piste)).sort((a, b) => a - b);
+    if (!fermes.length || fermes.length === pistes.length) return '';
+    const bloc = pistes.length === 2 ? 'aucune paire côte à côte' : `aucun bloc de ${pistes.length} pistes côte à côte`;
+    return fermes.length > 1
+      ? `pistes ${liste} : ${bloc} ne passe par les pistes ${enumerer(fermes)}, choisies à la main`
+      : `pistes ${liste} : ${bloc} ne passe par la piste ${fermes[0]}, choisie à la main`;
+  }
+
   // options : libres (les pistes libres sur la fenetre), nombre (les pistes
   // voulues), pistes (le nombre de pistes du centre), usage (minutes par piste
   // sur la journee, usageDesPistes), date (« AAAA-MM-JJ »), coteACote (faux :
   // le centre renonce a garder un groupe cote a cote, reglage preferAdjacentLanes),
-  // graine (les pistes que le groupe garde : celles qu une reservation modifiee
-  // a deja, une piste touchee au comptoir).
+  // graine (les pistes que le groupe a deja : celles d une reservation modifiee,
+  // celles que la fenetre a ajoutees ; gardees si un bloc cote a cote les
+  // contient), fermes (les pistes choisies a la main par le staff : toujours
+  // gardees).
   // Rend les pistes choisies (triees), [] pour zero piste, null s il en manque.
   function choisirPistes(options) {
     const o = options || {};
@@ -139,7 +215,10 @@
     // de graine que de pistes voulues (un groupe qui baisse, 2026-11-19) : la
     // regle choisit le meilleur bloc parmi elles, juge sur toutes les pistes
     // libres. Une piste de la graine qui n est pas libre ne compte pas.
-    const graine = [...new Set((Array.isArray(o.graine) ? o.graine : []).map(Number))]
+    // LES PISTES CHOISIES A LA MAIN (2026-11-21) : toujours gardees, la regle ne
+    // choisit que celles qui manquent. Elles font partie de la graine.
+    const fermes = lirePistes(o.fermes).filter((piste) => libres.includes(piste)).sort((a, b) => a - b);
+    const graine = lirePistes([...fermes, ...(Array.isArray(o.graine) ? o.graine : [])])
       .filter((piste) => libres.includes(piste))
       .sort((a, b) => a - b);
     const total = Math.max(Math.trunc(Number(o.pistes)) || 0, libres[libres.length - 1]);
@@ -156,7 +235,8 @@
     // soient (apres la graine).
     if (o.coteACote === false && nombre > 1) {
       if (graine.length >= nombre) {
-        return graine.slice().sort((a, b) => charge(a) - charge(b) || rang(a) - rang(b)).slice(0, nombre).sort((a, b) => a - b);
+        return [...fermes, ...graine.filter((piste) => !fermes.includes(piste)).sort((a, b) => charge(a) - charge(b) || rang(a) - rang(b))]
+          .slice(0, nombre).sort((a, b) => a - b);
       }
       return [...graine, ...libres.filter((piste) => !graine.includes(piste))
         .sort((a, b) => charge(a) - charge(b) || rang(a) - rang(b))
@@ -175,14 +255,26 @@
     const paireEntiere = (groupe) => groupe.length === 2 && voisine.get(groupe[0]) === groupe[1];
 
     // Les candidats : chaque suite de `nombre` pistes libres consecutives dans
-    // la liste (un bloc cote a cote quand il n y a pas de trou). Avec une
-    // graine : elle, plus chaque suite de celles qui manquent ; les memes cles
-    // les departagent.
-    const candidats = [];
-    for (let i = 0; i + nombre <= libres.length; i += 1) candidats.push(libres.slice(i, i + nombre));
-    if (graine.length) candidats.splice(0, candidats.length, ...autourDeLaGraine(graine, libres, nombre));
-    // 1. Ce que le groupe exige : une paire entiere pour 2, le bloc le plus serre.
-    const exige = (groupe) => [nombre === 2 && !paireEntiere(groupe) ? 1 : 0, groupe[groupe.length - 1] - groupe[0]];
+    // la liste (un bloc cote a cote quand il n y a pas de trou), plus, avec une
+    // graine, elle et chaque suite de celles qui manquent (avant le 21/11,
+    // seulement celles-la : le groupe qui grandissait s eparpillait autour de sa
+    // piste). Un groupe qui baisse choisit parmi les siennes. Tous gardent les
+    // pistes choisies a la main.
+    let candidats = [];
+    const base = fermes.length >= nombre ? fermes : graine;
+    if (base.length >= nombre) {
+      candidats = autourDeLaGraine(base, libres, nombre).filter((groupe) => base === fermes || fermes.every((piste) => groupe.includes(piste)));
+      if (!candidats.length) candidats = [[...fermes, ...graine.filter((piste) => !fermes.includes(piste))].slice(0, nombre).sort((a, b) => a - b)];
+    } else {
+      for (let i = 0; i + nombre <= libres.length; i += 1) candidats.push(libres.slice(i, i + nombre));
+      if (graine.length) candidats.push(...autourDeLaGraine(graine, libres, nombre));
+      if (fermes.length && fermes.length < graine.length) candidats.push(...autourDeLaGraine(fermes, libres, nombre));
+      candidats = candidats.filter((groupe) => fermes.every((piste) => groupe.includes(piste)));
+    }
+    const garde = (groupe) => groupe.filter((piste) => graine.includes(piste)).length;
+    // 1. Ce que le groupe exige : cote a cote (le moins de trous), puis les
+    // pistes de sa graine, puis une paire entiere pour 2.
+    const exige = (groupe) => [trous(groupe), -garde(groupe), nombre === 2 && !paireEntiere(groupe) ? 1 : 0];
     const meilleureExigence = candidats.map(exige).reduce((a, b) => (comparerCles(b, a) < 0 ? b : a));
     const tenables = candidats.filter((groupe) => comparerCles(exige(groupe), meilleureExigence) === 0);
     // 2. L equilibre, mesure par piste (un groupe de 3 compte sa moyenne).
@@ -208,6 +300,9 @@
 
   return {
     ECART_TOLERE_MINUTES,
+    seSuivent,
+    blocsCoteACote,
+    pistesSeparees,
     paires,
     numeroDuJour,
     premierePisteDuJour,

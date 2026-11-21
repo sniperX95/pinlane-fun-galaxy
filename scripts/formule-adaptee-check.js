@@ -26,9 +26,10 @@
 //        d armes, ni au serveur ni au planning ;
 //   [R2] l heure du Bowling ajoute changee : la formule et son prix restent ;
 //   [R3] le comptoir baisse le total a la main : il s ecrit, la formule reste, la note dit le prix revu ;
-//   [V1] Reserver, le meme geste a la creation (Formule 5 et Bowling) : la formule reste ;
+//   [V1] Reserver, le meme geste a la creation (Formule 5 et Bowling) : la formule reste, le Bowling se
+//        paie a son prix (2026-11-21, scripts/reserver-formule-ajout-check.js en vrais clics) ;
 //   [O1] un dossier d avant se lit comme avant : celui que l ancien serveur a fait visite a la carte, et
-//        une formule adaptee « au même prix » (Reserver) dont l addition garde sa seule ligne ;
+//        une formule adaptee « au même prix » (Reserver avant le 21/11) dont l addition garde sa seule ligne ;
 //   [J1] aucune erreur JS.
 // --contre-preuves : chaque regle retiree (au code servi ou au serveur, en memoire ; le disque n est
 // jamais touche) fait rougir sa lettre.
@@ -346,9 +347,10 @@ async function scenario1953(browser) {
       // (la preference que la fenetre envoie, rvPreference : l ordre et les heures du bowling et du laser)
       preference: { activityOrder: ['laser_game', GOLF, 'bowling'], preferredTimes: { laser_game: '13:00', bowling: '15:30' }, laserGameTimes: ['13:00', '13:30'], laserPlacement: 'scheduled' } });
     const parReserver = enBase(cree.id);
-    ok(parReserver.type === 'formule' && parReserver.formuleId === 'f5' && parReserver.items.includes('bowling') && parReserver.cruches > 0,
-      '[V1] Reserver garde la Formule 5 avec son Bowling et ses cruches', parReserver);
-    // [O1] Une formule adaptee « au même prix » (ce que Reserver ecrit aujourd hui) garde sa seule ligne d addition.
+    ok(parReserver.type === 'formule' && parReserver.formuleId === 'f5' && parReserver.items.includes('bowling') && parReserver.cruches > 0
+      && centimes(parReserver.price) === centimes(attendu.total) && centimes(parReserver.basePrice) === centimes(attendu.total),
+      `[V1] Reserver garde la Formule 5 avec son Bowling et ses cruches, le Bowling a son prix (${attendu.total})`, parReserver);
+    // [O1] Une formule adaptee « au même prix » (ce que Reserver ecrivait avant le 2026-11-21) garde sa seule ligne d addition.
     const ligne = B.base.reservations.get(Number(cree.id));
     ligne.base_price = attendu.formule;
     ligne.price = attendu.formule;

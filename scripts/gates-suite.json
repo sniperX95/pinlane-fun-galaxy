@@ -276,6 +276,7 @@
     "test:planning-recherche",
     "test:heures-du-dossier",
     "test:formule-adaptee",
+    "test:reserver-formule-ajout",
     "test:planning-liens",
     "test:one-screen",
     "test:funnel-clarity",

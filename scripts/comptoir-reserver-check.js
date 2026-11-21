@@ -1039,14 +1039,18 @@ async function scenarioR10(browser) {
     await page.evaluate(() => { const c = document.getElementById('globalPlanningSearchInput'); c.value = ''; applyStaffSearch('', { immediate: true }); });
     await page.locator('[data-gf-id="1603"] .gf-nom__t').click();
     await page.waitForSelector('#posOverlay .fx-annuler');
-    // (la fiche s ouvre en 180 ms, de 0,98 a 1 : mesuree pendant son entree, Annuler lisait 43 px pour 44)
-    await page.evaluate(() => Promise.all(document.querySelector('#posOverlay').getAnimations({ subtree: true })
+    // (la fiche sort du point touche, de 0,9 a 1 en 240 ms : mesuree pendant son entree, Annuler
+    // lisait 43 px pour 44 des le 0,98 du 20/11)
+    const finDuMouvement = () => page.evaluate(() => Promise.all(document.querySelector('#posOverlay').getAnimations({ subtree: true })
       .filter((a) => a.effect && a.effect.getComputedTiming().endTime !== Infinity).map((a) => a.finished.catch(() => {}))));
+    await finDuMouvement();
     await photo(page, `${appareil}-${theme}-fiche`);
     const annuler = await page.evaluate(mesures, ['#posOverlay .fx-annuler']);
     ok(annuler.length === 1 && annuler[0].h >= min && annuler[0].police >= 12 && annuler[0].contraste >= 4.5, `[R10] Annuler : ${min} px, 12 px, 4,5:1 (${lieu})`, annuler);
     await page.locator('#posOverlay button', { hasText: /^Modifier$/ }).first().click();
     await page.waitForSelector('#editContactPli');
+    // (Modifier grandit depuis son onglet, de 0,94 a 1 : le pli se mesure une fois pose)
+    await finDuMouvement();
     await photo(page, `${appareil}-${theme}-modifier`);
     const pli = await page.evaluate(mesures, ['#editContactPli > summary']);
     ok(pli.length === 1 && pli[0].h >= (doigt ? 40 : 32) && pli[0].police >= 12 && pli[0].contraste >= 4.5, `[R10] le pli se lit et se touche (${lieu})`, pli);

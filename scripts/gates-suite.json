@@ -235,6 +235,7 @@
     "test:fondateur-invisible",
     "test:fondateur-historiques",
     "test:pistes-reparties",
+    "test:pistes-cote-a-cote",
     "test:autre-ordre",
     "test:tour-controle",
     "test:migrations-attendues",
@@ -276,6 +277,8 @@
     "test:planning-recherche",
     "test:heures-du-dossier",
     "test:formule-adaptee",
+    "test:reserver-formule-ajout",
+    "test:reserver-formule-heures",
     "test:planning-liens",
     "test:one-screen",
     "test:funnel-clarity",
@@ -466,7 +469,8 @@
     "test:planning-persistent-move",
     "test:mouvement",
     "test:fenetre-taille",
-    "test:mouvement-gestes"
+    "test:mouvement-gestes",
+    "test:fenetre-mouvement"
   ],
   "seuls": [
     "test:visit-motion",

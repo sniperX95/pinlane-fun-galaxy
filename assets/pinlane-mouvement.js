@@ -14,9 +14,9 @@
    lecteurs d'écran le lisent tel quel). Le mouvement se joue sur des CALQUES
    à part, vides de texte et sans id, qui disparaissent à la fin.
 
-   - voler : une forme vide part d'un rectangle et se pose sur un autre. La
-     fiche naît de la ligne touchée et s'y range en se fermant ; Réserver naît
-     de son bouton (Linear Modal, Morphing Dialog).
+   - les fenêtres : la vraie fenêtre (la fiche, Réserver, Modifier, le client)
+     grandit depuis le point touché (Linear Modal, Morphing Dialog) ; fermée, sa
+     forme vide y repart. Depuis le 21/11, plus rien ne vole à sa place.
    - glisseur : une surbrillance qui suit la souris d'une ligne à l'autre, au
      lieu de sauter (Motion Highlight, Animated Background).
    - repère : le fond de l'onglet choisi glisse de l'ancien au nouveau.
@@ -100,45 +100,139 @@
 
   // Un voile qui s'éteint seul, à la place de celui qui vient de disparaître d'un coup.
   function voileQuiSEteint(duree) {
-    if (reduit()) return;
+    if (reduit()) return null;
     var v = calque('pl-voile');
     retirerALaFin(v.animate([{ opacity: 1 }, { opacity: 0 }], { duration: duree || 180, easing: SORTIE, fill: 'forwards' }), v);
+    return v;
   }
 
   // ---- LES FENETRES ---------------------------------------------------------
-  // `surface` : la boîte de la fenêtre (la fiche, Réserver). La fenêtre est déjà peinte et
-  // lisible ; elle est VISIBLE dès la première image. Le gérant trouvait la fiche « pas fluide
-  // du tout » (20/11) : une forme volait de la ligne à la fenêtre (300 ms) et se fondait (140 ms)
-  // pendant que la vraie fenêtre restait à l'opacité 0 jusqu'à 273 ms, finie vers 440 ms.
-  // Désormais : la vraie fenêtre naît elle-même, opacité 0 à 1 et échelle 0,98 à 1 en 180 ms,
-  // le fond en 150 ms. Aucun calque ne vole, aucune ombre n'est mise à l'échelle.
+  // LA FENETRE SORT DE CE QU'ON A TOUCHÉ (2026-11-21). L'histoire, pour ne pas la refaire :
+  // - 19/11 : une forme vide volait de la ligne à la fenêtre (300 ms, puis 140 ms de fondu)
+  //   pendant que la vraie fenêtre restait à l'opacité 0 jusqu'à 273 ms. Le gérant (20/11) :
+  //   « pas fluide du tout », « trop lente ». C'était le calque qui saccadait : une boîte de
+  //   1100 px, son ombre de 56 px mise à l'échelle à chaque image.
+  // - 20/11, 81022c5 : plus de calque, la fenêtre de 0,98 à 1 en 180 ms. Rapide, mais 2 % de
+  //   1100 px ne se voient pas. Le gérant, le soir : « plus de motion du tout, partout ».
+  // Désormais c'est la VRAIE fenêtre (jamais une copie) qui bouge, sur transform et opacity,
+  // que le compositeur joue seul : elle grandit de 0,9 à 1 en 240 ms depuis le point touché
+  // (transform-origin), avec un pas vers lui. Son opacité, à part, est pleine en 60 ms : à
+  // 30 ms elle laissait voir le planning à travers elle, un dédoublement que le gérant refuse.
+  // Au téléphone elle monte du bas. Ouverte par le code (l'adresse, un test, un rendu), sans
+  // toucher, elle se fond à sa vraie taille : rien ne dit d'où elle viendrait, et une mesure
+  // faite pendant son entrée reste juste.
   var DERNIERE_FERMEE = -1e9;
   function reouverture() { return performance.now() - DERNIERE_FERMEE < 300; }
-  function ouvrirFenetre(voileEl, surface, origine, o) {
-    o = o || {};
-    if (!peutAnimer(surface) || reouverture()) return;
-    if (voileEl && voileEl !== surface && typeof voileEl.animate === 'function') {
-      voileEl.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 150, easing: SORTIE });
-    }
-    // Au téléphone la fenêtre prend tout l'écran : elle ne fait que se fondre, sa boîte ne bouge
-    // jamais (fenetre-taille-juste-check : une mesure faite pendant l'entrée lisait 38,8 px pour
-    // une photo de 40, 19/11). Sur grand écran elle grandit de 0,98 à 1.
-    var telephone = Boolean(window.matchMedia) && window.matchMedia('(max-width: 860px)').matches;
-    surface.animate(
-      telephone ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 0, transform: 'scale(0.98)' }, { opacity: 1, transform: 'scale(1)' }],
-      { duration: o.duree || 180, easing: SORTIE }
-    );
+  var OUVERTURE = 240;
+  var OUVERTURE_TELEPHONE = 260;
+  var OPACITE = 60;
+  var FERMETURE = 160;
+  var ECHELLE_DEPART = 0.9;
+  function telephone() { return Boolean(window.matchMedia) && window.matchMedia('(max-width: 860px)').matches; }
+
+  // Le dernier vrai toucher (souris, doigt, stylet), ou la touche Entrée ou Espace sur ce qui a
+  // le focus. Lu seulement quand une fenêtre s'ouvre dans la demi-seconde qui suit.
+  var touche = null;
+  function noterAppui(event) {
+    if (event.isTrusted) touche = { x: event.clientX, y: event.clientY, t: performance.now() };
+  }
+  function noterTouche(event) {
+    if (event.isTrusted && (event.key === 'Enter' || event.key === ' ')) touche = { el: event.target, t: performance.now() };
+  }
+  function pointTouche() {
+    var t = touche;
+    touche = null;
+    if (!t || performance.now() - t.t > 600) return null;
+    if (!t.el) return { x: t.x, y: t.y };
+    var b = boite(t.el);
+    return b && aLEcran(b) ? { x: b.left + b.width / 2, y: b.top + b.height / 2 } : null;
+  }
+  function borne(v, max) { return Math.max(-max, Math.min(max, v)); }
+
+  // La fenêtre qui part et son voile (fermerFenetre) : la suivante qui s'ouvre les retire d'abord.
+  var partantes = [];
+  function acheverLesSorties() {
+    var liste = partantes;
+    partantes = [];
+    liste.forEach(function (el) { if (el && el.isConnected) el.remove(); });
   }
 
-  // La fenêtre va disparaître d'un coup (l'appelant la cache juste après) : une forme vide de
-  // sa taille s'efface sur place en 150 ms (même rectangle : rien ne vole) et le voile s'éteint.
+  // La fenêtre naît du point `p` (coordonnées de l'écran) : de `d.echelle` à elle-même, sur
+  // transform seul (son opacité se joue à part). Au téléphone elle monte du bas, sa taille ne
+  // change jamais (elle prend tout l'écran : 0,9 de l'écran se lirait comme une autre fenêtre).
+  function naitre(surface, p, d) {
+    var etapes;
+    if (telephone()) {
+      var monte = Math.round(Math.min(64, window.innerHeight * 0.07) * d.montee);
+      etapes = [{ transform: 'translateY(' + monte + 'px)' }, { transform: 'translateY(0px)' }];
+    } else {
+      // La seule mesure de l'ouverture : la boîte de la fenêtre qu'on vient de peindre.
+      var b = boite(surface);
+      if (!b) return null;
+      surface.style.transformOrigin = Math.round(p.x - b.left) + 'px ' + Math.round(p.y - b.top) + 'px';
+      // (un pas vers le point touché, en plus de l'échelle qui s'y ramène : 16 px au plus)
+      var dx = Math.round(borne((p.x - (b.left + b.width / 2)) * 0.06, 16));
+      var dy = Math.round(borne((p.y - (b.top + b.height / 2)) * 0.06, 16));
+      etapes = [
+        { transform: 'translate(' + dx + 'px, ' + dy + 'px) scale(' + d.echelle + ')' },
+        { transform: 'translate(0px, 0px) scale(1)' },
+      ];
+    }
+    var a = surface.animate(etapes, { id: ID, duration: telephone() ? OUVERTURE_TELEPHONE : OUVERTURE, easing: SORTIE });
+    a.onfinish = a.oncancel = function () { surface.style.transformOrigin = ''; };
+    return a;
+  }
+
+  // `voileEl` : le fond qui assombrit la page ; `surface` : la fenêtre, déjà peinte et lisible.
+  function ouvrirFenetre(voileEl, surface) {
+    acheverLesSorties();
+    var p = pointTouche();
+    if (!peutAnimer(surface) || reouverture()) return null;
+    // L'opacité, à part de l'échelle : pleine en 60 ms. La fenêtre est DANS son voile, qui se
+    // fond donc avec elle et pas plus lentement : un voile à 0,65 la laissait à 0,65 elle aussi.
+    var fondu = voileEl && voileEl !== surface && typeof voileEl.animate === 'function' ? voileEl : surface;
+    fondu.animate([{ opacity: 0 }, { opacity: 1 }], { id: ID, duration: OPACITE, easing: SORTIE });
+    // (le point reste sur le fond, que les rendus de la fenêtre gardent : elle y repartira)
+    if (voileEl) voileEl._plPoint = p;
+    if (!p) return null;
+    return naitre(surface, p, { echelle: ECHELLE_DEPART, montee: 1 });
+  }
+
+  // MODIFIER S'OUVRE DEPUIS SON ONGLET : la fiche, devenue plus grande d'un coup (sa mise en
+  // page), en grandit depuis l'onglet touché, de 0,94 à elle-même, opaque d'un bout à l'autre.
+  function grandirFenetre(surface) {
+    var p = pointTouche();
+    if (!p || !peutAnimer(surface)) return null;
+    return naitre(surface, p, { echelle: 0.94, montee: 0.5 });
+  }
+
+  // La fenêtre va disparaître d'un coup (l'appelant cache son fond et la vide juste après) :
+  // sa forme, vide, reste à sa place et repart en 160 ms vers là d'où la fenêtre était née
+  // (0,95 et un fondu ; au téléphone elle redescend), le voile s'éteint. Rien n'attend : le fond
+  // est fermé, le focus rendu, l'état écrit dès cet appel. (Faire partir la VRAIE fenêtre
+  // demande de la reposer ailleurs dans la page : mesuré le 21/11 à CPU x4, l'image suivante
+  // tombait 0,5 à 1,4 s plus tard, contre 40 à 125 ms ; la forme vide, elle, ne coûte rien.)
   function fermerFenetre(surface) {
     DERNIERE_FERMEE = performance.now();
-    if (reduit()) return;
+    acheverLesSorties();
+    if (!peutAnimer(surface) || !surface.isConnected) return;
     var depuis = boite(surface);
-    if (!depuis) return;
-    voileQuiSEteint(150);
-    voler(depuis, depuis, { retour: true, rayon: getComputedStyle(surface).borderRadius, duree: 150, courbe: SORTIE });
+    if (!depuis || !aLEcran(depuis)) return;
+    partantes.push(voileQuiSEteint(FERMETURE));
+    var fond = surface.parentElement;
+    var p = fond && fond._plPoint;
+    var style = getComputedStyle(surface);
+    var forme = calque('pl-vol pl-sortie');
+    poser(forme, depuis);
+    forme.style.left = depuis.left + 'px';
+    forme.style.top = depuis.top + 'px';
+    forme.style.borderRadius = style.borderRadius;
+    forme.style.background = style.backgroundColor;
+    forme.style.transformOrigin = p ? Math.round(p.x - depuis.left) + 'px ' + Math.round(p.y - depuis.top) + 'px' : '50% 50%';
+    var fin = telephone() ? 'translateY(' + Math.round(Math.min(40, window.innerHeight * 0.045)) + 'px)' : 'scale(0.95)';
+    var a = forme.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: fin }], { id: ID, duration: FERMETURE, easing: SORTIE, fill: 'forwards' });
+    partantes.push(forme);
+    retirerALaFin(a, forme);
   }
 
   // ---- LE GLISSEUR ----------------------------------------------------------
@@ -318,6 +412,8 @@
   }
 
   if (typeof document !== 'undefined') {
+    document.addEventListener('pointerdown', noterAppui, { capture: true, passive: true });
+    document.addEventListener('keydown', noterTouche, true);
     document.addEventListener('pointerover', survol, { passive: true });
     document.addEventListener('pointerleave', function () { glisseurs.forEach(function (g) { eteindre(g, false); }); }, { passive: true });
     window.addEventListener('scroll', defilement, { passive: true, capture: true });
@@ -423,6 +519,7 @@
   apresGeste('.dossier-tabs .tab', function () { return etat().activeTab; }, function (cible, avant) {
     var apres = etat().activeTab;
     if (!apres || apres === avant) return;
+    if (apres === 'modifier') grandirFenetre(document.querySelector('#posOverlay:not(.hidden) .edit-modal'));
     var sens = ONGLETS.indexOf(apres) >= ONGLETS.indexOf(avant) ? 1 : -1;
     entrer(enfantsVisibles(document.querySelector('#posOverlay .edit-modal-body')), { dx: sens * 18, dy: 0, pas: 30, duree: 280, max: 6 });
   });

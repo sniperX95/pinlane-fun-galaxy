@@ -218,11 +218,10 @@ const ETAPES = {
   },
   async fiche({ page }, v) {
     await calmer(page);
-    // LA FICHE S'OUVRE VITE (20/11, le gérant : « pas fluide du tout », « trop lente »). Un vrai clic
-    // sur le nom d'une ligne : la vraie fenêtre naît elle-même (opacité 0 à 1, échelle 0,98 à 1,
-    // 160 à 200 ms, ease-out), le fond en 150 ms au plus, aucun calque ne vole, aucune seconde
-    // animation. Les durées se lisent dans l'effet (getComputedTiming), que l'horloge ralentie
-    // du gate ne change pas ; la visibilité se lit à 60 ms de la ligne de temps de la fenêtre.
+    // LA FICHE S'OUVRE D'UNE SEULE ANIMATION (20/11, le gérant : « pas fluide du tout »). Un vrai clic
+    // sur le nom d'une ligne : la vraie fenêtre naît elle-même, aucun calque ne vole, aucune seconde
+    // animation (ni .fade-in, ni entrée CSS). Sa forme, sa durée, son origine, sa lisibilité et sa
+    // fermeture sont gardées par fenetre-mouvement-check (21/11, la fenêtre sort du point touché).
     await page.evaluate(() => {
       document.querySelectorAll('[data-gate-nom]').forEach((x) => x.removeAttribute('data-gate-nom'));
       const n = [...document.querySelectorAll('.gf-t tr.gf-r:not(.gf-retenue) .gf-nom__t')].find((x) => { const r = x.getBoundingClientRect(); return r.width > 10 && r.top > 140 && r.bottom < innerHeight - 40; });
@@ -239,33 +238,9 @@ const ETAPES = {
     await apresLeGeste(page);
     const ouv = await lire();
     const fen = ouv.filter((x) => x.sur === 'fenetre');
-    const voile = ouv.filter((x) => x.sur === 'voile');
-    v('fiche : la vraie fenêtre naît elle-même, une seule animation, sans retard', fen.length === 1 && fen[0].ordre === '0/scale(0.98) > 1/scale(1)', ouv);
-    v('fiche : elle s ouvre en 160 à 200 ms', fen.length === 1 && fen[0].fin >= 160 && fen[0].fin <= 200, ouv);
-    v('fiche : elle s ouvre en ease-out fort', fen.length === 1 && /cubic-bezier\(0\.23, 1, 0\.32, 1\)/.test(fen[0].easing), ouv);
-    v('fiche : le fond apparaît en 150 ms au plus', voile.length >= 1 && voile.every((x) => x.fin <= 150), ouv);
+    v('fiche : la vraie fenêtre naît elle-même, une seule animation (de 0,9 ; son opacité se joue sur son voile)', fen.length === 1 && !fen[0].css && /scale\(0\.9\)/.test(fen[0].ordre.split(' > ')[0]), ouv);
     v('fiche : aucun calque ne vole, aucune ombre mise à l échelle', !ouv.some((x) => x.sur === 'calque') && (await page.locator('.pl-vol').count()) === 0, ouv);
     v('fiche : aucune seconde animation sur la fiche (ni .fade-in, ni entrée CSS)', !ouv.some((x) => x.css && x.sur !== 'ailleurs') && !ouv.some((x) => x.sur === 'dedans' && x.classe === 'pos-sheet') && (await page.locator('#posOverlay .pos-sheet.fade-in').count()) === 0, ouv);
-    // Lisible tôt : à 60 ms de sa ligne de temps, la fenêtre est déjà visible (l'ancienne attendait 273 ms).
-    const tot = await page.evaluate(() => {
-      const a = document.getAnimations().find((x) => x.effect && x.effect.target && x.effect.target.matches && x.effect.target.matches('#posOverlay .edit-modal'));
-      if (!a) return null;
-      a.pause();
-      a.currentTime = 60;
-      const o = Number(getComputedStyle(a.effect.target).opacity);
-      a.finish();
-      return o;
-    });
-    v('fiche : lisible dès 60 ms (opacité d au moins 0,8)', tot !== null && tot >= 0.8, { tot });
-    await calmer(page);
-    await page.keyboard.press('Escape');
-    await apresLeGeste(page);
-    const fer = await lire();
-    v('fiche : la fermeture prend 150 ms au plus', fer.length >= 1 && fer.every((x) => x.fin <= 150), fer);
-    await page.evaluate(() => { const n = document.querySelector('[data-gate-nom="1"]'); if (n) n.click(); });
-    await apresLeGeste(page);
-    const re = await lire();
-    v('fiche : rouverte à moins de 300 ms, sans animation', (await page.locator('#posOverlay:not(.hidden) .edit-modal').count()) === 1 && !re.some((x) => x.sur === 'fenetre' || x.sur === 'voile'), re);
     await calmer(page);
     await page.keyboard.press('Escape');
     await page.waitForTimeout(400);
@@ -280,6 +255,22 @@ const ETAPES = {
     await apresLeGeste(page);
     v('fiche : le contenu arrive du côté de l onglet', (await compter(page, '#posOverlay .edit-modal-body > *')) >= 1);
     v('fiche : le repère glisse sous l onglet', (await compter(page, '.pl-repere')) >= 1, await releve(page));
+    // Le nettoyage d'un rendu (terminerAnimationsDuRendu) laisse jouer les gestes du mouvement, même
+    // un geste pas encore commencé (le défaut du 20/11 : sa deuxième passe achevait le repère, né à
+    // l'image suivante). Depuis le 21/11 la fiche est mise en page dès le toucher, le repère part une
+    // image plus tôt : le cas se rejoue à coup sûr, un geste en cours remis à son départ.
+    const laisse = await page.evaluate(() => {
+      const fond = document.getElementById('posOverlay');
+      const a = fond.getAnimations({ subtree: true }).find((x) => x.id === 'pl-mouvement' && x.playState === 'running');
+      if (!a) return null;
+      a.pause();
+      a.currentTime = 0;
+      terminerAnimationsDuRendu(fond);
+      const etat = a.playState;
+      if (etat === 'paused') a.play();
+      return etat;
+    });
+    v('fiche : le nettoyage d un rendu laisse jouer un geste qui n a pas encore commencé', laisse === 'paused', { laisse });
     await calmer(page);
     await page.evaluate(() => { const d = document.querySelector('#posOverlay details.fm-pli'); if (d) d.scrollIntoView({ block: 'center' }); });
     await calmer(page);
@@ -354,18 +345,13 @@ const MUTATIONS = [
   { nom: 'la mèche du toast retirée', fichier: MOUVEMENT, de: "    m._plA = m.animate([{ transform: 'scaleX(' + depart + ')' }, { transform: 'scaleX(0)' }], { duration: duree, easing: 'linear', fill: 'forwards' });", vers: '    m._plA = null;', etape: 'toast', rougit: 'toast : la mèche dit le temps qui reste' },
   { nom: 'le toast attend la fin de sa sortie', fichier: MOUVEMENT, de: '    setTimeout(finir, 260);', vers: '    void 0;', etape: 'toast', rougit: 'toast : il disparaît à l heure, sans attendre son mouvement' },
   { nom: 'le repère ne retrouve plus une barre qui a bougé (le défaut du 20/11)', fichier: MOUVEMENT, de: '    return visibles.length === 1 ? visibles[0] : null;', vers: '    return null;', etape: 'fiche', rougit: 'fiche : le repère glisse sous l onglet' },
-  { nom: 'le nettoyage des rendus achève les gestes (le défaut du 20/11)', fichier: 'assets/app-main.js', de: "    if (animation.id === 'pl-mouvement') return;", vers: '    void 0;', etape: 'fiche', rougit: 'fiche : le repère glisse sous l onglet' },
+  { nom: 'le nettoyage des rendus achève les gestes (le défaut du 20/11)', fichier: 'assets/app-main.js', de: "    if (animation.id === 'pl-mouvement') return;", vers: '    void 0;', etape: 'fiche', rougit: 'fiche : le nettoyage d un rendu laisse jouer un geste qui n a pas encore commencé' },
   { nom: 'le contenu de la fiche ne glisse plus', fichier: MOUVEMENT, de: "    entrer(enfantsVisibles(document.querySelector('#posOverlay .edit-modal-body')), { dx: sens * 18, dy: 0, pas: 30, duree: 280, max: 6 });", vers: '    void 0;', etape: 'fiche', rougit: 'fiche : le contenu arrive du côté de l onglet' },
   { nom: 'les dépliants n écoutent plus leur ouverture', fichier: MOUVEMENT, de: "    document.addEventListener('toggle', deplie, true);", vers: '    void 0;', etape: 'fiche', rougit: 'fiche : le dépliant descend en cascade' },
   { nom: 'le dépliant joue avant d être rempli (le défaut du 20/11)', fichier: MOUVEMENT, de: "    requestAnimationFrame(function () {\n      if (!d.open || !d.isConnected) return;\n      entrer(Array.prototype.filter.call(d.children, function (c) { return c.tagName !== 'SUMMARY'; }), { dy: -6, pas: 30, duree: 240, max: 6 });\n    });", vers: "    entrer(Array.prototype.filter.call(d.children, function (c) { return c.tagName !== 'SUMMARY'; }), { dy: -6, pas: 30, duree: 240, max: 6 });", etape: 'fiche', rougit: 'fiche : l historique descend une fois rempli' },
   { nom: 'la réponse de l historique arrive sèche', fichier: 'assets/app-main.js', de: '  if (arrivee && mouvement', vers: '  if (false && mouvement', etape: 'fiche', rougit: 'fiche : la réponse de l historique entre en cascade' },
-  { nom: 'la fiche met 440 ms à finir (l ancien minutage)', fichier: MOUVEMENT, de: '      { duration: o.duree || 180, easing: SORTIE }', vers: '      { duration: o.duree || 440, easing: SORTIE }', etape: 'fiche', rougit: 'fiche : elle s ouvre en 160 à 200 ms' },
-  { nom: 'la fiche reste invisible jusqu à 273 ms (l ancien fondu retardé)', fichier: MOUVEMENT, de: "[{ opacity: 0, transform: 'scale(0.98)' }, { opacity: 1, transform: 'scale(1)' }],", vers: "[{ opacity: 0, transform: 'scale(0.98)' }, { opacity: 0, transform: 'scale(0.98)', offset: 0.62 }, { opacity: 1, transform: 'scale(1)' }],", etape: 'fiche', rougit: 'fiche : lisible dès 60 ms (opacité d au moins 0,8)' },
-  { nom: 'la forme et son ombre volent de nouveau', fichier: MOUVEMENT, de: '    if (!peutAnimer(surface) || reouverture()) return;\n', vers: '    if (!peutAnimer(surface) || reouverture()) return;\n    voler(boite(origine) || boite(surface), boite(surface), { duree: 300 });\n', etape: 'fiche', rougit: 'fiche : aucun calque ne vole, aucune ombre mise à l échelle' },
-  { nom: 'le fond met 200 ms à venir', fichier: MOUVEMENT, de: "voileEl.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 150, easing: SORTIE });", vers: "voileEl.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, easing: SORTIE });", etape: 'fiche', rougit: 'fiche : le fond apparaît en 150 ms au plus' },
+  { nom: 'la forme et son ombre volent de nouveau', fichier: MOUVEMENT, de: '    if (voileEl) voileEl._plPoint = p;\n', vers: '    if (voileEl) voileEl._plPoint = p;\n    voler(boite(surface), boite(surface), { duree: 300 });\n', etape: 'fiche', rougit: 'fiche : aucun calque ne vole, aucune ombre mise à l échelle' },
   { nom: 'le .fade-in revient sur la fiche (la double animation)', fichier: 'assets/app-main.js', de: "function posSheetClass() { return 'pos-sheet'; }", vers: "function posSheetClass() { return 'pos-sheet fade-in'; }", etape: 'fiche', rougit: 'fiche : aucune seconde animation sur la fiche (ni .fade-in, ni entrée CSS)' },
-  { nom: 'la fermeture dure 440 ms', fichier: MOUVEMENT, de: 'borderRadius, duree: 150, courbe: SORTIE', vers: 'borderRadius, duree: 440, courbe: SORTIE', etape: 'fiche', rougit: 'fiche : la fermeture prend 150 ms au plus' },
-  { nom: 'la réouverture rapide rejoue l animation', fichier: MOUVEMENT, de: 'if (!peutAnimer(surface) || reouverture()) return;', vers: 'if (!peutAnimer(surface)) return;', etape: 'fiche', rougit: 'fiche : rouverte à moins de 300 ms, sans animation' },
   { nom: 'le mouvement réduit ignoré', fichier: MOUVEMENT, de: '  function reduit() { return Boolean(mq && mq.matches); }', vers: '  function reduit() { return false; }', etape: 'reduit', rougit: 'mouvement réduit : aucun geste ne lance de mouvement' },
 ];
 

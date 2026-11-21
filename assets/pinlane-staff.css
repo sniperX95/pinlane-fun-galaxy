@@ -9965,9 +9965,9 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 :is(.qb-modal.rv.rs, #editAcces) .rs-ill-acts { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; width: 100%; margin: 0; padding: 0; list-style: none; align-items: start; }
 :is(.qb-modal.rv.rs, #editAcces) .rs-ill-act { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 :is(.qb-modal.rv.rs, #editAcces) .rs-ill-act.is-heure { grid-column: span 2; }
-:is(.qb-modal.rv.rs, #editAcces) .rs-ill-t { display: flex; flex-direction: column; align-items: stretch; gap: 1px; min-width: 0; width: 100%; margin: 0; padding: 6px 6px 8px; border: 0; border-radius: 12px; background: transparent; box-shadow: inset 0 0 0 1px var(--rs-ligne, var(--line)); color: var(--text); font: inherit; text-align: left; cursor: pointer; transition: background-color 160ms ease, box-shadow 160ms ease; }
+:is(.qb-modal.rv.rs, #editAcces) .rs-ill-t { display: flex; flex-direction: column; align-items: stretch; gap: 1px; min-width: 0; width: 100%; margin: 0; padding: 6px 6px 8px; border: 0; border-radius: 12px; background: transparent; box-shadow: inset 0 0 0 1px var(--rs-ligne, var(--line)); color: var(--text); font: inherit; text-align: left; cursor: pointer; transition: background-color 160ms ease; }
 :is(.qb-modal.rv.rs, #editAcces) .rs-ill-act.is-on .rs-ill-t { background: var(--accent-soft); box-shadow: inset 0 0 0 1.5px var(--accent); }
-:is(.qb-modal.rv.rs, #editAcces) .rs-ill-ph { display: block; aspect-ratio: 3 / 2; margin-bottom: 5px; border-radius: 8px; background: var(--rs-touche, var(--subtle)) center / cover no-repeat; transition: filter 160ms ease, opacity 160ms ease; }
+:is(.qb-modal.rv.rs, #editAcces) .rs-ill-ph { display: block; aspect-ratio: 3 / 2; margin-bottom: 5px; border-radius: 8px; background: var(--rs-touche, var(--subtle)) center / cover no-repeat; transition: opacity 160ms ease; }
 :is(.qb-modal.rv.rs, #editAcces) .rs-ill-act.is-heure .rs-ill-ph { aspect-ratio: 3 / 1; }
 :is(.qb-modal.rv.rs, #editAcces) .rs-ill-ph.is-vide { background: color-mix(in srgb, var(--rs-ill-c, var(--muted)) 30%, var(--surface)); }
 :is(.qb-modal.rv.rs, #editAcces) .rs-ill-act.is-off .rs-ill-ph { filter: grayscale(1); opacity: .45; }
@@ -10149,6 +10149,17 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv.rs .rs-note { align-self: center; padding-left: 8px; font-size: 13px; line-height: 1.3; color: var(--muted); }
 .qb-modal.rv.rs .rs-contenu { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(var(--rs-n, 4), minmax(0, 1fr)); grid-auto-rows: 1fr; gap: 6px; }
 .qb-modal.rv.rs .rs-contenu li { display: flex; align-items: center; justify-content: center; min-width: 0; padding: 6px 10px; border-radius: 10px; box-shadow: inset 0 0 0 1px var(--rs-ligne); font-size: 14px; font-weight: 550; line-height: 1.25; text-align: center; color: var(--text); }
+/* (la case d une activite a heure se touche : son heure dessous ouvre ses demi-heures, sur place) */
+.qb-modal.rv.rs .rs-rang.is-contenu.is-cases { flex: none; max-height: none; }
+.qb-modal.rv.rs .rs-contenu li.is-heure { align-items: stretch; padding: 0; box-shadow: none; }
+.qb-modal.rv.rs .rs-cc { width: 100%; min-height: 84px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 8px 10px; border: 0; border-radius: 10px; background: var(--rs-touche); color: var(--text); font: inherit; font-size: 14px; font-weight: 550; line-height: 1.25; text-align: center; cursor: pointer; }
+.qb-modal.rv.rs .rs-cc-h { display: inline-flex; align-items: center; gap: 5px; font-size: 16px; font-weight: 650; line-height: 1; font-variant-numeric: tabular-nums; }
+.qb-modal.rv.rs .rs-cc-h svg { flex: none; width: 15px; height: 15px; color: var(--muted); }
+.qb-modal.rv.rs .rs-cc small { font-size: 12px; font-weight: 400; line-height: 1.2; color: var(--muted); }
+.qb-modal.rv.rs .rs-cc[aria-expanded="true"] { background: var(--accent-soft); color: var(--accent-strong); box-shadow: inset 0 0 0 1.5px var(--accent); }
+.qb-modal.rv.rs .rs-cc[aria-expanded="true"] svg, .qb-modal.rv.rs .rs-cc[aria-expanded="true"] small { color: var(--accent-strong); }
+.qb-modal.rv.rs .rs-cc.is-ko { background: var(--danger-soft); color: var(--danger); box-shadow: inset 0 0 0 1.5px var(--danger); }
+.qb-modal.rv.rs .rs-cc.is-ko svg, .qb-modal.rv.rs .rs-cc.is-ko small { color: var(--danger); }
 .qb-modal.rv.rs .rs-notes { flex: none; margin: auto 0 0; padding: 0; list-style: none; font-size: 13px; line-height: 1.4; color: var(--muted); }
 
 /* LE SUR MESURE : le catalogue du centre, une touche par article */
@@ -10246,7 +10257,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
   .qb-modal.rv.rs .rs-tk-a:hover:not(.is-ici), .qb-modal.rv.rs .rs-x:hover, .qb-modal.rv.rs .rs-tk-x:hover { background: var(--rs-touche); }
   .qb-modal.rv.rs .rs-payer:hover:not(:disabled) { background: var(--rs-touche); }
   .qb-modal.rv.rs .rs-tk-creer:not(.is-bloque):not([aria-busy="true"]):hover { background: var(--accent-strong); }
-  .qb-modal.rv.rs .rs-ha-b:hover:not([aria-expanded="true"]):not(.is-ko) { background: var(--rs-survol); }
+  .qb-modal.rv.rs .rs-ha-b:hover:not([aria-expanded="true"]):not(.is-ko), .qb-modal.rv.rs .rs-cc:hover:not([aria-expanded="true"]):not(.is-ko) { background: var(--rs-survol); }
 }
 
 @media (pointer: coarse) {
@@ -10338,6 +10349,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
   .qb-modal.rv.rs .rs-rang { grid-template-columns: minmax(0, 1fr); gap: 4px; }
   .qb-modal.rv.rs .rs-rang .rs-lbl { align-self: start; }
   .qb-modal.rv.rs .rs-choix[style], .qb-modal.rv.rs .rs-contenu { grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); }
+  .qb-modal.rv.rs .rs-contenu.is-heures { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .qb-modal.rv.rs .rs-raisons, .qb-modal.rv.rs .rs-occasions, .qb-modal.rv.rs .rs-arts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .qb-modal.rv.rs .rs-arts { flex: none; grid-template-rows: none; grid-auto-rows: 64px; min-height: 0; max-height: none; }
   .qb-modal.rv.rs .rs-qui { grid-template-columns: minmax(0, 1fr); }
@@ -21951,16 +21963,16 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
 }
 @media (prefers-reduced-motion: reduce) {
   .bdg .bdg-b, .bdg .bdg-p, .bdg .bdg-l, .bdg .bdg-onglet, .bdg-mail { transition: none; }
-  .bdg-lu-l.is-neuve, .bdg-carte.is-neuve, .bdg-fen { animation: none; }
+  .bdg-lu-l.is-neuve, .bdg-carte.is-neuve { animation: none; }
 }
 
 /* Une fenetre, sans quitter la page : le planning d un jour, le client, les horaires d un jour.
-   Au-dessus de Reserver quand elle en vient. */
+   Au-dessus de Reserver quand elle en vient. Son entree et sa sortie (2026-11-21) : elle grandit
+   depuis ce qu on a touche, comme la fiche et Reserver (pinlane-mouvement.js, ouvrirFenetre). */
 .bdg-fen-fond { position: fixed; inset: 0; z-index: 470; display: flex; align-items: center; justify-content: center; padding: 24px; background: var(--scrim); }
-.bdg-fen { display: flex; flex-direction: column; box-sizing: border-box; width: 100%; max-width: 560px; max-height: calc(100vh - 48px); overflow: hidden; animation: bdg-fen-entre 200ms cubic-bezier(0.23, 1, 0.32, 1) both; }
+.bdg-fen { display: flex; flex-direction: column; box-sizing: border-box; width: 100%; max-width: 560px; max-height: calc(100vh - 48px); overflow: hidden; }
 .bdg-fen.is-petite { max-width: 440px; }
 .bdg-fen.is-large { max-width: min(1320px, 100%); height: calc(100vh - 48px); }
-@keyframes bdg-fen-entre { from { opacity: 0; transform: translateY(6px) scale(0.985); } }
 .bdg-fen-t { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 18px 20px 14px; }
 .bdg-fen-t h3 { font-size: 18px; font-weight: 650; }
 .bdg-fen-t p { margin-top: 2px; color: var(--muted); }

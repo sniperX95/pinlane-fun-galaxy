@@ -144,7 +144,7 @@ const MUTATIONS = [
   { nom: 'photos-absentes', lettre: 'D', cible: '[D] sa page : la phrase commune, le prix et le total, chaque activite en vraie photo', fichier: APP, de: "  return trouve ? `/assets/fungalaxy/${trouve[1]}-carte.webp` : '';\n}", vers: "  return '';\n}" },
   { nom: 'total-oublie', lettre: 'D', cible: '[D] la porte « Accès illimité »', fichier: APP, de: "  const total = f.type !== 'per_lane' && rsEtat() && rsEtat().faits.combien ?", vers: "  const total = false ?" },
   // (2026-11-20, le soir) La phrase d avant revient, sans citer ce qui est compris : le ticket le voit.
-  { nom: 'phrase-d-avant', lettre: 'D', cible: '[D] au ticket : ce qui est garde, en clair', fichier: 'assets/pinlane-a-volonte.js', de: "    return [libres.length ? `À volonté ${quand} : ${libres.join(', ')}` : '', ...uneFois.map((u) => u.court)].filter(Boolean).join(' · ');", vers: "    return [`Tout à volonté ${quand}`, ...uneFois.map((u) => u.court)].join(' · ');" },
+  { nom: 'phrase-d-avant', lettre: 'D', cible: '[D] au ticket : ce qui est garde, en clair', fichier: 'assets/pinlane-a-volonte.js', de: "    return [libres.length ? `À volonté ${quand}\\u00a0: ${libres.join(', ')}` : '', ...uneFois.map((u) => u.court)].filter(Boolean).join(' · ');", vers: "    return [`Tout à volonté ${quand}`, ...uneFois.map((u) => u.court)].join(' · ');" },
   { nom: 'deux-points-revenus', lettre: 'D', cible: '[D] la fiche le dit en une phrase', fichier: 'assets/pinlane-a-volonte.js', de: '        courte: `Bowling, ${pistesDites(pistes)} ${gardees} toute la visite.`,', vers: '        courte: `Bowling : ${pistesDites(pistes)} ${gardees} toute la visite.`,' },
   { nom: 'tarifs-liste-d-avant', lettre: 'C', cible: '[C] la liste de Tarifs dit l acces avec les mots du comptoir', fichier: PAGES, de: '      desc: tfDescIllimite(entry) || (Array.isArray(entry.desc) ? entry.desc.map(String) : []),', vers: '      desc: (Array.isArray(entry.desc) ? entry.desc.map(String) : []),' },
   { nom: 'duree-ignoree', lettre: 'C', cible: '[C] la duree se choisit d un toucher', fichier: PAGES, de: "    else { f.dureeAutre = false; f.dureeMinutes = String(Number(valeur) || 180); }", vers: "    else { f.dureeAutre = false; }" },
@@ -627,7 +627,7 @@ async function scenarioD(browser) {
       detail: ((document.querySelector('#rsL-a-formule .rs-tk-n small') || {}).textContent || '').trim(),
       garde: Array.from(document.querySelectorAll('.rs-tk-n small.is-garde')).map((s) => s.textContent.trim()),
     }));
-    ok(ticket.duree === 'Visite de 15:30 à 18:30.' && ticket.detail === `À volonté de 15:30 à 18:30 : ${nomsDe(DU_CENTRE())}.` && ticket.garde.length === 2 && ticket.garde.some((l) => /^Bowling, pistes \d+ et \d+ gardées toute la visite\.$/.test(l)) && ticket.garde.includes(`Laser, ${JOUEURS} armes gardées à chaque départ.`), '[D] au ticket : ce qui est garde, en clair', ticket);
+    ok(ticket.duree === 'Visite de 15:30 à 18:30.' && ticket.detail === `À volonté de 15:30 à 18:30\u00a0: ${nomsDe(DU_CENTRE())}.` && ticket.garde.length === 2 && ticket.garde.some((l) => /^Bowling, pistes \d+ et \d+ gardées toute la visite\.$/.test(l)) && ticket.garde.includes(`Laser, ${JOUEURS} armes gardées à chaque départ.`), '[D] au ticket : ce qui est garde, en clair', ticket);
     // Sur le plan, les photos du bowling et du laser disent ce qui est garde (les pistes, les armes).
     const apresHeure = await lireBloc();
     const tagDe = (id) => apresHeure.acts.find((a) => a.id === id) || {};

@@ -107,7 +107,7 @@
     const aHeure = new Set(uneFois.map((u) => u.activite));
     const libres = comprises.filter((a) => a && a.id && !aHeure.has(a.id)).map((a) => nomCourt(a.id, a.nom));
     const quand = debut && fin ? `de ${debut} à ${fin}` : `pendant ${dureeDite(minutes)}`;
-    return [libres.length ? `À volonté ${quand} : ${libres.join(', ')}` : '', ...uneFois.map((u) => u.court)].filter(Boolean).join(' · ');
+    return [libres.length ? `À volonté ${quand}\u00a0: ${libres.join(', ')}` : '', ...uneFois.map((u) => u.court)].filter(Boolean).join(' · ');
   }
 
   // Les activites d un plan, quand l appelant ne dit pas ce que le dossier comprend.

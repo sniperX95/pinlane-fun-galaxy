@@ -24,7 +24,7 @@ const BROWSER_PATH = process.env.E2E_BROWSER_PATH || 'C:\\Program Files (x86)\\M
 const PORT = Number(process.env.PINLANE_FENETRE_TAILLE_PORT || 5262);
 const CONTRE = process.argv.includes('--contre-preuves');
 
-const ENTREE_JUSTE = "    if (!p) return surface.animate([{ opacity: 0 }, { opacity: 1 }], { id: ID, duration: 180, easing: SORTIE });";
+const ENTREE_JUSTE = '    if (!p) return null;';
 const ENTREE_ANCIENNE = "    if (!p) return surface.animate([{ opacity: 0, transform: 'translateY(8px) scale(0.97)' }, { opacity: 1, transform: 'none' }], { id: ID, duration: 240, easing: SORTIE });";
 // (au demi-pixel partout : ouverte sans toucher, la fenetre ne fait que se fondre ; touchee, sa
 // boite de mise en page, que transform ne change pas)
@@ -78,7 +78,9 @@ async function sansOrigine(page, quoi) {
       openPos(r.id);
     } else openQuickBook();
     const surface = document.querySelector(quoi === 'fiche' ? '#posOverlay .edit-modal' : '#quickBookOverlay .qb-modal');
-    const joue = Boolean(surface) && surface.getAnimations().length > 0;
+    // (depuis le 21/11 l entree sans toucher se joue sur le voile qui porte la fenetre)
+    const fond = surface && surface.closest('#posOverlay, #quickBookOverlay');
+    const joue = Boolean(surface) && (surface.getAnimations().length > 0 || Boolean(fond && fond.getAnimations().length > 0));
     return { tout_de_suite: window.__lireFenetre(), joue };
   }, quoi);
 }

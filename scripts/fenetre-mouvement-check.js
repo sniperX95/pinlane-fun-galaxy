@@ -18,13 +18,13 @@
 //   - elle grandit depuis le point touche (transform-origin dans ce qui a ete touche) ;
 //   - l ouverture dure de 200 a 300 ms ;
 //   - seuls transform et opacity s animent, sa boite de mise en page ne bouge jamais ;
-//   - son texte se lit des les premieres images (a 50 ms, la fenetre est pleine) ;
+//   - a 80 ms elle est entierement opaque, son voile compris (le dedoublement refuse le 21/11) ;
 //   - a la fermeture, le fond se ferme tout de suite (l etat n attend rien), la forme vide de
 //     la fenetre repart vers son origine en 150 a 180 ms, muette et sans rien a toucher, le
 //     voile s eteint ; rien ne reste une demi-seconde plus tard ;
 //   - rouverte a moins de 300 ms, elle n anime rien ; mouvement reduit : rien ne bouge.
 // Les durees se lisent dans l effet (getComputedTiming), la visibilite sur l animation mise en
-// pause a 50 ms : ni l un ni l autre ne depend de la vitesse de la machine.
+// pause a 80 ms : ni l un ni l autre ne depend de la vitesse de la machine.
 //
 // --contre-preuves : chaque morceau est casse a son tour dans le module servi (le disque n est
 // jamais touche) ; le controle qui le garde doit rougir.
@@ -205,13 +205,13 @@ async function echantillonner(page, sel, geste, ms) {
   return { r, images: lu.images, vols: lu.vols };
 }
 
-// La fenetre a 50 ms de sa ligne de temps : elle et son fond mis en pause, lus, puis finis.
-function lireA50ms({ surface, fond }) {
+// La fenetre a `ms` de sa ligne de temps : elle et son fond mis en pause, lus, puis finis.
+function lireA({ surface, fond, ms }) {
   const el = document.querySelector(surface);
   const f = document.querySelector(fond);
   if (!el) return null;
   const toutes = [...el.getAnimations(), ...(f && f !== el ? f.getAnimations() : [])].filter((a) => a.effect && a.effect.getComputedTiming().iterations !== Infinity);
-  toutes.forEach((a) => { a.pause(); a.currentTime = 50; });
+  toutes.forEach((a) => { a.pause(); a.currentTime = ms; });
   let vue = 1;
   for (let n = el; n && n.nodeType === 1; n = n.parentElement) vue *= Number(getComputedStyle(n).opacity);
   const propre = Number(getComputedStyle(el).opacity);
@@ -298,7 +298,9 @@ async function jouerFenetre(page, appareil, cle, v, { reduit = false, seulement 
   v(`${nom} : une demi-seconde après, rien ne reste (ni la fenêtre partie, ni le voile)`, await page.evaluate(() => !document.querySelector('.pl-sortie, .pl-calque.pl-voile')));
   if (reduit) return;
 
-  // LISIBLE TOUT DE SUITE : rouverte (apres 300 ms), mise en pause a 50 ms de son entree.
+  // OPAQUE A 80 MS (21/11, le gérant refuse le dédoublement) : rouverte (après 300 ms), mise en
+  // pause à 80 ms de son entrée. Son opacité ET celle de chaque parent (son voile) valent 1 :
+  // une fenêtre pleine dans un voile à 0,65 laisse voir le planning à travers elle.
   if (!veut('lisible')) return;
   await page.waitForTimeout(250);
   if (!(await fen.preparer(page))) return;
@@ -306,8 +308,8 @@ async function jouerFenetre(page, appareil, cle, v, { reduit = false, seulement 
   const b = await boiteDe(page, fen.cible);
   if (!b) return;
   await toucher(page, b);
-  const lu = await page.evaluate(lireA50ms, { surface: fen.surface, fond: fen.fond });
-  v(`${nom} : son texte se lit dès les premières images (à 50 ms, la fenêtre est pleine et se voit à ${lu ? Math.round(lu.vue * 100) : '?'} %)`, Boolean(lu) && lu.animations > 0 && lu.propre >= 0.95 && lu.vue >= 0.6, lu);
+  const lu = await page.evaluate(lireA, { surface: fen.surface, fond: fen.fond, ms: 80 });
+  v(`${nom} : à 80 ms elle est entièrement opaque, voile compris (vue à ${lu ? Math.round(lu.vue * 1000) / 10 : '?'} %)`, Boolean(lu) && lu.animations > 0 && lu.propre >= 0.999 && lu.vue >= 0.999, lu);
   await F.repos(page, 200);
   // Rouverte a moins de 300 ms : rien ne rejoue (un double toucher ne fait pas clignoter).
   if (!fen.modifier) {
@@ -342,12 +344,12 @@ const NAITRE = "    var a = surface.animate(etapes, { id: ID, duration: telephon
 const MUTATIONS = [
   { nom: 'l animation de la fenêtre retirée', de: NAITRE, vers: '    var a = { onfinish: null, oncancel: null };', appareil: 'ordinateur', fenetre: 'fiche', seulement: ['anime'], rougit: 'ordinateur, la fiche : une animation tourne sur la vraie fenêtre pendant l ouverture' },
   { nom: 'l échelle de départ remise à 0,98', de: '  var ECHELLE_DEPART = 0.9;', vers: '  var ECHELLE_DEPART = 0.98;', appareil: 'ordinateur', fenetre: 'fiche', seulement: ['echelle'], rougit: /^ordinateur, la fiche : elle part d une échelle d au plus 0,95/ },
-  { nom: 'la fenêtre animée par top, left et width', de: "        { opacity: d.opacite, transform: 'translate(' + dx + 'px, ' + dy + 'px) scale(' + d.echelle + ')' },\n        { opacity: 1, offset: 0.5 },\n        { opacity: 1, transform: 'translate(0px, 0px) scale(1)' },", vers: "        { opacity: d.opacite, top: dy + 'px', left: dx + 'px', width: '90%' },\n        { opacity: 1, offset: 0.5 },\n        { opacity: 1, top: '0px', left: '0px', width: '100%' },", appareil: 'ordinateur', fenetre: 'reserver', seulement: ['proprietes'], rougit: 'ordinateur, Réserver : seuls transform et opacity s animent, sa boîte de mise en page ne bouge pas' },
+  { nom: 'la fenêtre animée par top, left et width', de: "        { transform: 'translate(' + dx + 'px, ' + dy + 'px) scale(' + d.echelle + ')' },\n        { transform: 'translate(0px, 0px) scale(1)' },", vers: "        { top: dy + 'px', left: dx + 'px', width: '90%' },\n        { top: '0px', left: '0px', width: '100%' },", appareil: 'ordinateur', fenetre: 'reserver', seulement: ['proprietes'], rougit: 'ordinateur, Réserver : seuls transform et opacity s animent, sa boîte de mise en page ne bouge pas' },
   { nom: 'l ouverture dure 600 ms', de: '  var OUVERTURE = 240;', vers: '  var OUVERTURE = 600;', appareil: 'ordinateur', fenetre: 'client', seulement: ['duree'], rougit: /^ordinateur, la fenêtre client : l ouverture dure de 200 à 300 ms/ },
   { nom: 'la fenêtre grandit depuis son centre, pas depuis ce qu on touche', de: "      surface.style.transformOrigin = Math.round(p.x - b.left) + 'px ' + Math.round(p.y - b.top) + 'px';", vers: "      surface.style.transformOrigin = '50% 50%';", appareil: 'ordinateur', fenetre: 'reserver', seulement: ['origine'], rougit: /^ordinateur, Réserver : elle grandit depuis ce qu on a touché/ },
   { nom: 'Modifier ne grandit plus depuis son onglet', de: "    if (apres === 'modifier') grandirFenetre(document.querySelector('#posOverlay:not(.hidden) .edit-modal'));", vers: '    void 0;', appareil: 'ordinateur', fenetre: 'modifier', seulement: ['anime'], rougit: 'ordinateur, Modifier : une animation tourne sur la vraie fenêtre pendant l ouverture' },
-  { nom: 'au téléphone, la fenêtre ne monte plus', de: "      etapes = [{ opacity: d.opacite, transform: 'translateY(' + monte + 'px)' }, { opacity: 1, offset: 0.5 }, { opacity: 1, transform: 'translateY(0px)' }];", vers: '      etapes = [{ opacity: d.opacite }, { opacity: 1 }];', appareil: 'telephone', fenetre: 'fiche', seulement: ['echelle'], rougit: 'telephone, la fiche : au téléphone, elle monte du bas d au moins 24 px, sans changer de taille' },
-  { nom: 'le texte reste caché jusqu aux deux tiers (l ancien fondu retardé)', de: '        { opacity: 1, offset: 0.5 },', vers: '        { opacity: 0, offset: 0.9 },', appareil: 'ordinateur', fenetre: 'fiche', seulement: ['lisible'], rougit: /^ordinateur, la fiche : son texte se lit dès les premières images/ },
+  { nom: 'au téléphone, la fenêtre ne monte plus', de: "      etapes = [{ transform: 'translateY(' + monte + 'px)' }, { transform: 'translateY(0px)' }];", vers: '      etapes = [{ opacity: 1 }, { opacity: 1 }];', appareil: 'telephone', fenetre: 'fiche', seulement: ['echelle'], rougit: 'telephone, la fiche : au téléphone, elle monte du bas d au moins 24 px, sans changer de taille' },
+  { nom: 'l opacité étalée sur 240 ms (le dédoublement refusé le 21/11)', de: '  var OPACITE = 60;', vers: '  var OPACITE = 240;', appareil: 'ordinateur', fenetre: 'fiche', seulement: ['lisible'], rougit: /^ordinateur, la fiche : à 80 ms elle est entièrement opaque/ },
   { nom: 'la fermeture redevient sèche', de: "    var forme = calque('pl-vol pl-sortie');", vers: "    if (true) return;\n    var forme = calque('pl-vol pl-sortie');", appareil: 'ordinateur', fenetre: 'fiche', seulement: ['fermeture'], rougit: /^ordinateur, la fiche : sa forme part en 150 à 180 ms/ },
   { nom: 'la fermeture dure 440 ms', de: '  var FERMETURE = 160;', vers: '  var FERMETURE = 440;', appareil: 'ordinateur', fenetre: 'reserver', seulement: ['fermeture'], rougit: /^ordinateur, Réserver : sa forme part en 150 à 180 ms/ },
   { nom: 'la forme qui part reste sur place (ne repart plus vers son origine)', de: "    var fin = telephone() ? 'translateY(' + Math.round(Math.min(40, window.innerHeight * 0.045)) + 'px)' : 'scale(0.95)';", vers: "    var fin = 'none';", appareil: 'ordinateur', fenetre: 'client', seulement: ['fermeture'], rougit: /^ordinateur, la fenêtre client : elle repart vers son origine/ },

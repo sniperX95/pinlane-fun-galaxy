@@ -116,14 +116,16 @@
   //   1100 px ne se voient pas. Le gérant, le soir : « plus de motion du tout, partout ».
   // Désormais c'est la VRAIE fenêtre (jamais une copie) qui bouge, sur transform et opacity,
   // que le compositeur joue seul : elle grandit de 0,9 à 1 en 240 ms depuis le point touché
-  // (transform-origin), avec un pas vers lui, et son texte se lit dès la deuxième image (son
-  // opacité est pleine à la moitié du chemin). Au téléphone elle monte du bas. Ouverte par le
-  // code (l'adresse, un test, un rendu), sans toucher, elle se fond à sa vraie taille : rien
-  // ne dit d'où elle viendrait, et une mesure faite pendant son entrée reste juste.
+  // (transform-origin), avec un pas vers lui. Son opacité, à part, est pleine en 60 ms : à
+  // 30 ms elle laissait voir le planning à travers elle, un dédoublement que le gérant refuse.
+  // Au téléphone elle monte du bas. Ouverte par le code (l'adresse, un test, un rendu), sans
+  // toucher, elle se fond à sa vraie taille : rien ne dit d'où elle viendrait, et une mesure
+  // faite pendant son entrée reste juste.
   var DERNIERE_FERMEE = -1e9;
   function reouverture() { return performance.now() - DERNIERE_FERMEE < 300; }
   var OUVERTURE = 240;
   var OUVERTURE_TELEPHONE = 260;
+  var OPACITE = 60;
   var FERMETURE = 160;
   var ECHELLE_DEPART = 0.9;
   function telephone() { return Boolean(window.matchMedia) && window.matchMedia('(max-width: 860px)').matches; }
@@ -155,14 +157,14 @@
     liste.forEach(function (el) { if (el && el.isConnected) el.remove(); });
   }
 
-  // La fenêtre naît du point `p` (coordonnées de l'écran) : de `d.echelle` et `d.opacite` à
-  // elle-même. Au téléphone elle monte du bas, sa taille ne change jamais (elle prend tout
-  // l'écran : 0,9 de l'écran se lirait comme une autre fenêtre).
+  // La fenêtre naît du point `p` (coordonnées de l'écran) : de `d.echelle` à elle-même, sur
+  // transform seul (son opacité se joue à part). Au téléphone elle monte du bas, sa taille ne
+  // change jamais (elle prend tout l'écran : 0,9 de l'écran se lirait comme une autre fenêtre).
   function naitre(surface, p, d) {
     var etapes;
     if (telephone()) {
       var monte = Math.round(Math.min(64, window.innerHeight * 0.07) * d.montee);
-      etapes = [{ opacity: d.opacite, transform: 'translateY(' + monte + 'px)' }, { opacity: 1, offset: 0.5 }, { opacity: 1, transform: 'translateY(0px)' }];
+      etapes = [{ transform: 'translateY(' + monte + 'px)' }, { transform: 'translateY(0px)' }];
     } else {
       // La seule mesure de l'ouverture : la boîte de la fenêtre qu'on vient de peindre.
       var b = boite(surface);
@@ -172,9 +174,8 @@
       var dx = Math.round(borne((p.x - (b.left + b.width / 2)) * 0.06, 16));
       var dy = Math.round(borne((p.y - (b.top + b.height / 2)) * 0.06, 16));
       etapes = [
-        { opacity: d.opacite, transform: 'translate(' + dx + 'px, ' + dy + 'px) scale(' + d.echelle + ')' },
-        { opacity: 1, offset: 0.5 },
-        { opacity: 1, transform: 'translate(0px, 0px) scale(1)' },
+        { transform: 'translate(' + dx + 'px, ' + dy + 'px) scale(' + d.echelle + ')' },
+        { transform: 'translate(0px, 0px) scale(1)' },
       ];
     }
     var a = surface.animate(etapes, { id: ID, duration: telephone() ? OUVERTURE_TELEPHONE : OUVERTURE, easing: SORTIE });
@@ -187,21 +188,22 @@
     acheverLesSorties();
     var p = pointTouche();
     if (!peutAnimer(surface) || reouverture()) return null;
-    if (voileEl && voileEl !== surface && typeof voileEl.animate === 'function') {
-      voileEl.animate([{ opacity: 0 }, { opacity: 1 }], { id: ID, duration: 160, easing: SORTIE });
-    }
+    // L'opacité, à part de l'échelle : pleine en 60 ms. La fenêtre est DANS son voile, qui se
+    // fond donc avec elle et pas plus lentement : un voile à 0,65 la laissait à 0,65 elle aussi.
+    var fondu = voileEl && voileEl !== surface && typeof voileEl.animate === 'function' ? voileEl : surface;
+    fondu.animate([{ opacity: 0 }, { opacity: 1 }], { id: ID, duration: OPACITE, easing: SORTIE });
     // (le point reste sur le fond, que les rendus de la fenêtre gardent : elle y repartira)
     if (voileEl) voileEl._plPoint = p;
-    if (!p) return surface.animate([{ opacity: 0 }, { opacity: 1 }], { id: ID, duration: 180, easing: SORTIE });
-    return naitre(surface, p, { echelle: ECHELLE_DEPART, opacite: 0, montee: 1 });
+    if (!p) return null;
+    return naitre(surface, p, { echelle: ECHELLE_DEPART, montee: 1 });
   }
 
   // MODIFIER S'OUVRE DEPUIS SON ONGLET : la fiche, devenue plus grande d'un coup (sa mise en
-  // page), en grandit depuis l'onglet touché, de 0,94 à elle-même, sans jamais disparaître.
+  // page), en grandit depuis l'onglet touché, de 0,94 à elle-même, opaque d'un bout à l'autre.
   function grandirFenetre(surface) {
     var p = pointTouche();
     if (!p || !peutAnimer(surface)) return null;
-    return naitre(surface, p, { echelle: 0.94, opacite: 0.6, montee: 0.5 });
+    return naitre(surface, p, { echelle: 0.94, montee: 0.5 });
   }
 
   // La fenêtre va disparaître d'un coup (l'appelant cache son fond et la vide juste après) :

@@ -235,7 +235,7 @@ const ETAPES = {
     await apresLeGeste(page);
     const ouv = await lire();
     const fen = ouv.filter((x) => x.sur === 'fenetre');
-    v('fiche : la vraie fenêtre naît elle-même, une seule animation', fen.length === 1 && !fen[0].css && /^0\//.test(fen[0].ordre), ouv);
+    v('fiche : la vraie fenêtre naît elle-même, une seule animation (de 0,9 ; son opacité se joue sur son voile)', fen.length === 1 && !fen[0].css && /scale\(0\.9\)/.test(fen[0].ordre.split(' > ')[0]), ouv);
     v('fiche : aucun calque ne vole, aucune ombre mise à l échelle', !ouv.some((x) => x.sur === 'calque') && (await page.locator('.pl-vol').count()) === 0, ouv);
     v('fiche : aucune seconde animation sur la fiche (ni .fade-in, ni entrée CSS)', !ouv.some((x) => x.css && x.sur !== 'ailleurs') && !ouv.some((x) => x.sur === 'dedans' && x.classe === 'pos-sheet') && (await page.locator('#posOverlay .pos-sheet.fade-in').count()) === 0, ouv);
     await calmer(page);

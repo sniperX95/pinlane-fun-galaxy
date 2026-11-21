@@ -20276,6 +20276,33 @@ body:is(.staff-mode, .admin-mode) .fx-modal .fm-x-arcades .fm-euro { width: 112p
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-x-par { font-size: 13px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-x-arcades .fm-x-somme { margin-left: auto; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-x-tete + .fm-x-ajouts { margin-top: 0; }
+/* LE « + » QUI AJOUTE UNE LIGNE, UN VRAI BOUTON (2026-11-21, un gerant : « le « + », là, parce que
+   c'est pas assez visible ») : le second bouton de la console, encadre sur fond blanc, son « + » en
+   bleu, comme « Recalculer ». La pastille grise sans fond se perdait sous les lignes. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-ajout { min-height: 40px; padding: 0 16px 0 12px; border-color: var(--control-border); border-radius: 8px; background: var(--surface); font-weight: 600; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-ajout svg { width: 16px; height: 16px; color: var(--console-selected); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-x-ligne > [hidden] { display: none; }
+
+/* « À PAYER » (2026-11-21, un gerant : « on peut choisir « à payer », et donc affiché bien visible
+   pour le prix et tout ») : une ligne dont le prix se regle au comptoir. Une pastille ambre a la place
+   du montant, dans Modifier, la fiche, la caisse, les cartes et Reserver, jamais « 0 € ». */
+body:is(.staff-mode, .admin-mode) .pl-a-payer { display: inline-flex; align-items: center; justify-self: end; width: max-content; margin: 0; padding: 2px 9px; border-radius: 999px; background: var(--warning-soft); color: var(--warning); font-family: var(--font-ui); font-size: 12.5px; font-weight: 650; font-style: normal; line-height: 1.35; letter-spacing: 0; white-space: nowrap; }
+body:is(.staff-mode, .admin-mode) .fx-modal :is(.fm-x-somme, .fm-x-total).pl-a-payer { justify-self: end; color: var(--warning); font-size: 12.5px; font-weight: 650; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-caisse .gc-bill-lines dd.pl-a-payer { font-size: 12.5px; font-weight: 650; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-caisse-apayer { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: -4px 0 0; font-size: 14px; font-weight: 600; line-height: 1.4; color: var(--text); }
+.gc-price .pl-a-payer { margin-top: 2px; }
+.gc-libre .pl-a-payer { margin-left: 2px; padding: 0 7px; font-size: 11.5px; }
+.qb-modal.rv.rs .rs-tk-a em.pl-a-payer { font-size: 13px; font-weight: 650; }
+.qb-modal.rv.rs .rs-tk-tot small.pl-a-payer { margin-top: 3px; color: var(--warning); font-size: 12.5px; font-weight: 650; }
+.qb-modal.rv.rs .rs-recu b.pl-a-payer { font-size: 13px; font-weight: 650; }
+.qb-modal.rv.rs .rs-libre-apayer { cursor: default; }
+.qb-modal.rv.rs .rs-libre-apayer .pl-a-payer { justify-self: start; height: 44px; padding: 0 12px; border-radius: 10px; font-size: 14px; }
+/* Le meme geste dans Reserver : « Ajouter une activité ou une boisson », encadre, son « + » en bleu. */
+.qb-modal.rv.rs .rs-ajout { align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; min-height: 40px; margin: 8px 10px 0; padding: 0 16px 0 12px; border: 1px solid var(--control-border); border-radius: 8px; background: var(--surface); color: var(--text); font: inherit; font-size: 14px; font-weight: 600; line-height: 1.2; text-decoration: none; cursor: pointer; }
+.qb-modal.rv.rs .rs-ajout svg { flex: none; color: var(--console-selected); }
+@media (hover: hover) and (pointer: fine) { .qb-modal.rv.rs .rs-ajout:hover { background: var(--subtle); } }
+.qb-modal.rv.rs .rs-ajout:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 2px; }
+@media (pointer: coarse) { .qb-modal.rv.rs .rs-ajout { min-height: 44px; } }
 
 /* Le prix : le total et le prix par joueur, l euro dans le champ ; une
    phrase dessous quand il y a quelque chose a savoir. */

@@ -185,8 +185,10 @@
       var fois = /^(.*\S)\s*×\s*(\d+)$/.exec(brut);
       var nom = fois ? fois[1] : brut;
       var heure = /^\d{1,2}:\d{2}/.test(String(e.heure || e.time || e.startTime || '')) ? String(e.heure || e.time || e.startTime).slice(0, 5) : '';
-      var cle = nom + '|' + heure + '|' + Boolean(e.offert);
-      var l = compte.get(cle) || { nom: nom + (e.offert ? ' offert' : ''), heure: heure, n: 0 };
+      // (une ligne a payer le dit, comme une offerte : son prix se regle au comptoir)
+      var aPayer = !e.offert && e.aPayer === true;
+      var cle = nom + '|' + heure + '|' + Boolean(e.offert) + '|' + aPayer;
+      var l = compte.get(cle) || { nom: nom + (e.offert ? ' offert' : aPayer ? ' à payer' : ''), heure: heure, n: 0 };
       l.n += fois ? Number(fois[2]) : 1;
       compte.set(cle, l);
     });
@@ -493,7 +495,8 @@
       g.rubriques = gfRubriques(g);
       // Une activite cochee « faite » (le suivi des formules) le dit dans sa case.
       g.prog.filter(function (e) { return e.fait; }).forEach(function (e) {
-        if (GP_SANS_COLONNE[e.activityId]) return;
+        // (une ligne d extra cochee n a pas de colonne : elle se lit dans les extras du groupe)
+        if (GP_SANS_COLONNE[e.activityId] || e.extra) return;
         var c = colonneDe(e.activityId);
         var liste = g.cases.get(c.cle) || [];
         var cible = e.start != null

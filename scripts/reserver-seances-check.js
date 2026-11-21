@@ -619,7 +619,8 @@ async function scenarioS4(browser) {
     const boisson = CATALOGUE_LIBRAMONT.articles.find((x) => x.categorie === 'boissons');
     const plat = CATALOGUE_LIBRAMONT.articles.find((x) => x.categorie === 'nourriture' && x.heure);
     ok(JSON.stringify(onglets) === JSON.stringify(attendus) && await visible(page, `#rsArt-${plat.id}`), '[S4] la page Sur mesure montre le catalogue du centre', { onglets, attendus });
-    ok(!(await visible(page, '#rsLibreNom')) && !onglets.includes('Arcades'), '[S4] au niveau catalogue, ni article libre ni arcades a la main', onglets);
+    // (2026-11-21 : au niveau catalogue, une ligne libre se tape sans prix, « à payer » ; le prix reste au libre)
+    ok(await visible(page, '#rsLibreNom') && !(await visible(page, '#rsLibrePrix')) && await visible(page, '#rsLibreAPayer') && !onglets.includes('Arcades'), '[S4] au niveau catalogue, une ligne libre sans prix (« à payer ») et pas d arcades a la main', onglets);
     let service = '';
     try {
       await page.locator('[data-onglet="boissons"]').click();

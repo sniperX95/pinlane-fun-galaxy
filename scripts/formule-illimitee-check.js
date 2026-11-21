@@ -627,7 +627,7 @@ async function scenarioD(browser) {
       detail: ((document.querySelector('#rsL-a-formule .rs-tk-n small') || {}).textContent || '').trim(),
       garde: Array.from(document.querySelectorAll('.rs-tk-n small.is-garde')).map((s) => s.textContent.trim()),
     }));
-    ok(ticket.duree === 'Visite de 15:30 à 18:30.' && ticket.detail === `À volonté de 15:30 à 18:30 : ${nomsDe(DU_CENTRE())}.` && ticket.garde.length === 2 && ticket.garde.some((l) => /^Bowling, pistes \d+ et \d+ gardées toute la visite\.$/.test(l)) && ticket.garde.includes(`Laser, ${JOUEURS} armes gardées à chaque départ.`), '[D] au ticket : ce qui est garde, en clair', ticket);
+    ok(ticket.duree === 'Visite de 15:30 à 18:30.' && ticket.detail === `À volonté de 15:30 à 18:30\u00a0: ${nomsDe(DU_CENTRE())}.` && ticket.garde.length === 2 && ticket.garde.some((l) => /^Bowling, pistes \d+ et \d+ gardées toute la visite\.$/.test(l)) && ticket.garde.includes(`Laser, ${JOUEURS} armes gardées à chaque départ.`), '[D] au ticket : ce qui est garde, en clair', ticket);
     // Sur le plan, les photos du bowling et du laser disent ce qui est garde (les pistes, les armes).
     const apresHeure = await lireBloc();
     const tagDe = (id) => apresHeure.acts.find((a) => a.id === id) || {};

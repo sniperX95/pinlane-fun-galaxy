@@ -41224,6 +41224,7 @@ function rsHeureAct(id, heure) {
         if (voulue) posees[id] = voulue;
         else delete posees[id];
         s.heuresPosees = posees;
+        rvArriveeALaPremiere();
       }
     }
     rsDemanderLesJoueurs();
@@ -41244,6 +41245,27 @@ function rsRefusDeLHeureAct(id, heure, mode) {
   const verifs = rsVerifsPosees.get(rsCleDesPosees(id));
   const refus = rsCoince({ heure, verdict: verifs && verifs.etat === 'ok' ? verifs.resultats.get(heure) || null : null }, id);
   return refus && !rsGroupeOccupeSeulement(refus) ? rsPhrase(refus.raison) : '';
+}
+
+// TOUTES LES HEURES POSEES, LA VISITE COMMENCE A LA PREMIERE ACTIVITE (2026-11-21, le gerant : le ticket
+// disait « Formule 1, 14:20 à 18:00 » et « Créer à 14:30 » pour un bowling pose a 16:00). Dans une formule
+// telle quelle dont chaque activite a son heure posee, l arrivee est la plus tot de ces heures ; une arrivee
+// choisie ensuite (« À quelle heure ? ») reste, si elle ne tombe pas apres la premiere activite.
+function rvPremiereHeurePosee() {
+  const s = quickBookState;
+  if (!s || s.type !== 'formule' || rvModifiable() || s.lockStartTime) return '';
+  const ids = rvActivites().filter((x) => rvPosable(x));
+  const heures = ids.map((x) => (s.heuresPosees || {})[x]).filter((h) => /^\d{2}:\d{2}$/.test(String(h || '')));
+  return ids.length && heures.length === ids.length ? heures.sort((a, b) => timeToNum(a) - timeToNum(b))[0] : '';
+}
+
+function rvArriveeALaPremiere() {
+  const s = quickBookState;
+  const premiere = rvPremiereHeurePosee();
+  if (!premiere || (s.arriveeChoisie && timeToNum(s.startTime) <= timeToNum(premiere))) return;
+  s.arriveeChoisie = false;
+  s.startTime = premiere;
+  s.heureProposee = false;
 }
 
 // DANS UNE FORMULE TELLE QUELLE, L HEURE SUR UNE AUTRE ACTIVITE DU GROUPE SE PREND AUSSI (2026-11-21).
@@ -42420,7 +42442,8 @@ function rsBlocFormuleHtml() {
 // Le ticket. Le detail d une ligne : quand, et ce qui compte pour elle.
 function rsDetailFormule(etapes) {
   const plan = rvPlanCourant();
-  const quand = plan && plan.debut && plan.fin ? `${plan.debut} à ${plan.fin}` : quickBookState.startTime || '';
+  // (le ticket dit l heure du bouton, « Créer à 16:00 » : jamais l accueil d avant)
+  const quand = plan && plan.debut && plan.fin ? `${rsHeureDite() || plan.debut} à ${plan.fin}` : quickBookState.startTime || '';
   const bowling = etapes.find((e) => e.id === 'bowling');
   return [quand, bowling ? String(bowling.d).split(',')[0] : ''].filter(Boolean).join(', ');
 }
@@ -42624,7 +42647,10 @@ function rsHeureFormule(heure, retour = false) {
     s.error = '';
     const quoi = rsHeureQuiCoince(rsCoince(x, id));
     if (quoi === 'refus') return;
-    rvChoisirHeure(id, 0, heure, { seule: true });
+    // (toutes les heures posees : l arrivee choisie reste, jamais apres la premiere activite)
+    const premiere = rvPremiereHeurePosee();
+    rvChoisirHeure(id, 0, premiere && timeToNum(heure) > timeToNum(premiere) ? premiere : heure, { seule: true });
+    if (premiere) s.arriveeChoisie = true;
     rsForcerApres(quoi, x, dejaForce);
     if (retour) rsVersQuestion(rsPageDesFormules());
   });

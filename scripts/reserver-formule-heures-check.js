@@ -27,6 +27,8 @@
 //        arcades « 30 min » posees a 17:30, le laser a 17:45 les chevauche (dit avec ses heures, « Créer »
 //        bloque), le laser a 18:00 ne chevauche rien ; les arcades rendues au planning (15:30 a 16:00)
 //        comptent aussi : le laser a 15:30 les chevauche ;
+//   [D1] toutes les heures posees, la visite commence a la premiere activite : le ticket dit « 16:00 à
+//        18:00 », le bouton « Créer à 16:00 », le dossier cree arrive a 16:00 (son heure et son plan) ;
 //   [C2] le laser remis a 17:00, « Créer » : le corps porte les trois heures posees et le dossier cree les a
 //        dans son plan (bowling 16:00, laser 17:00, arcades 17:30) ;
 //   [A1] des arcades vendues en argent (Formule 6, « 8 crédits d'arcade (8€) par enfant ») sont libres : pas
@@ -69,6 +71,7 @@ const JS = 'assets/app-main.js';
 const POSEES = 'lib/heures-posees.js';
 const MOVE = 'lib/reservation-activity-move.js';
 const liste = (v) => (v ? v.split(',').map((x) => x.trim()).filter(Boolean) : null);
+const b0 = (ids) => (ids.length === 1 ? enBase(ids[0]) : {});
 const memes = (a, b) => JSON.stringify(Object.entries(a || {}).sort()) === JSON.stringify(Object.entries(b || {}).sort());
 
 let echecs = 0;
@@ -120,6 +123,8 @@ function enBase(id) {
   const premiere = (liste) => liste.map(hm).filter(Boolean).sort()[0] || '';
   return {
     formuleId: r.formuleId || '',
+    startTime: String(r.startTime || '').slice(0, 5),
+    debutDuPlan: String(plan.startTime || '').slice(0, 5),
     bowling: premiere((plan.resourceBlocks || []).filter((b) => b.resourceType === 'bowling_lane')),
     laser: premiere((plan.resourceBlocks || []).filter((b) => b.resourceType === 'laser_arena')),
     arcades: premiere((plan.timeline || []).filter((e) => e.activityId === 'arcade_time' && e.flexible !== true)),
@@ -169,6 +174,7 @@ function lire() {
     resume: t(document.getElementById('rsResume')),
     phrases: Array.from(o.querySelectorAll('.rs-heure-refus')).map(t),
     posees: { ...(quickBookState.heuresPosees || {}) },
+    depart: quickBookState.startTime,
     creer: creer ? { texte: t(creer).replace(/Entrée$/, '').trim(), bloque: creer.classList.contains('is-bloque'), pret: creer.dataset.pret === '1' } : null,
     plan: plan ? { disponible: plan.disponible, refus: plan.refus || '', heureRefusee: plan.heureRefusee || null, blocs: (plan.blocs || []).map((b) => `${b.activite} ${b.debut}`) } : null,
   };
@@ -251,6 +257,10 @@ async function scenario(browser) {
     ok(Boolean(h.creer) && !h.creer.bloque && h.creer.pret && /^Créer/.test(h.creer.texte), '[H1] « Créer » est actif', h.creer);
     ok(Boolean(h.plan) && h.plan.disponible === true && h.plan.blocs.includes('bowling 16:00') && h.plan.blocs.includes('laser_game 17:00'),
       '[H1] le plan du serveur tient : le bowling a 16:00, le laser a 17:00', h.plan);
+    // [D1] Toutes les heures posees : la visite commence a la premiere activite, le ticket et le bouton disent
+    // la meme heure.
+    ok(h.depart === '16:00' && /16:00 à 18:00/.test(h.formule) && !/14:[23]0/.test(h.formule) && Boolean(h.creer) && h.creer.texte === 'Créer à 16:00',
+      '[D1] la visite commence a la premiere activite : le ticket dit « 16:00 à 18:00 », le bouton « Créer à 16:00 »', { depart: h.depart, formule: h.formule, creer: h.creer });
     await photo(page, 'formule-heures-sur-les-cases');
 
     // [H2] Le vrai chevauchement : le laser a 16:30, sur le bowling de 16:00 a 17:00.
@@ -274,12 +284,12 @@ async function scenario(browser) {
     const e = await page.evaluate(lire);
     ok(Boolean(e.plan) && e.plan.disponible === true && !CHEVAUCHE.test(e.ticket) && !e.cases.some((x) => x.ko) && Boolean(e.creer) && !e.creer.bloque && e.creer.pret,
       '[H3] le laser a 18:00, quand les arcades finissent : rien ne chevauche, « Créer » revient', { ticket: e.ticket, plan: e.plan, creer: e.creer });
-    // Les arcades rendues au planning (« Auto », 15:30 a 16:00) comptent aussi, de leur vraie duree.
+    // Les arcades rendues au planning (« Auto », 17:00 a 17:30 pour une visite de 16:00) comptent aussi.
     await poser(page, 'arcade_time', '');
-    await poser(page, 'laser_game', '15:30');
+    await poser(page, 'laser_game', '17:00');
     const g = await page.evaluate(lire);
-    ok(Boolean(g.plan) && g.plan.disponible === false && /Laser à 15:30/.test(g.formule) && /chevauche Arcades du groupe, de 15:30 à 16:00/.test(g.formule),
-      '[H3] le laser pose a 15:30 sur les arcades laissees au planning (15:30 a 16:00) : le chevauchement se dit', { formule: g.formule, plan: g.plan });
+    ok(Boolean(g.plan) && g.plan.disponible === false && /Laser à 17:00/.test(g.formule) && /chevauche Arcades du groupe, de 17:00 à 17:30/.test(g.formule),
+      '[H3] le laser pose a 17:00 sur les arcades laissees au planning (17:00 a 17:30) : le chevauchement se dit', { formule: g.formule, plan: g.plan });
     await poser(page, 'arcade_time', VOULUES.arcade_time);
 
     // [C2] Le laser remis a 17:00, « Créer ».
@@ -296,6 +306,7 @@ async function scenario(browser) {
     let ids = [];
     for (let i = 0; i < 40; i += 1) { ids = [...B.base.reservations.keys()].filter((id) => !avant.has(id)); if (ids.length) break; await page.waitForTimeout(150); }
     const corps = posts.slice(n).find((p) => !p.dryRun) || {};
+    ok(corps.startTime === '16:00' && b0(ids).startTime === '16:00' && b0(ids).debutDuPlan === '16:00', '[D1] le dossier cree arrive a 16:00 : son heure et le debut de son plan', { envoye: corps.startTime, base: b0(ids) });
     ok(memes(corps.heuresPosees, VOULUES) && corps.formuleId === 'f1', '[C2] le corps de « Créer » porte les trois heures posees', { formuleId: corps.formuleId, heuresPosees: corps.heuresPosees });
     const b = ids.length === 1 ? enBase(ids[0]) : {};
     ok(ids.length === 1 && b.formuleId === 'f1' && b.bowling === '16:00' && b.laser === '17:00' && b.arcades === '17:30',
@@ -346,6 +357,8 @@ const MUTATIONS = [
   { nom: 'arcades-ignorees-par-le-laser', lettre: 'H3', editions: [{ fichier: MOVE, serveur: true, de: ' || (toutLeJeu && !autre && jeuAHeure(block))', vers: '' }] },
   // Des arcades en credits recoivent une heure, comme des arcades au temps.
   { nom: 'arcades-en-argent-a-heure', lettre: 'A1', editions: [{ fichier: JS, de: '  if (rvArcadesEnArgent(id)) return false;\n', vers: '' }] },
+  // Le debut reste l heure de la formule (14:30), toutes les heures posees plus tard.
+  { nom: 'debut-a-l-heure-de-la-formule', lettre: 'D1', editions: [{ fichier: JS, de: '  if (!premiere || (s.arriveeChoisie && timeToNum(s.startTime) <= timeToNum(premiere))) return;', vers: '  return;' }] },
   // La duree des arcades lue au catalogue, pas au contenu de la formule.
   { nom: 'duree-du-catalogue', lettre: 'A1', editions: [{ fichier: JS, de: '  if (contenu && contenu.minutes > 0) return contenu.minutes;\n', vers: '' }] },
 ];

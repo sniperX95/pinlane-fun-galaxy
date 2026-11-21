@@ -44002,7 +44002,7 @@ function rsLignesHtml() {
   return `<p class="rs-tk-l">${escapeHtml(`${qui}, ${quand}`)}</p>
     <div class="rs-tk-sep"></div>
     ${rsLignesActivites()}${rsLignesExtras()}
-    ${rsNiveau('surmesure') === 'non' ? '' : `<button type="button" class="rs-ajout" id="rsTkMesure" onclick="rsOuvrir('mesure')">${plus}<span>Ajouter une activité ou une boisson</span></button>`}
+    ${rsNiveau('surmesure') === 'non' ? '' : `<button type="button" class="rs-ajout-ligne" id="rsTkMesure" onclick="rsOuvrir('mesure')">${plus}<span>Ajouter une activité ou une boisson</span></button>`}
     <div class="rs-tk-sep"></div>`;
 }
 

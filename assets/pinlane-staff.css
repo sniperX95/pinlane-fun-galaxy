@@ -20298,12 +20298,13 @@ body:is(.staff-mode, .admin-mode) .fx-modal .fz-caisse-apayer { display: flex; f
 .qb-modal.rv.rs .rs-recu b.pl-a-payer { font-size: 13px; font-weight: 650; }
 .qb-modal.rv.rs .rs-libre-apayer { cursor: default; }
 .qb-modal.rv.rs .rs-libre-apayer .pl-a-payer { justify-self: start; height: 44px; padding: 0 12px; border-radius: 10px; font-size: 14px; }
-/* Le meme geste dans Reserver : « Ajouter une activité ou une boisson », encadre, son « + » en bleu. */
-.qb-modal.rv.rs .rs-ajout { align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; min-height: 40px; margin: 8px 10px 0; padding: 0 16px 0 12px; border: 1px solid var(--control-border); border-radius: 8px; background: var(--surface); color: var(--text); font: inherit; font-size: 14px; font-weight: 600; line-height: 1.2; text-decoration: none; cursor: pointer; }
-.qb-modal.rv.rs .rs-ajout svg { flex: none; color: var(--console-selected); }
-@media (hover: hover) and (pointer: fine) { .qb-modal.rv.rs .rs-ajout:hover { background: var(--subtle); } }
-.qb-modal.rv.rs .rs-ajout:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 2px; }
-@media (pointer: coarse) { .qb-modal.rv.rs .rs-ajout { min-height: 44px; } }
+/* Le meme geste dans Reserver : « Ajouter une activité ou une boisson », encadre, son « + » en bleu. Sa classe
+   est a lui : .rs-ajout est deja le bouton « Ajouter » d une seance repliee (le laser). */
+.qb-modal.rv.rs .rs-ajout-ligne { align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; min-height: 40px; margin: 8px 10px 0; padding: 0 16px 0 12px; border: 1px solid var(--control-border); border-radius: 8px; background: var(--surface); color: var(--text); font: inherit; font-size: 14px; font-weight: 600; line-height: 1.2; text-decoration: none; cursor: pointer; }
+.qb-modal.rv.rs .rs-ajout-ligne svg { flex: none; color: var(--console-selected); }
+@media (hover: hover) and (pointer: fine) { .qb-modal.rv.rs .rs-ajout-ligne:hover { background: var(--subtle); } }
+.qb-modal.rv.rs .rs-ajout-ligne:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 2px; }
+@media (pointer: coarse) { .qb-modal.rv.rs .rs-ajout-ligne { min-height: 44px; } }
 
 /* Le prix : le total et le prix par joueur, l euro dans le champ ; une
    phrase dessous quand il y a quelque chose a savoir. */

@@ -267,6 +267,7 @@
     "test:fiche-gestes",
     "test:fiche-simple",
     "test:fiche-modifier",
+    "test:extras-libres",
     "test:heure-activite-dossier",
     "test:programme-complet",
     "test:reserver-heure-activite",

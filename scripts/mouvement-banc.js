@@ -38,9 +38,11 @@
 //   fermée    pour la fermeture, la touche jusqu'à la dernière trace à l'écran.
 //
 // Usage : node scripts/mouvement-banc.js [variante,variante] [--cpu=4] [--sortie=fichier.json]
-//         [--port=5231] [--gestes=ouvrir-fiche,fermer-fiche] [--fois=5]
+//         [--port=5231] [--gestes=ouvrir-fiche,fermer-fiche] [--fois=5] [--commit=c5526ce]
 // (--gestes : ces gestes seulement, sans les pages au repos ; --fois : chaque geste de
-// fenêtre rejoué autant de fois, la médiane est rendue)
+// fenêtre rejoué autant de fois, la médiane est rendue ; --commit : la console telle qu'elle
+// était à ce commit, ses js, css et html lus par git show en mémoire, une variante « @ref »
+// s'écrit aussi dans la liste : base,base@c5526ce)
 // Les chiffres absolus dépendent de la machine : on lit des RAPPORTS entre
 // variantes mesurées dans la même série.
 'use strict';
@@ -69,8 +71,17 @@ const PAGES = [
   ['establishment'], ['prices'], ['laserGame'], ['lanes'], ['secours'], ['cockpit'],
 ];
 
-// Chaque variante transforme la CSS ou le JS servis, en mémoire.
+// Chaque variante transforme la CSS ou le JS servis, en mémoire. « base@c5526ce » : la base telle
+// qu'elle était à ce commit (scripts/mouvement-releve.js, transformateurCommit).
 function transformateur(variante) {
+  const [nom, ref] = variante.split('@');
+  const commit = ref || opt('commit', '');
+  const passe = commit ? require('./mouvement-releve.js').transformateurCommit(commit) : null;
+  const propre = transformateurPropre(nom);
+  if (!passe) return propre;
+  return (rel, texte) => { const t = passe(rel, texte); return propre ? propre(rel, t) : t; };
+}
+function transformateurPropre(variante) {
   if (variante === 'base') return null;
   return (rel, texte) => {
     if (!/\.css$/i.test(rel) && !/\.html$/i.test(rel)) return texte;
@@ -307,7 +318,7 @@ async function mesurerVariante(navigateur, variante) {
   const serveur = await F.servir({ port: PORT, transformer: transformateur(variante) });
   const res = { variante, cpu: CPU, pages: {}, gestes: {}, erreurs: [] };
   try {
-    const { ctx, page, erreurs } = await F.monter(navigateur, { fixture: 'pic', appareil: 'ordinateur', theme: 'light', heure: '15:10', port: PORT, mouvementReduit: variante === 'reduit' });
+    const { ctx, page, erreurs } = await F.monter(navigateur, { fixture: 'pic', appareil: 'ordinateur', theme: 'light', heure: '15:10', port: PORT, mouvementReduit: variante.split('@')[0] === 'reduit' });
     await page.evaluate(SONDE);
     await page.evaluate(SONDE_FENETRE);
     const cdp = await ctx.newCDPSession(page);

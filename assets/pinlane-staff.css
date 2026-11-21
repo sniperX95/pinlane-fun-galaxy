@@ -21899,16 +21899,16 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
 }
 @media (prefers-reduced-motion: reduce) {
   .bdg .bdg-b, .bdg .bdg-p, .bdg .bdg-l, .bdg .bdg-onglet, .bdg-mail { transition: none; }
-  .bdg-lu-l.is-neuve, .bdg-carte.is-neuve, .bdg-fen { animation: none; }
+  .bdg-lu-l.is-neuve, .bdg-carte.is-neuve { animation: none; }
 }
 
 /* Une fenetre, sans quitter la page : le planning d un jour, le client, les horaires d un jour.
-   Au-dessus de Reserver quand elle en vient. */
+   Au-dessus de Reserver quand elle en vient. Son entree et sa sortie (2026-11-21) : elle grandit
+   depuis ce qu on a touche, comme la fiche et Reserver (pinlane-mouvement.js, ouvrirFenetre). */
 .bdg-fen-fond { position: fixed; inset: 0; z-index: 470; display: flex; align-items: center; justify-content: center; padding: 24px; background: var(--scrim); }
-.bdg-fen { display: flex; flex-direction: column; box-sizing: border-box; width: 100%; max-width: 560px; max-height: calc(100vh - 48px); overflow: hidden; animation: bdg-fen-entre 200ms cubic-bezier(0.23, 1, 0.32, 1) both; }
+.bdg-fen { display: flex; flex-direction: column; box-sizing: border-box; width: 100%; max-width: 560px; max-height: calc(100vh - 48px); overflow: hidden; }
 .bdg-fen.is-petite { max-width: 440px; }
 .bdg-fen.is-large { max-width: min(1320px, 100%); height: calc(100vh - 48px); }
-@keyframes bdg-fen-entre { from { opacity: 0; transform: translateY(6px) scale(0.985); } }
 .bdg-fen-t { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 18px 20px 14px; }
 .bdg-fen-t h3 { font-size: 18px; font-weight: 650; }
 .bdg-fen-t p { margin-top: 2px; color: var(--muted); }

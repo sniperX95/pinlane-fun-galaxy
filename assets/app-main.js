@@ -22408,12 +22408,15 @@ function smFenetreOuvrir({ titre, sous = '', corps, classe = '', quandFermee = n
   // (le fond ne devient pas inert : tout le planning se recalculerait, a l ouverture et a la fermeture)
   const liberer = containStaffDialog(fond, '.bdg-fen', 'input:not([type="hidden"]), textarea, #bdgFenX', smFenetreFermer, { fondInerte: false });
   smFenetre = { fond, liberer, quandFermee };
+  // Elle sort de ce qu on a touche, et y repart en se fermant (pinlane-mouvement.js).
+  if (window.PlMouvement) window.PlMouvement.ouvrirFenetre(fond, fond.querySelector('.bdg-fen'));
 }
 
 function smFenetreFermer() {
   if (!smFenetre) return;
   const { fond, liberer, quandFermee } = smFenetre;
   smFenetre = null;
+  if (window.PlMouvement) window.PlMouvement.fermerFenetre(fond.querySelector('.bdg-fen'));
   fond.remove();
   liberer();
   if (typeof quandFermee === 'function') quandFermee();

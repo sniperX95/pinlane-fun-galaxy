@@ -6,14 +6,16 @@
 // vraie boite : une mesure faite pendant ce quart de seconde lisait 38,8 px pour une photo
 // de 40, et fiche-simple-check rougissait au telephone sur la machine lente de GitHub.
 //
-// Ce gate ouvre la fiche et Reserver, sans origine visible (ordinateur et telephone) et
-// depuis une ligne du planning (ordinateur, la forme vide vole), lit leur boite DANS LA
-// MEME TACHE que l ouverture, puis une fois le mouvement fini : les deux lectures sont les
-// memes, au demi-pixel. Il verifie aussi que l entree a bien joue (une mesure sans
-// mouvement ne prouverait rien).
+// Ce gate ouvre la fiche et Reserver par le code, sans rien toucher (ordinateur et
+// telephone), lit leur boite DANS LA MEME TACHE que l ouverture, puis une fois le mouvement
+// fini : les deux lectures sont les memes, au demi-pixel (sans toucher, la fenetre ne fait que
+// se fondre). Depuis une ligne du planning, au vrai clic (ordinateur), la fenetre sort du point
+// touche (21/11, fenetre-mouvement-check) : son transform bouge, sa boite de MISE EN PAGE
+// (offsetLeft, offsetTop, offsetWidth, offsetHeight) est la bonne des la premiere image. Il
+// verifie aussi que l entree a bien joue (une mesure sans mouvement ne prouverait rien).
 //
 // --contre-preuves : le module servi avec l ancienne entree (scale 0.97 sur la vraie
-// fenetre) doit faire rougir la fiche au telephone.
+// fenetre, ouverte sans toucher) doit faire rougir la fiche au telephone.
 'use strict';
 const F = require('./planning-v3-fixtures');
 const { chromium } = require('playwright-core');
@@ -22,11 +24,11 @@ const BROWSER_PATH = process.env.E2E_BROWSER_PATH || 'C:\\Program Files (x86)\\M
 const PORT = Number(process.env.PINLANE_FENETRE_TAILLE_PORT || 5262);
 const CONTRE = process.argv.includes('--contre-preuves');
 
-const ENTREE_JUSTE = "telephone ? [{ opacity: 0 }, { opacity: 1 }] :";
-const ENTREE_ANCIENNE = "telephone ? [{ opacity: 0, transform: 'translateY(8px) scale(0.97)' }, { opacity: 1, transform: 'none' }] :";
-// Sur grand ecran la fenetre grandit de 0,98 a 1 (20/11, la fiche « pas fluide » : le gerant) :
-// sa boite lue tout de suite differe de 2,5 % au plus. Au telephone elle ne bouge pas, au demi-pixel.
-const tolerance = (appareil, b) => (appareil === 'ordinateur' && b ? 0.025 * Math.max(b.w, b.h) : 0.5);
+const ENTREE_JUSTE = '    if (!p) return null;';
+const ENTREE_ANCIENNE = "    if (!p) return surface.animate([{ opacity: 0, transform: 'translateY(8px) scale(0.97)' }, { opacity: 1, transform: 'none' }], { id: ID, duration: 240, easing: SORTIE });";
+// (au demi-pixel partout : ouverte sans toucher, la fenetre ne fait que se fondre ; touchee, sa
+// boite de mise en page, que transform ne change pas)
+const tolerance = () => 0.5;
 
 let echecs = 0;
 function ok(cond, label, detail) {
@@ -39,8 +41,11 @@ function ok(cond, label, detail) {
 // est pose une fois dans la page : appele dans la tache meme de l ouverture.
 function poserLecteur() {
   const b = (el) => { if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; };
+  // (la boite de mise en page : ce que transform ne change pas)
+  const m = (el) => (el ? { x: el.offsetLeft, y: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight } : null);
   window.__lireFenetre = () => ({
     fiche: b(document.querySelector('#posOverlay:not(.hidden) .edit-modal')),
+    ficheMiseEnPage: m(document.querySelector('#posOverlay:not(.hidden) .edit-modal')),
     photo: b(document.querySelector('#posOverlay:not(.hidden) .fx-programme .gc-step .fz-photo')),
     reserver: b(document.querySelector('#quickBookOverlay:not(.hidden) .qb-modal')),
   });
@@ -73,7 +78,9 @@ async function sansOrigine(page, quoi) {
       openPos(r.id);
     } else openQuickBook();
     const surface = document.querySelector(quoi === 'fiche' ? '#posOverlay .edit-modal' : '#quickBookOverlay .qb-modal');
-    const joue = Boolean(surface) && surface.getAnimations().length > 0;
+    // (depuis le 21/11 l entree sans toucher se joue sur le voile qui porte la fenetre)
+    const fond = surface && surface.closest('#posOverlay, #quickBookOverlay');
+    const joue = Boolean(surface) && (surface.getAnimations().length > 0 || Boolean(fond && fond.getAnimations().length > 0));
     return { tout_de_suite: window.__lireFenetre(), joue };
   }, quoi);
 }
@@ -91,7 +98,7 @@ async function scenario(navigateur, appareil, port, { seulementFicheTelephone = 
       await fermerTout(page);
     }
     if (appareil === 'ordinateur' && !seulementFicheTelephone) {
-      // Depuis une ligne du planning, au vrai clic : la forme vide vole de la ligne a la fiche.
+      // Depuis une ligne du planning, au vrai clic : la fiche sort du point touche.
       await page.evaluate(() => { state.staffMenuPage = 'planning'; state.staffResourceView = 'all'; renderStaff(); });
       await F.repos(page, 600);
       const cible = await page.evaluate(() => {
@@ -109,7 +116,7 @@ async function scenario(navigateur, appareil, port, { seulementFicheTelephone = 
       const a = await page.evaluate(() => ({ l: window.__lireFenetre(), vol: document.querySelector('#posOverlay .edit-modal').getAnimations().length > 0 }));
       await F.repos(page, 600);
       const b = await page.evaluate(LIRE);
-      res.push({ nom: 'ordinateur, fiche ouverte depuis sa ligne', joue: a.vol, ecart: ecart(a.l.fiche, b.fiche), photo: 0, avant: a.l.fiche, apres: b.fiche });
+      res.push({ nom: 'ordinateur, fiche ouverte depuis sa ligne (sa boite de mise en page)', joue: a.vol, ecart: ecart(a.l.ficheMiseEnPage, b.ficheMiseEnPage), photo: 0, avant: a.l.ficheMiseEnPage, apres: b.ficheMiseEnPage });
       await fermerTout(page);
     }
   } finally {

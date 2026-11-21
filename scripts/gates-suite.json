@@ -466,7 +466,8 @@
     "test:planning-persistent-move",
     "test:mouvement",
     "test:fenetre-taille",
-    "test:mouvement-gestes"
+    "test:mouvement-gestes",
+    "test:fenetre-mouvement"
   ],
   "seuls": [
     "test:visit-motion",

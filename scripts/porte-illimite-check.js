@@ -22,6 +22,8 @@
 //       creee, le dossier la prend et s enregistre en acces illimite.
 //   [O] AVEC UNE OFFRE, RIEN NE CHANGE : la porte dit l acces et son prix et ouvre ses tuiles, sans
 //       creation ; Modifier propose l acces du catalogue.
+//   [H] AVEC UNE OFFRE, UN JOUR CHARGE (deux horaires retenus en ligne) : a 1366 x 768, la fenetre tient
+//       sans defiler, les deux rangees de portes entieres, comme sans offre en [P].
 //   [*] Zero erreur JavaScript.
 //
 // CONTRE-PREUVES : `--contre-preuves` sert le code casse expres, une mutation a la fois (en memoire, le
@@ -43,6 +45,9 @@ const lf = (t) => String(t).split('\r\n').join('\n');
 const argument = (nom) => { const a = process.argv.find((x) => x === `--${nom}` || x.startsWith(`--${nom}=`)); return a ? (a.includes('=') ? a.split('=')[1] : true) : null; };
 
 const APP = 'assets/app-main.js';
+const CSS = 'assets/pinlane-staff.css';
+// La correction de la hauteur (2026-11-21), d un bloc : l ecart minimum de la colonne, les portes d un doigt.
+const HAUTEUR = '@media (min-width: 1101px) { .qb-modal.rv.rs.is-q-activites .rs-col { gap: 4px; } }\n.qb-modal.rv.rs .rs-portes.is-acces { margin-bottom: 0; }\n.qb-modal.rv.rs .rs-portes.is-acces .rs-porte, .qb-modal.rv.rs .rs-portes.is-acces + .rs-portes .rs-porte { min-height: 44px; }';
 
 // LA MUTATION : une garde retiree expres, une a la fois. `lettre` dit quel scenario la juge, `cible` le
 // debut du libelle qui doit rougir.
@@ -54,6 +59,8 @@ const MUTATIONS = [
   { nom: 'tuile-figee', lettre: 'R', cible: '[R] une activite se retire en tuile', fichier: APP, de: '  illNouvelRepeindre(ou, () => { n.retirees = f.illimite.activites.filter((x) => !suite.activites.includes(x)); });', vers: '  illNouvelRepeindre(ou, () => {});' },
   { nom: 'creation-sans-tuiles', lettre: 'R', cible: '[R] cree, les tuiles de l acces s ouvrent aussitot', fichier: APP, de: "  if (ou === 'ed') passerEnIllimiteEdition(id);\n  else rsOuvrirIllimite(id);", vers: "  if (ou === 'ed') passerEnIllimiteEdition(id);\n  else rvRepeindre();" },
   { nom: 'modifier-sans-entree', lettre: 'M', cible: '[M] Modifier sans offre : « À la carte | Accès illimité »', fichier: APP, de: '  if (!choix.length) { lireLesFormulesGardeesPourModifier(); return renderEditIllimiteACreer(deLOrigine); }', vers: "  if (!choix.length) { lireLesFormulesGardeesPourModifier(); return ''; }" },
+  { nom: 'fenetre-qui-defile', lettre: 'H', cible: '[H] avec une offre, un jour charge, la fenetre tient sans defiler', fichier: CSS, de: HAUTEUR, vers: '' },
+  { nom: 'ecart-de-12', lettre: 'H', cible: '[H] avec une offre, un jour charge, la fenetre tient sans defiler', fichier: CSS, de: '@media (min-width: 1101px) { .qb-modal.rv.rs.is-q-activites .rs-col { gap: 4px; } }', vers: '' },
   { nom: 'offre-ignoree', lettre: 'O', cible: '[O] avec une offre, la porte dit l acces et son prix', fichier: APP, de: "  const liste = s ? rsIllimitees() : [];\n  if (!liste.length) return '';", vers: "  const liste = s ? rsIllimitees() : [];\n  if (liste.length) return '';" },
 ];
 const LES_MUTATIONS = new Map(MUTATIONS.map((m) => [m.nom, m]));
@@ -93,6 +100,10 @@ const DU_CENTRE = () => listCenterActivities(CENTRE).map((a) => a.id);
 const memeEnsemble = (a, b) => a.length === b.length && [...a].sort().join() === [...b].sort().join();
 const planDe = (r) => (r && (typeof r.ops_plan === 'string' ? JSON.parse(r.ops_plan) : r.ops_plan)) || {};
 const PHRASE_OU = 'Un responsable le crée dans Tarifs & formules, avec le bouton « + Accès illimité » en haut de la page.';
+// La journee chargee du banc et deux horaires retenus en ligne, ceux de comptoir-check [E] : la fenetre la
+// plus haute qu il mesure.
+const RETENUES_CHARGEES = [{ heure: '16:00', pistes: [6, 7], joueurs: 8, resteMinutes: 8, resteSecondes: 12 }, { heure: '16:30', laser: 12, resteMinutes: 4, resteSecondes: 40 }];
+const OFFRE = { nom: 'Accès illimité', prixParPersonne: 32, minPax: 1, clients: false, illimite: true, dureeMinutes: 180, aVolonte: { bowling: true, laser_game: true } };
 
 // Le catalogue du centre sans aucune formule gardee : ni Gembloux ni Libramont n ont d acces illimite.
 function viderLeCatalogue() {
@@ -182,9 +193,8 @@ const lireCreation = (page, p) => page.evaluate((x) => {
 async function scenarioP(browser) {
   console.log('\n[P] sans offre, la porte est la');
   viderLeCatalogue();
-  // (la journee chargee du banc et deux horaires retenus en ligne, ceux de comptoir-check [E] : la fenetre
-  // la plus haute qu il mesure)
-  const m = await ouvrir(browser, { role: 'manager', reservations: null, retenues: [{ heure: '16:00', pistes: [6, 7], joueurs: 8, resteMinutes: 8, resteSecondes: 12 }, { heure: '16:30', laser: 12, resteMinutes: 4, resteSecondes: 40 }] });
+  // (la journee chargee : la fenetre la plus haute)
+  const m = await ouvrir(browser, { role: 'manager', reservations: null, retenues: RETENUES_CHARGEES });
   try {
     const { page } = m;
     await C.ouvrirFenetre(page, 7);
@@ -194,7 +204,7 @@ async function scenarioP(browser) {
     ok(etat.offres === 0 && etat.lues && porte && porte.nom === 'Accès illimité' && porte.ligne === 'à créer ici' && porte.aCreer && !porte.prix && porte.rangee.join() === 'rsFormules,rsIllimite,rsMesure' && porte.visible,
       '[P] sans offre, la porte « Accès illimité » est la, entre Formules et Sur mesure, et dit qu il se cree ici', { etat, porte });
     ok(porte && porte.defile <= 1 && porte.formulesEntier, '[P] la fenetre tient toujours sans defiler a 1366 x 768, la ligne de Formules entiere', porte);
-    await photo(page, 'porte-visible', '#quickBookOverlay .qb-modal.rv');
+    await photo(page, 'porte-a-creer', '#quickBookOverlay .qb-modal.rv');
   } finally { await finir(m, 'P'); }
 }
 
@@ -458,7 +468,36 @@ async function scenarioO(browser) {
 }
 
 // ---------------------------------------------------------------------------
-const SCENARIOS = { P: scenarioP, V: scenarioV, R: scenarioR, S: scenarioS, M: scenarioM, O: scenarioO };
+// [H] AVEC UNE OFFRE, UN JOUR CHARGE, LA FENETRE TIENT SANS DEFILER
+// ---------------------------------------------------------------------------
+// L acces cree avec la porte devient l etat normal du gerant : sa rangee pleine largeur, plus les horaires
+// retenus en ligne, faisait defiler la colonne de 63 px a 1366 x 768. Sans offre, la meme mesure est en [P].
+async function scenarioH(browser) {
+  console.log('\n[H] avec une offre, un jour charge, la fenetre tient sans defiler');
+  viderLeCatalogue();
+  const garde = await garderParLeServeur(OFFRE);
+  const m = await ouvrir(browser, { role: 'manager', reservations: null, retenues: RETENUES_CHARGEES });
+  try {
+    const { page } = m;
+    await C.ouvrirFenetre(page, 7);
+    await page.waitForFunction((x) => getEffectiveCatalogFormules().some((f) => f.id === x), ID_ACCES, { timeout: 10000 }).catch(() => {});
+    await page.evaluate(() => rsPeindreActivites && rsPeindreActivites()).catch(() => {});
+    await page.waitForTimeout(500);
+    const porte = await lirePorte(page);
+    // (les deux rangees de portes entieres dans la colonne, la derniere comprise)
+    const bas = await page.evaluate(() => {
+      const col = document.getElementById('rsCol').getBoundingClientRect();
+      const dedans = (id) => { const e = document.getElementById(id); if (!e) return false; const r = e.getBoundingClientRect(); return r.top >= col.top - 0.5 && r.bottom <= col.bottom + 0.5; };
+      return { acces: dedans('rsIllimite'), formules: dedans('rsFormules'), mesure: dedans('rsMesure') };
+    });
+    ok(garde.statut === 200 && porte && !porte.aCreer && porte.prix === '32 € par joueur' && porte.rangee.join() === 'rsIllimite' && porte.defile <= 1 && bas.acces && bas.formules && bas.mesure,
+      '[H] avec une offre, un jour charge, la fenetre tient sans defiler a 1366 x 768, les portes entieres', { porte, bas });
+    await photo(page, 'porte-visible', '#quickBookOverlay .qb-modal.rv');
+  } finally { await finir(m, 'H'); }
+}
+
+// ---------------------------------------------------------------------------
+const SCENARIOS = { P: scenarioP, V: scenarioV, R: scenarioR, S: scenarioS, M: scenarioM, O: scenarioO, H: scenarioH };
 
 function verifierLesAncres() {
   let mortes = 0;

@@ -9949,6 +9949,15 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv.rs .rs-porte.rs-illimite.is-a-creer { gap: 8px; padding: 0 10px 0 14px; }
 .qb-modal.rv.rs .rs-porte-2l { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .qb-modal.rv.rs .rs-porte.rs-illimite.is-a-creer .rs-porte-l { order: 0; flex: none; font-size: 12.5px; line-height: 1.2; }
+/* LA FENETRE TIENT AVEC UN ACCES ILLIMITE, UN JOUR CHARGE (2026-11-21). A 1366 x 768, les horaires retenus
+   en ligne et la rangee de l acces faisaient defiler la colonne de 63 px. La colonne ecarte ses rangees
+   pour remplir sa hauteur (space-between) : sur la page des activites, son ecart n est qu un minimum, et
+   4 px au lieu de 12 ne change aucun ecran qui tient deja, il ne joue que quand c est serre (au-dessous de
+   1100 px, la colonne a ses propres ecarts). Avec un acces, ses deux rangees de portes prennent la hauteur
+   d un doigt (44 px) et l ecart commun, sans marge de plus. */
+@media (min-width: 1101px) { .qb-modal.rv.rs.is-q-activites .rs-col { gap: 4px; } }
+.qb-modal.rv.rs .rs-portes.is-acces { margin-bottom: 0; }
+.qb-modal.rv.rs .rs-portes.is-acces .rs-porte, .qb-modal.rv.rs .rs-portes.is-acces + .rs-portes .rs-porte { min-height: 44px; }
 /* LA PAGE DE L ACCES ILLIMITE, UN SEUL BLOC (2026-11-20) : le nom et la phrase a gauche, le prix par
    joueur et le total a droite, puis les activites comprises en vraies photos, chacune son etiquette.
    Ce qui se joue une fois a heure fixe se lit plus fort que « à volonté ». */

@@ -54,6 +54,10 @@
 //   [T] AU TELEPHONE (390 px) : la fenetre tient dans l ecran, ses boutons pleine largeur et
 //       au doigt (44 px), la fiche ne deborde pas ; la croix la ferme : le statut et le retard
 //       note restent ecrits, seules les heures ne bougent pas ;
+//   [U] UN TOUCHER SUR « ARRIVÉ » RESTE ANNULABLE : la fenetre s ouvre par-dessus le toast
+//       « Annuler », dont le delai ne court pas tant qu elle est ouverte ; fermee, « Annuler »
+//       se touche et marche : le groupe redevient attendu, le retard que ce pointage avait note
+//       s efface, la ligne redit « En retard · 20 min » ;
 //   [J] aucune erreur JS.
 // La vraie console (scripts/planning-v3-fixtures.js, samedi « pic » de Fun Galaxy Libramont
 // a 15:20) ; ses PATCH et ses calculs a blanc partent au VRAI handler api/staff-reservations.js,
@@ -61,7 +65,8 @@
 // --contre-preuves : chaque regle retiree (au texte servi ou compile en memoire, le disque
 // n est jamais touche) fait rougir sa lettre ; chaque ancre existe une fois et une seule.
 //   RV_MUTATIONS : un sous-ensemble ; RV_BAVARD : les lignes des contre-preuves ;
-//   RV_CAPTURES=<dossier> : le planning avec un groupe en retard, sa fiche, la fenetre.
+//   RV_CAPTURES=<dossier> : la ligne en retard, le planning, sa fiche, la fenetre (une activite
+//   qui ne passe pas, puis tout qui passe), la marque gardee apres « Payé ».
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -338,6 +343,7 @@ async function scenarioPlanning(browser) {
     ok(hugo && /prévu 15:00/.test(hugo.prevu), '[A] l heure prevue se lit a cote : « prévu 15:00 »', hugo && hugo.prevu);
     ok(hugo && hugo.pastilleAA >= 4.5, '[A] la pastille passe le contraste AA (4,5:1)', hugo && hugo.pastilleAA);
     ok(hugo && !hugo.anime, '[A] ni clignotement ni animation sur le retard');
+    await photo(page, 'ligne-en-retard', `#globalPlanningGridWrap .gf-r[data-gf-id="${HUGO}"]`);
     for (const id of [SACHA, LOUISE]) {
       const l = await lireLigne(page, id);
       ok(sansRouge(l), `[A] un groupe a l heure (${id}) n a aucun rouge`, l && { cls: l.cls, barre: l.barre, rouges: l.rougeTexte, cases: l.cases });
@@ -485,6 +491,7 @@ async function scenarioToutEtPaye(browser) {
       '[D] la plaine de jeux, libre toute la journee : jamais dans la fenetre, jamais « Ne passe pas »', f && f.etapes);
     ok(f && f.etapes.map((e) => e.cle).join() === 'minigolf_blacklight,arcade_time' && f.etapes.every((e) => e.mot === 'Passe') && f.boutons.map((b) => b.choix).join() === 'garder,tout' && f.boutons.find((b) => b.choix === 'tout').plein,
       '[D] tout passe : « Tout décaler » en bleu plein, et « Garder les heures »', f);
+    await photo(page, 'fenetre-retard-tout-passe', '#retardFenetre .rt-fenetre');
     await page.locator('#retardFenetre [data-rt-choix="tout"]').click();
     await attendreFermee(page);
     await FX.repos(page, 300);
@@ -759,6 +766,46 @@ async function scenarioTelephone(browser) {
 }
 
 // ---------------------------------------------------------------------------
+// [U] un toucher sur « Arrivé » reste annulable, la fenetre du retard ouverte par-dessus.
+// ---------------------------------------------------------------------------
+const lireToast = (page) => page.evaluate(() => {
+  const t = document.getElementById('toast');
+  const b = t ? t.querySelector('.toast-annuler') : null;
+  const r = b ? b.getBoundingClientRect() : null;
+  const dessus = r ? document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) : null;
+  return { vu: Boolean(t && !t.classList.contains('hidden')), texte: t ? t.textContent.replace(/\s+/g, ' ').trim() : '', annuler: Boolean(b), touchable: Boolean(b && dessus && (dessus === b || b.contains(dessus))) };
+});
+async function scenarioAnnuler(browser) {
+  const { ctx, page, erreurs, patchs } = await monter(browser);
+  try {
+    const depart = enBase(HUGO);
+    await cliquerArrive(page, HUGO);
+    await attendreVerdict(page);
+    const fenetre = await lireFenetre(page);
+    const pendant = await lireToast(page);
+    // (plus que les 6 s du toast, la fenetre ouverte)
+    await page.waitForTimeout(6800);
+    const apresDelai = await lireToast(page);
+    ok(fenetre && fenetre.titre === 'Arrivé avec 20 min de retard' && pendant.vu && pendant.annuler && apresDelai.vu && apresDelai.annuler && /arrivé/.test(apresDelai.texte),
+      '[U] la fenetre ouverte apres « Arrivé », le toast « Annuler » attend : son delai ne court pas tant qu elle est ouverte', { titre: fenetre && fenetre.titre, pendant, apresDelai });
+    await page.locator('#retardFenetre .rt-fermer').click();
+    await attendreFermee(page);
+    const ferme = await lireToast(page);
+    await page.locator('#toast .toast-annuler').click({ timeout: 3000 }).catch(() => null);
+    await attendreBase(HUGO, (b) => b.statut === 'pending');
+    await FX.repos(page, 300);
+    const base = enBase(HUGO);
+    const retour = patchs[1] || {};
+    ok(ferme.vu && ferme.touchable && patchs.length === 2 && retour.status === 'pending' && !retour.retard && base.statut === 'pending' && !base.retard && JSON.stringify(base.heures) === JSON.stringify(depart.heures),
+      '[U] fermee, « Annuler » se touche et marche : le groupe redevient attendu, le retard que ce pointage avait note s efface', { ferme, patchs, base });
+    const ligne = await lireLigne(page, HUGO);
+    ok(ligne && /\bis-rt\b/.test(ligne.cls) && minutesDe(ligne.pastille) === 20 && !ligne.arrive,
+      '[U] la ligne redit « En retard · 20 min », sans la marque « Arrivé avec »', ligne && { cls: ligne.cls, pastille: ligne.pastille, arrive: ligne.arrive });
+    ok(erreurs.length === 0, '[J] aucune erreur JS (annuler)', erreurs);
+  } finally { await ctx.close(); }
+}
+
+// ---------------------------------------------------------------------------
 // LES CONTRE-PREUVES.
 // ---------------------------------------------------------------------------
 const MUTATIONS = [
@@ -776,6 +823,10 @@ const MUTATIONS = [
   { nom: 'retard-pas-note-avec-le-statut', lettre: 'T', scenarios: ['telephone'], editions: [{ fichier: BASE, serveur: true, de: '    const retard = retardALArrivee(current, { status: input.status });', vers: '    const retard = null;' }] },
   // (le decalage apres l arrivee rajoute les minutes deja notees : 40 au lieu de 20)
   { nom: 'retard-compte-deux-fois', lettre: 'C', scenarios: ['arrivee'], editions: [{ fichier: LIB, serveur: true, de: '  if (dejaNote && existant && !existant.cleared) {', vers: '  if (false) {' }] },
+  // [U] le toast « Annuler » qui court sous la fenetre : passe le delai, il a disparu.
+  { nom: 'toast-court-sous-la-fenetre', lettre: 'U', scenarios: ['annuler'], editions: [{ fichier: JS, de: '  rendreFenetreRetard(true);\n  toastAnnulableEnAttente(true);\n', vers: '  rendreFenetreRetard(true);\n' }] },
+  // [U] « Annuler » qui laisse le retard note par le pointage (il ne se noterait plus a la vraie arrivee).
+  { nom: 'annuler-garde-le-retard', lettre: 'U', scenarios: ['annuler'], editions: [{ fichier: BASE, serveur: true, de: ' : planSansRetardDuPointage(current, { status: input.status });', vers: ' : null;' }] },
   // (une activite manquee avant l arrivee du groupe en retard comptee « commencee » : plus rien a decaler)
   { nom: 'arrivee-en-retard-gelee', lettre: 'P', scenarios: ['tout'], editions: [{ fichier: LIB, serveur: true, de: '(surPlace(current) && etape.debut <= maintenant && etape.debut >= arrivee);', vers: '(surPlace(current) && etape.debut <= maintenant);' }] },
   { nom: 'decale-ce-qui-ne-passe-pas', lettre: 'C', scenarios: ['arrivee'], editions: [{ fichier: LIB, serveur: true, de: '      etapes[i] = { passe: false, raison: phraseDuRefus(error.message) };', vers: "      dossier = require('./reservation-activity-move').buildActivityMove(dossier, move);\n      etapes[i] = { passe: true };" }] },
@@ -822,6 +873,7 @@ async function jouer(browser, noms) {
       if (nom === 'enchainement') await scenarioEnchainement(browser);
       if (nom === 'gel') await scenarioGel();
       if (nom === 'bulle') await scenarioBulle(browser);
+      if (nom === 'annuler') await scenarioAnnuler(browser);
     } finally { rendreHorlogeServeur(); }
   }
 }
@@ -832,7 +884,7 @@ async function main() {
   const t0 = Date.now();
   try {
     if (!process.argv.includes('--contre-preuves')) {
-      await jouer(browser, liste(process.env.RV_SCENARIOS) || ['planning', 'arrivee', 'tout', 'serveur', 'enchainement', 'gel', 'bulle', 'telephone']);
+      await jouer(browser, liste(process.env.RV_SCENARIOS) || ['planning', 'arrivee', 'tout', 'serveur', 'enchainement', 'gel', 'bulle', 'telephone', 'annuler']);
     } else {
       console.log('[K] contre-preuves : chaque regle retiree fait rougir sa lettre');
       for (const m of MUTATIONS.filter((x) => !process.env.RV_MUTATIONS || liste(process.env.RV_MUTATIONS).includes(x.nom))) {

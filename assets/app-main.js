@@ -11591,6 +11591,15 @@ function getStaffDashboardMetrics(dayReservations = todaysReservations()) {
 //   due     : l heure est passee depuis MOINS que le seuil de retard du
 //             centre (Etablissement, 5 min par defaut) : attendu, pas encore
 //             en retard, et pas « sur place » non plus.
+// L HEURE D OU COURT LE RETARD (2026-11-21) : celle du groupe, la meme que le serveur
+// (lib/retard-arrivee.js, retardALArrivee) et que les minutes affichees (premiereHeureDuGroupe) :
+// sa premiere activite a heure, ou son arrivee quand elle vient avant. Jamais la table
+// d anniversaire mise en place avant lui : a 14:55, le groupe attendu a 15:00 n est pas en
+// retard (scripts/retard-deux-copies-check.js).
+function heurePrevueDuRetard(item) {
+  const prevu = premiereHeureDuGroupe(item.reservation);
+  return Number.isFinite(prevu) ? prevu : item.start;
+}
 function splitStaffTerrainOnsite(board) {
   const late = [];
   const present = [];
@@ -11601,7 +11610,7 @@ function splitStaffTerrainOnsite(board) {
     // ses etapes disaient « En cours » pendant que sa tete criait au retard
     // et proposait encore « Arrivé » (2026-10-08).
     if (!isUpcomingReservationStatus(item.reservation.status || 'pending') || item.start > board.now || groupeAJoue(item.reservation)) present.push(item);
-    else if (board.now - item.start >= seuil - 1e-9) late.push(item);
+    else if (board.now - heurePrevueDuRetard(item) >= seuil - 1e-9) late.push(item);
     else due.push(item);
   });
   late.sort((left, right) => left.start - right.start);
@@ -13475,7 +13484,7 @@ function getStaffTerrainTiming(item, phase, board) {
 // qui a deja paye (rien a encaisser en fin de partie).
 function getStaffTerrainStatus(reservation, phase, item = null, board = null) {
   const upcoming = isUpcomingReservationStatus(reservation.status || 'pending');
-  if (phase === 'late') return { label: item && board ? `En retard · ${formatStaffTerrainDelay(board.now - item.start)}` : 'En retard', tone: 'late' };
+  if (phase === 'late') return { label: item && board ? `En retard · ${formatStaffTerrainDelay(board.now - heurePrevueDuRetard(item))}` : 'En retard', tone: 'late' };
   if (phase === 'closing' && upcoming && !groupeAJoue(reservation)) return { label: 'Non pointé', tone: 'unmarked' };
   if (isReservationAwaitingReview(reservation)) return { label: 'À vérifier', tone: 'review' };
   if (reservation.status === 'paid') return { label: 'Payé', tone: 'paid' };
@@ -26503,6 +26512,7 @@ async function ouvrirFenetreRetard(r, reglage) {
   };
   fenetreRetard = etat;
   rendreFenetreRetard(true);
+  toastAnnulableEnAttente(true);
   try {
     const payload = await apiRequest(API_ENDPOINTS.staffReservations, { method: 'POST', body: JSON.stringify({ dryRun: true, centerId: r.centerId || getCurrentStaffCenterId(), retard: { id: r.id, baseUpdatedAt: r.updatedAt, minutes, de: etat.de, faites: etat.faites } }) });
     if (fenetreRetard !== etat) return;
@@ -26571,6 +26581,7 @@ function fermerFenetreRetard() {
   fenetreRetard = null;
   rendreFenetreRetard();
   rendreLeFocusDuRetard(etat);
+  toastAnnulableEnAttente(false);
 }
 // Le focus revient au geste qui a ouvert la fenetre ; sur la feuille, la ligne reecrite le reprend.
 function rendreLeFocusDuRetard(etat) {
@@ -29984,6 +29995,8 @@ async function setReservationStatusDirect(id, status, ev, options = {}) {
     }
     return;
   }
+  // (l arrivee annulee : la fenetre du retard qui en parlait se ferme)
+  if (fenetreRetard && fenetreRetard.mode === 'arrivee' && fenetreRetard.id === Number(id) && isUpcomingReservationStatus(status)) fermerFenetreRetard();
   // Anti double-envoi : même statut déjà en vol → on ignore. La résa affiche
   // déjà la valeur voulue (optimiste), inutile de re-PATCH.
   if (isReservationMutationInFlight(id, 'status', status)) return;
@@ -45575,7 +45588,19 @@ function toastAnnulable(msg, annuler) {
   bouton.onclick = (ev) => { ev.stopPropagation(); clearTimeout(toastTimer); el.classList.add('hidden'); annuler(); };
   bouton.onmouseenter = bouton.onfocus = () => { clearTimeout(toastTimer); if (window.PlMouvement) window.PlMouvement.toastPause(el); };
   bouton.onmouseleave = bouton.onblur = () => fermerDans(2500);
+  // (la fenetre du retard, ouverte par-dessus juste apres « Arrivé », suspend ce delai : toastAnnulableEnAttente)
+  el._attendre = () => { clearTimeout(toastTimer); if (window.PlMouvement) window.PlMouvement.toastPause(el); };
+  el._reprendre = () => fermerDans(6000);
   fermerDans(6000);
+}
+// LE TOAST « ANNULER » ATTEND LA FENETRE DU RETARD (2026-11-21, un toucher sur « Arrivé » reste
+// annulable) : elle s ouvre juste apres le pointage et le couvre ; son delai ne court pas tant
+// qu elle est ouverte, il repart entier a sa fermeture.
+function toastAnnulableEnAttente(attendre) {
+  const el = document.getElementById('toast');
+  if (!el || el.classList.contains('hidden') || !el.querySelector('.toast-annuler')) return;
+  const geste = attendre ? el._attendre : el._reprendre;
+  if (typeof geste === 'function') geste();
 }
 
 // « Annuler » remet le statut d avant, et le moyen de paiement s il a ete

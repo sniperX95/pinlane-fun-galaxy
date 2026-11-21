@@ -81,7 +81,7 @@ const TYPES = { '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; char
 const MUTATIONS = {
   fini: ['app-main.js', "  if (context.when === 'past' || span.end <= context.now || groupeToutFait(reservation)) return status === 'paid' ? 'done' : 'closing';", "  if (context.when === 'past' || groupeToutFait(reservation)) return status === 'paid' ? 'done' : 'closing';", '[A] chaque dossier est dans sa colonne'],
   double: ['app-main.js', '    board[getStaffTerrainPhase(reservation, span, context)].push({ reservation, ...span });', "    const phase = getStaffTerrainPhase(reservation, span, context); board[phase].push({ reservation, ...span }); if (phase === 'closing') board.onsite.push({ reservation, ...span });", '[A] chaque dossier n apparait qu une fois'],
-  retard: ['app-main.js', '    else if (board.now - item.start >= seuil - 1e-9) late.push(item);', '    else if (false) late.push(item);', '[A] le groupe en retard est en tete de « À venir »'],
+  retard: ['app-main.js', '    else if (board.now - heurePrevueDuRetard(item) >= seuil - 1e-9) late.push(item);', '    else if (false) late.push(item);', '[A] le groupe en retard est en tete de « À venir »'],
   appeler: ['app-main.js', "  const call = phase === 'late' && phone", '  const call = false && phone', '[A] le groupe en retard porte son numero'],
   pointe: ['app-main.js', "  if (phase === 'closing' && upcoming && !groupeAJoue(reservation)) return { label: 'Non pointé', tone: 'unmarked' };", '', '[A] « Non pointé »'],
   verifier: ['app-main.js', "  if (isReservationAwaitingReview(reservation)) return { label: 'À vérifier', tone: 'review' };", '', '[A] « À vérifier » et « Payé »'],

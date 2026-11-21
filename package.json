@@ -53,6 +53,7 @@
     "test:retards-console": "node scripts/retards-console-check.js && node scripts/retards-console-check.js --contre-preuves",
     "test:retard-verrou": "node scripts/retard-verrou-check.js && node scripts/retard-verrou-check.js --contre-preuves",
     "test:retard-visible": "node scripts/retard-visible-check.js && node scripts/retard-visible-check.js --contre-preuves",
+    "test:retard-deux-copies": "node scripts/retard-deux-copies-check.js && node scripts/retard-deux-copies-check.js --contre-preuves",
     "test:comptoir-dotation": "node scripts/comptoir-dotation-check.js && node scripts/comptoir-dotation-check.js --contre-preuves",
     "test:attente-verrou": "node scripts/attente-verrou-check.js && node scripts/attente-verrou-check.js --contre-preuves",
     "test:confirmation-en-file": "node scripts/confirmation-en-file-check.js && node scripts/confirmation-en-file-check.js --contre-preuves",

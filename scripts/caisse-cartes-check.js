@@ -76,7 +76,7 @@ const MUTATIONS = [
   { nom: 'le retard reste dans « À venir »', cible: '[A]', fichier: 'assets/app-main.js',
     de: "  if (etat === 'upcoming' && m && (m.late || (getReservationDelayFlag(r) && !retardPousseDe(r)))) return 'late';\n", vers: '' },
   { nom: 'le seuil de retard est ignore (retard des la minute pile)', cible: '[D]', fichier: 'assets/app-main.js',
-    de: '    else if (board.now - item.start >= seuil - 1e-9) late.push(item);', vers: '    else if (board.now - item.start >= 0) late.push(item);' },
+    de: '    else if (board.now - heurePrevueDuRetard(item) >= seuil - 1e-9) late.push(item);', vers: '    else if (board.now - heurePrevueDuRetard(item) >= 0) late.push(item);' },
   { nom: 'Encaisser oublie le moyen', cible: '[E]', fichier: 'assets/app-main.js',
     de: "  setReservationStatusDirect(id, 'paid', ev, { paymentMethod: moyen });", vers: "  setReservationStatusDirect(id, 'paid', ev);" },
   { nom: 'l aide de l activite ne lit plus l heure', cible: '[B]', fichier: 'assets/app-main.js',

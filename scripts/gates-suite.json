@@ -170,6 +170,7 @@
     "test:reserver-seances",
     "test:comptoir",
     "test:formule-illimitee",
+    "test:porte-illimite",
     "test:formules-du-centre",
     "test:gates-eclats",
     "test:console-cibles",

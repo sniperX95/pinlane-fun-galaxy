@@ -28,8 +28,9 @@
 //        heure ; elle reste posee quand l ordre des activites change ;
 //   [R2] une heure qui ne tient pas : la phrase de Modifier sous la rangee et sur la ligne du
 //        ticket, et le serveur ne cree rien (409, meme phrase) ;
-//   [R3] UNE FORMULE TELLE QUELLE : sa page dit l heure de chaque activite, chacune se pose ; une
-//        piste prise se dit comme dans Modifier (« Piste 7 déjà prise de 16:00 à 17:00. ») ; une
+//   [R3] UNE FORMULE TELLE QUELLE : sa page dit l heure de chaque activite sur la case de son contenu,
+//        chacune se pose ; une piste prise se dit comme dans Modifier (« Piste 7 déjà prise de 16:00 à
+//        17:00. ») et ne se prend pas ; une
 //        heure qui tient part et le dossier cree l a ;
 //   [S1] le serveur : chaque heure posee s applique apres le moteur, par buildActivityMove puis
 //        validateActivityMoveResources ; une variante de l horloge porte ses heures posees ; un corps
@@ -452,7 +453,7 @@ function lireReserver() {
     lignes: Array.from(o.querySelectorAll('.rs-tk-a')).map((b) => `${b.id}=${t(b)}`),
     heures: rangee ? Array.from(rangee.querySelectorAll('button')).map((b) => `${t(b.querySelector('b'))}${b.getAttribute('aria-pressed') === 'true' ? '*' : ''}`) : [],
     refus: t(o.querySelector('.rs-heure-refus')),
-    heuresFormule: Array.from(o.querySelectorAll('[data-heure-formule]')).map((b) => t(b.querySelector('b'))),
+    heuresFormule: Array.from(o.querySelectorAll('[data-heure-formule]')).map((b) => `${b.dataset.heureFormule} ${t(b.querySelector('.rs-cc-h b'))}`),
     posees: JSON.stringify(quickBookState.heuresPosees || {}),
     plan: quickBookState.plan ? quickBookState.plan.etat : '',
     creer: (document.getElementById('rvCreer') || {}).disabled === false,
@@ -542,14 +543,15 @@ async function scenarioReserver(browser) {
       await page.evaluate(() => { rsHeureFormule('17:00'); rsOuvrirLigne('formule'); });
       await planPose(page);
       const f = await page.evaluate(lireReserver);
-      ok(f.heuresFormule.includes('Bowling 17:00') && f.heuresFormule.some((x) => /^Minigolf.* 18:00$/.test(x)), `[R3] ${appareil} : la page de la formule dit l heure de chaque activite`, f.heuresFormule);
+      ok(f.heuresFormule.includes('bowling 17:00') && f.heuresFormule.some((x) => /^minigolf.* 18:00$/.test(x)), `[R3] ${appareil} : la page de la formule dit l heure de chaque activite, sur la case de son contenu`, f.heuresFormule);
       await photo(page, `reserver-formule-heures${suffixe}`, '#quickBookOverlay .qb-modal');
+      // (la case du bowling ouvre ses demi-heures sous le contenu ; 16:00, piste prise, ne se prend pas)
       await page.click('#quickBookOverlay [data-heure-formule="bowling"]');
       await planPose(page);
-      await page.click('#quickBookOverlay [data-heures-posees="bowling"] [data-heure-l="16:00"]');
+      await page.click('#quickBookOverlay [data-heures-act="bowling"] [data-heure-l="16:00"]');
       await planPose(page);
       const g = await page.evaluate(lireReserver);
-      ok(/^Piste \d+ déjà prise de 16:00 à 17:00\.$/.test(g.refus), `[R3] ${appareil} : le bowling de la formule a 16:00 : « Piste N déjà prise de 16:00 à 17:00. », comme dans Modifier`, g.refus);
+      ok(/^16:00 ne tient pas\. Piste \d+ déjà prise de 16:00 à 17:00\.$/.test(g.refus) && !/bowling/.test(g.posees), `[R3] ${appareil} : le bowling de la formule a 16:00 : « Piste N déjà prise de 16:00 à 17:00. », comme dans Modifier, et l heure ne se prend pas`, { refus: g.refus, posees: g.posees });
       await photo(page, `reserver-formule-piste-prise${suffixe}`, '#quickBookOverlay .qb-modal');
       // [V1] Un acces illimite (la meme formule lue comme illimitee) : aucune heure ne se pose a la main, ni la
       // rangee « Heures » de sa page, ni la rangee d une activite ; les heures deja posees ne partent plus.
@@ -565,7 +567,8 @@ async function scenarioReserver(browser) {
       if (appareil === 'telephone') {
         const d = await page.evaluate(() => {
           const o = document.querySelector('#quickBookOverlay .qb-modal');
-          const boites = Array.from(document.querySelectorAll('[data-heures-posees] button')).map((b) => { const r = b.getBoundingClientRect(); return { h: Math.round(r.height), l: Math.round(r.width), droite: Math.round(r.right) }; });
+          // (les heures du bowling de la formule s ouvrent sous sa case du contenu : data-heures-act)
+          const boites = Array.from(document.querySelectorAll('[data-heures-posees] button, [data-heures-act] button, [data-heure-formule]')).map((b) => { const r = b.getBoundingClientRect(); return { h: Math.round(r.height), l: Math.round(r.width), droite: Math.round(r.right) }; });
           return { largeur: window.innerWidth, defile: document.documentElement.scrollWidth - document.documentElement.clientWidth, modale: o ? Math.round(o.getBoundingClientRect().right) : 0, boites };
         });
         ok(d.largeur === 375 && d.defile <= 1 && d.boites.length > 0 && d.boites.every((x) => x.h >= 44 && x.l >= 44 && x.droite <= 375),
@@ -638,7 +641,7 @@ const MUTATIONS = [
   { nom: 'heure-posee-pas-envoyee', lettre: 'R1', scenarios: RESERVER, editions: [{ fichier: JS, de: '    ...(rvHeuresPoseesEnvoyees() ? { heuresPosees: rvHeuresPoseesEnvoyees() } : {}),\n', vers: '' }] },
   { nom: 'heure-posee-effacee-par-l-ordre', lettre: 'R1', scenarios: RESERVER, editions: [{ fichier: JS, de: '    s.ordreALaMain = true;\n    s.ordreVariante = null;\n  });\n}', vers: '    s.ordreALaMain = true;\n    s.ordreVariante = null;\n    s.heuresPosees = {};\n  });\n}' }] },
   { nom: 'refus-pas-a-l-activite', lettre: 'R2', scenarios: RESERVER, editions: [{ fichier: JS, de: '  const candidate = posee ? posee.activite : nomme ?', vers: '  const candidate = nomme ?' }] },
-  { nom: 'formule-sans-heures', lettre: 'R3', scenarios: RESERVER, editions: [{ fichier: JS, de: "  if (posables.length) rangs.push(rsRang('Heures', rsHeuresDeLaFormuleHtml(), Math.min(4, posables.length)));\n", vers: '' }] },
+  { nom: 'formule-sans-heures', lettre: 'R3', scenarios: RESERVER, editions: [{ fichier: JS, de: "  const ids = quickBookState.adaptee ? [] : rvActivites().filter((id) => rsModeHeureAct(id) === 'posee');", vers: '  const ids = [];' }] },
   { nom: 'jetons-poses', lettre: 'S1', scenarios: SERVEUR, editions: [{ fichier: POSEES, serveur: true, de: " || activityId === 'arcade_credit' || /^service_/.test(activityId) || !Number.isFinite(minutes(heure))) throw", vers: " || /^service_/.test(activityId) || !Number.isFinite(minutes(heure))) throw" }] },
   { nom: 'a-volonte-pose', lettre: 'V1', scenarios: SERVEUR, editions: [{ fichier: POSEES, serveur: true, de: '    if (gardeeAVolonte(courant, posee.activityId)) {\n', vers: '    if (false) {\n' }] },
   { nom: 'illimite-posable', lettre: 'V1', scenarios: RESERVER, editions: [{ fichier: JS, de: '  if (rvFormuleIllimitee()) return false;\n', vers: '' }] },

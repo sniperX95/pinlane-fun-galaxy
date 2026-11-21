@@ -432,7 +432,7 @@
       // qui le garde a suivre tant que son programme n est pas coche (l audit du
       // 2026-11-03 : 6 au-dessus, 7 dessous, pour un meme « Sur place »).
       var parti = r.status === 'paid' && mo.etat === 'onsite' && maintenant != null && span.end <= maintenant;
-      return { r: r, id: String(r.id), etat: parti ? 'done' : mo.etat || 'upcoming', etatListe: mo.etat || 'upcoming', retard: Boolean(mo.late), nonPointe: !mo.late && groupeEnRetardAuPlanning(r, mo), teinte: gpTeinte(r), span: span, heure: gpHeureReservee(r, span), prog: getGroupeProgramme(r), cases: new Map(), infos: [], credits: [], table: null, boissons: null };
+      return { r: r, id: String(r.id), etat: parti ? 'done' : mo.etat || 'upcoming', etatListe: mo.etat || 'upcoming', retard: Boolean(mo.late), rt: typeof retardDuGroupe === 'function' ? retardDuGroupe(r, mo) : null, nonPointe: !mo.late && groupeEnRetardAuPlanning(r, mo), teinte: gpTeinte(r), span: span, heure: gpHeureReservee(r, span), prog: getGroupeProgramme(r), cases: new Map(), infos: [], credits: [], table: null, boissons: null };
     });
     // L ORDRE DU PAPIER : l heure de la reservation, puis le nom.
     groupes.sort(function (a, b) { return a.heure - b.heure || String(a.r.name || '').localeCompare(String(b.r.name || ''), 'fr'); });
@@ -595,8 +595,6 @@
   // (depuis l heure ecrite sur la ligne, pas depuis l accueil conseille : deux groupes
   // de 15:00 ont le meme retard)
   function gfMinutesDeRetard(g, m) { return Math.max(1, Math.round((m.maintenant - (g.heure <= m.maintenant ? g.heure : g.span.start)) * 60)); }
-  // « +40 min », puis « +2h10 » : le retard tient sous l heure.
-  function gfRetardCourt(n) { return n < 60 ? '+' + n + ' min' : '+' + Math.floor(n / 60) + 'h' + String(n % 60).padStart(2, '0'); }
   // LA PISTE REPRISE APRES UN GROUPE EN RETARD (2026-11-06). Un groupe en retard qui joue
   // son temps entier des son arrivee deborde sur le groupe qui reprend sa piste ; rien ne
   // le disait avant d ouvrir « Ils arrivent dans ». La ligne le dit tant que sa partie
@@ -1038,23 +1036,31 @@
   // Les seules notes ecrites par l equipe, sans lire le reste du dossier : la liste sous
   // le planning et la regle « Avec note » les comptent comme la ligne du Complet.
   window.pgNotesEquipe = function (r) { return gfNotesEquipe(r || {}).equipe; };
-  // Sa ligne : le nom d abord, a la meme place sur chaque ligne ; a sa suite le retard,
-  // qui se touche (« Ils arrivent dans »), le telephone, toujours, et l etiquette. Une
-  // heure pas pile sur la demi-heure s ecrit devant le nom.
+  // Sa ligne : le nom d abord, a la meme place sur chaque ligne ; a sa suite le telephone,
+  // toujours, puis le retard, qui se touche (« Ils arrivent dans »), et l etiquette. Une
+  // heure pas pile sur la demi-heure s ecrit devant le nom. (le retard ecrit en entier,
+  // « En retard · 12 min » et l heure prevue, passe sous le nom quand la place manque :
+  // le telephone reste a cote du nom, 2026-11-21)
   function gfPile(g) { return Math.abs(g.heure * 2 - Math.round(g.heure * 2)) * 30 < 0.5; }
   function gfGroupe(g, m) {
     var r = g.r;
     var tete = gfPile(g) ? '' : '<b class="gf-nom__h">' + gpEsc(gpHeure(g.heure)) + '</b>';
     tete += '<span class="gf-nom__t">' + gpEsc(r.name || 'Client') + '</span>';
     window.pgMarques(r).forEach(function (x) { tete += '<span class="gf-nom__m gf-nom__m--' + x.cle + '"' + (x.bulle ? ' title="' + gpEsc(x.bulle) + '"' : '') + '>' + gpEsc(x.mot) + '</span>'; });
-    // (sans le droit de gerer un retard, le retard se lit sans se toucher, 2026-11-07)
-    if (g.retard && m.maintenant != null) {
-      tete += gfPeut('retard')
-        ? '<button type="button" class="gf-h__retard" data-gf-retarder="' + gpEsc(g.id) + '"><span data-gf-retard="' + gpEsc(g.id) + '"></span></button>'
-        : '<span class="gf-h__retard is-lecture"><span data-gf-retard="' + gpEsc(g.id) + '"></span></span>';
-    }
     var tel = String(r.phone || '').trim();
     if (tel) tete += '<a class="gf-nom__tel" href="tel:' + gpEsc(tel.replace(/[^0-9+]/g, '')) + '">' + gpEsc(tel) + '</a>';
+    // (sans le droit de gerer un retard, le retard se lit sans se toucher, 2026-11-07)
+    // LE RETARD EN ROUGE, SES MINUTES ET L HEURE PREVUE (2026-11-21, retardDuGroupe) : « En retard
+    // · 12 min » court a la minute (gfRemplir) ; « Arrivé avec 12 min de retard » reste apres
+    // « Arrivé » et « Payé », plus sobre.
+    if (g.rt && g.rt.etat === 'arrive') {
+      tete += '<span class="gf-h__retard is-arrive" data-gf-rt-arrive="' + gpEsc(g.id) + '">' + gpEsc(texteDuRetard(g.rt, m.maintenant)) + '</span>';
+    } else if ((g.retard || g.rt) && m.maintenant != null) {
+      var dit = '<span data-gf-retard="' + gpEsc(g.id) + '"></span>' + (g.rt && Number.isFinite(g.rt.prevu) ? '<small class="gf-h__prevu">prévu ' + gpEsc(gpHeure(g.rt.prevu)) + '</small>' : '');
+      tete += gfPeut('retard') && g.retard
+        ? '<button type="button" class="gf-h__retard" data-gf-retarder="' + gpEsc(g.id) + '">' + dit + '</button>'
+        : '<span class="gf-h__retard is-lecture">' + dit + '</span>';
+    }
     if (typeof isReservationAwaitingReview === 'function' && isReservationAwaitingReview(r)) tete += '<span class="gf-nom__valide">À valider</span>';
     if (g.etat === 'closing') tete += gfPresent(g) ? '<span class="gf-nom__caisse">À encaisser</span>' : '<span class="gf-nom__caisse is-retard">En retard<span class="gf-nom__suite"> · jamais pointé</span></span>';
     // LA PISTE REPRISE APRES EUX, en dernier : le telephone reste sur la ligne du nom, elle
@@ -1570,7 +1576,7 @@
           return;
         }
         var proche = g.retard || (m.maintenant != null && g.etat === 'upcoming' && g.heure - m.maintenant <= GF_BIENTOT + 1e-6);
-        var classes = 'gf-r t-' + g.teinte + (g.parti ? ' is-parti' : '') + (g.etat === 'absent' ? ' is-absent' : '') + (g.retard ? ' is-retard' : '') + (proche ? ' is-proche' : '') + (g.etat === 'upcoming' && !proche ? ' is-loin' : '') + (g.etat === 'closing' ? ' is-caisse' : '') + (bande ? ' is-bande' : '') + (nouveau && !part.suite ? ' is-bloc' : '');
+        var classes = 'gf-r t-' + g.teinte + (g.parti ? ' is-parti' : '') + (g.etat === 'absent' ? ' is-absent' : '') + (g.retard ? ' is-retard' : '') + (g.rt ? (g.rt.etat === 'arrive' ? ' is-rt-arrive' : ' is-rt') : '') + (proche ? ' is-proche' : '') + (g.etat === 'upcoming' && !proche ? ' is-loin' : '') + (g.etat === 'closing' ? ' is-caisse' : '') + (bande ? ' is-bande' : '') + (nouveau && !part.suite ? ' is-bloc' : '');
         poser('groupe:' + g.id, '<tr class="' + classes + '" tabindex="0" data-gf-id="' + gpEsc(g.id) + '" aria-label="' + gpEsc(gfAria(g, m)) + '">'
           + (nouveau ? gfBlocCase(m, part, parBloc.get(part.b), bande) : '')
           + gfHeureCase(g) + gfGroupe(g, m) + gfPersonnes(g) + gfFormuleCase(g)
@@ -1612,7 +1618,7 @@
     wrap._gfParties = p;
     gfStats.ecritures += 1;
   }
-  function gfEcrire(wrap, defile, p) {
+  function gfEcrire(wrap, defile, p, remplir) {
     var avant = wrap._gfParties;
     var tbody = defile.querySelector('tbody');
     if (!avant || !tbody || avant.table !== p.table || avant.colonnes !== p.colonnes) { gfEcrireTout(wrap, defile, p); return; }
@@ -1653,6 +1659,7 @@
       tbody.insertBefore(tr, curseur);
       ecrit = true;
     });
+    if (remplir && hauteurs.size) remplir();
     hauteurs.forEach(function (h, cle) {
       var tr = nouvelles.get(cle).tr;
       if (tr.getBoundingClientRect().height < h - 0.5) tr.style.height = h + 'px';
@@ -1762,8 +1769,10 @@
     var premier = bulle.querySelector('button');
     if (premier) premier.focus({ preventScroll: true });
   }
-  // « On arrive dans 20 minutes » : le retard annonce compte depuis l heure de la ligne,
-  // le plan de retard de la console (openDelayImpact) dit ce que ca bouscule.
+  // « On arrive dans 20 minutes » : le retard annonce compte depuis l heure de la ligne. La fenetre
+  // du retard (ouvrirRetardFiche, lib/retard-arrivee.js) juge chaque heure au serveur, gele les
+  // activites commencees et n ecrit que ce dossier (2026-11-21 : l ancien plan en cascade avait
+  // deplace un groupe en pleine partie). Le focus revient au retard touche.
   function gfBulleRetard(wrap, bouton, e) {
     var m = wrap._gfModele;
     var id = bouton.getAttribute('data-gf-retarder');
@@ -1771,7 +1780,10 @@
     if (!g || m.maintenant == null) return;
     var deja = gfMinutesDeRetard(g, m);
     var choix = [10, 20, 30].map(function (n) { return '<button type="button" data-gf-choix="' + n + '">' + n + ' min</button>'; }).join('');
-    gfBulle(bouton, e, '<div class="staff-action-popover-title">Ils arrivent dans</div>' + choix, function (n, ev) { openDelayImpact(Number(id), Math.min(240, deja + Number(n)), ev); });
+    gfBulle(bouton, e, '<div class="staff-action-popover-title">Ils arrivent dans</div>' + choix, function (n, ev) {
+      if (bouton.isConnected) bouton.focus({ preventScroll: true });
+      ouvrirRetardFiche(Number(id), Math.min(240, deja + Number(n)), ev);
+    });
   }
   function gfApresEncaisser() {
     if (String(state.searchTerm || '').trim()) gfViderRecherche();
@@ -2019,7 +2031,7 @@
     if (aEcrire) {
       var actif = document.activeElement;
       var focus = actif && defile.contains(actif) ? gfCleFocus(actif) : null;
-      gfEcrire(wrap, defile, gfParties(m, q, cartes));
+      gfEcrire(wrap, defile, gfParties(m, q, cartes), function () { gfPoserRetards(defile, m); });
       if (focus && !actif.isConnected) gfRendreFocus(defile, focus);
     } else if (wrap._gfParties || defile.firstChild) {
       defile.textContent = '';
@@ -2079,14 +2091,21 @@
       if (ligne) ligne.classList.add('is-premier');
       wrap._gfPremier = ligne;
     }
-    var retards = defile.querySelectorAll('[data-gf-retard]');
+    gfPoserRetards(defile, m);
+  }
+  // Les minutes du retard, en place. (gfEcrire les pose aussi avant de mesurer une rangee
+  // reecrite : « En retard · 12 min » peut la faire passer sur deux lignes, et une pastille
+  // encore vide la mesurait trop basse.)
+  function gfPoserRetards(racine, m) {
+    var retards = racine.querySelectorAll('[data-gf-retard]');
     if (!retards.length) return;
     var parId = new Map(m.groupes.map(function (g) { return [g.id, g]; }));
     retards.forEach(function (n) {
       var g = parId.get(n.getAttribute('data-gf-retard'));
       if (!g || m.maintenant == null) return;
-      var min = gfMinutesDeRetard(g, m);
-      poser(n, gfRetardCourt(min));
+      var min = g.rt && typeof minutesDuRetard === 'function' ? minutesDuRetard(g.rt, m.maintenant) : gfMinutesDeRetard(g, m);
+      var texte = 'En retard · ' + (typeof dureeDuRetard === 'function' ? dureeDuRetard(min) : min + ' min');
+      if (n.textContent !== texte) n.textContent = texte;
       var bulle = 'En retard de ' + min + ' min';
       if (n.getAttribute('title') !== bulle) n.setAttribute('title', bulle);
     });

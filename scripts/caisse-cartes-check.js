@@ -74,7 +74,7 @@ const MUTATIONS = [
   // Depuis le 2026-10-08, la section d un dossier vient de getStaffListeSection :
   // le retard y monte dans « En retard » ; sans cette ligne il reste « À venir ».
   { nom: 'le retard reste dans « À venir »', cible: '[A]', fichier: 'assets/app-main.js',
-    de: "  if (etat === 'upcoming' && m && m.late) return 'late';\n", vers: '' },
+    de: "  if (etat === 'upcoming' && m && (m.late || (getReservationDelayFlag(r) && !retardPousseDe(r)))) return 'late';\n", vers: '' },
   { nom: 'le seuil de retard est ignore (retard des la minute pile)', cible: '[D]', fichier: 'assets/app-main.js',
     de: '    else if (board.now - item.start >= seuil - 1e-9) late.push(item);', vers: '    else if (board.now - item.start >= 0) late.push(item);' },
   { nom: 'Encaisser oublie le moyen', cible: '[E]', fichier: 'assets/app-main.js',

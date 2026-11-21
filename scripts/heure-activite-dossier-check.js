@@ -25,10 +25,11 @@
 //   [S1] une heure qui ne va pas propose les heures libres les plus proches
 //        (une avant, une apres, jamais celle qu elle a deja) ; un toucher
 //        remplit le champ et revérifie, puis « Enregistrer » la pose ;
-//   [T1] chaque activite a heure du banc (bowling, laser, minigolf, playground,
-//        arcades) a son champ qui marche, de bout en bout ; une activite
-//        « --:-- » n en montre pas ; une activite « Libre » se touche pour recevoir son heure
-//        (2026-11-19, scripts/programme-complet-check.js) ;
+//   [T1] chaque activite a heure du banc (bowling, laser, minigolf, arcades) a son
+//        champ qui marche, de bout en bout ; une activite « --:-- » n en montre pas ;
+//        une activite « Libre » se touche pour recevoir son heure (2026-11-19,
+//        scripts/programme-complet-check.js), sauf la plaine de jeux, libre toute la
+//        journee (2026-11-21) ;
 //   [O1] le programme se lit dans l ordre des heures ;
 //   [R1] une ressource prise (une piste, l arene laser) : refusee avant le clic
 //        avec le nom de la ressource et la plage, rien n est ecrit ;
@@ -399,11 +400,12 @@ async function scenarioTypes(browser) {
   const types = [...new Set(aHeure.filter((l) => l.touche).map((l) => l.activite))].sort();
   ok(lignes.length > 40 && lignes.every((l) => l.colonne === 1), '[T1] le banc entier : chaque rangee a une seule heure a gauche', { rangees: lignes.length, plusieurs: lignes.filter((l) => l.colonne !== 1).slice(0, 3) });
   // (2026-11-19, scripts/programme-complet-check.js) Une activite « Libre » se touche pour recevoir son heure, sauf le
-  // bowling, le laser, la table d anniversaire, les jetons et les boissons ; « --:-- » ne se touche pas.
-  const libreQuiSeTouche = (l) => l.heure === 'Libre' && !['bowling', 'laser_game', 'party_table', 'arcade_credit'].includes(l.activite) && !/^service_/.test(l.activite);
+  // bowling, le laser, la table d anniversaire, les jetons et les boissons ; « --:-- » ne se touche pas. Ni la plaine
+  // de jeux, libre toute la journee (2026-11-21, le gerant : « il n'y a pas d'heure ») : scripts/retard-visible-check.js.
+  const libreQuiSeTouche = (l) => l.heure === 'Libre' && !['bowling', 'laser_game', 'party_table', 'arcade_credit', 'playground'].includes(l.activite) && !/^service_/.test(l.activite);
   ok(aHeure.every((l) => l.touche || ['party_table'].includes(l.activite) || /^service_/.test(l.activite)) && sansHeure.every((l) => (libreQuiSeTouche(l) ? l.touche : !l.touche)),
     '[T1] chaque activite a heure se touche ; « Libre » se touche pour recevoir une heure, « --:-- » ne se touche pas', { sansBouton: aHeure.filter((l) => !l.touche).slice(0, 4), libresTouchables: sansHeure.filter((l) => l.touche).slice(0, 4) });
-  ok(['arcade_time', 'bowling', 'laser_game', 'minigolf_blacklight', 'playground'].every((x) => types.includes(x)), '[T1] les activites a heure du banc : bowling, laser, minigolf, playground, arcades', types);
+  ok(['arcade_time', 'bowling', 'laser_game', 'minigolf_blacklight'].every((x) => types.includes(x)) && !types.includes('playground'), '[T1] les activites a heure du banc : bowling, laser, minigolf, arcades ; la plaine, libre, n en a pas', types);
   console.log(`      (types a heure sur le banc : ${types.join(', ')} ; sans heure : ${[...new Set(sansHeure.map((l) => l.activite))].join(', ')})`);
   // Chaque type, de bout en bout : son heure decalee (5 min, 30 pour le bowling), une heure proposee si le serveur refuse, puis Enregistrer.
   const parCinq = (texte, plus) => { const [hh, mm] = texte.split(':').map(Number); const m = hh * 60 + mm + plus; return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`; };
@@ -573,7 +575,8 @@ const MUTATIONS = [
   { nom: 'pistes-oubliees', lettre: 'B1', scenarios: PASSE, editions: [{ fichier: JS, de: "      ? { activityId: 'bowling', startTime: heure, lanes: [...new Set(getBowlingWindowsFromReservation(r).flatMap(fenetre => fenetre.lanes || []))].map(Number).sort((a, b) => a - b) }", vers: "      ? { activityId: 'bowling', startTime: heure, lanes: [] }" }] },
   { nom: 'contact-oublie', lettre: 'M1', scenarios: PASSE, editions: [{ fichier: JS, de: '  const envoi = reste ? preparerModificationEdition() : null;', vers: '  const envoi = null;' }] },
   { nom: 'blanc-ecrit', lettre: 'V1', scenarios: PASSE, editions: [{ fichier: API, serveur: true, de: '    return { ok: true, dryRun: true, deplacement: true, reservation: candidat };', vers: '    await updateReservation({ id: current.id, centerId: centre, baseUpdatedAt: corps.baseUpdatedAt, activityMove: deplacements[0], modifiePar: \'Blanc\' });\n    return { ok: true, dryRun: true, deplacement: true, reservation: candidat };' }] },
-  { nom: 'type-oublie', lettre: 'T1', scenarios: ['types'], editions: [{ fichier: JS, de: "  if (!activityId || activityId === 'party_table' || /^service_/.test(activityId)) return false;", vers: "  if (!activityId || activityId === 'party_table' || activityId === 'playground' || /^service_/.test(activityId)) return false;" }] },
+  // (le type oublie est le minigolf : la plaine de jeux, libre toute la journee depuis le 2026-11-21, n a plus d heure)
+  { nom: 'type-oublie', lettre: 'T1', scenarios: ['types'], editions: [{ fichier: JS, de: "  if (!activityId || activityId === 'party_table' || /^service_/.test(activityId)) return false;", vers: "  if (!activityId || activityId === 'party_table' || activityId === 'minigolf_blacklight' || /^service_/.test(activityId)) return false;" }] },
   { nom: 'verdict-heures-muet', lettre: 'R1', scenarios: REFUS, editions: [{ fichier: JS, de: '      v.resultat = lireVerdictDeplacement(reponse, envoi);', vers: '      v.resultat = null;' }] },
   { nom: 'refus-en-double', lettre: 'U2', scenarios: REFUS, editions: [{ fichier: JS, de: "      noterHeuresEdition({ ton: 'refus', texte: `${deja}Pas enregistré : ${d.point.nom} à ${d.heure}.`, refus: { cle: d.cle, phrase: motif, suggestions: suggestionsConnuesEdition(d.cle) } });", vers: '      failEdit(motif);' }] },
   { nom: 'refus-pas-a-l-activite', lettre: 'U2', scenarios: REFUS, editions: [{ fichier: JS, de: '  return refus && refus.cle === cle ? refus : null;', vers: '  return null;' }] },

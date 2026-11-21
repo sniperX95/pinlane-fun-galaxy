@@ -128,6 +128,16 @@ function requeteDeLaFiche(s, p, client) {
     if (tx) tx.reservations.set(row.id, row); else banc.base.reservations.set(row.id, row);
     return { rows: [copieLigne(row)], rowCount: 1 };
   }
+  // « Arrivé » ou « Payé » d un groupe en retard : le statut et le retard note dans la meme ligne
+  // (lib/database.js, setReservationStatus).
+  if (/^update reservations set status = \$2, payment_method = \$3, ops_plan = \$4::jsonb, updated_at = now\(\) where id = \$1 returning \*;?$/.test(s)) {
+    const avant = vueReservations(tx).get(Number(p[0]));
+    if (!avant) return { rows: [], rowCount: 0 };
+    const precedent = avant.updated_at ? new Date(avant.updated_at).getTime() : 0;
+    const row = { ...avant, status: p[1], payment_method: p[2] || null, ops_plan: p[3] ? JSON.parse(p[3]) : null, updated_at: new Date(Math.max(Date.now(), precedent + 1)) };
+    if (tx) tx.reservations.set(row.id, row); else banc.base.reservations.set(row.id, row);
+    return { rows: [copieLigne(row)], rowCount: 1 };
+  }
   return null;
 }
 

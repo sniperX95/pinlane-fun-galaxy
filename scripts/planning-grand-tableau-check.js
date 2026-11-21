@@ -151,12 +151,12 @@ const lignesDuJour = (page) => page.evaluate(() => Array.from(document.querySele
   pax: Number(tr.querySelector('td.gf-n b').textContent),
   cls: tr.className,
   etat: tr.querySelector('.gf-etat').textContent.replace(/\s+/g, ' ').trim(),
-  retard: (tr.querySelector('.gf-h__retard') || {}).textContent || '',
+  retard: (tr.querySelector('[data-gf-retard]') || {}).textContent || '',
   pasVenu: Boolean(tr.querySelector('[data-gf-absent]')),
   caisse: (tr.querySelector('.gf-nom__caisse') || {}).textContent || '',
   du: (tr.querySelector('.gf-du') || {}).textContent || '',
 })));
-const minutesDe = (retard) => { const m = /^\+(?:(\d+) min|(\d+)h(\d{2}))$/.exec(retard); return m ? (m[1] ? Number(m[1]) : Number(m[2]) * 60 + Number(m[3])) : NaN; };
+const minutesDe = (retard) => { const m = /^En retard · (?:(\d+) min|(\d+) h (\d{2}))$/.exec(retard); return m ? (m[1] ? Number(m[1]) : Number(m[2]) * 60 + Number(m[3])) : NaN; };
 const ouvertures = (page) => page.evaluate(() => ({
   fiche: !document.getElementById('posOverlay').classList.contains('hidden'),
   reserver: !document.getElementById('quickBookOverlay').classList.contains('hidden'),
@@ -267,9 +267,10 @@ async function densite(browser) {
       r.surface = tout('#globalPlanningGridWrap *').length - tout('#globalPlanningGridWrap tr.gf-libre, #globalPlanningGridWrap tr.gf-libre *').length;
       r.lignes = tout('.gf-r').length;
       r.geste = Array.from(new Set(tout('.gf-gb--arrive, .gf-gb--etat').map((b) => { const x = b.getBoundingClientRect(); return `${Math.round(innerWidth - x.right)}/${Math.round(x.width)}`; })));
-      // La barre de gauche : une couleur par statut, jamais deux pour le meme.
+      // La barre de gauche : une couleur par statut, jamais deux pour le meme. (un groupe en
+      // retard a la sienne, le rouge du retard, 2026-11-21 : scripts/retard-visible-check.js)
       const couleurs = {};
-      tout('.gf-r').forEach((tr) => { const t = /\bt-(\w+)/.exec(tr.className)[1]; (couleurs[t] = couleurs[t] || new Set()).add(getComputedStyle(tr.querySelector('td.gf-h')).backgroundColor); });
+      tout('.gf-r').forEach((tr) => { const t = tr.classList.contains('is-rt') ? 'retard' : /\bt-(\w+)/.exec(tr.className)[1]; (couleurs[t] = couleurs[t] || new Set()).add(getComputedStyle(tr.querySelector('td.gf-h')).backgroundColor); });
       r.statuts = Object.keys(couleurs).map((t) => [t, couleurs[t].size]);
       r.distinctes = new Set(Object.values(couleurs).flatMap((s) => Array.from(s))).size;
       return r;
@@ -304,6 +305,8 @@ async function arrive(browser) {
     ok(Boolean(avant.premier), '[B] le montage : il y a un premier « Arrivé » a faire', avant.premier);
     const pax = await page.evaluate((id) => Number(document.querySelector(`[data-gf-id="${id}"] td.gf-n b`).textContent), avant.premier);
     await page.locator('.is-premier [data-gf-arrive]').click();
+    // (un groupe en retard : « Arrivé » s ecrit tout de suite, la fenetre du retard peut suivre, 2026-11-21)
+    await page.locator('#retardFenetre [data-rt-choix="garder"]').click({ timeout: 4000 }).catch(() => null);
     await page.waitForFunction((id) => document.querySelector(`[data-gf-id="${id}"] [data-compte-id]`), avant.premier, { timeout: 8000 }).catch(() => null);
     await FX.repos(page, 200);
     const apres = await lire();
@@ -386,7 +389,8 @@ async function nom(browser) {
     const avant = await page.evaluate(() => window.__FIXTURE__.patchs.length);
     await page.keyboard.press('Enter');
     await FX.repos(page, 200);
-    const apres = await page.evaluate(() => window.__FIXTURE__.patchs.length);
+    // (pointer un groupe s ecrit tout de suite ; la fenetre du retard qui suivrait compte aussi, 2026-11-21)
+    const apres = await page.evaluate(() => window.__FIXTURE__.patchs.length + (document.getElementById('retardFenetre') ? 1 : 0));
     ok(avant === apres, '[D] Entree ne pointe rien s il reste plusieurs groupes', { terme, avant, apres });
     await page.keyboard.press('Escape');
     await FX.repos(page, 150);
@@ -848,11 +852,23 @@ async function bandeau(browser) {
 // ---------------------------------------------------------------------------
 async function retard(browser) {
   await avec(browser, { lettre: 'R' }, async (page) => {
-    // Le plan de retard part au serveur (/api/ops) : on releve ce qui part.
+    // Le retard part au calcul a blanc de la fenetre du retard (/api/staff-reservations), jamais au
+    // plan en cascade (/api/ops, 2026-11-21 : il deplacait d autres groupes) : on releve ce qui part.
     await page.evaluate(() => {
       window.__ops = [];
+      window.__blancs = [];
       const f = window.fetch;
-      window.fetch = (u, init) => { if (init && init.body && String(u.url || u).includes('/api/ops')) { try { window.__ops.push(JSON.parse(init.body)); } catch (e) { /* un corps sans JSON n interesse pas */ } } return f(u, init); };
+      window.fetch = (u, init) => {
+        const url = String(u.url || u);
+        if (init && init.body) {
+          try {
+            const corps = JSON.parse(init.body);
+            if (url.includes('/api/ops')) window.__ops.push(corps);
+            if (url.includes('/api/staff-reservations') && corps.dryRun && corps.retard) window.__blancs.push(corps);
+          } catch (e) { /* un corps sans JSON n interesse pas */ }
+        }
+        return f(u, init);
+      };
     });
     const l = (await lignesDuJour(page)).find((x) => /\bis-retard\b/.test(x.cls) && minutesDe(x.retard) >= 15);
     const deja = minutesDe(l.retard);
@@ -864,10 +880,18 @@ async function retard(browser) {
     ok(bulle.join() === '10 min,20 min,30 min', '[R] le retard ouvre sa bulle : 10, 20, 30 min', bulle);
     await page.locator('.staff-action-popover button', { hasText: '20 min' }).click();
     await FX.repos(page, 250);
-    const envoi = await page.evaluate(() => window.__ops.filter((c) => c.action === 'delayImpact'));
-    ok(envoi.length === 1 && String(envoi[0].reservationId) === l.id && envoi[0].delayMinutes === deja + 20, `[R] 20 min de plus : le plan de retard part pour ${deja + 20} min, ajoutees a celles qui courent`, envoi);
+    const envoi = await page.evaluate((n) => ({
+      ops: window.__ops.filter((c) => c.action === 'delayImpact' || c.action === 'delayApply'),
+      blancs: window.__blancs,
+      titre: (document.querySelector('#retardFenetre .rt-titre') || {}).textContent || '',
+      attendu: `Retard de ${dureeDuRetard(n)}`,
+    }), deja + 20);
+    ok(envoi.ops.length === 0 && envoi.blancs.length === 1 && String(envoi.blancs[0].retard.id) === l.id && envoi.blancs[0].retard.minutes === deja + 20 && envoi.titre === envoi.attendu,
+      `[R] 20 min de plus : la fenetre du retard s ouvre pour ${deja + 20} min, ajoutees a celles qui courent, jamais le plan en cascade`, envoi);
     const f = await ouvertures(page);
     ok(!f.fiche, '[R] le retard n ouvre pas la fiche', f);
+    await page.locator('#retardFenetre .rt-fermer').click().catch(() => null);
+    await FX.repos(page, 150);
   });
 }
 
@@ -1274,7 +1298,9 @@ const MUTATIONS = [
   { nom: 'complet-qui-reserve', lettre: 'Q', scenarios: ['bandeau'], editions: [{ fichier: PG, de: '    if (et.plein) window.pbChanger(cle);\n    else if (', vers: '    if (' }] },
   // [R] le retard
   { nom: 'retard-sourd', lettre: 'R', scenarios: ['retard'], editions: [{ fichier: PG, de: '      if (retarder) { gfBulleRetard(wrap, retarder, e); return; }', vers: '      if (retarder) return;' }] },
-  { nom: 'retard-oublie-ce-qui-court', lettre: 'R', scenarios: ['retard'], editions: [{ fichier: PG, de: 'openDelayImpact(Number(id), Math.min(240, deja + Number(n)), ev);', vers: 'openDelayImpact(Number(id), Number(n), ev);' }] },
+  { nom: 'retard-oublie-ce-qui-court', lettre: 'R', scenarios: ['retard'], editions: [{ fichier: PG, de: 'ouvrirRetardFiche(Number(id), Math.min(240, deja + Number(n)), ev);', vers: 'ouvrirRetardFiche(Number(id), Number(n), ev);' }] },
+  // (la bulle qui rouvre l ancien plan en cascade, celui qui deplacait d autres groupes, 2026-11-21)
+  { nom: 'retard-plan-en-cascade', lettre: 'R', scenarios: ['retard'], editions: [{ fichier: PG, de: 'ouvrirRetardFiche(Number(id), Math.min(240, deja + Number(n)), ev);', vers: 'openDelayImpact(Number(id), Math.min(240, deja + Number(n)), ev);' }] },
   // [S] encaisser
   { nom: 'montant-sourd', lettre: 'S', scenarios: ['encaisser'], editions: [{ fichier: PG, de: '      if (encaisser) { gfBulleEncaisser(encaisser, e); return; }', vers: '      if (encaisser) return;' }] },
   { nom: 'paiement-sans-moyen', lettre: 'S', scenarios: ['encaisser'], editions: [{ fichier: PG, de: 'function (valeur, ev) { encaisserReservation(id, valeur, ev); gfApresEncaisser(); }', vers: "function (valeur, ev) { encaisserReservation(id, '', ev); gfApresEncaisser(); }" }] },

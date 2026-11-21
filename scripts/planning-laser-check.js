@@ -10,8 +10,8 @@
 //   [B] le prochain depart : l heure, le briefing, les armes a preparer, un
 //       groupe arrive dit « Ils sont N », « Arrivé » pose l arrivee (PATCH) ;
 //   [C] en jeu et retard : la partie de 15:00 et sa fin, « Dubois attendus
-//       à 15:00 », « Décaler à 16:00 » demande 60 min, « Pas venus » pose
-//       l absence ;
+//       à 15:00 », « Décaler à 16:00 » demande 60 min (par la fenetre du
+//       retard depuis le 2026-11-21), « Pas venus » pose l absence ;
 //   [D] placer au toucher : les departs possibles en bleu avec le compte
 //       apres, un depart plein se ternit et dit pourquoi, toucher un bleu
 //       envoie la partie (unitKey, heure) et le jeton quitte la file ;
@@ -176,6 +176,11 @@ async function installerServeur(page, dossiers) {
         window.__LP_REQUETES__.push({ methode, chemin: u.pathname, corps });
         return J({ ok: false, error: 'qa : impact non simule' }, 400);
       }
+      // La fenetre du retard demande son calcul a blanc (2026-11-21) : note, non joue.
+      if (u.pathname === '/api/staff-reservations' && methode === 'POST' && corps && corps.dryRun && corps.retard) {
+        window.__LP_REQUETES__.push({ methode, chemin: u.pathname, corps });
+        return J({ ok: true, dryRun: true, retard: true, refus: { message: 'qa : calcul non simulé.', statut: 409 } });
+      }
       return precedent(input, init);
     };
   }, { dossiers });
@@ -315,10 +320,18 @@ async function scenarios(browser, mutation = null) {
       ok(/Dubois\s*attendus à 15:00/.test(bande) && /Décaler à 16:00/.test(bande), '[C] « Dubois attendus à 15:00 », « Décaler à 16:00 »', bande.replace(/\s+/g, ' ').slice(0, 120));
       await page.click('#laserPlanningGridWrap .lp-alerte .lp-btn--rouge');
       await page.waitForTimeout(500);
-      const decaler = (await requetes(page)).find(q => q.corps && q.corps.action === 'delayImpact');
-      ok(decaler && Number(decaler.corps.reservationId) === idDe(dossiers, 'Famille Dubois') && Number(decaler.corps.delayMinutes) === 60, '[C] « Décaler à 16:00 » demande 60 min pour Dubois', JSON.stringify(decaler && decaler.corps));
+      // (depuis le 2026-11-21, « Décaler » ouvre la fenetre du retard : elle demande au serveur ce
+      // que donnent 60 min pour Dubois, avant toute ecriture ; jamais l ancien plan en cascade)
+      const decaler = (await requetes(page)).find(q => q.corps && q.corps.dryRun && q.corps.retard);
+      const fenetre = await page.evaluate(() => ({
+        titre: (document.querySelector('#retardFenetre .rt-titre') || {}).textContent || '',
+        sous: (document.querySelector('#retardFenetre .rt-sous') || {}).textContent || '',
+        cascade: Boolean(window.__LP_REQUETES__.find(q => q.corps && q.corps.action === 'delayImpact')),
+      }));
+      ok(decaler && Number(decaler.corps.retard.id) === idDe(dossiers, 'Famille Dubois') && Number(decaler.corps.retard.minutes) === 60 && fenetre.titre === 'Retard de 1 h 00' && /Famille Dubois/.test(fenetre.sous) && !fenetre.cascade,
+        '[C] « Décaler à 16:00 » demande 60 min pour Dubois, par la fenetre du retard', JSON.stringify({ corps: decaler && decaler.corps, fenetre }));
       await page.keyboard.press('Escape');
-      await page.evaluate(() => { if (typeof closeDelayImpact === 'function') closeDelayImpact(); document.querySelectorAll('.delay-impact-overlay, #delayImpactOverlay').forEach(e => e.remove()); });
+      await page.evaluate(() => { if (typeof fermerFenetreRetard === 'function') fermerFenetreRetard(); });
       ok(erreurs.length === 0, '[A-C] zero erreur JS ni console', erreurs.slice(0, 3).join(' | '));
     } finally { await ctx.close(); }
   }
@@ -934,6 +947,14 @@ const MUTATIONS = [
   { nom: 'taisent', lettre: '[Q] grand : les pictos se taisent', fichier: 'assets/pinlane-staff.css',
     de: '  .lp-compact .lp-qui:has(> .lp-g + .lp-g) > .lp-g .lp-pictos { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }',
     vers: '' },
+  // « Décaler » rouvre l ancien plan en cascade (il deplacait d autres groupes) au lieu de la fenetre.
+  { nom: 'decaler-ancien-plan', lettre: '[C] « Décaler à 16:00 » demande 60 min pour Dubois', fichier: 'assets/app-main.js',
+    de: 'function lpDecaler(id, minutes, ev) {\n  if (ev) ev.stopPropagation();\n  ouvrirRetardFiche(id, minutes, ev);',
+    vers: 'function lpDecaler(id, minutes, ev) {\n  if (ev) ev.stopPropagation();\n  openDelayImpact(id, minutes, ev);' },
+  // « Décaler » oublie l ecart jusqu au prochain depart : une demi-heure au lieu de l heure.
+  { nom: 'decaler-sans-l-ecart', lettre: '[C] « Décaler à 16:00 » demande 60 min pour Dubois', fichier: 'assets/app-main.js',
+    de: 'function lpDecaler(id, minutes, ev) {\n  if (ev) ev.stopPropagation();\n  ouvrirRetardFiche(id, minutes, ev);',
+    vers: 'function lpDecaler(id, minutes, ev) {\n  if (ev) ev.stopPropagation();\n  ouvrirRetardFiche(id, 30, ev);' },
 ];
 
 // Les lettres qui rougissent quand la mutation m est servie (les scenarios

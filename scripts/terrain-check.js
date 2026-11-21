@@ -19,8 +19,11 @@
 //     activite, joueurs, pistes, consigne, validation en attente), sans geste.
 //     Chaque colonne compte ses joueurs, la derniere ce qui n est pas encaisse.
 //     Au telephone, une colonne, rien ne deborde, l argent a encaisser en tete.
-// [B] LE GESTE : Arrivé fait passer la carte dans Sur place (le retard aussi),
-//     Payé la retire du tableau, chaque fois en ecrivant au serveur. L entree
+// [B] LE GESTE : Arrivé fait passer la carte dans Sur place (le retard aussi :
+//     depuis le 2026-11-21, le gerant garde la marque « Arrivé avec 30 min de
+//     retard » a la place de « En retard » ; la fenetre du retard s ouvre ensuite,
+//     fermee elle laisse le statut et le retard note), Payé la retire du
+//     tableau, chaque fois en ecrivant au serveur. L entree
 //     de page joue a l arrivee, jamais au re-rendu.
 // [C] L HEURE fait avancer les cartes toute seule (tic de la minute), sans
 //     rejouer l entree.
@@ -57,6 +60,8 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 const { chromium } = require('playwright-core');
 const dev = require('./dev-console-server.js');
+// La regle du vrai serveur : un groupe pointe apres son heure a son retard note avec le statut.
+const RETARD = require('../lib/retard-arrivee.js');
 
 const ROOT = path.join(__dirname, '..');
 // 4298 : aucun autre gate ne le prend (deux gates au meme port dans une vague
@@ -68,6 +73,7 @@ const CASSE = String(process.env.TERRAIN_CASSE || '');
 const SECTION = String(process.env.TERRAIN_SECTION || '');
 const JOUR = '2026-09-25';
 const HEURE = `${JOUR}T15:30:00`;
+const MAINTENANT = 15 * 60 + 30; // (HEURE, en minutes : l heure du faux serveur)
 const TYPES = { '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
 
 // Chaque contre-preuve : [fichier servi, ancre exacte (LF), remplacement,
@@ -79,7 +85,9 @@ const MUTATIONS = {
   appeler: ['app-main.js', "  const call = phase === 'late' && phone", '  const call = false && phone', '[A] le groupe en retard porte son numero'],
   pointe: ['app-main.js', "  if (phase === 'closing' && upcoming && !groupeAJoue(reservation)) return { label: 'Non pointé', tone: 'unmarked' };", '', '[A] « Non pointé »'],
   verifier: ['app-main.js', "  if (isReservationAwaitingReview(reservation)) return { label: 'À vérifier', tone: 'review' };", '', '[A] « À vérifier » et « Payé »'],
-  repete: ['app-main.js', "  if (reservation.status === 'paid') return { label: 'Payé', tone: 'paid' };\n  return null;", "  if (reservation.status === 'paid') return { label: 'Payé', tone: 'paid' };\n  return { label: getStaffReservationStatusLabel(reservation.status || 'pending'), tone: 'confirmed' };", '[A] aucune pastille ne repete la colonne'],
+  repete: ['app-main.js', "  if (rt && rt.etat === 'arrive') return { label: texteDuRetard(rt, NaN), tone: 'late' };\n  return null;", "  if (rt && rt.etat === 'arrive') return { label: texteDuRetard(rt, NaN), tone: 'late' };\n  return { label: getStaffReservationStatusLabel(reservation.status || 'pending'), tone: 'confirmed' };", '[A] aucune pastille ne repete la colonne'],
+  // (le retard note oublie une fois le groupe pointe : la marque disparait de sa carte)
+  marque: ['app-main.js', "  if (rt && rt.etat === 'arrive') return { label: texteDuRetard(rt, NaN), tone: 'late' };\n", '', '[B] pointer le groupe en retard le fait passer Sur place'],
   // Paye = arrive (2026-10-02) : sans la regle, le paye avant son heure
   // retombe dans « À venir ».
   paye: ['app-main.js', "  if (status === 'arrived' || status === 'paid' || span.start <= context.now) return 'onsite';", "  if (status === 'arrived' || span.start <= context.now) return 'onsite';", '[A] chaque dossier est dans sa colonne'],
@@ -219,15 +227,23 @@ async function ouvrir(browser, { largeur = 1440, route = '#/staff/arrivals', jou
     });
   });
   await page.route('**/api/staff-reservations**', (r) => {
-    if (r.request().method() !== 'PATCH') return r.continue();
     let corps = {};
     try { corps = JSON.parse(r.request().postData() || '{}'); } catch (e) { corps = {}; }
+    // (la fenetre du retard demande son calcul a blanc : ce faux serveur ne joue pas le planning)
+    if (r.request().method() === 'POST' && corps.dryRun && corps.retard) {
+      return r.fulfill({ contentType: 'application/json', body: JSON.stringify({ ok: true, dryRun: true, retard: true, refus: { message: 'Calcul à blanc non joué par ce gate.', statut: 409 } }) });
+    }
+    if (r.request().method() !== 'PATCH') return r.continue();
     const cible = magasin.find((x) => String(x.id) === String(corps.id));
+    // Le vrai serveur note le retard d un groupe pointe apres son heure, avec le statut
+    // (lib/retard-arrivee.js, retardALArrivee) : ce faux serveur aussi, a l heure figee du gate.
+    const note = cible && corps.status ? RETARD.retardALArrivee(cible, { status: corps.status, maintenant: MAINTENANT }) : null;
+    if (note) cible.opsPlan = RETARD.planAvecRetard(cible.opsPlan || {}, cible, note);
     if (cible && corps.status) cible.status = corps.status;
     // Le vrai serveur ecrit aussi le moyen de paiement et le renvoie : le client
     // refuse depuis le 2026-10-04 une reponse qui ne le confirme pas.
     if (cible && corps.paymentMethod) cible.paymentMethod = corps.paymentMethod;
-    ecritures.push({ id: corps.id, status: corps.status, paymentMethod: corps.paymentMethod });
+    ecritures.push({ id: corps.id, status: corps.status, paymentMethod: corps.paymentMethod, champs: Object.keys(corps).filter((k) => !['id', 'centerId', 'baseUpdatedAt'].includes(k)).join() });
     r.fulfill({ contentType: 'application/json', body: JSON.stringify({ ok: true, reservation: cible ? { ...cible, date: corps.date || cible.date } : corps }) });
   });
   await page.goto(`${BASE}/${route}`);
@@ -413,10 +429,17 @@ async function main() {
       ok(b.ecritures.some((e) => String(e.id) === '7105' && e.status === 'arrived'), '[B] le geste ecrit au serveur (PATCH arrived)', JSON.stringify(b.ecritures));
       await cliquer(b.page, 7104, 'Arrivé');
       await b.page.waitForFunction(() => Boolean(document.querySelector('.terrain-column.is-onsite [data-terrain-id="7104"]')), null, { timeout: 5000 }).catch(() => {});
+      // (le groupe en retard, 2026-11-21 : « Arrivé » s ecrit tout de suite, la fenetre du retard
+      // s ouvre ENSUITE ; fermee, le statut et le retard note restent)
+      const fenetre = await b.page.waitForSelector('#retardFenetre .rt-titre', { timeout: 5000 }).then((el) => el.textContent()).catch(() => '');
+      await b.page.locator('#retardFenetre .rt-fermer').click().catch(() => {});
+      await b.page.waitForFunction(() => !document.getElementById('retardFenetre'), null, { timeout: 5000 }).catch(() => {});
       const vb2 = await b.page.evaluate(LIRE);
       const solvay = carte(vb2, 7104) || {};
-      ok(solvay.colonne === 'Sur place' && (solvay.statuts || []).length === 0 && (solvay.gestes || []).join('+') === 'Détail+Payé · Carte+Payé · Espèces' && b.ecritures.some((e) => String(e.id) === '7104' && e.status === 'arrived'),
-        '[B] pointer le groupe en retard le fait passer Sur place, sans pastille', JSON.stringify(solvay));
+      const pointage = b.ecritures.filter((e) => String(e.id) === '7104');
+      ok(solvay.colonne === 'Sur place' && (solvay.statuts || []).join('|') === 'Arrivé avec 30 min de retard' && (solvay.gestes || []).join('+') === 'Détail+Payé · Carte+Payé · Espèces' && pointage.length === 1 && pointage[0].status === 'arrived' && pointage[0].champs === 'status',
+        '[B] pointer le groupe en retard le fait passer Sur place, « En retard » devient « Arrivé avec 30 min de retard », un PATCH de statut seul', `${JSON.stringify(solvay)} ${JSON.stringify(pointage)}`);
+      ok(fenetre === 'Arrivé avec 30 min de retard', '[B] la fenetre du retard s ouvre apres le pointage ; fermee, le statut et le retard restent', `« ${fenetre} »`);
       await cliquer(b.page, 7102, 'Payé · Espèces');
       await b.page.waitForFunction(() => !document.querySelector('[data-terrain-id="7102"]'), null, { timeout: 5000 }).catch(() => {});
       const vb3 = await b.page.evaluate(LIRE);

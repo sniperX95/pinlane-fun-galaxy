@@ -2562,8 +2562,16 @@ function reservationRenderSignature(r) {
     absentAt: r.absentAt || '',
     amountPaid: r.amountPaid ?? null,
     discountReason: r.discountReason || '',
-    companions: Number(r.companions) || 0
+    companions: Number(r.companions) || 0,
+    // Le retard note se dessine aussi (2026-11-21) : la pastille, la marque « Arrivé avec 12 min de
+    // retard », le rouge des cases. Absent, le retard que le serveur note avec « Arrivé » ne se
+    // voyait qu au tic d une minute.
+    retard: empreinteRetard(r)
   };
+}
+function empreinteRetard(r) {
+  const flag = r && r.opsPlan && r.opsPlan.delayFlag;
+  return flag ? `${Number(flag.minutes) || 0}|${flag.from || ''}|${flag.cleared ? 1 : 0}|${Number(flag.sourceId) || 0}` : '';
 }
 
 function getCurrentStaffReservationsForUi() {
@@ -2664,6 +2672,7 @@ function getSelectedReservationSignature() {
     absentAt: state.selectedRes.absentAt || '',
     amountPaid: state.selectedRes.amountPaid ?? null,
     discountReason: state.selectedRes.discountReason || '',
+    retard: empreinteRetard(state.selectedRes),
     activeTab: state.activeTab,
     editState: state.editState ? {
       name: state.editState.name,
@@ -13470,6 +13479,10 @@ function getStaffTerrainStatus(reservation, phase, item = null, board = null) {
   if (phase === 'closing' && upcoming && !groupeAJoue(reservation)) return { label: 'Non pointé', tone: 'unmarked' };
   if (isReservationAwaitingReview(reservation)) return { label: 'À vérifier', tone: 'review' };
   if (reservation.status === 'paid') return { label: 'Payé', tone: 'paid' };
+  // LE RETARD NOTE RESTE APRES « Arrivé » (2026-11-21, le gerant) : la carte le dit, comme le
+  // planning et la fiche (retardDuGroupe).
+  const rt = phase !== 'upcoming' ? retardDuGroupe(reservation, null) : null;
+  if (rt && rt.etat === 'arrive') return { label: texteDuRetard(rt, NaN), tone: 'late' };
   return null;
 }
 
@@ -26392,6 +26405,241 @@ function renderDelayIndicator(reservation) {
     + `<span class="delay-indicator-label">+${mins}</span></button>`;
 }
 
+// LE RETARD D UN GROUPE, LU PARTOUT DE LA MEME FACON (2026-11-21, le gerant : « quand on met
+// quelqu un en retard, faut que ce soit super bien visible mais bien pro aussi, genre rouge bien
+// visible, le temps bien visible, toutes les activites aussi »). En cours : le groupe n est pas
+// la, son heure est passee (le moment « En retard ») ou l equipe a note son retard (« Retard » de
+// la fiche, la fenetre du retard). Arrive : pointe « Arrivé » ou « Payé » avec un retard note, la
+// marque reste, plus sobre. Un dossier decale par le retard d un AUTRE groupe n est pas en retard.
+// Un seul rouge, le jeton --danger (planning complet, fiche, fenetre).
+function retardPousseDe(r) {
+  const flag = getReservationDelayFlag(r);
+  return flag && Number(flag.sourceId) > 0 && Number(flag.sourceId) !== Number(r.id) ? flag : null;
+}
+function heureDuRetard(valeur) {
+  const m = /^(\d{1,2}):(\d{2})/.exec(String(valeur || ''));
+  return m ? Number(m[1]) + Number(m[2]) / 60 : null;
+}
+function hhmmDuRetard(minutes) {
+  return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+}
+// Ce qui se joue a une heure : ni la table d anniversaire (une salle tenue toute la visite), ni
+// les boissons, ni les jetons remis au bar.
+function jeuDuRetard(activityId) {
+  return Boolean(activityId) && activityId !== 'party_table' && activityId !== 'arcade_credit' && !/^service_/.test(activityId);
+}
+// L heure prevue du groupe : sa premiere activite a heure, ou son arrivee quand elle vient avant (une
+// premiere activite libre toute la journee, la plaine de jeux, 2026-11-21).
+function premiereHeureDuGroupe(r) {
+  const debuts = getGroupeProgramme(r).filter(etape => jeuDuRetard(etape.activityId) && !etape.libre && !etape.aPlacer).map(etape => etape.start).filter(v => v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v))).map(Number);
+  const arrivee = heureDuRetard(r && r.startTime);
+  if (Number.isFinite(arrivee)) debuts.push(arrivee);
+  return debuts.length ? Math.min(...debuts) : null;
+}
+function retardDuGroupe(r, moment) {
+  if (!r || r.status === 'cancelled' || r.absentAt) return null;
+  const flag = retardPousseDe(r) ? null : getReservationDelayFlag(r);
+  const annonce = flag ? Math.max(0, Math.round(Number(flag.minutes) || 0)) : 0;
+  const prevuNote = flag ? heureDuRetard(flag.from) : null;
+  if (isUpcomingReservationStatus(r.status)) {
+    if (!(moment && moment.late) && !annonce) return null;
+    return { etat: 'encours', annonce, prevu: prevuNote !== null ? prevuNote : premiereHeureDuGroupe(r) };
+  }
+  if ((r.status === 'arrived' || r.status === 'paid') && annonce) return { etat: 'arrive', annonce, prevu: prevuNote };
+  return null;
+}
+// Les minutes du retard : celles notees, ou celles qui courent depuis l heure prevue quand elles
+// sont plus longues. Arrive, il ne court plus. `maintenant` : l heure du jour du dossier (NaN un
+// autre jour).
+function minutesDuRetard(rt, maintenant) {
+  if (!rt) return 0;
+  if (rt.etat === 'arrive') return rt.annonce;
+  const vecu = Number.isFinite(maintenant) && Number.isFinite(rt.prevu) ? Math.round((maintenant - rt.prevu) * 60) : 0;
+  return Math.max(1, rt.annonce, vecu);
+}
+function maintenantDuDossier(r) {
+  return r && r.date === todayStr() ? currentTimeDecimal() : NaN;
+}
+// « 12 min », puis « 1 h 05 ».
+function dureeDuRetard(n) {
+  return n < 60 ? `${n} min` : `${Math.floor(n / 60)} h ${String(n % 60).padStart(2, '0')}`;
+}
+function texteDuRetard(rt, maintenant) {
+  const n = minutesDuRetard(rt, maintenant);
+  return rt.etat === 'arrive' ? `Arrivé avec ${dureeDuRetard(n)} de retard` : `En retard · ${dureeDuRetard(n)}`;
+}
+
+// LA FENETRE DU RETARD (2026-11-21, lib/retard-arrivee.js). Elle dit le retard, puis la nouvelle
+// heure de chaque activite a venir, jugee par le serveur sans rien ecrire (simulerRetard, le
+// controle du verdict de « Modifier »), et trois choix : « Tout décaler » si tout passe,
+// « Décaler ce qui passe » (le reste garde son heure), « Garder les heures ».
+//   - APRES « Arrivé » OU « Payé » (le gerant, le 21/11 : ils s enregistrent tout de suite, en un
+//     geste, comme avant ; la fenetre s ouvre ENSUITE). Le serveur a note le retard avec le statut
+//     (setReservationStatus) : elle s ouvre sur ce retard-la, « Arrivé avec 12 min de retard ».
+//     Decaler ecrit les heures seules (PATCH retard, `dejaNote`) ; « Garder les heures » et la
+//     croix ferment, le statut et le retard restent ecrits, seules les heures ne bougent pas.
+//   - « Retard » DE LA FICHE et la bulle du planning, avant l arrivee : chaque choix note le retard
+//     et les heures en une ecriture ; la croix ferme sans rien ecrire.
+let fenetreRetard = null;
+// LES NOUVELLES HEURES SE CALCULENT AU SERVEUR (lib/retard-arrivee.js, etapesDuRetard) : la vraie
+// duree de chaque activite (le contenu de la formule, sinon le catalogue), la suite poussee pour
+// ne jamais commencer avant la fin de la precedente, des arcades en argent rendues « libre ». La
+// fenetre envoie les minutes et ce qui est deja coche ; elle lit les noms de son programme.
+function nomsDuRetard(r) {
+  const noms = new Map();
+  pointsHeureEdition(r).forEach((point, cle) => noms.set(cle, point.nom));
+  getGroupeProgramme(r).forEach((etape) => { const cle = cleHeureEtape(etape); if (cle && !noms.has(cle) && etape.nom) noms.set(cle, etape.nom); });
+  return noms;
+}
+async function ouvrirFenetreRetard(r, reglage) {
+  const minutes = Math.max(1, Math.min(240, Math.round(Number(reglage.minutes) || 0)));
+  const prevu = premiereHeureDuGroupe(r);
+  const etat = {
+    id: Number(r.id), mode: reglage.mode,
+    minutes, de: reglage.de || hhmmDuRetard(Math.round((Number.isFinite(prevu) ? prevu : 0) * 60)),
+    faites: [...new Set(getGroupeProgramme(r).filter(etape => etape.fait).map(cleHeureEtape).filter(Boolean))],
+    noms: nomsDuRetard(r), etapes: null, erreur: '', envoi: false, retour: document.activeElement,
+    feuille: Boolean(document.activeElement && document.activeElement.closest && document.activeElement.closest('#globalPlanningGridWrap')),
+  };
+  fenetreRetard = etat;
+  rendreFenetreRetard(true);
+  try {
+    const payload = await apiRequest(API_ENDPOINTS.staffReservations, { method: 'POST', body: JSON.stringify({ dryRun: true, centerId: r.centerId || getCurrentStaffCenterId(), retard: { id: r.id, baseUpdatedAt: r.updatedAt, minutes, de: etat.de, faites: etat.faites } }) });
+    if (fenetreRetard !== etat) return;
+    if (payload && payload.refus) etat.erreur = payload.refus.message || 'Le planning ne répond pas.';
+    else if (payload && payload.retard && Array.isArray(payload.etapes)) etat.etapes = payload.etapes;
+    else etat.erreur = 'Le planning ne répond pas : les heures restent telles quelles.';
+  } catch (error) {
+    if (fenetreRetard !== etat) return;
+    etat.erreur = error.message || 'Le planning ne répond pas.';
+  }
+  rendreFenetreRetard();
+}
+function rendreFenetreRetard(ouverture = false) {
+  let hote = document.getElementById('retardFenetre');
+  const etat = fenetreRetard;
+  if (!etat) { if (hote) hote.remove(); return; }
+  const r = state.reservations.find(x => Number(x.id) === etat.id) || state.selectedRes || {};
+  if (!hote) {
+    hote = document.createElement('div');
+    hote.id = 'retardFenetre';
+    hote.className = 'rt-fond';
+    hote.addEventListener('keydown', e => { if (e.key === 'Escape') { e.stopPropagation(); fermerFenetreRetard(); } });
+    hote.addEventListener('click', e => { if (e.target === hote) fermerFenetreRetard(); });
+    document.body.appendChild(hote);
+  }
+  const etapes = etat.erreur ? [] : etat.etapes;
+  const toutPasse = Boolean(etapes && etapes.length && etapes.every(e => e.passe));
+  const lignes = (etapes || []).map((e) => {
+    const nom = etat.noms.get(e.cle) || e.cle;
+    // (des arcades en argent n ont pas d heure : elles passent « libre », hors de l enchainement)
+    const heures = e.libre ? `<s>${escapeHtml(e.avant)}</s> → <b>libre</b>` : `<s>${escapeHtml(e.avant)}</s> → <b>${escapeHtml(e.apres)}</b>`;
+    return `<li class="rt-etape ${e.passe ? 'is-passe' : 'is-bloque'}" data-rt-cle="${escapeHtml(e.cle)}"><span class="rt-etape__nom">${escapeHtml(nom)}</span><span class="rt-etape__heures">${heures}</span><span class="rt-etape__mot">${e.passe ? 'Passe' : 'Ne passe pas'}</span>`
+      + (e.libre && e.passe ? '<p class="rt-etape__raison">Vendues en crédits : sans heure, à leur rythme.</p>' : '')
+      + (!e.passe ? `<p class="rt-etape__raison">${escapeHtml(e.raison || 'Le planning refuse cette heure.')} Reste à ${escapeHtml(e.avant)}.</p>` : '') + '</li>';
+  }).join('');
+  const passent = etapes ? etapes.filter(e => e.passe).length : 0;
+  // (decaler une heure est le geste du glisser du planning : sans lui, le retard se note seulement)
+  const peutDecaler = typeof canUseStaffPermission !== 'function' || canUseStaffPermission(['planning.drag', 'reservations.edit']);
+  const decaler = !etapes || !passent || !peutDecaler ? ''
+    : toutPasse ? `<button type="button" class="rt-bouton est-plein" data-rt-choix="tout" onclick="choisirRetard('tout')"${etat.envoi ? ' disabled' : ''}>Tout décaler</button>`
+      : `<button type="button" class="rt-bouton est-plein" data-rt-choix="passe" onclick="choisirRetard('passe')"${etat.envoi ? ' disabled' : ''}>Décaler ce qui passe</button>`;
+  const garder = `<button type="button" class="rt-bouton${decaler ? '' : ' est-plein'}" data-rt-choix="garder" onclick="choisirRetard('garder')"${etat.envoi ? ' disabled' : ''}>Garder les heures</button>`;
+  // (apres « Arrivé » ou « Payé », le statut et le retard sont deja ecrits : fermer garde les heures)
+  const arrivee = etat.mode === 'arrivee';
+  const titre = arrivee ? `Arrivé avec ${dureeDuRetard(etat.minutes)} de retard` : `Retard de ${dureeDuRetard(etat.minutes)}`;
+  const quand = arrivee ? `prévu à ${etat.de}, il est ${formatClockDisplay(currentTimeDecimal())}` : `prévu à ${etat.de}`;
+  const sous = arrivee ? 'L’arrivée et le retard sont notés sur le dossier. Fermer garde les heures.' : 'Le retard est noté sur le dossier, quel que soit le choix.';
+  const note = arrivee ? 'le retard est noté' : 'le retard se note';
+  const etatTexte = etat.erreur ? `${etat.erreur} ${arrivee ? 'Le retard est noté' : 'Le retard se note'}, les heures restent.`
+    : !etapes ? 'Vérification au planning…'
+      : !etapes.length ? `Plus aucune activité à venir : ${note}, rien ne bouge.`
+        : toutPasse ? 'Toutes les activités passent à leur nouvelle heure, chacune après la fin de la précédente.'
+          : passent ? 'Ce qui ne passe pas garde son heure.' : 'Aucune activité ne passe à sa nouvelle heure : elles gardent leur heure.';
+  hote.innerHTML = `<div class="rt-fenetre" role="dialog" aria-modal="true" aria-labelledby="rtTitre" aria-describedby="rtSous" tabindex="-1">
+      <div class="rt-tete"><h3 class="rt-titre" id="rtTitre">${escapeHtml(titre)}</h3>
+        <button type="button" class="close-btn rt-fermer" aria-label="${arrivee ? 'Fermer, les heures restent' : 'Fermer sans rien enregistrer'}" onclick="fermerFenetreRetard()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+      <p class="rt-sous" id="rtSous">${escapeHtml(r.name || 'Groupe')} · ${escapeHtml(quand)}. ${escapeHtml(sous)}</p>
+      ${lignes ? `<ol class="rt-etapes">${lignes}</ol>` : ''}
+      <p class="rt-etat" role="status">${escapeHtml(etatTexte)}</p>
+      <div class="rt-pied">${garder}${decaler}</div>
+    </div>`;
+  if (ouverture) hote.querySelector('.rt-fenetre').focus();
+}
+function fermerFenetreRetard() {
+  const etat = fenetreRetard;
+  fenetreRetard = null;
+  rendreFenetreRetard();
+  rendreLeFocusDuRetard(etat);
+}
+// Le focus revient au geste qui a ouvert la fenetre ; sur la feuille, la ligne reecrite le reprend.
+function rendreLeFocusDuRetard(etat) {
+  if (!etat) return;
+  if (etat.retour && etat.retour.isConnected && typeof etat.retour.focus === 'function') { etat.retour.focus(); return; }
+  const ligne = etat.feuille ? document.querySelector(`#globalPlanningGridWrap .gf-r[data-gf-id="${etat.id}"]`) : null;
+  if (ligne) ligne.focus();
+}
+// Le choix : une seule ecriture (le retard note, les heures qui passent), puis l ecran. Apres
+// « Arrivé » ou « Payé », le retard est deja ecrit : garder ferme, decaler n ecrit que les heures.
+async function choisirRetard(choix) {
+  const etat = fenetreRetard;
+  if (!etat || etat.envoi) return;
+  const r = state.reservations.find(x => Number(x.id) === etat.id) || (state.selectedRes && Number(state.selectedRes.id) === etat.id ? state.selectedRes : null);
+  if (!r) { fermerFenetreRetard(); return; }
+  const dejaNote = etat.mode === 'arrivee';
+  if (dejaNote && choix === 'garder') { fermerFenetreRetard(); return; }
+  const etapes = etat.erreur ? null : etat.etapes;
+  if (choix === 'tout' && !(etapes && etapes.length && etapes.every(e => e.passe))) return;
+  // (les activites que la fenetre a montrees : le serveur refait leurs heures et les rejuge)
+  const cles = choix === 'garder' || !etapes ? [] : etapes.filter(e => choix === 'tout' || e.passe).map(e => e.cle);
+  if (choix !== 'garder' && !cles.length) return;
+  etat.envoi = true;
+  rendreFenetreRetard();
+  try {
+    const payload = await apiRequest(API_ENDPOINTS.staffReservations, { method: 'PATCH', body: JSON.stringify({ id: r.id, centerId: r.centerId || getCurrentStaffCenterId(), baseUpdatedAt: r.updatedAt, retard: { minutes: etat.minutes, de: etat.de, faites: etat.faites, choix, cles, ...(dejaNote ? { dejaNote: true } : {}) } }) });
+    if (!payload || !payload.ok || !payload.reservation || Number(payload.reservation.id) !== etat.id) throw new Error('Le serveur n’a pas confirmé le retard. Actualisez le dossier.');
+    if (fenetreRetard === etat) fenetreRetard = null;
+    rendreFenetreRetard();
+    upsertReservationInState(payload.reservation);
+    markReservationMutation(etat.id, payload.reservation, ['opsPlan', 'startTime', 'lanes']);
+    if (state.selectedRes && Number(state.selectedRes.id) === etat.id) state.selectedRes = payload.reservation;
+    save();
+    renderStaffData();
+    renderPos();
+    rendreLeFocusDuRetard(etat);
+    toast(dejaNote ? `${payload.reservation.name || 'Groupe'} : heures décalées du retard de ${dureeDuRetard(etat.minutes)}.` : `${payload.reservation.name || 'Groupe'} : retard de ${dureeDuRetard(etat.minutes)} noté${cles.length ? ', heures décalées' : ''}.`);
+  } catch (error) {
+    if (fenetreRetard !== etat) return;
+    etat.envoi = false;
+    const fraiche = error.reservation || (error.status === 409 && error.payload && error.payload.reservation);
+    if (fraiche) upsertReservationInState(fraiche);
+    etat.erreur = `${error.message || 'Rien n’est enregistré.'}`;
+    etat.etapes = null;
+    rendreFenetreRetard();
+  }
+}
+// « Retard » de la fiche : la meme fenetre, avec les minutes touchees.
+function ouvrirRetardFiche(id, minutes, ev) {
+  if (ev) ev.stopPropagation();
+  const r = state.reservations.find(x => Number(x.id) === Number(id)) || (state.selectedRes && Number(state.selectedRes.id) === Number(id) ? state.selectedRes : null);
+  if (!r) return;
+  ouvrirFenetreRetard(r, { mode: 'annonce', minutes });
+}
+// LE RETARD QUE LE STATUT VIENT DE NOTER (setReservationStatus, lib/retard-arrivee.js) : le
+// dossier d avant n en avait pas, celui que le serveur renvoie en porte un, a lui.
+function retardNoteParLeStatut(avant, apres) {
+  const note = getReservationDelayFlag(apres);
+  if (!note || retardPousseDe(apres)) return null;
+  const deja = getReservationDelayFlag(avant);
+  return deja && !retardPousseDe(avant) ? null : note;
+}
+function ouvrirRetardFicheAutre(id, ev) {
+  const champ = document.getElementById('delayCustomMinutes');
+  const minutes = Math.round(Number(champ && champ.value));
+  if (!Number.isFinite(minutes) || minutes < 1 || minutes > 240) { toast('Saisissez un retard de 1 à 240 minutes.'); return; }
+  ouvrirRetardFiche(id, minutes, ev);
+}
+
 // Retire l'indicateur de retard directement depuis la carte planning. Le
 // serveur passe opsPlan.delayFlag.cleared = true SANS toucher à l'horaire.
 async function clearDelayFlag(ev, id) {
@@ -28184,9 +28432,11 @@ function lpIlsSontLa(id, ev) {
   setReservationStatusDirect(id, 'arrived', ev);
 }
 
+// (le meme calcul que la fiche et le grand tableau : la fenetre du retard, seul ce dossier s ecrit ;
+// l ancien plan en cascade deplacait d autres groupes, 2026-11-21)
 function lpDecaler(id, minutes, ev) {
   if (ev) ev.stopPropagation();
-  openDelayImpact(id, minutes, ev);
+  ouvrirRetardFiche(id, minutes, ev);
 }
 
 function lpPasVenus(id, ev) {
@@ -28662,7 +28912,9 @@ function getStaffListeSection(moments, r) {
   const etat = m ? m.etat : 'upcoming';
   if (etat === 'absent') return 'absent';
   if (etat === 'done') return 'paid';
-  if (etat === 'upcoming' && m && m.late) return 'late';
+  // (un retard note par l equipe compte des qu il est note, 2026-11-21 : le planning le montre en
+  // rouge, le compteur « En retard » y mene)
+  if (etat === 'upcoming' && m && (m.late || (getReservationDelayFlag(r) && !retardPousseDe(r)))) return 'late';
   // (jamais pointe et visite finie : il n a rien a cloturer, il n est jamais arrive)
   if (etat === 'closing' && groupeEnRetardAuPlanning(r, m)) return 'late';
   return etat;
@@ -28804,6 +29056,8 @@ function getGroupeProgramme(r) {
   // 16:30 ») se lisait comme un rendez-vous. Elles sont libres, « à volonté », comme la phrase du
   // ticket et le grand tableau ; le bowling et le laser gardent leurs pistes et leurs departs.
   // (typeof : des gates lisent getGroupeProgramme seule, sans le reste de la console)
+  // LA PLAINE DE JEUX EST LIBRE TOUTE LA JOURNEE (2026-11-21, le gerant : « il n'y a pas d'heure,
+  // c'est vraiment libre tout le temps ») : « Libre » au programme, jamais une heure.
   const accesIllimite = typeof illimiteDeSaCarte === 'function' && illimiteDeSaCarte(r);
   getStaffFormulaTimedItems(r)
     .filter(item => item.activityId !== 'bowling' && item.activityId !== 'laser_game')
@@ -28814,9 +29068,9 @@ function getGroupeProgramme(r) {
       quoi: accesIllimite ? 'à volonté' : '',
       ou: '',
       groupe: '',
-      start: accesIllimite ? null : item.start,
-      end: accesIllimite ? null : item.end,
-      ...(accesIllimite ? { libre: true, volonte: true } : {}),
+      start: accesIllimite || item.activityId === 'playground' ? null : item.start,
+      end: accesIllimite || item.activityId === 'playground' ? null : item.end,
+      ...(accesIllimite ? { libre: true, volonte: true } : item.activityId === 'playground' ? { libre: true } : {}),
       fait: Boolean(item.done),
       coche: item.key,
       exige: true,
@@ -29831,6 +30085,11 @@ async function setReservationStatusDirect(id, status, ev, options = {}) {
     // chemin du retour. « Arrivé » et « Payé » laissent quelques secondes un
     // toast qui porte « Annuler » ; c est le seul message d un statut reussi.
     if (!options.sansAnnulation && ['arrived', 'paid'].includes(status)) proposerAnnulationGeste(versionEcrite, payload.reservation);
+    // LE GROUPE ARRIVE EN RETARD (2026-11-21, le gerant : « Arrivé » et « Payé » s enregistrent tout
+    // de suite, la fenetre du retard s ouvre ENSUITE pour proposer le decalage). Le serveur a note
+    // son retard avec le statut ; fermee, la fenetre laisse le statut et le retard, les heures restent.
+    const note = !options.sansAnnulation && ['arrived', 'paid'].includes(status) ? retardNoteParLeStatut(versionEcrite, payload.reservation) : null;
+    if (note) ouvrirFenetreRetard(payload.reservation, { mode: 'arrivee', minutes: note.minutes, de: note.from });
   }).catch(error => {
     if (!isLatestRequest()) return;
     // Le refus remet ce que le serveur dit (un autre poste a ecrit : sa version), sinon
@@ -30537,6 +30796,23 @@ function ficheVisuelActivite(r, etape) {
 
 // LA DEMANDE A VERIFIER ET L ABSENCE, EN BANDEAU : ce qui bloque le reste se
 // lit avant tout, son geste a cote (« Valider », « Appeler », « Annuler »).
+// LE RETARD EN TETE DE LA FICHE (2026-11-21, retardDuGroupe) : « En retard de 12 min · prévu à
+// 15:00 » tant que le groupe n est pas la, « Arrivé avec 12 min de retard » ensuite.
+// « Retirer le retard » y vit (il vivait dans les notes, qui ne le repetent plus).
+function ficheBandeauRetard(r, moment) {
+  const rt = retardDuGroupe(r, moment);
+  if (!rt) return '';
+  const n = minutesDuRetard(rt, maintenantDuDossier(r));
+  const prevu = Number.isFinite(rt.prevu) ? formatClockDisplay(rt.prevu) : '';
+  const titre = rt.etat === 'arrive' ? `Arrivé avec ${dureeDuRetard(n)} de retard` : `En retard de ${dureeDuRetard(n)}`;
+  // (« prévu », pas « arrivée prévue » : l en-tete dit deja l arrivee conseillee, 10 min plus tot)
+  const suite = prevu ? `prévu à ${prevu}` : '';
+  const id = Number(r.id);
+  const retirer = getReservationDelayFlag(r) && (typeof canUseStaffPermission !== 'function' || canUseStaffPermission(['reservations.edit', 'planning.drag']))
+    ? `<button type="button" class="fz-retard__retirer" data-pl-focus="fiche.retard.${id}" onclick="revertDelay(event, ${id})">Retirer le retard</button>` : '';
+  return `<section class="fz-retard is-${rt.etat}" role="status" data-retard-etat="${rt.etat}"><p><b class="fz-retard__titre">${escapeHtml(titre)}</b>${suite ? `<span class="fz-retard__sep" aria-hidden="true"> · </span><span class="fz-retard__prevu">${escapeHtml(suite)}</span>` : ''}</p>${retirer}</section>`;
+}
+
 function ficheBandeau(r, moment, droits) {
   if (r.absentAt) return renderGroupeEncaisseAbsence(r);
   if (r.status === 'cancelled' || !isReservationAwaitingReview(r)) return '';
@@ -30723,7 +30999,9 @@ function ficheParcours(r, moment, droits) {
   // L ACCES ILLIMITE SE DIT EN UNE PHRASE (2026-11-19) : la visite, ce qui est garde, ce qui se joue
   // une fois a son heure, lus sur le plan du dossier (assets/pinlane-a-volonte.js).
   const acces = accesIllimiteDuDossier(r);
-  return `<section class="info-block gc-sheet-block fx-programme fz-carte" aria-label="Programme">
+  // (chaque activite du groupe en retard porte le rouge, retardDuGroupe)
+  const rt = retardDuGroupe(r, moment);
+  return `<section class="info-block gc-sheet-block fx-programme fz-carte${rt ? ` is-retard-${rt.etat}` : ''}" aria-label="Programme">
       <div class="gc-sheet-head"><h4 class="fx-titre">Programme</h4>${jauge}${renderGroupeTerminer(r)}</div>
       ${acces ? `<p class="fz-acces" id="ficheAcces"><b>Accès illimité</b> ${escapeHtml(acces.texte)}</p>` : ''}
       ${ficheArrivee(r, moment, droits)}
@@ -30866,22 +31144,22 @@ function renderNoteEquipeBouton(r) {
   return `<button type="button" class="fx-outil gc-note-ouvrir" title="Note pour l’équipe" aria-expanded="${ouvert}" data-pl-focus="fiche.note.ouvrir.${id}" onclick="ouvrirNoteEquipe(${id}, event)">${FICHE_ICONE_NOTE}<span>Note<span class="fz-long"> pour l’équipe</span></span></button>`;
 }
 
-// LE RETARD, OUVERT JUSTE SOUS SON BOUTON : les minutes d un toucher, puis le
-// plan du serveur avant toute validation (openDelayImpact). Un groupe deja en
-// retard garde « Arrivé maintenant ».
+// LE RETARD, OUVERT JUSTE SOUS SON BOUTON : les minutes d un toucher, puis la
+// fenetre du retard avant toute ecriture (ouvrirRetardFiche). Un groupe deja en
+// retard garde « Arrivé maintenant » : le pointage d abord, la fenetre ensuite.
 function ficheRetardPanneau(r, late) {
   const id = Number(r.id);
-  const minutes = [5, 10, 15, 20, 30].map(m => `<button type="button" class="delay-chip" onclick="openDelayImpact(${id}, ${m}, event)">+${m} min</button>`).join('');
+  const minutes = [5, 10, 15, 20, 30].map(m => `<button type="button" class="delay-chip" onclick="ouvrirRetardFiche(${id}, ${m}, event)">+${m} min</button>`).join('');
   return `<div class="fx-retard delay-control-block" id="fxRetard${id}" role="region" aria-label="Retard du groupe">
       <p class="fx-retard-titre">Retard du groupe</p>
       <p class="pos-note">Choisissez les minutes. Le nouveau programme s’affiche avant d’être validé.</p>
       <div class="delay-control-actions">
-        ${late > 0 ? `<button type="button" class="delay-chip delay-chip-now" onclick="openDelayImpact(${id}, ${late}, event)">Arrivé maintenant (+${late} min)</button>` : ''}${minutes}
+        ${late > 0 ? `<button type="button" class="delay-chip delay-chip-now" onclick="setReservationStatusDirect(${id}, 'arrived', event)">Arrivé maintenant (+${late} min)</button>` : ''}${minutes}
       </div>
       <div class="delay-custom-row">
         <label class="visually-hidden" for="delayCustomMinutes">Retard en minutes</label>
         <input type="number" id="delayCustomMinutes" min="1" max="240" placeholder="Autre" inputmode="numeric" data-pl-focus="fiche.retard.minutes.${id}" onclick="event.stopPropagation()">
-        <button type="button" class="delay-chip delay-chip-run" onclick="openDelayImpactCustom(${id}, event)">Voir le plan</button>
+        <button type="button" class="delay-chip delay-chip-run" onclick="ouvrirRetardFicheAutre(${id}, event)">Voir le plan</button>
       </div>
     </div>`;
 }
@@ -30933,10 +31211,12 @@ function renderPosDetails(r) {
   // notes (une allergie, un gateau se lisent avant le programme) et le
   // programme a cocher. A droite ce qui se lit et se regle : la caisse, le
   // client, l historique. Au telephone, une colonne : notes, caisse,
-  // programme, client, historique.
+  // programme, client, historique. (UN bandeau au plus : celui de ce qui bloque
+  // dit deja le retard en rouge, le bandeau du retard ne le redit pas, 2026-11-21)
+  const bandeauBloquant = ficheBandeau(r, moment, droits);
   return `<div class="${posSheetClass()} gc-sheet fx">
     ${ficheRetardOuvert(r, droits)}
-    ${ficheBandeau(r, moment, droits)}
+    ${bandeauBloquant || ficheBandeauRetard(r, moment)}
     <div class="fx-colonnes">
       <div class="fx-principal">
         ${renderGroupeNotes(r)}
@@ -31061,7 +31341,9 @@ function renderGroupeNotes(r) {
   const brouillon = notesEquipeBrouillons.get(id) || '';
   const { peutAjouter, peutReecrire } = ficheDroitsNotes(r);
   const ouvert = peutAjouter && (notesEquipeOuvertes.has(id) || Boolean(brouillon));
-  const contenu = Boolean(motClient || parts.suivi.length || notes.length || getReservationDelayFlag(r) || noteClientPermanente);
+  // (le retard du groupe vit en tete de la fiche : ses traces du moteur ne se repetent pas ici)
+  const suiviVisible = parts.suivi.length > 0 && !(getReservationDelayFlag(r) && !retardPousseDe(r));
+  const contenu = Boolean(motClient || suiviVisible || notes.length || retardPousseDe(r) || noteClientPermanente);
   // Sans note ni champ ouvert, rien : « Note pour l’équipe » vit dans la
   // rangee des gestes, sous les etats (renderNoteEquipeBouton).
   if (!contenu && !ouvert) return '';
@@ -31073,8 +31355,10 @@ function renderGroupeNotes(r) {
       // LE RETARD SE RETIRE DEPUIS LA FICHE (2026-10-02, Movsar : « on peut
       // meme pas lui retirer du retard quand on ouvre le groupe, uniquement
       // sur le planning en cliquant sur l horloge »). Le bandeau dit le retard
-      // et porte le geste ; les traces du moteur ne le repetent pas.
-      const flag = getReservationDelayFlag(r);
+      // et porte le geste ; les traces du moteur ne le repetent pas. (Le retard du groupe
+      // lui-meme vit en tete de la fiche depuis le 2026-11-21, ficheBandeauRetard : ici, le
+      // dossier decale par le retard d un autre.)
+      const flag = retardPousseDe(r);
       if (flag) {
         const mins = Math.round(Number(flag.minutes) || 0);
         const pousse = Number(flag.sourceId) > 0 && Number(flag.sourceId) !== id;
@@ -31085,7 +31369,7 @@ function renderGroupeNotes(r) {
             ? `<button type="button" class="gc-retard-btn" data-pl-focus="fiche.retard.${id}" onclick="revertDelay(event, ${id})">${pousse ? 'Remettre à son heure' : 'Retirer le retard'}</button>` : '')
           + '</div>';
       }
-      return parts.suivi.length ? `<ul class="gc-note-suivi">${parts.suivi.map(t => `<li>${escapeHtml(t)}</li>`).join('')}</ul>` : '';
+      return suiviVisible ? `<ul class="gc-note-suivi">${parts.suivi.map(t => `<li>${escapeHtml(t)}</li>`).join('')}</ul>` : '';
     })()}
     ${notes.length ? `<ul class="gc-notes-equipe">${notes.map(n => `<li class="gc-note-equipe">
       <p title="${escapeHtml(bulleAuteurNote(n))}">${escapeHtml(n.t)}</p>
@@ -31320,7 +31604,8 @@ function openDelayImpactCustom(id, ev) {
     if (ev) ev.stopPropagation();
     return;
   }
-  openDelayImpact(id, minutes, ev);
+  // (la fenetre du retard, plus l ancien plan en cascade : 2026-11-21)
+  ouvrirRetardFiche(id, minutes, ev);
 }
 
 async function openDelayImpact(id, delayMinutes, ev) {
@@ -34722,8 +35007,9 @@ function pointsHeureEdition(r) {
   });
   // LES ACTIVITES LIBRES (2026-11-19, Ansar : « même quand c'est Libre, on doit pouvoir modifier ») :
   // une heure sans valeur, qu on donne ici ; ni le bowling ni le laser (ils tiennent toujours une heure).
-  // (ni les jetons d arcades remis au bar, ni la table d anniversaire, ni les boissons : rien ne s y joue a une heure)
-  programme.filter(etape => etape.libre && etape.activityId && !['bowling', 'laser_game', 'party_table', 'arcade_credit'].includes(etape.activityId) && !/^service_/.test(etape.activityId)).forEach((etape) => {
+  // (ni les jetons d arcades remis au bar, ni la table d anniversaire, ni les boissons : rien ne s y joue a une heure ;
+  // ni la plaine de jeux, libre toute la journee, 2026-11-21)
+  programme.filter(etape => etape.libre && etape.activityId && !['bowling', 'laser_game', 'party_table', 'arcade_credit', 'playground'].includes(etape.activityId) && !/^service_/.test(etape.activityId)).forEach((etape) => {
     if (points.has(etape.activityId)) return;
     points.set(etape.activityId, { cle: etape.activityId, activityId: etape.activityId, unite: '', start: null, fin: null, libre: true, nom: etape.nom || nomActiviteHeureEdition(etape.activityId) });
   });
@@ -34763,6 +35049,8 @@ function peutChangerHeureEdition(r, activityId) {
   if (!state.editState || !r || state.activeTab !== 'modifier' || r.status === 'cancelled' || formuleChangeeEdition() || state.editState.versProgrammeNormal) return false;
   // La table d anniversaire tient une salle, les boissons se servent au bar.
   if (!activityId || activityId === 'party_table' || /^service_/.test(activityId)) return false;
+  // La plaine de jeux est libre toute la journee : pas d heure a lui donner (2026-11-21).
+  if (activityId === 'playground') return false;
   // Une piste ou une arene gardee a volonte (lib/a-volonte.js) n a pas d heure a deplacer : elle
   // est au groupe toute la visite.
   if ((r.opsPlan && Array.isArray(r.opsPlan.resourceBlocks) ? r.opsPlan.resourceBlocks : []).some((bloc) => bloc && bloc.aVolonte && bloc.activityId === activityId)) return false;
@@ -43187,6 +43475,8 @@ function rvPosable(id, ids = rvActivites()) {
   if (i < 0 || id === 'party_table' || id === 'arcade_credit' || /^service_/.test(id)) return false;
   // (des arcades vendues en argent n ont pas d heure calculable : libres, rvArcadesEnArgent)
   if (rvArcadesEnArgent(id)) return false;
+  // (la plaine de jeux est libre toute la journee : jamais d heure a poser, 2026-11-21, le gerant)
+  if (id === 'playground') return false;
   // Un acces illimite se joue a volonte pendant la visite (pistes et armes gardees, le reste libre) :
   // aucune heure ne s y pose a la main (le serveur refuse celle d une activite gardee).
   if (rvFormuleIllimitee()) return false;
@@ -43290,7 +43580,10 @@ function rsCasesDuContenu(carte) {
   return cases;
 }
 
+// (la case de la plaine de jeux dit « libre » : elle n a jamais d heure, 2026-11-21, le gerant :
+// « c'est accès toute la journée, il n'y a pas d'heure »)
 function rsCaseDuContenuHtml({ texte, id }) {
+  if (!id && getFormulaActivityIds({ desc: [texte] }).includes('playground')) return `<li class="is-libre">${escapeHtml(texte)}<span class="rs-cc-libre">libre</span></li>`;
   if (!id) return `<li>${escapeHtml(texte)}</li>`;
   const sid = escapeHtml(id);
   const ligne = rvHeuresDesLignes()[id] || {};

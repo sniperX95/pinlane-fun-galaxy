@@ -211,8 +211,12 @@ async function scenarioRetard(browser) {
     ok(choix.join('|') === '10 min|20 min|30 min', '[D] le retard ouvre 10, 20, 30 min', choix);
     await page.locator('.staff-action-popover button', { hasText: '20 min' }).click();
     await page.waitForTimeout(250);
-    const plan = await page.evaluate(() => ({ minutes: delayFlowState && delayFlowState.delayMinutes, id: delayFlowState && delayFlowState.reservationId, bulle: Boolean(document.querySelector('.staff-action-popover')) }));
-    ok(String(plan.id) === zoe && plan.minutes === 60, '[D] 20 min s ajoutent aux 40 deja pris', plan);
+    // (depuis le 2026-11-21, la bulle ouvre la fenetre du retard : elle porte le retard entier)
+    const plan = await page.evaluate(() => ({
+      minutes: fenetreRetard && fenetreRetard.minutes, id: fenetreRetard && fenetreRetard.id,
+      titre: (document.querySelector('#retardFenetre .rt-titre') || {}).textContent || '', bulle: Boolean(document.querySelector('.staff-action-popover')),
+    }));
+    ok(String(plan.id) === zoe && plan.minutes === 60 && plan.titre === 'Retard de 1 h 00', '[D] 20 min s ajoutent aux 40 deja pris', plan);
     ok(!plan.bulle, '[D] la bulle se ferme', plan);
   } finally { await ctx.close(); }
 }

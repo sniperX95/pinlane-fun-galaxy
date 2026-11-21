@@ -28828,7 +28828,10 @@ function getGroupeProgramme(r) {
   const items = r && r.program && Array.isArray(r.program.items) ? r.program.items : [];
   // « Venir plus tot » (2026-11-05) : ce que le groupe fait avant sa premiere activite a heure, a l heure que le plan lui
   // donne. L equipe sait ce qu il vient faire.
-  items.filter(item => !item.planned && !item.waitOffer).forEach((item, index) => {
+  // (une formule adaptee, le dossier 1953 : ce que sa formule comprend est deja au programme par elle, une ligne
+  // chacune ; seul ce que le programme lui ajoute s y lit encore)
+  const parLaFormule = new Set(formuleSuivie ? etapes.map(etape => etape.activityId) : []);
+  items.filter(item => !item.planned && !item.waitOffer && !parLaFormule.has(item.activityId)).forEach((item, index) => {
     const avant = getEtapeAvant(r, item);
     etapes.push({
       cle: `libre-${index}`,
@@ -31170,7 +31173,22 @@ function additionDuGroupe(r) {
     // Le calcul n est ecrit que s il retombe exactement sur le montant du dossier.
     const calcul = unitaire > 0 && joueurs > 0 && formule.price.type === 'per_pax' && Math.abs(unitaire * joueurs - base) < 0.5
       ? `${formatMoneyCentimes(unitaire)} × ${joueurs} joueur${joueurs > 1 ? 's' : ''}` : '';
-    lignes.push({ nom, detail: calcul, montant: base > 0 ? formatMoneyCentimes(base) : '' });
+    // UNE FORMULE ADAPTEE QUI COMPTE SES AJOUTS (2026-11-20, dossier 1953 de Gembloux) : la formule a
+    // son prix, « 26 € × 6 joueurs », et chaque activite ajoutee le sien, comme le serveur les a
+    // ecrits. Une formule adaptee « au même prix » se lit comme avant.
+    const ajouts = ajoutsDeLaFormuleAdaptee(r, base);
+    if (ajouts) {
+      const prixCarte = formule.price && typeof formule.price === 'object' ? formule.price : { type: formule.type, value: formule.price };
+      const parJoueur = Number(prixCarte.value) || 0;
+      const detailFormule = prixCarte.type !== 'per_lane' && parJoueur > 0 && joueurs > 0 && Math.abs(parJoueur * joueurs - ajouts.prixFormule) < 0.5
+        ? `${formatMoneyCentimes(parJoueur)} × ${joueurs} joueur${joueurs > 1 ? 's' : ''}` : '';
+      lignes.push({ nom, detail: detailFormule, montant: formatMoneyCentimes(ajouts.prixFormule) });
+      ajouts.ajoutees.forEach(item => lignes.push({
+        nom: nomActivite(item),
+        detail: item.activityId === 'bowling' && Number(item.laneCount) > 0 ? `${Number(item.laneCount)} piste${Number(item.laneCount) > 1 ? 's' : ''}` : '',
+        montant: item.priceKnown === true && Number.isFinite(Number(item.price)) ? formatMoneyCentimes(item.price) : 'au comptoir',
+      }));
+    } else lignes.push({ nom, detail: calcul, montant: base > 0 ? formatMoneyCentimes(base) : '' });
   } else if (items.length) {
     // CE QUI FAIT LE MONTANT, dit a cote : les pistes du bowling fois le prix
     // d une piste (6 joueurs par piste), le prix par joueur du laser fois les
@@ -32346,17 +32364,59 @@ function estimerPrixProgramme(items, pax, dateStr, startTime) {
 // l enregistrement ecrivait. Le prix d une formule est celui du catalogue,
 // par joueur ou par piste (getBasePrice, le meme calcul que l enregistrement
 // et le tunnel) ; une formule adaptee repasse au chiffrage par activite.
+// UNE FORMULE ADAPTEE GARDE SON PRIX (2026-11-20, dossier 1953 de Gembloux) : la
+// Formule 5 a laquelle on ajoute un bowling reste a 26 EUR par joueur, et le
+// bowling s y ajoute a son prix du catalogue, ligne par ligne, comme le serveur
+// l ecrit (lib/formule-adaptee.js). Retirer une de ses activites ne baisse
+// rien. Un acces illimite adapte se chiffre encore par activite.
 function estimerFormuleEdition(r, e) {
-  if (!r.formuleId || editProgramAChange()) return null;
+  if (!r.formuleId) return null;
   const formule = resolveDisplayFormule(r.formuleId);
   if (!formule || !(Number(formule.price) > 0)) return null;
+  if (editProgramAChange() && estFormuleIllimitee(formule)) return null;
   const pax = Math.max(1, Number(e.pax) || 1);
   const pistes = reservationNeedsLanes(r.type, r.formuleId) ? (parseLaneInput(e.lanesStr).length || (r.lanes || []).length) : 0;
-  const total = Math.round((Number(getBasePrice(r.type, Number(e.duration ?? r.duration), pistes, pax, r.formuleId, e.date || r.date)) || 0) * 100) / 100;
-  if (!(total > 0)) return null;
+  const prixFormule = Math.round((Number(getBasePrice(r.type, Number(e.duration ?? r.duration), pistes, pax, r.formuleId, e.date || r.date)) || 0) * 100) / 100;
+  if (!(prixFormule > 0)) return null;
   // « 39 € × 11 », comme l addition de la fiche.
   const detail = `${formatMoneyCentimes(formule.price)} × ${formule.type === 'per_lane' ? `${pistes} piste${pistes > 1 ? 's' : ''}` : pax}`;
-  return { total, complet: true, utilisable: true, lignes: [{ nom: nomDeLaFormuleAchetee(r, formule.name), detail, montant: total }], parPersonne: Math.round(total / pax) };
+  const lignes = [{ nom: nomDeLaFormuleAchetee(r, formule.name), detail, montant: prixFormule }];
+  const comprises = activitesDeLaFormuleEdition(applyReservationFormulaChoice(formule, r));
+  const ajoutees = editProgramAChange() ? getEditProgramItems().filter((item) => !comprises.has(String(item.activityId || ''))) : [];
+  const ajouts = ajoutees.length ? estimerPrixProgramme(ajoutees, e.pax, e.date || r.date, e.startTime || r.startTime) : null;
+  const total = Math.round((prixFormule + (ajouts ? ajouts.total : 0)) * 100) / 100;
+  return { total, complet: !ajouts || ajouts.complet, utilisable: true, lignes: [...lignes, ...(ajouts ? ajouts.lignes : [])], parPersonne: Math.round(total / pax) };
+}
+
+// CE QUE LA FORMULE COMPREND (2026-11-20) : ses activites, lues sur sa carte
+// comme buildEditProgramFromReservation les pose au Programme. Le reste du
+// programme lui est ajoute.
+function activitesDeLaFormuleEdition(formule) {
+  const ids = new Set(formule ? getFormulaFreePassIds(formule) : []);
+  if (formule && formule.hasBowling) ids.add('bowling');
+  if (getFormulaLaserGameCount(formule) > 0) ids.add('laser_game');
+  return ids;
+}
+
+// LES ACTIVITES AJOUTEES A UNE FORMULE ADAPTEE, chiffrees a part (2026-11-20,
+// lib/formule-adaptee.js) : celles que le programme porte et que la carte n a
+// pas, quand la reference du dossier les compte, le prix de la formule plus le
+// leur. Une formule adaptee « au même prix » (la fenetre Reserver) les comprend
+// dans son prix : null, elle se lit comme avant.
+function ajoutsDeLaFormuleAdaptee(r, base) {
+  if (!r || r.type !== 'formule' || !r.formuleId || !/\(adapt[ée]e\)/i.test(String(r.label || ''))) return null;
+  const items = r.program && Array.isArray(r.program.items) ? r.program.items : [];
+  const carte = resolveDisplayFormule(r.formuleId);
+  if (!items.length || !carte || estFormuleIllimitee(carte) || formuleDuComptoir(r)) return null;
+  const comprises = activitesDeLaFormuleEdition(applyReservationFormulaChoice(carte, r));
+  const ajoutees = items.filter((item) => item && item.activityId && !comprises.has(String(item.activityId)));
+  if (!ajoutees.length) return null;
+  const connue = (item) => item.priceKnown === true && Number.isFinite(Number(item.price));
+  const montant = Math.round(ajoutees.filter(connue).reduce((somme, item) => somme + Number(item.price), 0) * 100) / 100;
+  const pistes = carte.type === 'per_lane' ? (r.lanes || []).length : 0;
+  const prixFormule = Number(getBasePrice('formule', Number(r.duration), pistes, Number(r.pax), r.formuleId, r.date)) || 0;
+  if (Math.abs(prixFormule + montant - base) >= 0.5) return null;
+  return { ajoutees, montant, prixFormule, complet: ajoutees.every(connue) };
 }
 
 // Les activites seules : la base du dossier, sans ses extras.
@@ -35431,7 +35491,11 @@ function preparerModificationEdition(options = {}) {
       return { erreur: refus };
     }
   }
-  const lanesFinales = requiresLanes ? lanes : [];
+  // LES PISTES D UNE FORMULE ADAPTEE (2026-11-20, dossier 1953) : la carte de la Formule 5 n en a pas,
+  // son bowling ajoute en tient. Elles partent telles que le dossier les a, le serveur les reprend sur
+  // son plan (calculerLaModification) et la base les garde (lib/formule-adaptee.js).
+  const pistesTenues = !requiresLanes && pistesTenuesParLaFormuleAdaptee(dossierFormule);
+  const lanesFinales = requiresLanes ? lanes : pistesTenues ? (origine.lanes || []).map(Number) : [];
   const pistesTouchees = valeurReservationComparable(lanesFinales) !== valeurReservationComparable(origine.lanes || []);
 
   // FORMULE ADAPTEE A CE DOSSIER : on envoie un PROGRAMME. Le serveur le
@@ -35562,7 +35626,20 @@ function preparerModificationEdition(options = {}) {
     if (areneVoulue) updated.preference = { ...(updated.preference && typeof updated.preference === 'object' ? updated.preference : {}), arene: areneVoulue };
     return updated;
   };
-  return { es, origine, versionDeBase, appliquer, requiresLanes, lanesVoulues, jourChange, jourLong, touches, prixSuivi };
+  // (le corps dit les pistes du bowling ajoute : sans elles, il annoncait 0 piste, et le serveur replanifiait
+  // le dossier a chaque nom change)
+  return { es, origine, versionDeBase, appliquer, requiresLanes: requiresLanes || pistesTenues, lanesVoulues, jourChange, jourLong, touches, prixSuivi };
+}
+
+// Une formule adaptee dont le programme garde un bowling que sa carte n a pas (la Formule 5 du dossier
+// 1953) : ses pistes la suivent. Une autre formule choisie, un acces illimite, un programme normal ont
+// leur propre chemin.
+function pistesTenuesParLaFormuleAdaptee(dossier) {
+  const e = state.editState;
+  if (!e || !dossier || dossier.type !== 'formule' || !dossier.formuleId || formuleChangeeEdition() || e.versProgrammeNormal) return false;
+  if (estFormuleIllimitee(resolveDisplayFormule(dossier.formuleId))) return false;
+  const items = e.programmeEdite ? getEditProgramItems() : ((dossier.program && dossier.program.items) || []);
+  return items.some((item) => item && item.activityId === 'bowling');
 }
 
 async function saveEdit(e) {
@@ -35603,6 +35680,10 @@ async function saveEdit(e) {
     // defaut de buildReservationApiPayload fait exactement ce qu'il faut :
     // max(pistes envoyees, minimum requis).
     const payload = await envoyerModificationReservation(versionDeBase, appliquer, { requiresLanes, prixSuivi, prixRaison: raisonPrixEdition(), allowPastStart: true });
+    // LE PLAN ECRIT REMPLACE CELUI QU UNE HEURE ENREGISTREE JUSTE AVANT PROTEGEAIT (2026-11-20, dossier
+    // 1953) : le minigolf a 14:30, puis le Bowling. Ses 9 s de garde reimposaient le plan d avant a la
+    // relecture du jour, et le Bowling ecrit se relisait « --:-- » dans Modifier et absent de Infos.
+    if (payload && payload.reservation) markReservationMutation(payload.reservation.id, payload.reservation, ['lanes', 'opsPlan']);
     applyOptimisticReservation(payload.reservation, { preserveEditState: true });
     state.selectedRes = payload.reservation;
     setEditError('');

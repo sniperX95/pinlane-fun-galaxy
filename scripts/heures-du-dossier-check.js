@@ -430,7 +430,8 @@ async function scenarioLaser(browser) {
     ok(ecran.trop <= tropAvant, '[D] aucun « de trop » de plus sur la journee', { avant: tropAvant, apres: ecran.trop });
     ok(/à placer/i.test(`${laser.texte} ${laser.titre}`) && !/15:00/.test(`${laser.texte} ${laser.titre}`), '[D] la feuille dit « à placer », jamais 15:00', laser);
     ok(/1 partie de laser à placer/.test(toast), '[D] le toast dit la partie a placer', toast);
-    ok(/visite à la carte/.test(toast), '[D] le toast dit que la formule devient une visite a la carte', toast);
+    // (2026-11-20, dossier 1953, lib/formule-adaptee.js : le laser ajoute ne fait plus de la formule une visite a la carte)
+    ok(!/visite à la carte/.test(toast) && b.type === 'formule' && Boolean(b.formuleId), '[D] la formule reste sa formule : le toast ne dit pas « visite à la carte »', { toast, type: b.type, formuleId: b.formuleId });
     ok(etape(b.plan, 'minigolf_blacklight') && etape(b.plan, 'minigolf_blacklight').startTime === '14:35' && !etape(b.plan, 'minigolf_blacklight').flexible
       && etape(b.plan, 'arcade_time') && etape(b.plan, 'arcade_time').startTime === '15:25',
       '[D] le plan refait garde aussi les heures du minigolf et des arcades', etapes(b.plan));
@@ -698,7 +699,7 @@ const MUTATIONS = [
   { nom: 'laser-invente', lettre: 'D', scenarios: LASER, editions: [{ fichier: CORE, de: "  if (resourceType === 'laser_arena' && planLaisseLeLaserAPlacer(reservation)) return planned;\n", vers: '' }] },
   { nom: 'laser-hors-de-la-file', lettre: 'D', scenarios: LASER, editions: [{ fichier: CORE, de: ' || planLaisseLeLaserAPlacer(reservation)))) return [];', vers: '))) return [];' }] },
   { nom: 'partie-tue', lettre: 'D', scenarios: LASER, editions: [{ fichier: JS, de: "          : partiesAPlacer > 0\n            ? `Réservation mise à jour : ${partiesAPlacer} partie${partiesAPlacer > 1 ? 's' : ''} de laser à placer au planning.`\n            : 'Réservation mise à jour';", vers: "          : 'Réservation mise à jour';" }] },
-  { nom: 'visite-tue', lettre: 'D', scenarios: LASER, editions: [{ fichier: JS, de: 'const dit = devenueVisite ? ', vers: 'const dit = false ? ' }] },
+  { nom: 'formule-perdue', lettre: 'D', scenarios: LASER, editions: [{ fichier: API, serveur: true, de: "  const formuleGardee = shouldReplan && ops.program && String(patch.type ?? current.type) === 'formule'\n", vers: "  const formuleGardee = false && ops.program && String(patch.type ?? current.type) === 'formule'\n" }] },
   { nom: 'faux-deplacement', lettre: 'E', scenarios: GLISSER, editions: [{ fichier: JS, de: '  if (bowlingResteEnPlace(reservation, groupStart, lanes)) {\n', vers: '  if (false) {\n' }] },
   { nom: 'apercu-menteur', lettre: 'E', scenarios: GLISSER, editions: [{ fichier: JS, de: "  if (surPlace) return { reservation, targetLane, targetStart, duration, lanes, valid: false, message: 'Aucune autre piste libre' };\n", vers: '' }] },
   { nom: 'selection-sur-place', lettre: 'E', scenarios: GLISSER, editions: [{ fichier: JS, de: '  if(fenetresChoisies.length&&lanes.every(', vers: '  if(false&&lanes.every(' }] },

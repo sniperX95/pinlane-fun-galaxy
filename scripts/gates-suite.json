@@ -275,6 +275,7 @@
     "test:compte-arrivee",
     "test:planning-recherche",
     "test:heures-du-dossier",
+    "test:formule-adaptee",
     "test:planning-liens",
     "test:one-screen",
     "test:funnel-clarity",

@@ -1928,6 +1928,14 @@ function pistesDuDeplacementBowling(lanes) {
 // coupe pas le lien. Une activite sans nombre ecrit (une formule prise au
 // catalogue) suit deja le groupe : on ne lui en ecrit pas, sinon la formule
 // partirait « adaptée » pour un simple changement de groupe.
+// CELLES QUI SUIVENT SE DECIDENT UNE FOIS (2026-11-22, Ansar : « sans que ça change
+// direct partout »). La regle comparait chaque activite au groupe de la frappe
+// d avant, ramene au groupe : taper 50 sur un groupe de 60 passait par « 5 », le
+// bowling a 20 et le laser a 30 y valaient 5, puis suivaient tous les deux a 50.
+// Le groupe ne donne que le depart des activites pas encore reglees : celles qui
+// avaient tout le groupe avant la premiere frappe le suivent, et une activite
+// reglee a la main (son compteur, son nombre tape, setEditActivityParticipants)
+// ne le suit plus jamais.
 function suivreLeGroupe(valeur) {
   const e = state.editState;
   const programme = e && e.programmeEdite;
@@ -1940,9 +1948,13 @@ function suivreLeGroupe(valeur) {
     ['laser_game', programme.laser_game && programme.laser_game.on ? programme.laser_game : null],
     ...Object.keys(programme.others || {}).filter(id => programme.others[id]).map(id => [id, (programme.othersOptions || {})[id] || null]),
   ].filter(([, options]) => options);
+  if (!Array.isArray(e.suiventLeGroupe)) {
+    const reglees = Array.isArray(e.joueursRegles) ? e.joueursRegles : [];
+    e.suiventLeGroupe = actives.filter(([id, options]) => !reglees.includes(id) && (!(Number(options.participants) > 0) || Math.trunc(Number(options.participants)) === reference)).map(([id]) => id);
+  }
   let offreRetiree = false;
   actives.forEach(([id, options]) => {
-    if (!(Number(options.participants) > 0) || participantsLigneProgramme(options, reference) !== reference) return;
+    if (!(Number(options.participants) > 0) || !e.suiventLeGroupe.includes(id)) return;
     const bornes = activityParticipantsBounds(id, groupe);
     options.participants = Math.min(bornes.max, Math.max(bornes.min, groupe));
     if (options.upsell) { delete options.upsell; offreRetiree = true; }
@@ -34290,13 +34302,16 @@ function peindreExtrasEdition() {
 }
 
 // Des arcades vendues a tout le groupe suivent le groupe, comme une activite
-// (suivreLeGroupe) ; vendues a une partie, elles gardent leur nombre.
+// (suivreLeGroupe) ; vendues a une partie, elles gardent leur nombre. Comme pour
+// une activite, cela se decide une fois, avant la premiere frappe (2026-11-22) :
+// « 5 » tape en chemin vers 56 ne fait pas suivre des arcades vendues a 5.
 function suivreLeGroupeExtras(valeur, reference) {
   const e = state.editState;
   const groupe = Math.trunc(Number(valeur));
   if (!e || !(groupe > 0)) return;
   const arcades = e.extrasEdites && e.extrasEdites.arcades;
-  if (arcades && Math.trunc(Number(reference)) > 0 && Math.trunc(Number(arcades.joueurs)) === Math.trunc(Number(reference))) arcades.joueurs = groupe;
+  if (arcades && e.arcadesSuiventLeGroupe === undefined && Math.trunc(Number(reference)) > 0 && Math.trunc(Number(reference)) !== groupe) e.arcadesSuiventLeGroupe = Math.trunc(Number(arcades.joueurs)) === Math.trunc(Number(reference));
+  if (arcades && e.arcadesSuiventLeGroupe === true) arcades.joueurs = groupe;
   // Sans programme, suivreLeGroupe ne tient pas la reference : on la tient ici.
   if (!e.programmeEdite) e.groupeSuivi = groupe;
 }
@@ -35133,7 +35148,10 @@ function peutChangerHeureEdition(r, activityId) {
 }
 
 // Les champs d heure de la rangee : celui qu on vient de toucher, et chaque
-// heure deja changee (son refus s y lit, juste dessous).
+// heure deja changee (son refus s y lit, juste dessous). A la minute, bowling
+// compris (2026-11-22, Ansar : « l'heure qu'on veut [...] à la minute ») : le
+// serveur juge 18:05 sur ses vraies plages (lib/reservation-activity-move.js,
+// aLaMinute) ; un pas de 30 min rendait ce champ invalide.
 function champHeureEditionHtml(activityId) {
   const r = state.selectedRes;
   if (!peutChangerHeureEdition(r, activityId)) return '';
@@ -35155,7 +35173,7 @@ function champHeureEditionHtml(activityId) {
     const refus = refusHeureDe(cle);
     return `<div class="fm-champ fm-heure-champ${refus ? ' is-refus' : ''}${boutonLibre ? ' a-libre' : ''}" data-heure-zone="${escapeHtml(cle)}">
             <label class="lbl" for="${id}">${escapeHtml(libelle)}</label>
-            <div class="fm-heure-saisie"><input id="${id}" class="input" type="time" step="${activityId === 'bowling' ? 1800 : 300}" value="${escapeHtml(valeur)}" data-heure-champ="${escapeHtml(cle)}" data-pl-focus="fiche.edit.heure-champ.${escapeHtml(cle)}" aria-describedby="${id}-refus"${refus ? ' aria-invalid="true"' : ''} oninput="poserHeureActivite('${escapeJsString(cle)}', this.value)" onkeydown="toucheHeureActivite(event, '${escapeJsString(cle)}')">${boutonLibre}</div>
+            <div class="fm-heure-saisie"><input id="${id}" class="input" type="time" step="60" value="${escapeHtml(valeur)}" data-heure-champ="${escapeHtml(cle)}" data-pl-focus="fiche.edit.heure-champ.${escapeHtml(cle)}" aria-describedby="${id}-refus"${refus ? ' aria-invalid="true"' : ''} oninput="poserHeureActivite('${escapeJsString(cle)}', this.value)" onkeydown="toucheHeureActivite(event, '${escapeJsString(cle)}')">${boutonLibre}</div>
           </div>
           <div class="fm-heure-refus" id="${id}-refus" data-heure-refus="${escapeHtml(cle)}" aria-live="polite"${refus ? '' : ' hidden'}>${refus ? refusHeureHtml(cle, refus) : ''}</div>`;
   }).join('');
@@ -35189,7 +35207,7 @@ function champHeureNouvelleHtml(activityId) {
   const id = `editHeureNouvelle-${activityId.replace(/[^a-z0-9]/gi, '-')}`;
   return `<div class="fm-champ fm-heure-champ" data-heure-nouvelle-zone="${escapeHtml(activityId)}">
             <label class="lbl" for="${id}">Heure</label>
-            <div class="fm-heure-saisie"><input id="${id}" class="input" type="time" step="${activityId === 'bowling' ? 1800 : 300}" value="${escapeHtml(valeur)}" data-heure-nouvelle="${escapeHtml(activityId)}" data-pl-focus="fiche.edit.heure-nouvelle.${escapeHtml(activityId)}" oninput="poserHeureNouvelle('${escapeJsString(activityId)}', this.value)"></div>
+            <div class="fm-heure-saisie"><input id="${id}" class="input" type="time" step="60" value="${escapeHtml(valeur)}" data-heure-nouvelle="${escapeHtml(activityId)}" data-pl-focus="fiche.edit.heure-nouvelle.${escapeHtml(activityId)}" oninput="poserHeureNouvelle('${escapeJsString(activityId)}', this.value)"></div>
           </div>`;
 }
 
@@ -35759,7 +35777,7 @@ ${!adapte || (!isLaserRes && !editNeedsLanes && String(rf.type || '') !== 'formu
               <label class="lbl" for="editPaxInput">Joueurs</label>
               <div class="es-stepper staff-stepper fm-stepper">
                 <button type="button" class="es-step staff-stepper-btn" aria-label="Un joueur de moins" onclick="editPaxPas(-1)">${signe(false)}</button>
-                <input id="editPaxInput" class="input" type="number" min="1" max="240" inputmode="numeric" value="${e.pax}" oninput="setEditField('pax', this.value, true)" required>
+                <input id="editPaxInput" class="input" type="number" min="1" max="240" inputmode="numeric" value="${e.pax}" oninput="setEditField('pax', this.value, true)" onfocus="noterGroupeEdition(this)" onkeydown="toucheGroupeEdition(event, this)" onblur="groupeEditionPris()" required>
                 <button type="button" class="es-step staff-stepper-btn" aria-label="Un joueur de plus" onclick="editPaxPas(1)">${signe(true)}</button>
               </div>
             </div>
@@ -35841,6 +35859,46 @@ function changerJourEdition(valeur) {
   setEditField('date', String(valeur || ''));
   if (state.editState.date === state.selectedRes.date) syncEditLaneAssignment();
   renderPos();
+}
+
+// LE NOMBRE DU GROUPE, TAPE (2026-11-22) : tout le nombre se selectionne au toucher, et Echap le rend tel
+// qu il etait a l entree dans le champ, avec ce qu il avait fait suivre pendant la frappe (les activites
+// qui suivent le groupe, les arcades, les pistes) : la photo se prend a l entree. La sortie du champ garde
+// le nombre ; Entree enregistre la fiche, comme dans ses autres champs. Un Echap sans rien de tape ferme
+// la fiche, comme avant.
+const CHAMPS_GROUPE_EDITION = ['pax', 'lanesStr', 'programmeEdite', 'extrasEdites', 'groupeSuivi', 'suiventLeGroupe', 'arcadesSuiventLeGroupe', 'pistesDeLHeure'];
+function noterGroupeEdition(champ) {
+  const e = state.editState;
+  if (!e) return;
+  if (!e.groupeAvantSaisie) {
+    const photo = {};
+    CHAMPS_GROUPE_EDITION.forEach((cle) => { if (e[cle] !== undefined) photo[cle] = e[cle]; });
+    e.groupeAvantSaisie = JSON.stringify(photo);
+  }
+  if (champ) rvSelectionnerAuFocus(champ);
+}
+
+function groupeEditionPris() {
+  if (state.editState) state.editState.groupeAvantSaisie = null;
+}
+
+function toucheGroupeEdition(event, champ) {
+  const e = state.editState;
+  if (event.key !== 'Escape' || !e || !e.groupeAvantSaisie || !champ) return;
+  const photo = JSON.parse(e.groupeAvantSaisie);
+  if (String(photo.pax) === String(e.pax) && String(champ.value) === String(photo.pax)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  CHAMPS_GROUPE_EDITION.forEach((cle) => {
+    if (Object.prototype.hasOwnProperty.call(photo, cle)) e[cle] = photo[cle];
+    else delete e[cle];
+  });
+  champ.value = String(e.pax);
+  if (state.editError) setEditError('');
+  document.querySelectorAll('#posOverlay .dossier-activity[data-edit-activity]').forEach((row) => repeindreCompteurEdition(row.dataset.editActivity));
+  refreshEditPreview();
+  if (typeof repartirDIciEdition === 'function') repartirDIciEdition();
+  champ.select();
 }
 
 // Les joueurs en + / − : le meme chemin que la saisie (pistes resynchronisees).
@@ -37106,16 +37164,148 @@ function renderActivityParticipantsControl(id, mode = 'quick', explicit = false)
   // a effectif egal, elle redisait le compteur juste a cote.
   const explique = explicit === 'ecart' ? Number(courant) !== Number(pax) : Boolean(explicit);
   const nom = (activite && activite.name) || id;
+  // LE NOMBRE SE TAPE AUSSI DANS MODIFIER (2026-11-22, la regle de Reserver, rsNombreHtml) : le nombre
+  // se touche et devient un champ (ouvrirJoueursEdition) ; le « − » et le « + » comptent depuis l etat au
+  // moment du toucher (pasJoueursEdition). Un refus se lit sous le compteur (refusJoueursEdition).
+  const edition = mode === 'edit' && state.editState ? state.editState : null;
+  const saisie = edition && edition.saisieJoueurs && edition.saisieJoueurs.id === id ? edition.saisieJoueurs : null;
+  const dit = edition && edition.saisieJoueursDit && edition.saisieJoueursDit.id === id ? edition.saisieJoueursDit.texte : '';
+  const sid = escapeJsString(id);
+  const valeur = explicit ? courant : `${courant} / ${plafond}`;
+  const nombre = !edition ? `<span class="qb-step-valeur staff-stepper-value">${valeur}</span>`
+    : saisie ? `<input class="staff-stepper-champ" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="3" enterkeyhint="done" autocomplete="off" spellcheck="false" value="${escapeHtml(saisie.texte)}" data-saisie-joueurs="${escapeHtml(id)}" data-pl-focus="fiche.edit.joueurs.${escapeHtml(id)}" aria-label="${escapeHtml(`${nom} : ${unite}s, tapez le nombre`)}" oninput="saisieJoueursEdition('${sid}', this.value)" onkeydown="toucheJoueursEdition(event, '${sid}', this)" onblur="validerJoueursEdition('${sid}', this)">`
+      : `<span class="qb-step-valeur staff-stepper-value" role="button" tabindex="0" data-saisie-joueurs="${escapeHtml(id)}" data-pl-focus="fiche.edit.joueurs.${escapeHtml(id)}" aria-label="${escapeHtml(`${nom} : ${courant} ${unite}${courant > 1 ? 's' : ''}, taper un autre nombre`)}" title="Taper le nombre" onclick="ouvrirJoueursEdition('${sid}')" onkeydown="toucheNombreEdition(event, '${sid}')">${valeur}</span>`;
+  const moins = edition ? `pasJoueursEdition('${sid}',-1)` : `${setter}('${sid}',${courant - 1})`;
+  const plus = edition ? `pasJoueursEdition('${sid}',1)` : `${setter}('${sid}',${courant + 1})`;
   return `<div class="qb-visit-options qb-visit-compteur dossier-activity-count" role="group" aria-label="${escapeHtml(nom)} : ${unite}s">`
     + `<span class="qb-opt-legend">${enfants ? 'Enfants' : 'Joueurs'}</span>`
-    + `<span class="staff-stepper"><button type="button" class="qb-step-btn staff-stepper-btn" aria-label="${escapeHtml(nom)} : retirer un ${unite}" ${courant <= bornes.min ? 'disabled' : ''} onclick="${setter}('${escapeJsString(id)}',${courant - 1})"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg></button>`
-    + `<span class="qb-step-valeur staff-stepper-value">${explicit ? courant : `${courant} / ${plafond}`}</span>`
-    + `<button type="button" class="qb-step-btn staff-stepper-btn" aria-label="${escapeHtml(nom)} : ajouter un ${unite}" ${courant >= plafond ? 'disabled' : ''} onclick="${setter}('${escapeJsString(id)}',${courant + 1})"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg></button></span>${explique ? `<span class="dossier-participants-explanation">${courant} ${unite}${courant > 1 ? 's' : ''}${id === 'laser_game' ? ' au Laser' : ''} sur ${pax} participant${Number(pax) > 1 ? 's' : ''}</span>` : ''}</div>`;
+    + `<span class="staff-stepper"><button type="button" class="qb-step-btn staff-stepper-btn" aria-label="${escapeHtml(nom)} : retirer un ${unite}" ${courant <= bornes.min ? 'disabled' : ''} onclick="${moins}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg></button>`
+    + nombre
+    + `<button type="button" class="qb-step-btn staff-stepper-btn" aria-label="${escapeHtml(nom)} : ajouter un ${unite}" ${courant >= plafond ? 'disabled' : ''} onclick="${plus}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg></button></span>${explique ? `<span class="dossier-participants-explanation">${courant} ${unite}${courant > 1 ? 's' : ''}${id === 'laser_game' ? ' au Laser' : ''} sur ${pax} participant${Number(pax) > 1 ? 's' : ''}</span>` : ''}${dit ? `<span class="dossier-saisie-dit" role="alert" data-saisie-dit="${escapeHtml(id)}">${escapeHtml(dit)}</span>` : ''}</div>`;
 }
 
-function setEditActivityParticipants(id, nombre) {
+// Les options d une activite du programme en cours de modification.
+function optionsJoueursEdition(id) {
+  const p = state.editState && state.editState.programmeEdite;
+  if (!p) return null;
+  return id === 'bowling' || id === 'laser_game' ? p[id] : ((p.othersOptions || {})[id] || {});
+}
+
+// Le compteur d une activite (et, pour le laser, les joueurs de ses parties) repeint en place : la fiche
+// n est pas redessinee, un toucher en cours ailleurs (« Enregistrer ») n est pas perdu.
+function repeindreCompteurEdition(id) {
+  const e = state.editState;
+  if (!e) return;
+  const row = Array.from(document.querySelectorAll('#posOverlay .dossier-activity[data-edit-activity]')).find((r) => r.dataset.editActivity === id);
+  const counter = row ? row.querySelector('.dossier-activity-count') : null;
+  if (counter) counter.outerHTML = renderActivityParticipantsControl(id, 'edit', 'ecart');
+  const parties = row && id === 'laser_game' ? row.querySelector('.dossier-joueurs-parties') : null;
+  if (parties && e.programmeEdite && e.programmeEdite.laser_game) parties.outerHTML = renderDossierJoueursDesParties(e.programmeEdite.laser_game, e.pax);
+}
+
+function champJoueursEdition(id, selecteur = 'input[data-saisie-joueurs]') {
+  return Array.from(document.querySelectorAll(`#posOverlay ${selecteur}`)).find((n) => n.dataset.saisieJoueurs === id) || null;
+}
+
+function ouvrirJoueursEdition(id, premier = '') {
   const e = state.editState;
   if (!e || !e.programmeEdite) return;
+  e.saisieJoueurs = { id, texte: premier || String(participantsLigneProgramme(optionsJoueursEdition(id), e.pax)) };
+  e.saisieJoueursDit = null;
+  repeindreCompteurEdition(id);
+  const champ = champJoueursEdition(id);
+  if (!champ) return;
+  champ.focus({ preventScroll: true });
+  if (premier) champ.setSelectionRange(premier.length, premier.length); else champ.select();
+}
+
+// La frappe ne repeint rien : le texte vit dans l etat, un rendu de la fiche le retrouve.
+function saisieJoueursEdition(id, texte) {
+  const e = state.editState;
+  if (e && e.saisieJoueurs && e.saisieJoueurs.id === id) e.saisieJoueurs.texte = String(texte == null ? '' : texte);
+}
+
+// Au clavier, le nombre s ouvre comme un bouton (Entree, Espace) ; un chiffre l ouvre deja tape. Entree
+// ne doit pas enregistrer la fiche, Echap ne doit pas la fermer.
+function toucheNombreEdition(event, id) {
+  if (event.ctrlKey || event.metaKey || event.altKey) return;
+  const chiffre = /^\d$/.test(event.key) ? event.key : '';
+  if (event.key !== 'Enter' && event.key !== ' ' && !chiffre) return;
+  event.preventDefault();
+  event.stopPropagation();
+  ouvrirJoueursEdition(id, chiffre);
+}
+
+function toucheJoueursEdition(event, id, champ) {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    event.stopPropagation();
+    validerJoueursEdition(id, champ, { clavier: true });
+  } else if (event.key === 'Escape') {
+    event.preventDefault();
+    event.stopPropagation();
+    const e = state.editState;
+    if (!e || !e.saisieJoueurs || e.saisieJoueurs.id !== id) return;
+    e.saisieJoueurs = null;
+    repeindreCompteurEdition(id);
+    const nombre = champJoueursEdition(id, '[data-saisie-joueurs]');
+    if (nombre) nombre.focus({ preventScroll: true });
+  }
+}
+
+// Entree ou la sortie du champ : le nombre se prend s il est possible, sinon le compteur garde le sien
+// et le dit. Rien d autre ne bouge que ce que ce nombre change (les pistes du bowling, le prix).
+function validerJoueursEdition(id, champ, { clavier = false } = {}) {
+  const e = state.editState;
+  if (!e || !e.saisieJoueurs || e.saisieJoueurs.id !== id) return;
+  // (un rendu de la fiche a remplace le champ : son texte est dans l etat, le nouveau champ le reprend)
+  if (champ && !champ.isConnected) return;
+  const brut = String(champ ? champ.value : e.saisieJoueurs.texte).trim();
+  e.saisieJoueurs = null;
+  const actuel = participantsLigneProgramme(optionsJoueursEdition(id), e.pax);
+  const pareil = brut === '' || (/^\d+$/.test(brut) && Number(brut) === actuel);
+  const refus = pareil ? '' : refusJoueursEdition(id, brut);
+  e.saisieJoueursDit = refus ? { id, texte: refus } : null;
+  if (!pareil && !refus) setEditActivityParticipants(id, Number(brut), { sansRendu: true });
+  repeindreCompteurEdition(id);
+  if (clavier) {
+    const nombre = champJoueursEdition(id, '[data-saisie-joueurs]');
+    if (nombre) nombre.focus({ preventScroll: true });
+  }
+}
+
+// La phrase de Reserver (rsRefusDuNombre) : au moins le minimum de l activite, au plus le groupe, au plus
+// ce que l activite accueille.
+function refusJoueursEdition(id, brut) {
+  const e = state.editState;
+  const activite = typeof getCenterActivity === 'function' ? getCenterActivity(id) : null;
+  const unite = activite && typeof activityCountsChildren === 'function' && activityCountsChildren(activite) ? 'enfant' : 'joueur';
+  const nom = (activite && activite.name) || nomActiviteHeureEdition(id);
+  if (!/^\d{1,3}$/.test(brut)) return `${nom} : tapez un nombre, par exemple 20.`;
+  const n = Number(brut);
+  const groupe = Math.max(1, Math.trunc(Number(e && e.pax)) || 1);
+  const bornes = activityParticipantsBounds(id, groupe);
+  const pluriel = (k, mot) => `${k} ${mot}${k > 1 ? 's' : ''}`;
+  if (n < bornes.min) return `${nom} : ${pluriel(bornes.min, unite)} au moins.`;
+  if (n > groupe) return `${nom} : ${groupe} au plus, le groupe compte ${pluriel(groupe, 'personne')}. Changez d’abord le nombre de joueurs en haut.`;
+  if (n > bornes.max) return `${nom} : ${pluriel(bornes.max, unite)} au plus.`;
+  return '';
+}
+
+function pasJoueursEdition(id, delta) {
+  const e = state.editState;
+  if (!e || !e.programmeEdite) return;
+  e.saisieJoueurs = null;
+  e.saisieJoueursDit = null;
+  setEditActivityParticipants(id, participantsLigneProgramme(optionsJoueursEdition(id), e.pax) + (Math.trunc(Number(delta)) || 0));
+}
+
+function setEditActivityParticipants(id, nombre, { sansRendu = false } = {}) {
+  const e = state.editState;
+  if (!e || !e.programmeEdite) return;
+  // (reglee a la main, l activite ne suit plus le groupe : suivreLeGroupe)
+  e.joueursRegles = [...new Set([...(Array.isArray(e.joueursRegles) ? e.joueursRegles : []), id])];
+  if (Array.isArray(e.suiventLeGroupe)) e.suiventLeGroupe = e.suiventLeGroupe.filter((x) => x !== id);
   const p = e.programmeEdite;
   const options = id === 'bowling' || id === 'laser_game' ? p[id] : (p.othersOptions[id] ||= {});
   const bornes = activityParticipantsBounds(id, e.pax);
@@ -37130,7 +37320,7 @@ function setEditActivityParticipants(id, nombre) {
   // montrent (les vagues du laser, leur ligne). Avant : « complétée à
   // l’enregistrement ».
   if (typeof suivrePistesEdition === 'function') suivrePistesEdition();
-  renderPos();
+  if (!sansRendu) renderPos();
 }
 
 // LES JOUEURS DE CHAQUE PARTIE, dans le dossier (meme regle que la fenetre Reserver, rsJoueursDesParties).
@@ -40461,6 +40651,68 @@ function rvFormuleVraimentAdaptee() {
   return cle(base) !== cle(s.visit) || reglages || Object.keys(s.heures || {}).length > 0;
 }
 
+// L HEURE A LA MINUTE (2026-11-22, Ansar : « possibilité de mettre l'heure qu'on veut pour chaque
+// activité [...] à la minute [...] uniquement côté staff »). Le moteur ne place le bowling et le laser
+// qu aux heures pleines ou demies. Une ligne a 15:10 lui part a la demi-heure d avant (15:00), et son
+// heure part posee a la minute (heuresPosees) : le serveur la pose ensuite par le chemin de Modifier
+// (lib/heures-posees.js), pistes, armes, horaires et chevauchement du groupe juges sur les vraies plages.
+// Un bowling ou un laser seul a la minute part en visite de cette seule activite, au meme prix : le
+// moteur refuserait ce bowling et poserait ce laser a la demi-heure suivante. Les parties suivantes du
+// laser gardent leur ecart avec la premiere. Rend '' ou ce qui empeche d envoyer le dossier.
+function rvMinutesDe(heure) {
+  const lu = /^(\d{2}):(\d{2})$/.exec(String(heure || ''));
+  return lu ? Number(lu[1]) * 60 + Number(lu[2]) : NaN;
+}
+
+function rvEnHeure(minutes) {
+  return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+}
+
+function rvHorsGrille(heure) {
+  const m = rvMinutesDe(heure);
+  return Number.isFinite(m) && m % 30 !== 0;
+}
+
+function rvALaMinute(reservation, programme) {
+  const s = quickBookState;
+  let preference = reservation.preference ? JSON.parse(JSON.stringify(reservation.preference)) : null;
+  if (!programme) {
+    if (!((s.type === 'bowling' || s.type === 'laser') && rvHorsGrille(reservation.startTime))) return '';
+    const id = s.type === 'bowling' ? 'bowling' : 'laser_game';
+    reservation.type = 'visite';
+    reservation.program = [id === 'bowling' ? { ...ligneProgrammeQuick('bowling'), duration: rvBowlingDuree() } : { ...ligneProgrammeQuick('laser_game'), games: rvPartiesLaser() }];
+    reservation.label = undefined;
+    reservation.laserGames = 0;
+    preference = { ...(preference || {}), activityOrder: [id], preferredTimes: { [id]: reservation.startTime } };
+    if (id === 'laser_game') {
+      preference.laserGameTimes = rvDepartsLaser(reservation.startTime);
+      preference.laserPlacement = 'scheduled';
+    }
+  }
+  const voulues = preference && preference.preferredTimes;
+  if (!voulues) return '';
+  const posees = { ...(reservation.heuresPosees || {}) };
+  let aLaMinute = false;
+  for (const id of RV_ANCRABLES) {
+    const heure = voulues[id];
+    if (!rvHorsGrille(heure)) continue;
+    const ecart = rvMinutesDe(heure) % 30;
+    voulues[id] = rvEnHeure(rvMinutesDe(heure) - ecart);
+    posees[id] = heure;
+    aLaMinute = true;
+    if (id === 'laser_game' && Array.isArray(preference.laserGameTimes)) {
+      const departs = preference.laserGameTimes.map((h) => (h ? rvMinutesDe(h) - ecart : NaN));
+      const k = preference.laserGameTimes.findIndex((h, i) => h && (!Number.isFinite(departs[i]) || departs[i] % 30 !== 0));
+      if (k > 0) return `Laser à ${heure} : ses autres parties suivent toutes les 30 minutes (${rvEnHeure(rvMinutesDe(heure) + 30)}). Pour placer la partie ${k + 1} à part, mettez la première sur une demi-heure.`;
+      preference.laserGameTimes = preference.laserGameTimes.map((h, i) => (h ? rvEnHeure(departs[i]) : h));
+    }
+  }
+  if (!aLaMinute) return '';
+  reservation.preference = preference;
+  reservation.heuresPosees = posees;
+  return '';
+}
+
 // LES HEURES ENVOYEES AU MOTEUR, et la variante d une formule. Le serveur lit
 // preference.formulaChoice (lib/formula-choice) ; le comptoir ne l envoyait pas.
 function rvPreference(ids, heures, programme) {
@@ -40635,6 +40887,8 @@ function rvConstruire({ simulation = false } = {}) {
   if (forcer) reservation.forcer = true;
   const varianteArrivee = programme ? rvOrdreVarianteActive(ids) : null;
   if (varianteArrivee && varianteArrivee.parArrivee) reservation.preference = { ...(reservation.preference || {}), arrivalTime: s.startTime };
+  const minute = rvALaMinute(reservation, programme);
+  if (minute) return { erreur: minute };
   return { reservation, needsLanes, requiredCount: programme ? requiredCount : Math.max(requiredCount, lanes.length) };
 }
 
@@ -41019,6 +41273,8 @@ function rsDepart(s) {
 // toucher se sentent. Ce qu il demande pendant le geste attend la fin du geste.
 function rsGeste(faire, { focus = true } = {}) {
   const avant = rsRetenu ? null : rsHeuresAvantLeGeste();
+  // (le refus d un nombre tape se lit jusqu au geste suivant, rsSaisieDitHtml)
+  if (!rsRetenu && rsEtat()) rsEtat().saisieDit = null;
   rsRetenu += 1;
   try { faire(); } finally { rsRetenu -= 1; }
   if (rsRetenu) return;
@@ -41105,6 +41361,8 @@ function rsVersQuestion(q) {
   b.retourLigne = '';
   if (b.ticket) b.cachable = true;
   b.ticket = false;
+  // (l heure tapee a la minute ne vit que sur sa page, rsMinuteHtml)
+  b.minute = null;
   // (les heures ouvertes sous une activite ne vivent que sur la page des activites)
   if (q !== 'activites') { b.heureAct = ''; b.heureActDit = null; }
 }
@@ -41555,7 +41813,7 @@ function rsRangJoueursDesParties() {
   const liste = rsJoueursDesParties();
   const bornes = activityParticipantsBounds('laser_game', quickBookState.pax);
   // (les touches pleine taille de la page : 44 px au doigt, comme ses autres compteurs)
-  const cles = liste.map((n, k) => `<span class="rs-partie-cpt"><span class="rs-cpt-l">Partie ${k + 1}</span>${rsPasHtml(n > bornes.min ? `rsJoueursPartie(${k},${n - 1})` : '', n < bornes.max ? `rsJoueursPartie(${k},${n + 1})` : '', n, `Joueurs de la partie ${k + 1}`, `data-partie-joueurs="${k + 1}"`)}</span>`);
+  const cles = liste.map((n, k) => `<span class="rs-partie-cpt"><span class="rs-cpt-l">Partie ${k + 1}</span>${rsPasHtml(n > bornes.min ? `rsJoueursPartiePas(${k},-1)` : '', n < bornes.max ? `rsJoueursPartiePas(${k},1)` : '', n, `Joueurs de la partie ${k + 1}`, `data-partie-joueurs="${k + 1}"`, `p:${k}`)}</span>`);
   // (une rangee qui passe a la ligne : au telephone, une partie par ligne, rien hors de l ecran)
   return `<div class="rs-rang"><span class="rs-lbl">Par partie</span><div class="rs-choix rs-parties-joueurs">${cles.join('')}</div></div>`;
 }
@@ -41579,15 +41837,171 @@ function rsFixerPistes(n) {
   renderQuickBook();
 }
 
-function rsCompteurHtml(mot, valeur, moins, plus, attributs = '', aria = mot) {
-  return `<span class="rs-cpt"><span class="rs-cpt-l">${escapeHtml(mot)}</span>${rsPasHtml(moins, plus, valeur, aria, attributs)}</span>`;
+function rsCompteurHtml(mot, valeur, moins, plus, attributs = '', aria = mot, saisie = '') {
+  return `<span class="rs-cpt"><span class="rs-cpt-l">${escapeHtml(mot)}</span>${rsPasHtml(moins, plus, valeur, aria, attributs, saisie)}</span>`;
 }
 
+// (le « − » et le « + » comptent depuis le nombre de l activite au moment du toucher, rsJoueursPas)
 function rsCompteurJoueursHtml(id, mot, aria) {
   const n = getQuickVisitParticipants(id);
   const bornes = activityParticipantsBounds(id, quickBookState.pax);
   const peutMonter = n < bornes.max || (bornes.max === Math.max(1, Number(quickBookState.pax) || 1) && n < RS_JOUEURS_MAX);
-  return rsCompteurHtml(mot, n, n > bornes.min ? `rsJoueursBloc(this.dataset.activite,${n - 1})` : '', peutMonter ? `rsJoueursBloc(this.dataset.activite,${n + 1})` : '', `data-activite="${escapeHtml(id)}"`, aria);
+  return rsCompteurHtml(mot, n, n > bornes.min ? 'rsJoueursPas(this.dataset.activite,-1)' : '', peutMonter ? 'rsJoueursPas(this.dataset.activite,1)' : '', `data-activite="${escapeHtml(id)}"`, aria, `j:${id}`);
+}
+
+// LE NOMBRE SE TAPE (2026-11-22, Ansar au comptoir : « Pouvoir mettre nombre écrire direct dessus sans
+// que ça change direct partout pour une resa [...] quand on a genre 60 pers et qu'on veut mettre 20
+// bowling 30 laser Game on peut pas écrire dessus direct on doit jouer avec les plus + et - c trop
+// long »). Le nombre d un compteur de joueurs se touche : il devient un champ, tout le nombre
+// selectionne, le clavier des chiffres au telephone. Entree ou la sortie du champ le valident, Echap le
+// laisse tel quel (rsEchap). Le nombre d une activite ne change que le sien : jamais le groupe, jamais
+// une autre activite. Un nombre impossible (0, plus que le groupe, plus que l activite n accueille) se
+// dit sous le compteur, et rien ne bouge (rsRefusDuNombre). Le « − » et le « + » restent ; ils comptent
+// depuis le nombre de l etat au moment du toucher, jamais depuis celui du rendu d avant : un nombre
+// tape puis un « + » touche donnent ce nombre plus un, pas le groupe plus un.
+// Cles : `j:<activite>` (une activite), `p:<k>` (la partie k du laser).
+function rsNombreHtml(cle, valeur, aria) {
+  const b = rsEtat();
+  if (b && b.saisie === cle) {
+    return `<input class="rs-pas-champ" id="rsSaisie" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="3" enterkeyhint="done" autocomplete="off" spellcheck="false" value="${escapeHtml(String(valeur))}" aria-label="${escapeHtml(`${aria}, tapez le nombre`)}" data-saisie="${escapeHtml(cle)}" onkeydown="rsSaisieTouche(event, this)" onblur="rsSaisieSortie(this)">`;
+  }
+  return `<b class="rs-pas-n" role="button" tabindex="0" data-saisie="${escapeHtml(cle)}" aria-label="${escapeHtml(`${aria}, ${valeur}, taper un autre nombre`)}" title="Taper le nombre" onclick="rsOuvrirSaisie(this.dataset.saisie)" onkeydown="rsToucheNombre(event, this)">${valeur}</b>`;
+}
+
+// Le refus d un nombre tape, sous son compteur, jusqu au geste suivant (rsGeste l efface).
+function rsSaisieDitHtml(cle) {
+  const b = rsEtat();
+  const dit = b && b.saisieDit && b.saisieDit.cle === cle ? b.saisieDit.texte : '';
+  return dit ? `<span class="rs-pas-dit" role="alert" data-saisie-dit="${escapeHtml(cle)}">${escapeHtml(dit)}</span>` : '';
+}
+
+function rsOuvrirSaisie(cle, premier = '') {
+  const s = quickBookState;
+  const b = rsEtat();
+  if (!s || !b || !cle) return;
+  const [sorte, quoi] = String(cle).split(':');
+  // (ce que les « − » et « + » ne peuvent pas changer ne se tape pas non plus)
+  if (sorte === 'j' && rsAuTicket(quoi) && !rsPeutChanger()) return;
+  if (sorte === 'p' && rsAuTicket('laser_game') && !rsPeutChanger()) return;
+  rsGeste(() => { b.saisie = String(cle); }, { focus: false });
+  const champ = document.getElementById('rsSaisie');
+  if (!champ) return;
+  champ.focus({ preventScroll: true });
+  if (premier) { champ.value = premier; champ.setSelectionRange(premier.length, premier.length); } else champ.select();
+}
+
+// Au clavier, le nombre s ouvre comme un bouton (Entree, Espace) ; un chiffre l ouvre deja tape.
+function rsToucheNombre(event, el) {
+  if (!el || event.ctrlKey || event.metaKey || event.altKey) return;
+  const chiffre = /^\d$/.test(event.key) ? event.key : '';
+  if (event.key !== 'Enter' && event.key !== ' ' && !chiffre) return;
+  event.preventDefault();
+  event.stopPropagation();
+  rsOuvrirSaisie(el.dataset.saisie, chiffre);
+}
+
+function rsSaisieTouche(event, champ) {
+  if (event.key !== 'Enter' || !champ) return;
+  event.preventDefault();
+  event.stopPropagation();
+  rsSaisieValider(champ.dataset.saisie, champ.value, { clavier: true });
+}
+
+// La sortie du champ valide, comme Entree (le geste suivant voit le nombre tape).
+function rsSaisieSortie(champ) {
+  const b = rsEtat();
+  if (!b || !champ || b.saisie !== champ.dataset.saisie) return;
+  rsSaisieValider(champ.dataset.saisie, champ.value);
+}
+
+// Echap : le nombre reste celui d avant, le focus revient au nombre.
+function rsSaisieAnnuler() {
+  const b = rsEtat();
+  if (!b || !b.saisie) return false;
+  const cle = b.saisie;
+  rsFermerSaisie();
+  rsGeste(() => {}, { focus: false });
+  rsRendreLeNombre(cle);
+  return true;
+}
+
+// Le champ qui garde le focus retient sa zone (rsPoser) : il rend la main avant le repeint, sinon
+// le nombre resterait un champ. Sa sortie ne revalide rien, la saisie est deja fermee (rsSaisieSortie).
+function rsFermerSaisie() {
+  const b = rsEtat();
+  if (b) b.saisie = '';
+  const champ = document.getElementById('rsSaisie');
+  if (champ && document.activeElement === champ) champ.blur();
+}
+
+function rsRendreLeNombre(cle) {
+  const el = Array.from(document.querySelectorAll('#quickBookOverlay [data-saisie]')).find((n) => n.dataset.saisie === cle);
+  if (el) el.focus({ preventScroll: true });
+}
+
+function rsSaisieValider(cle, texte, { clavier = false } = {}) {
+  const s = quickBookState;
+  const b = rsEtat();
+  if (!s || !b || b.saisie !== cle) return;
+  const [sorte, quoi] = String(cle).split(':');
+  const brut = String(texte == null ? '' : texte).trim();
+  const actuel = sorte === 'p' ? rsJoueursDesParties()[Number(quoi)] : getQuickVisitParticipants(quoi);
+  const pareil = brut === '' || (/^\d+$/.test(brut) && Number(brut) === actuel);
+  const refus = pareil ? '' : rsRefusDuNombre(sorte, quoi, brut);
+  rsFermerSaisie();
+  rsGeste(() => {
+    if (refus) b.saisieDit = { cle, texte: refus };
+    else if (pareil) return;
+    else if (sorte === 'p') rsJoueursPartie(Number(quoi), Number(brut));
+    else rsJoueursBloc(quoi, Number(brut));
+  }, { focus: false });
+  if (clavier) { rsRendreLeNombre(cle); return; }
+  // (sortie au pointeur ou a Tab : le focus va ou la main l envoie ; si le repeint a retire sa
+  // cible, il revient au nombre, jamais au document derriere la fenetre)
+  setTimeout(() => {
+    const actif = document.activeElement;
+    if (quickBookState && (!actif || actif === document.body)) rsRendreLeNombre(cle);
+  }, 0);
+}
+
+// Ce qui empeche ce nombre, en une phrase, ou '' quand il se prend. Le groupe ne grandit jamais par un
+// nombre tape : il se change en haut, ou d un « + ».
+function rsRefusDuNombre(sorte, quoi, brut) {
+  const s = quickBookState;
+  const id = sorte === 'p' ? 'laser_game' : quoi;
+  const activite = getCenterActivity(id);
+  const unite = activite && activityCountsChildren(activite) ? 'enfant' : 'joueur';
+  const nom = sorte === 'p' ? `Partie ${Number(quoi) + 1}` : rsNomCourt(id);
+  if (!/^\d{1,3}$/.test(brut)) return `${nom} : tapez un nombre, par exemple 20.`;
+  const n = Number(brut);
+  const groupe = Math.max(1, Number(s.pax) || 1);
+  const bornes = activityParticipantsBounds(id, s.pax);
+  if (n < bornes.min) return `${nom} : ${rvPluriel(bornes.min, unite)} au moins.`;
+  if (n > groupe) return `${nom} : ${groupe} au plus, le groupe compte ${rvPluriel(groupe, 'personne')}. Changez d’abord le nombre du groupe, en haut.`;
+  if (n > bornes.max) return `${nom} : ${rvPluriel(bornes.max, unite)} au plus.`;
+  return '';
+}
+
+// LE NOMBRE DU GROUPE, TAPE DANS « AUTRE » : Echap le rend tel qu il etait (le champ ne valide qu a
+// Entree ou a sa sortie, rsNombre) et le champ rend la main.
+function rsAnnulerAutreGroupe() {
+  const s = quickBookState;
+  const champ = document.activeElement;
+  if (!s || !champ || champ.id !== 'qbPax' || !champ.closest('#quickBookOverlay')) return false;
+  const b = rsEtat();
+  champ.value = b && b.faits.combien && !RS_NOMBRES.includes(Number(s.pax)) ? String(s.pax) : '';
+  champ.blur();
+  return true;
+}
+
+function rsJoueursPas(id, delta) {
+  if (!quickBookState || !rsEtat()) return;
+  rsJoueursBloc(id, getQuickVisitParticipants(id) + (Math.trunc(Number(delta)) || 0));
+}
+
+function rsJoueursPartiePas(k, delta) {
+  if (!quickBookState || !rsEtat()) return;
+  rsJoueursPartie(k, (rsJoueursDesParties()[k] || 0) + (Math.trunc(Number(delta)) || 0));
 }
 
 // Les reglages d un bloc, une fois le groupe connu : ses joueurs, et les pistes du bowling.
@@ -41829,7 +42243,95 @@ function rsHeuresActiviteHtml(id) {
       cles.push(`<button type="button" class="rs-h${on ? ' is-on' : ''}${on && coince ? ' is-ko' : ''}${!on && coince ? ' is-coince' : ''}" data-activite="${sid}" data-heure-l="${heure}" data-tient="${impossible ? '0' : '1'}" aria-pressed="${on}"${phrase ? ` title="${escapeHtml(phrase)}"` : ''} aria-label="${escapeHtml(aria)}" onclick="rsHeureAct(this.dataset.activite, this.dataset.heureL)">${coche}<b>${heure}</b>${mot ? `<small>${escapeHtml(mot)}</small>` : ''}</button>`);
     });
   }
-  return `<div class="rs-ha" id="rsHA-${sid}" role="group" aria-label="${escapeHtml(`Heures, ${rsNomTuile(id)}`)}"><div class="rs-s-l" data-heures-act="${sid}" data-verifie="${lue ? '1' : '0'}">${cles.join('')}</div>${rsDitDesHeuresAct(id, mode, ligne)}</div>`;
+  const minute = rsMinuteHtml(id, mode === 'arrivee' ? ligne.heure || s.startTime : ligne.posee ? ligne.heure : '');
+  return `<div class="rs-ha" id="rsHA-${sid}" role="group" aria-label="${escapeHtml(`Heures, ${rsNomTuile(id)}`)}"><div class="rs-s-l" data-heures-act="${sid}" data-verifie="${lue ? '1' : '0'}">${cles.join('')}</div>${minute}${rsDitDesHeuresAct(id, mode, ligne)}</div>`;
+}
+
+// « AUTRE HEURE », A LA MINUTE (2026-11-22, Ansar : « possibilité de mettre l'heure qu'on veut pour
+// chaque activité [...] à la minute [...] dans réservation »). En plus de ses demi-heures, chaque
+// activite prend une heure tapee : 15:10. Avant de la prendre, le serveur juge le dossier avec elle, a
+// blanc, par le moteur de « Créer » (rvALaMinute, puis lib/heures-posees.js : pistes, armes, horaires,
+// chevauchement du groupe sur les vraies plages). Elle se prend si elle tient ; sinon le champ dit
+// pourquoi et rien ne bouge. Une demi-heure tapee se prend comme sa touche.
+function rsMinuteHtml(id, courante) {
+  const b = rsEtat();
+  const m = b && b.minute && b.minute.id === id ? b.minute : null;
+  const sid = escapeHtml(id);
+  const calcul = Boolean(m && m.etat === 'calcul');
+  const valeur = m ? m.heure : rvHorsGrille(courante) ? courante : '';
+  return `<form class="rs-minute" data-minute="${sid}" novalidate onsubmit="event.preventDefault(); rsPrendreLaMinute(this.dataset.minute)"><label class="rs-minute-l" for="rsMin-${sid}">Autre heure</label><input class="rs-minute-c" id="rsMin-${sid}" type="time" step="60" value="${escapeHtml(valeur)}" aria-describedby="rsMinDit-${sid}" oninput="rsNoterLaMinute(this)"><button type="submit" class="rs-minute-ok"${calcul ? ' aria-busy="true"' : ''}>${calcul ? 'Vérification' : 'Prendre'}</button><span class="rs-minute-dit" id="rsMinDit-${sid}" role="status">${escapeHtml(m && m.dit ? m.dit : '')}</span></form>`;
+}
+
+function rsNoterLaMinute(champ) {
+  const b = rsEtat();
+  const zone = champ && champ.closest('[data-minute]');
+  if (!b || !zone) return;
+  b.minute = { id: zone.dataset.minute, heure: String(champ.value || '').slice(0, 5), etat: '', dit: '' };
+  const dit = document.getElementById(`rsMinDit-${zone.dataset.minute}`);
+  if (dit) dit.textContent = '';
+}
+
+// Ce que l heure change ici : 'bloc' (le bowling ou le laser, depuis leurs heures), sinon le mode du
+// panneau d une activite (rsModeHeureAct : 'arrivee' ou 'posee').
+function rsModeDeLaMinute(id) {
+  return RV_ANCRABLES.includes(id) && rvModifiable() ? 'bloc' : rsModeHeureAct(id);
+}
+
+// Le corps que « Créer » enverrait avec cette heure, sur une copie : le meme geste que le toucher.
+function rsCorpsALaMinute(id, heure, mode) {
+  const construire = () => {
+    const construit = rvConstruire({ simulation: true });
+    return construit.erreur ? { erreur: construit.erreur } : rvCorpsDeSimulation();
+  };
+  if (mode === 'bloc') return rsDansLaCopie(id, () => rvDansLaVariante(id, 0, heure, construire));
+  return rsSurUneCopie((copie) => {
+    if (mode === 'arrivee') rvChoisirHeure(id, 0, heure, { seule: true });
+    else if (!rvHeureSansSuivre(id, heure)) {
+      copie.heuresPosees = { ...(copie.heuresPosees || {}), [id]: heure };
+      rvArriveeALaPremiere();
+    }
+    return construire();
+  });
+}
+
+function rsPrendreHeureALaMinute(id, heure, mode) {
+  if (mode === 'bloc') rsHeure(id, heure);
+  else rsHeureAct(id, heure);
+}
+
+let rsMinuteSeq = 0;
+async function rsPrendreLaMinute(id) {
+  const s = quickBookState;
+  const b = rsEtat();
+  const mode = s && b && id ? rsModeDeLaMinute(id) : '';
+  if (!mode || (b.minute && b.minute.id === id && b.minute.etat === 'calcul')) return;
+  const champ = document.getElementById(`rsMin-${id}`);
+  const heure = String(champ ? champ.value : '').slice(0, 5);
+  const dire = (texte, etat = '') => {
+    b.minute = { id, heure, etat, dit: texte };
+    rvRepeindre();
+  };
+  if (!/^\d{2}:\d{2}$/.test(heure)) { dire('Tapez une heure, par exemple 15:10.'); return; }
+  if (!rvHorsGrille(heure)) { b.minute = null; rsPrendreHeureALaMinute(id, heure, mode); return; }
+  const corps = rsCorpsALaMinute(id, heure, mode);
+  if (!corps || corps.erreur) { dire(`${heure} ne tient pas. ${corps && corps.erreur ? corps.erreur : rvRefusDeLaVariante(id, 0, heure).raison}`); return; }
+  const seq = ++rsMinuteSeq;
+  dire('', 'calcul');
+  let plan = null;
+  try {
+    const payload = await apiRequest(API_ENDPOINTS.staffReservations, { method: 'POST', body: JSON.stringify({ ...corps, dryRun: true }) });
+    plan = payload && payload.plan;
+  } catch (error) {
+    if (seq === rsMinuteSeq && quickBookState === s) dire(`${heure} n’a pas pu être vérifiée : ${String((error && error.message) || 'le serveur ne répond pas')}. Réessayez.`);
+    return;
+  }
+  if (seq !== rsMinuteSeq || quickBookState !== s || !b.minute || b.minute.id !== id || b.minute.heure !== heure) return;
+  if (plan && plan.disponible === true) {
+    b.minute = null;
+    rsPrendreHeureALaMinute(id, heure, mode);
+    return;
+  }
+  dire(`${heure} ne tient pas. ${rsPhrase(String((plan && plan.refus) || 'Pas de plan possible à cette heure.'))}`);
 }
 
 // Sous les heures, une phrase : pourquoi l heure touchee ne se prend pas, ou le refus du plan pour
@@ -41853,7 +42355,7 @@ function rsBasculerHeureAct(id) {
   const b = rsEtat();
   if (!b || !rsModeHeureAct(id)) return;
   if (b.heureAct === id) { rsFermerHeureAct(); return; }
-  rsGeste(() => { b.heureAct = id; b.heureActDit = null; }, { focus: false });
+  rsGeste(() => { b.heureAct = id; b.heureActDit = null; b.minute = null; }, { focus: false });
   const montrer = () => {
     const panneau = document.getElementById(`rsHA-${id}`);
     if (panneau) panneau.scrollIntoView({ block: 'nearest' });
@@ -41872,7 +42374,7 @@ function rsFermerHeureAct() {
   const b = rsEtat();
   const id = b ? b.heureAct : '';
   if (!id) return false;
-  rsGeste(() => { b.heureAct = ''; b.heureActDit = null; }, { focus: false });
+  rsGeste(() => { b.heureAct = ''; b.heureActDit = null; b.minute = null; }, { focus: false });
   const bouton = document.getElementById(`rsHB-${id}`);
   if (bouton) bouton.focus({ preventScroll: true });
   return true;
@@ -42752,7 +43254,8 @@ function rsHeuresHtml(id) {
     return `<button type="button" class="rs-h${on ? ' is-on' : ''}${on && propose ? ' is-propose' : ''}${ko ? ' is-ko' : ''}${coince && !on ? ' is-coince' : ''}${pendant ? ' is-coince' : ''}${gris ? ' is-efface' : ''}"${on ? ` id="rvHeure-${escapeHtml(id)}"` : ''} data-activite="${escapeHtml(id)}" data-heure="${heure}"${rsDitLHeure(dite, x, mot, id, plages)} aria-pressed="${on}" onclick="rsHeure('${sid}','${heure}')">${coche}${rsDedansHeure(x, dite, mot)}</button>`;
   }).join('');
   const vide = vues.length ? '' : '<p class="rs-texte">Plus de séance ce jour-là.</p>';
-  return `<div class="rs-s-l" data-verifie="${lue ? '1' : '0'}">${cles}${vide}<button type="button" class="rs-h rs-h-autres" data-activite="${escapeHtml(id)}" onclick="rsAutres('${sid}')">Autres</button></div>`;
+  // (« Autre heure » : toute la journee, et l heure a la minute, rsMinuteHtml)
+  return `<div class="rs-s-l" data-verifie="${lue ? '1' : '0'}">${cles}${vide}<button type="button" class="rs-h rs-h-autres" data-activite="${escapeHtml(id)}" aria-label="${escapeHtml(`Autre heure, ${rsNomCourt(id)} : une autre demi-heure, ou une heure à la minute`)}" onclick="rsAutres('${sid}')">Autre heure</button></div>`;
 }
 
 // LE SERVEUR RELIT LES SEANCES. Ce poste ne voit pas tout : le serveur essaie chaque heure
@@ -42941,7 +43444,7 @@ function rsPartiesHtml() {
       return `<button type="button" class="rs-h${on ? ' is-on' : ''}${ton}${gris ? ' is-efface' : ''}" data-partie="${k}" data-heure-p="${heure}" aria-pressed="${on}"${titre ? ` title="${escapeHtml(titre)}"` : ''} aria-label="${escapeHtml(`Partie ${k + 1} à ${heure}${x.tag ? `, ${x.tag}` : ''}${mot ? `, ${mot}` : ''}`)}" onclick="rsHeurePartieBloc(${k}, '${heure}')">${coche}${rsDedansHeure(x, heure, mot)}</button>`;
     }).join('');
     const n = joueursParPartie[k] || bornesJoueurs.max;
-    const joueurs = `<span class="rs-partie-j">${rsPasHtml(n > bornesJoueurs.min ? `rsJoueursPartie(${k},${n - 1})` : '', n < bornesJoueurs.max ? `rsJoueursPartie(${k},${n + 1})` : '', n, `Joueurs de la partie ${k + 1}`, `data-partie-bloc="${k + 1}"`)}<small>joueurs</small></span>`;
+    const joueurs = `<span class="rs-partie-j">${rsPasHtml(n > bornesJoueurs.min ? `rsJoueursPartiePas(${k},-1)` : '', n < bornesJoueurs.max ? `rsJoueursPartiePas(${k},1)` : '', n, `Joueurs de la partie ${k + 1}`, `data-partie-bloc="${k + 1}"`, `p:${k}`)}<small>joueurs</small></span>`;
     return `<div class="rs-partie" role="group" aria-label="${escapeHtml(`Partie ${k + 1}`)}"><span class="rs-partie-tete"><span class="rs-partie-l">Partie ${k + 1}</span>${joueurs}</span><div class="rs-s-l" data-verifie="${lues ? '1' : '0'}">${cles}</div></div>`;
   });
   return `<div class="rs-parties">${rangees.join('')}</div>`;
@@ -43011,9 +43514,10 @@ function rsAutresHtml() {
   // Cinq colonnes tant que la journee tient : les touches grandissent au lieu de laisser
   // le bas de la page vide.
   const colonnes = heures.length > 20 ? 6 : 5;
+  const minute = !partie && !formule ? rsMinuteHtml(id, choisie) : '';
   return `${rsRetourHtml(plusTot)}
     <section class="rs-seance is-page" aria-labelledby="rsQ">
-      <div class="rs-s-t"><div class="rs-s-n"><h2 class="rs-q" id="rsQ" tabindex="-1">${escapeHtml(`${nom}, à quelle heure ?`)}</h2><small>${escapeHtml(compte)}</small></div></div>
+      <div class="rs-s-t"><div class="rs-s-n"><h2 class="rs-q" id="rsQ" tabindex="-1">${escapeHtml(`${nom}, à quelle heure ?`)}</h2><small>${escapeHtml(compte)}</small></div>${minute}</div>
       <div class="rs-heures" style="--rs-n:${colonnes};--rs-r:${Math.ceil(heures.length / colonnes)}" role="group" aria-labelledby="rsQ">${cles}</div>
     </section>`;
 }
@@ -43722,7 +44226,7 @@ function rsRangHeures(id, ligne) {
     const mot = rsMotDeLHeure(id, x, plages);
     return `<button type="button" class="rs-p${on ? ' is-on' : ''}${on && coince ? ' is-ko' : ''}${coince && !on ? ' is-coince' : ''}${pendant ? ' is-coince' : ''}${gris ? ' is-efface' : ''}"${on ? ` id="rvHeure-${sid}"` : ''} data-activite="${sid}" data-heure-l="${heure}" aria-pressed="${on}"${rsDitLHeure(heure, x, mot, id, plages)} onclick="rsHeureLigne(this.dataset.activite, this.dataset.heureL)">${rsDedansHeure(x, heure, mot)}</button>`;
   });
-  cles.push(`<button type="button" class="rs-p is-plus" id="rsAutreHeure" data-activite="${sid}" aria-label="Toutes les heures" onclick="rsAutres(this.dataset.activite)"><b>Autres</b></button>`);
+  cles.push(`<button type="button" class="rs-p is-plus" id="rsAutreHeure" data-activite="${sid}" aria-label="Autre heure : toutes les heures, ou une heure à la minute" onclick="rsAutres(this.dataset.activite)"><b>Autre heure</b></button>`);
   // (toute la journee, comme le bloc : les touches se rangent a la largeur)
   // LES HEURES PRENNENT LEUR HAUTEUR (2026-11-13, Ansar : « les heures partent dans des
   // boutons en dessous »). La rangee, bornee a 120 px et compressible comme les autres,
@@ -43892,9 +44396,9 @@ function rsRangJoueurs(id) {
   const enfants = Boolean(activite && activityCountsChildren(activite));
   const bornes = activityParticipantsBounds(id, quickBookState.pax);
   const n = getQuickVisitParticipants(id);
-  const pas = (x) => `rsJoueursBloc(this.dataset.activite,${x})`;
+  const pas = (x) => `rsJoueursPas(this.dataset.activite,${x})`;
   const attr = `data-activite="${escapeHtml(id)}"`;
-  return rsRang(enfants ? 'Enfants' : 'Joueurs', `${rsPasHtml(n > bornes.min ? pas(n - 1) : '', n < bornes.max ? pas(n + 1) : '', n, enfants ? 'Enfants' : 'Joueurs', attr)}<span class="rs-note">sur ${rvPluriel(Math.max(1, Number(quickBookState.pax) || 1), 'personne')}</span>`);
+  return rsRang(enfants ? 'Enfants' : 'Joueurs', `${rsPasHtml(n > bornes.min ? pas(-1) : '', n < bornes.max ? pas(1) : '', n, enfants ? 'Enfants' : 'Joueurs', attr, `j:${id}`)}<span class="rs-note">sur ${rvPluriel(Math.max(1, Number(quickBookState.pax) || 1), 'personne')}</span>`);
 }
 
 function rsLigneBowlingHtml(ligne) {
@@ -43926,8 +44430,9 @@ function rsLigneBowlingHtml(ligne) {
   return rangs;
 }
 
-function rsPasHtml(moins, plus, valeur, aria, attributs = '') {
-  return `<span class="rs-pas" role="group" aria-label="${escapeHtml(aria)}"><button type="button" aria-label="${escapeHtml(`${aria}, un de moins`)}" ${attributs} ${moins ? `onclick="${moins}"` : 'disabled'}>−</button><b>${valeur}</b><button type="button" aria-label="${escapeHtml(`${aria}, un de plus`)}" ${attributs} ${plus ? `onclick="${plus}"` : 'disabled'}>+</button></span>`;
+// `saisie` : la cle d un compteur de joueurs dont le nombre se tape (rsNombreHtml).
+function rsPasHtml(moins, plus, valeur, aria, attributs = '', saisie = '') {
+  return `<span class="rs-pas" role="group" aria-label="${escapeHtml(aria)}"><button type="button" aria-label="${escapeHtml(`${aria}, un de moins`)}" ${attributs} ${moins ? `onclick="${moins}"` : 'disabled'}>−</button>${saisie ? rsNombreHtml(saisie, valeur, aria) : `<b>${valeur}</b>`}<button type="button" aria-label="${escapeHtml(`${aria}, un de plus`)}" ${attributs} ${plus ? `onclick="${plus}"` : 'disabled'}>+</button>${saisie ? rsSaisieDitHtml(saisie) : ''}</span>`;
 }
 
 function rsLigneLaserHtml(ligne) {
@@ -45416,6 +45921,10 @@ function rsIllimiteHtml() {
 function rsEchap() {
   const b = rsEtat();
   if (!b) return false;
+  // (un nombre en cours de frappe reste celui d avant : rsSaisieAnnuler, puis le nombre du groupe tape
+  // dans « Autre », rendu tel qu il etait)
+  if (b.saisie) return rsSaisieAnnuler();
+  if (rsAnnulerAutreGroupe()) return true;
   if (b.demandeJoueurs && !b.faits.combien) { rsFermerQuestionJoueurs(); return true; }
   if (b.barre) { rsBarreAnnuler(); return true; }
   if (b.ticket) { rsBasculerTicket(); return true; }

@@ -1006,7 +1006,10 @@ function laConsole() {
   const c = vm.createContext({ console, state: { booking: {}, reservations: [] }, document: { getElementById: () => null } });
   vm.runInContext(fs.readFileSync(path.join(ROOT, 'assets/booking-core.js'), 'utf8'), c);
   const source = fs.readFileSync(path.join(ROOT, 'assets/app-main.js'), 'utf8').replace(/\r\n/g, '\n');
-  ['getGroupeProgramme', 'getStaffResourceWindows', 'getLaserGameCountForReservation', 'getFormulaLaserGameCount', 'getStaffFormulaTimedItems', 'getEtapeAvant', 'participantsLigneProgramme', 'joindrePistes'].forEach((nom) => {
+  // (partenairesLaser et partenairesEnMots : la partie de laser commune avec un autre groupe, que la fiche
+  // dit depuis le 2026-11-22 ; les vraies fonctions, pas des bouchons : la journee du gate n a pas d autre
+  // groupe, aucune partie n y est commune)
+  ['getGroupeProgramme', 'getStaffResourceWindows', 'getLaserGameCountForReservation', 'getFormulaLaserGameCount', 'getStaffFormulaTimedItems', 'getEtapeAvant', 'participantsLigneProgramme', 'joindrePistes', 'partenairesLaser', 'partenairesEnMots'].forEach((nom) => {
     const debut = source.indexOf(`\nfunction ${nom}(`);
     if (debut < 0) throw new Error(`console : ${nom} introuvable dans assets/app-main.js`);
     vm.runInContext(source.slice(debut, source.indexOf('\n}', debut + 1) + 2), c);

@@ -1728,7 +1728,7 @@ function referencePistesEdition() {
   if (!origine) return null;
   const ligne = ((origine.program && origine.program.items) || []).find((item) => item && item.activityId === 'bowling');
   const joueurs = ligne && Number(ligne.participants) > 0 ? Number(ligne.participants) : Number(origine.pax);
-  return { joueurs: Math.max(1, Math.trunc(joueurs) || 1), pistes: (origine.lanes || []).map(Number) };
+  return { joueurs: Math.max(1, Math.trunc(joueurs) || 1), pistes: pistesDeLaFormuleSeule(origine) };
 }
 
 // LE GROUPE QUI BAISSE garde le meilleur bloc parmi ses pistes encore libres a
@@ -2495,9 +2495,19 @@ function departsEdition() {
   return departsEdition.carte;
 }
 
+// LES PISTES DE LA FORMULE SEULE (2026-11-22, lib/formule-en-plus.js) : un bowling en plus d une formule tient les
+// siennes, a son heure, et Modifier les regle a sa rangee ; les pistes du dossier, sous la rangee du bowling de la
+// formule, sont celles de la formule. Sans activite en plus, toutes celles du dossier.
+function pistesDeLaFormuleSeule(r) {
+  const plan = r && r.opsPlan;
+  const enPlus = plan && plan.enPlus && Array.isArray(plan.enPlus.items) && plan.enPlus.items.length > 0;
+  if (!enPlus) return ((r && r.lanes) || []).map(Number);
+  return [...new Set((Array.isArray(plan.resourceBlocks) ? plan.resourceBlocks : []).filter((bloc) => bloc && bloc.resourceType === 'bowling_lane' && !bloc.enPlus).flatMap((bloc) => bloc.lanes || []).map(Number).filter((n) => Number.isInteger(n) && n > 0))].sort((a, b) => a - b);
+}
+
 function etatEditionDepuis(reservation) {
   const etat = { ...reservation };
-  etat.lanesStr = (reservation.lanes || []).join(', ');
+  etat.lanesStr = pistesDeLaFormuleSeule(reservation).join(', ');
   etat.pistesALaMain = pistesALaMainDuDossier(reservation) > 0;
   departsEdition().set(etat, { origine: { ...reservation }, base: { ...reservation } });
   return etat;
@@ -13394,6 +13404,8 @@ function getStaffTerrainSpan(reservation) {
   const etapesDuPlan = reservation && reservation.opsPlan && Array.isArray(reservation.opsPlan.timeline) ? reservation.opsPlan.timeline : [];
   const avant = etapesDuPlan.filter(step => step && step.avant === true && step.startTime && step.endTime).map(step => ({ start: timeToNum(step.startTime), end: timeToNum(step.endTime) }));
   const items = [...getStaffFormulaTimedItems(reservation), ...getFormulaFreeWindows(reservation), ...avant];
+  // (une activite en plus d une formule, a son heure, fait aussi la visite : le duckpin de 19:00 a 20:00 apres elle)
+  items.push(...etapesDuPlan.filter(step => step && step.enPlus && step.type === 'activity' && step.flexible !== true && step.startTime && step.endTime && !/^service/.test(String(step.activityId || ''))).map(step => ({ start: timeToNum(step.startTime), end: timeToNum(step.endTime) })));
   const starts = [...windows.map(window => Number(window.start)), ...items.map(item => item.start)];
   const ends = [...windows.map(window => Number(window.end)), ...items.map(item => item.end)];
   if (starts.length) {
@@ -29067,6 +29079,7 @@ function getGroupeProgramme(r) {
       quoi: f.enPlus ? `${Number(f.joueursReels ?? f.players) || effectifActivite('laser_game')} joueurs · 1 partie en plus` : `${Number(f.joueursReels ?? f.players) || effectifActivite('laser_game')} joueurs · ${parties > 1 ? `partie ${partie}/${parties}` : '1 partie'}`,
       // (des armes gardees a chaque depart d un acces illimite, lib/a-volonte.js)
       ...(f.aVolonte ? { quoi: `${Number(f.players) || effectifActivite('laser_game')} armes à chaque départ · à volonté` } : {}),
+      ...(f.enPlus ? { enPlus: true } : {}),
       ou: f.aVolonte && f.departs > 1 ? `${f.departs} départs` : '',
       groupe: vagues > 1 ? `groupe ${Number(f.groupWaveIndex) || 1}/${vagues}` : '',
       start: f.start,
@@ -29074,6 +29087,29 @@ function getGroupeProgramme(r) {
       fait: faite(vagues === 1 ? `laser_game-${partie}` : `laser_game-${partie}-g${Number(f.groupWaveIndex) || 1}`),
       coche: vagues === 1 ? `laser_game-${partie}` : `laser_game-${partie}-g${Number(f.groupWaveIndex) || 1}`,
       exige: formuleSuivie && vagues === 1,
+    });
+  });
+  // LES PETITES ACTIVITES EN PLUS D UNE FORMULE (2026-11-22, lib/formule-en-plus.js) : chacune a sa ligne, a son
+  // heure ou libre pendant la visite, « en plus » ; jamais lue comme une etape de la formule.
+  const pasEnPlus = (r && r.opsPlan && Array.isArray(r.opsPlan.timeline) ? r.opsPlan.timeline : [])
+    .filter(step => step && step.enPlus && step.type === 'activity' && step.activityId && step.activityId !== 'bowling' && step.activityId !== 'laser_game' && !/^service/.test(String(step.activityId)));
+  const deLaFormule = (item) => !pasEnPlus.some(step => step.activityId === item.activityId && String(step.startTime || '') === String(item.startTime || ''));
+  pasEnPlus.forEach((step, index) => {
+    const libre = step.flexible === true;
+    const ligne = ((r.opsPlan.enPlus && r.opsPlan.enPlus.items) || []).find(x => x && x.activityId === step.activityId) || {};
+    etapes.push({
+      cle: `enplus-${step.activityId}-${index + 1}`,
+      activityId: step.activityId,
+      nom: String(ligne.name || step.label || nomActiviteHeureEdition(step.activityId)),
+      quoi: `${Number(ligne.participants) || Number(r.pax) || 0} joueurs · en plus`,
+      ou: '',
+      groupe: '',
+      start: libre ? null : timeToNum(step.startTime),
+      end: libre ? null : timeToNum(step.endTime),
+      ...(libre ? { libre: true } : {}),
+      enPlus: true,
+      fait: faite(`enplus-${step.activityId}`),
+      coche: `enplus-${step.activityId}`,
     });
   });
   // UN ACCES ILLIMITE NE DONNE PAS D HEURE A SES ACTIVITES LIBRES (2026-11-20, Ansar : « pour les
@@ -29085,7 +29121,7 @@ function getGroupeProgramme(r) {
   // c'est vraiment libre tout le temps ») : « Libre » au programme, jamais une heure.
   const accesIllimite = typeof illimiteDeSaCarte === 'function' && illimiteDeSaCarte(r);
   getStaffFormulaTimedItems(r)
-    .filter(item => item.activityId !== 'bowling' && item.activityId !== 'laser_game')
+    .filter(item => item.activityId !== 'bowling' && item.activityId !== 'laser_game' && deLaFormule(item))
     .forEach(item => etapes.push({
       cle: item.key,
       activityId: item.activityId,
@@ -30394,7 +30430,7 @@ function ficheEditionModifiee() {
   if (edition && edition.formulaire) return empreinteFormulaireEdition(es) !== edition.formulaire;
   // Apres un conflit, la reference est le dossier d origine.
   const origine = (edition && edition.origine) || state.selectedRes;
-  return empreinteFormulaireEdition(es) !== empreinteFormulaireEdition({ ...origine, lanesStr: (origine.lanes || []).join(', ') });
+  return empreinteFormulaireEdition(es) !== empreinteFormulaireEdition({ ...origine, lanesStr: pistesDeLaFormuleSeule(origine).join(', ') });
 }
 
 function confirmerAbandonEdition() {
@@ -32801,8 +32837,10 @@ function estimerFormuleEdition(r, e) {
   const comprises = activitesDeLaFormuleEdition(applyReservationFormulaChoice(formule, r));
   const ajoutees = editProgramAChange() ? getEditProgramItems().filter((item) => !comprises.has(String(item.activityId || ''))) : [];
   const ajouts = ajoutees.length ? estimerPrixProgramme(ajoutees, e.pax, e.date || r.date, e.startTime || r.startTime) : null;
-  const total = Math.round((prixFormule + (ajouts ? ajouts.total : 0)) * 100) / 100;
-  return { total, complet: !ajouts || ajouts.complet, utilisable: true, lignes: [...lignes, ...(ajouts ? ajouts.lignes : [])], parPersonne: Math.round(total / pax) };
+  // (ses activites en plus, chacune a son prix du catalogue, sur sa ligne : lib/formule-en-plus.js)
+  const enPlus = enPlusEdition().length ? estimationEnPlusEdition() : null;
+  const total = Math.round((prixFormule + (ajouts ? ajouts.total : 0) + (enPlus ? enPlus.total : 0)) * 100) / 100;
+  return { total, complet: (!ajouts || ajouts.complet) && (!enPlus || enPlus.complet), utilisable: true, lignes: [...lignes, ...(ajouts ? ajouts.lignes : []), ...(enPlus ? enPlus.lignes : [])], parPersonne: Math.round(total / pax) };
 }
 
 // CE QUE LA FORMULE COMPREND (2026-11-20) : ses activites, lues sur sa carte
@@ -32907,8 +32945,9 @@ function editionChangeLePrix() {
   const e = state.editState;
   const r = state.selectedRes;
   if (!e || !r) return false;
-  // Une autre formule, un autre tarif (un acces illimite redevenu un programme normal aussi).
-  if (formuleChangeeEdition() || poseEditionChange() || e.versProgrammeNormal) return true;
+  // Une autre formule, un autre tarif (un acces illimite redevenu un programme normal aussi), et une activite en
+  // plus retiree ou changee.
+  if (formuleChangeeEdition() || poseEditionChange() || e.versProgrammeNormal || enPlusEditionChange()) return true;
   if (r.formuleId && editProgramAChange() && Number(e.pax) === Number(r.pax)) {
     const sansEffectif = value => JSON.stringify(JSON.parse(value), (key, entry) => key === 'participants' ? undefined : entry);
     if (sansEffectif(JSON.stringify(e.programmeEdite)) === sansEffectif(e.programmeEditeInitial)) return false;
@@ -33479,7 +33518,7 @@ function sortirDeLIllimiteEdition() {
     delete e.programmeEdite;
     delete e.programmeEditeInitial;
     ensureEditProgram(r);
-    e.lanesStr = (origine.lanes || []).join(', ');
+    e.lanesStr = pistesDeLaFormuleSeule(origine).join(', ');
     renderPos();
     return;
   }
@@ -33606,7 +33645,7 @@ function changerFormuleEdition(id) {
   ensureEditProgram(dossierPourFormule(r));
   // Au retour, les pistes du dossier telles qu a l ouverture ; une autre
   // formule recoit celles qu il lui faut (aucune sans bowling).
-  if (retour) e.lanesStr = (origine.lanes || []).join(', ');
+  if (retour) e.lanesStr = pistesDeLaFormuleSeule(origine).join(', ');
   else syncEditLaneAssignment();
   renderPos();
 }
@@ -33616,7 +33655,8 @@ function changerFormuleEdition(id) {
 function heuresDuProgrammeEnregistre(r) {
   const heures = new Map();
   getGroupeProgramme(r).forEach(etape => {
-    if (!etape.activityId) return;
+    // (une activite en plus d une formule a sa rangee a elle, rangeeEnPlusEditionHtml : jamais une partie de la formule)
+    if (!etape.activityId || etape.enPlus) return;
     heures.set(etape.activityId, [...(heures.get(etape.activityId) || []), etape]);
   });
   return heures;
@@ -33807,6 +33847,274 @@ function setEditArene(valeur) {
 // ou l heure de ses parties. Les activites qu on peut ajouter sont des
 // boutons sous la liste, plus un pli a ouvrir. Les permissions et les setters
 // metier restent les memes.
+// ---------------------------------------------------------------------------
+// LES ACTIVITES EN PLUS DANS MODIFIER (2026-11-22, suite : « Modifier doit lister tous les ajouts en plus, pas
+// seulement un bowling posé sur la ligne de la formule. Un laser en plus, une petite activité en plus : chacun a
+// sa propre ligne, avec son heure, ses joueurs et Retirer »). Chaque activite en plus d une formule prise telle
+// quelle (lib/formule-en-plus.js) a sa rangee au Programme, a son heure, parmi celles de la formule. Elle se
+// regle comme dans Reserver (rvEnPlus) : son heure, ses joueurs, la duree du bowling ou les parties du laser,
+// « Retirer ». « Enregistrer » envoie la liste voulue (enPlus) : le serveur la juge avec la formule, par le meme
+// moteur que la creation, a son prix du catalogue, sans replanifier la formule quand seules elles changent
+// (api/staff-reservations.js, calculerLaModification). Le verdict avant le clic dit celle qui ne tient pas, a sa
+// rangee. Adapter la formule ici les y fait entrer, chacune a son heure.
+// ---------------------------------------------------------------------------
+let heureEnPlusOuverteEdition = '';
+
+// Les activites en plus d un dossier, dans la forme de Reserver : { id, variante, heure, joueurs } (joueurs null =
+// tout le groupe), l heure lue sur le plan (un glisser au planning compris).
+function enPlusDuDossierEdition(r) {
+  const plan = r && r.opsPlan;
+  const items = plan && plan.enPlus && Array.isArray(plan.enPlus.items) ? plan.enPlus.items : [];
+  if (!items.length || String(r.type || '') !== 'formule') return [];
+  const blocs = [...(Array.isArray(plan.resourceBlocks) ? plan.resourceBlocks : []), ...(Array.isArray(plan.timeline) ? plan.timeline : [])]
+    .filter((bloc) => bloc && bloc.enPlus && bloc.flexible !== true);
+  const pax = Math.max(1, Math.trunc(Number(r.pax) || 1));
+  return items.map((item) => {
+    const id = String((item && item.activityId) || '');
+    const departs = blocs.filter((bloc) => String(bloc.activityId || '') === id).map((bloc) => String(bloc.startTime || '').slice(0, 5)).filter((h) => /^\d{2}:\d{2}$/.test(h)).sort();
+    const joueurs = Math.trunc(Number(item.participants) || pax);
+    return {
+      id,
+      variante: id === 'bowling' ? Number(item.duration) || 1 : id === 'laser_game' ? Math.max(1, Math.trunc(Number(item.games) || 1)) : null,
+      heure: departs[0] || (/^\d{2}:\d{2}$/.test(String(item.heure || '')) ? String(item.heure) : ''),
+      joueurs: joueurs < pax ? joueurs : null,
+    };
+  }).filter((x) => x.id);
+}
+
+function enPlusEdition() {
+  const e = state.editState;
+  const r = state.selectedRes;
+  if (!e || !r) return [];
+  if (!Array.isArray(e.enPlusEdite)) {
+    e.enPlusEdite = enPlusDuDossierEdition(r);
+    e.enPlusEditeInitial = JSON.stringify(e.enPlusEdite);
+    heureEnPlusOuverteEdition = '';
+  }
+  return e.enPlusEdite;
+}
+
+function enPlusEditionChange() {
+  const e = state.editState;
+  return Boolean(e && Array.isArray(e.enPlusEdite) && typeof e.enPlusEditeInitial === 'string' && JSON.stringify(e.enPlusEdite) !== e.enPlusEditeInitial);
+}
+
+function enPlusEditeDe(id) {
+  return enPlusEdition().find((x) => x.id === id) || null;
+}
+
+function joueursEnPlusEdition(x) {
+  const pax = Math.max(1, Math.trunc(Number(state.editState && state.editState.pax) || 1));
+  return Number(x && x.joueurs) >= 1 ? Math.min(pax, Math.trunc(Number(x.joueurs))) : pax;
+}
+
+// Ce que « Enregistrer » envoie : la liste voulue, dans la forme de la creation (lib/formule-en-plus.js lireEnPlus).
+function enPlusEnvoyesEdition() {
+  const pax = Math.max(1, Math.trunc(Number(state.editState && state.editState.pax) || 1));
+  return enPlusEdition().map((x) => ({
+    activityId: x.id,
+    heure: x.heure || '',
+    ...(x.id === 'bowling' ? { duration: Number(x.variante) || 1 } : {}),
+    ...(x.id === 'laser_game' ? { games: Math.max(1, Math.trunc(Number(x.variante) || 1)) } : {}),
+    ...(Number(x.joueurs) >= 1 && Number(x.joueurs) < pax ? { participants: Math.trunc(Number(x.joueurs)) } : {}),
+  }));
+}
+
+function changerEnPlusEdition(id, changer) {
+  const e = state.editState;
+  if (!e || !enPlusEditeDe(id)) return;
+  e.enPlusEdite = enPlusEdition().map((x) => (x.id === id ? { ...x, ...changer(x) } : x));
+  if (state.editError) setEditError('');
+}
+
+function retirerEnPlusEdition(id) {
+  const e = state.editState;
+  if (!e || !enPlusEditeDe(id)) return;
+  e.enPlusEdite = enPlusEdition().filter((x) => x.id !== id);
+  if (heureEnPlusOuverteEdition === id) heureEnPlusOuverteEdition = '';
+  if (state.editError) setEditError('');
+  renderPos();
+}
+
+function setEnPlusJoueursEdition(id, nombre) {
+  const e = state.editState;
+  if (!e) return;
+  const bornes = activityParticipantsBounds(id, e.pax);
+  const joueurs = Math.min(bornes.max, Math.max(bornes.min, Math.trunc(Number(nombre) || bornes.min)));
+  changerEnPlusEdition(id, () => ({ joueurs: joueurs >= Math.max(1, Math.trunc(Number(e.pax) || 1)) ? null : joueurs }));
+  renderPos();
+}
+
+function setEnPlusVarianteEdition(id, valeur) {
+  const v = Number(valeur);
+  if (!(v > 0)) return;
+  changerEnPlusEdition(id, () => ({ variante: id === 'laser_game' ? Math.max(1, Math.trunc(v)) : v }));
+  renderPos();
+}
+
+// Toucher l heure ouvre son champ (et le referme au second toucher), comme les autres heures de Modifier.
+function ouvrirHeureEnPlusEdition(id) {
+  if (!state.editState || !enPlusEditeDe(id)) return;
+  heureEnPlusOuverteEdition = heureEnPlusOuverteEdition === id ? '' : String(id);
+  renderPos();
+  const champ = heureEnPlusOuverteEdition ? Array.from(document.querySelectorAll('#posOverlay [data-en-plus-champ]')).find((n) => n.getAttribute('data-en-plus-champ') === id) : null;
+  if (champ) champ.focus();
+}
+
+// La frappe : l heure se lit a gauche et dans la barre du bas, sans re-rendu, et le serveur la juge.
+function poserHeureEnPlusEdition(id, valeur) {
+  if (!Number.isFinite(minutesHeureEdition(valeur))) return;
+  changerEnPlusEdition(id, () => ({ heure: String(valeur) }));
+  peindreRangeesEnPlusEdition();
+  majModifsEdition();
+}
+
+// « Libre » : une activite qui n est ni le bowling ni le laser se joue librement pendant la visite.
+function rendreLibreEnPlusEdition(id) {
+  if (id === 'bowling' || id === 'laser_game') return;
+  changerEnPlusEdition(id, (x) => ({ heure: x.heure ? '' : x.heure }));
+  renderPos();
+}
+
+// L heure qu une activite en plus aura : celle du verdict a jour (le dossier que le serveur ecrirait), sinon la
+// sienne.
+function heureEnPlusAfficheeEdition(x) {
+  const ecrit = dossierEcritDuVerdict();
+  if (ecrit) {
+    const lue = enPlusDuDossierEdition(ecrit).find((y) => y.id === x.id);
+    if (lue) return lue.heure;
+  }
+  return x.heure || '';
+}
+
+// Celle qui ne tient pas, selon le verdict : sa phrase (rien pendant le calcul).
+function refusEnPlusEdition(id) {
+  const v = verdictEdition();
+  if (!state.editState || v.pour !== state.editState || v.enCours || !v.resultat || !v.resultat.enPlusRefuse) return '';
+  return v.resultat.enPlusRefuse.id === id ? v.resultat.enPlusRefuse.phrase : '';
+}
+
+// Son prix : celui du dossier tant qu elle n a pas change, sinon le catalogue, comme le serveur le chiffrera.
+function prixEnPlusEdition(x) {
+  const e = state.editState;
+  const r = state.selectedRes;
+  if (!e || !r) return null;
+  // (le verdict a jour dit le prix que le serveur ecrira)
+  const verdict = dossierEcritDuVerdict();
+  const juge = verdict && verdict.opsPlan && verdict.opsPlan.enPlus && Array.isArray(verdict.opsPlan.enPlus.items) ? verdict.opsPlan.enPlus.items.find((item) => item && item.activityId === x.id) : null;
+  if (juge) return juge.priceKnown === true && Number.isFinite(Number(juge.price)) ? Number(juge.price) : null;
+  const ecrit = r.opsPlan && r.opsPlan.enPlus && Array.isArray(r.opsPlan.enPlus.items) ? r.opsPlan.enPlus.items.find((item) => item && item.activityId === x.id) : null;
+  const depart = JSON.parse(e.enPlusEditeInitial || '[]').find((y) => y.id === x.id);
+  const memes = depart && ecrit && Number(e.pax) === Number(r.pax) && (depart.joueurs || null) === (x.joueurs || null) && Number(depart.variante || 0) === Number(x.variante || 0);
+  if (memes) return ecrit.priceKnown === true && Number.isFinite(Number(ecrit.price)) ? Number(ecrit.price) : null;
+  const item = { activityId: x.id, pax: Math.max(1, Number(e.pax) || 1), participants: joueursEnPlusEdition(x), ...(x.id === 'bowling' ? { duration: Number(x.variante) || 1 } : {}), ...(x.id === 'laser_game' ? { games: Math.max(1, Number(x.variante) || 1) } : {}) };
+  const estime = estimerPrixProgramme([item], e.pax, e.date || r.date, x.heure || e.startTime || r.startTime);
+  return estime && estime.lignes[0] && estime.lignes[0].montant !== null ? Number(estime.lignes[0].montant) : null;
+}
+
+// Les activites en plus dans l estimation de Modifier : une ligne chacune, a son prix.
+function estimationEnPlusEdition() {
+  const lignes = enPlusEdition().map((x) => {
+    const montant = prixEnPlusEdition(x);
+    return { nom: `${nomActiviteHeureEdition(x.id)} en plus`, detail: x.heure ? `à ${x.heure}` : 'libre', montant };
+  });
+  return { lignes, total: Math.round(lignes.reduce((t, l) => t + (Number(l.montant) || 0), 0) * 100) / 100, complet: lignes.every((l) => l.montant !== null) };
+}
+
+// « Retrait : Laser Game en plus », « Laser Game en plus 18:00 → 18:30 », dans la barre du bas.
+function modifsEnPlusEdition() {
+  const e = state.editState;
+  if (!e || !enPlusEditionChange()) return [];
+  const avant = JSON.parse(e.enPlusEditeInitial || '[]');
+  const apres = enPlusEdition();
+  const nom = (id) => `${nomActiviteHeureEdition(id)} en plus`;
+  const lignes = [];
+  avant.filter((x) => !apres.some((y) => y.id === x.id)).forEach((x) => lignes.push(`Retrait : ${nom(x.id)}`));
+  apres.forEach((y) => {
+    const x = avant.find((z) => z.id === y.id);
+    if (!x) { lignes.push(`Ajout : ${nom(y.id)}${y.heure ? ` à ${y.heure}` : ''}`); return; }
+    if ((x.heure || '') !== (y.heure || '')) lignes.push(`${nom(y.id)} ${x.heure || 'Libre'} → ${y.heure || 'Libre'}`);
+    if ((x.joueurs || null) !== (y.joueurs || null)) lignes.push(`${nom(y.id)} : ${joueursEnPlusEdition(y)} joueurs`);
+    if (y.variante !== null && Number(x.variante) !== Number(y.variante)) lignes.push(y.id === 'bowling' ? `${nom(y.id)} ${formatDurationLabel(Number(y.variante))}` : `${nom(y.id)} : ${y.variante} partie${Number(y.variante) > 1 ? 's' : ''}`);
+  });
+  return lignes;
+}
+
+// « en plus de la formule · 60 € » ; « entre dans la formule adaptée » quand Modifier l adapte, « entre dans le programme » quand il quitte l accès illimité.
+function detailEnPlusEdition(x) {
+  const e = state.editState;
+  const prix = prixEnPlusEdition(x);
+  const repli = editProgramAChange() || Boolean(e && e.versProgrammeNormal);
+  return [repli ? (e && e.versProgrammeNormal ? 'entre dans le programme' : 'entre dans la formule adaptée') : 'en plus de la formule', !montantsMasques() && prix !== null ? formatMoneyCentimes(prix) : ''].filter(Boolean).join(' · ');
+}
+
+// La rangee d une activite en plus : son heure a gauche, son nom, « en plus de la formule » et son prix, « Retirer »,
+// puis son heure a taper, ses joueurs et sa duree ou ses parties.
+function rangeeEnPlusEditionHtml(r, x, rang) {
+  const e = state.editState;
+  const nom = nomActiviteHeureEdition(x.id);
+  const ancre = x.id === 'bowling' || x.id === 'laser_game';
+  const heure = heureEnPlusAfficheeEdition(x);
+  const depart = JSON.parse(e.enPlusEditeInitial || '[]').find((y) => y.id === x.id);
+  const changee = !depart || (depart.heure || '') !== (heure || '');
+  const ouverte = heureEnPlusOuverteEdition === x.id;
+  const refus = refusEnPlusEdition(x.id);
+  const detail = detailEnPlusEdition(x);
+  const sid = escapeHtml(x.id);
+  const touche = `<button type="button" class="fm-heure fm-heure-touche${changee && heure ? ' is-changee' : ''}${heure ? '' : ' is-vide'}${ouverte ? ' is-ouverte' : ''}" data-en-plus-heure="${sid}" aria-expanded="${ouverte ? 'true' : 'false'}" aria-label="${escapeHtml(`Changer l’heure de ${nom} en plus, ${heure || 'libre'}`)}" onclick="ouvrirHeureEnPlusEdition(this.dataset.enPlusHeure)">${escapeHtml(heure || 'Libre')}</button>`;
+  const champId = `editEnPlusHeure-${x.id.replace(/[^a-z0-9]/gi, '-')}`;
+  const libre = !ancre ? `<button type="button" class="fm-heure-libre${x.heure ? '' : ' is-on'}" aria-pressed="${x.heure ? 'false' : 'true'}" data-en-plus-libre="${sid}" onclick="rendreLibreEnPlusEdition(this.dataset.enPlusLibre)">Libre</button>` : '';
+  const champ = ouverte ? `<div class="fm-champ fm-heure-champ${refus ? ' is-refus' : ''}${libre ? ' a-libre' : ''}" data-en-plus-zone="${sid}">
+            <label class="lbl" for="${champId}">Heure</label>
+            <div class="fm-heure-saisie"><input id="${champId}" class="input" type="time" step="${ancre ? 1800 : 300}" value="${escapeHtml(x.heure || '')}" data-en-plus-champ="${sid}" data-pl-focus="fiche.edit.en-plus.${sid}"${refus ? ' aria-invalid="true"' : ''} aria-describedby="${champId}-refus" oninput="poserHeureEnPlusEdition(this.dataset.enPlusChamp, this.value)">${libre}</div>
+          </div>` : '';
+  const phrase = `<div class="fm-heure-refus" id="${champId}-refus" data-en-plus-refus="${sid}" aria-live="polite"${refus ? '' : ' hidden'}>${refus ? `<p class="fm-heure-phrase">${escapeHtml(refus)}</p>` : ''}</div>`;
+  const bornes = activityParticipantsBounds(x.id, e.pax);
+  const joueurs = joueursEnPlusEdition(x);
+  const moins = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg>';
+  const plus = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg>';
+  const compteur = `<div class="qb-visit-options qb-visit-compteur dossier-activity-count" role="group" aria-label="${escapeHtml(`${nom} en plus : joueurs`)}"><span class="qb-opt-legend">Joueurs</span><span class="staff-stepper"><button type="button" class="qb-step-btn staff-stepper-btn" aria-label="${escapeHtml(`${nom} en plus : retirer un joueur`)}" data-en-plus="${sid}" ${joueurs <= bornes.min ? 'disabled' : ''} onclick="setEnPlusJoueursEdition(this.dataset.enPlus, ${joueurs - 1})">${moins}</button><span class="qb-step-valeur staff-stepper-value" data-en-plus-joueurs="${sid}">${joueurs}</span><button type="button" class="qb-step-btn staff-stepper-btn" aria-label="${escapeHtml(`${nom} en plus : ajouter un joueur`)}" data-en-plus="${sid}" ${joueurs >= bornes.max ? 'disabled' : ''} onclick="setEnPlusJoueursEdition(this.dataset.enPlus, ${joueurs + 1})">${plus}</button></span>${joueurs < Math.max(1, Math.trunc(Number(e.pax) || 1)) ? `<span class="dossier-participants-explanation">${joueurs} joueur${joueurs > 1 ? 's' : ''} sur ${Math.trunc(Number(e.pax) || 1)} participants</span>` : ''}</div>`;
+  const choix = (mot, options) => `<div class="dossier-activity-setting"><span class="lbl">${escapeHtml(mot)}</span><div class="dossier-options" role="group" aria-label="${escapeHtml(`${mot}, ${nom} en plus`)}">${options.map(([valeur, texte]) => `<button type="button" class="qb-dur-btn dossier-option ${Number(x.variante) === Number(valeur) ? 'active' : ''}" aria-pressed="${Number(x.variante) === Number(valeur)}" data-en-plus="${sid}" data-valeur="${escapeHtml(String(valeur))}" onclick="setEnPlusVarianteEdition(this.dataset.enPlus, this.dataset.valeur)">${escapeHtml(texte)}</button>`).join('')}</div></div>`;
+  const variante = x.id === 'bowling' ? choix('Durée', DURATION_OPTIONS.map((o) => [o.value, o.label])) : x.id === 'laser_game' ? choix('Parties', [1, 2, 3].map((n) => [n, `${n} partie${n > 1 ? 's' : ''}`])) : '';
+  const minutes = minutesHeureEdition(heure);
+  const html = `<section class="fm-act dossier-activity is-on is-en-plus${refus ? ' is-refus' : ''}" data-edit-en-plus="${sid}" aria-label="${escapeHtml(`${nom}, en plus de la formule`)}">
+      <div class="fm-act-heure"><span class="visually-hidden">Heure prévue : </span><span class="fm-heures">${touche}</span>${ficheVisuelActivite(r, { activityId: x.id, nom })}</div>
+      <div class="fm-act-corps">
+        <div class="fm-act-tete"><h5>${escapeHtml(nom)}</h5><span class="fm-act-detail" data-en-plus-detail="${sid}">${escapeHtml(detail)}</span><button type="button" class="dossier-remove-activity fm-retirer" aria-label="${escapeHtml(`Retirer ${nom}, en plus de la formule`)}" data-en-plus="${sid}" onclick="retirerEnPlusEdition(this.dataset.enPlus)">Retirer</button></div>
+        <div class="fm-act-reglages">${champ}${phrase}${compteur}${variante}</div>
+      </div>
+    </section>`;
+  return { html, ordre: Number.isFinite(minutes) ? minutes : Infinity, rang: 1000 + rang };
+}
+
+// L heure et la phrase de chaque activite en plus, en place (la frappe et le verdict ne redessinent pas la fiche).
+function peindreRangeesEnPlusEdition() {
+  document.querySelectorAll('#posOverlay .fm-act[data-edit-en-plus]').forEach((rangee) => {
+    const id = rangee.getAttribute('data-edit-en-plus');
+    const x = enPlusEditeDe(id);
+    if (!x) return;
+    const heure = heureEnPlusAfficheeEdition(x);
+    const depart = JSON.parse((state.editState && state.editState.enPlusEditeInitial) || '[]').find((y) => y.id === id);
+    const bouton = rangee.querySelector('[data-en-plus-heure]');
+    if (bouton) {
+      bouton.textContent = heure || 'Libre';
+      bouton.classList.toggle('is-vide', !heure);
+      bouton.classList.toggle('is-changee', Boolean(heure) && (!depart || (depart.heure || '') !== heure));
+    }
+    const detail = rangee.querySelector('[data-en-plus-detail]');
+    if (detail) detail.textContent = detailEnPlusEdition(x);
+    const refus = refusEnPlusEdition(id);
+    rangee.classList.toggle('is-refus', Boolean(refus));
+    const zone = rangee.querySelector('[data-en-plus-refus]');
+    if (zone) {
+      zone.innerHTML = refus ? `<p class="fm-heure-phrase">${escapeHtml(refus)}</p>` : '';
+      zone.hidden = !refus;
+    }
+    const champ = rangee.querySelector('[data-en-plus-champ]');
+    if (champ) { if (refus) champ.setAttribute('aria-invalid', 'true'); else champ.removeAttribute('aria-invalid'); }
+  });
+}
+
 function renderEditFormuleBloc(r, formule, lignes, controls = {}) {
   if (!peutAdapterLeProgramme(r)) {
     const items = Array.isArray(r.program?.items) ? r.program.items : [];
@@ -33814,6 +34122,7 @@ function renderEditFormuleBloc(r, formule, lignes, controls = {}) {
       ${peutAdapterFormule() && typeof niveauStaff === 'function' && niveauStaff('formule') !== 'oui' ? droitManquantHtml('formule', ' pour changer le programme', 'fmDroitFormule') : ''}
       ${formule?.name ? `<p class="dossier-formula-origin">Formule <strong>${escapeHtml(formule.name)}</strong></p>` : ''}
       ${items.length ? `<ul class="dossier-program-summary">${items.map(item => `<li><span>${escapeHtml(nomActivite(item))}</span><strong>${participantsLigneProgramme(item, r.pax)} ${getCenterActivity(item.activityId) && activityCountsChildren(getCenterActivity(item.activityId)) ? 'enfants' : 'joueurs'}</strong></li>`).join('')}</ul>` : lignes.length ? `<ul class="edit-formule-list">${lignes.map(ligne => `<li>${escapeHtml(String(ligne))}</li>`).join('')}</ul>` : `<p class="field-hint">${escapeHtml(getReservationLabel(r))} · ${Number(r.pax) || 0} participants</p>`}
+      ${enPlusEdition().length ? `<ul class="dossier-program-summary" data-en-plus-lecture>${enPlusEdition().map(x => `<li><span>${escapeHtml(`${nomActiviteHeureEdition(x.id)} en plus${x.heure ? `, à ${x.heure}` : ''}`)}</span><strong>${joueursEnPlusEdition(x)} joueurs</strong></li>`).join('')}</ul>` : ''}
     </div>`;
   }
   const programme = ensureEditProgram(r);
@@ -33823,7 +34132,9 @@ function renderEditFormuleBloc(r, formule, lignes, controls = {}) {
   // affichee : on ne fait pas disparaitre en silence ce que le client a paye.
   const supplement = Object.keys(programme.others || {})
     .filter((id) => !connus.has(id))
-    .map((id) => ({ id, label: (typeof getCenterActivity === 'function' && getCenterActivity(id)?.name) || ACTIVITY_LABELS[id] || (typeof FORMULA_ACTIVITY_LABELS !== 'undefined' && FORMULA_ACTIVITY_LABELS[id]) || id }));
+    .map((id) => ({ id, label: (typeof getCenterActivity === 'function' && getCenterActivity(id)?.name) || ACTIVITY_LABELS[id] || (typeof FORMULA_ACTIVITY_LABELS !== 'undefined' && FORMULA_ACTIVITY_LABELS[id]) || id }))
+    // (chaque activite en plus d une formule a sa rangee a elle, a son heure parmi celles de la formule)
+    .concat(enPlusEdition().map((x) => ({ id: x.id, label: nomActiviteHeureEdition(x.id), enPlus: x })));
   // Une formule changee n a pas encore d heures : le serveur la place a
   // l enregistrement, celles de l ancienne ne disent rien d elle.
   const formuleChangee = formuleChangeeEdition();
@@ -33837,11 +34148,13 @@ function renderEditFormuleBloc(r, formule, lignes, controls = {}) {
   const ajouts = [];
   const volonte = gardeAVolonteEdition(r);
   const rangees = [...choix, ...supplement].map((choice, rang) => {
+    if (choice.enPlus) return rangeeEnPlusEditionHtml(r, choice.enPlus, rang);
     const estBowling = choice.id === 'bowling';
     const estLaser = choice.id === 'laser_game';
     const actif = estBowling ? !!programme.bowling.on : estLaser ? !!programme.laser_game.on : !!(programme.others || {})[choice.id];
     if (!actif) {
-      ajouts.push(`<button type="button" class="fm-ajout" onclick="toggleEditActivity('${escapeJsString(choice.id)}')">${plus}${escapeHtml(choice.label)}</button>`);
+      // (une activite deja en plus de la formule a sa rangee : elle ne s ajoute pas une deuxieme fois)
+      if (!enPlusEditeDe(choice.id)) ajouts.push(`<button type="button" class="fm-ajout" onclick="toggleEditActivity('${escapeJsString(choice.id)}')">${plus}${escapeHtml(choice.label)}</button>`);
       return '';
     }
     let options = '';
@@ -34510,10 +34823,11 @@ function resumeModifsEdition() {
   // (« Accès illimité : sans Minigolf, Bowling 1 fois », le choix touche ici)
   modifs.push(...modifsIllimiteEdition());
   if (!formuleChangee && e.duration != null && Number(e.duration) > 0 && Number(e.duration) !== Number(origine.duration)) modifs.push(`Durée ${formatDurationLabel(Number(origine.duration) || 0)} → ${formatDurationLabel(Number(e.duration))}`);
-  const pistesAvant = parseLaneInput((origine.lanes || []).join(','));
+  const pistesAvant = parseLaneInput(pistesDeLaFormuleSeule(origine).join(','));
   const pistesApres = parseLaneInput(e.lanesStr);
   if (pistesApres.length && JSON.stringify(pistesAvant) !== JSON.stringify(pistesApres)) modifs.push(`Pistes ${pistesAvant.length ? joindrePistes(pistesAvant) : 'aucune'} → ${joindrePistes(pistesApres)}`);
   modifs.push(...modifsProgrammeEdition());
+  modifs.push(...modifsEnPlusEdition());
   // (une heure donnee a un bowling que le programme portait sans que le plan le place, le dossier
   // 1953 : « Bowling à 18:30 » ; une activite ajoutee dit deja la sienne dans « Ajout »)
   const auDossier = new Set((Array.isArray(r.program) ? r.program : (r.program && r.program.items) || []).map((item) => item && item.activityId));
@@ -34705,7 +35019,9 @@ function lireVerdictEdition(reponse, envoi) {
   if (reponse.refus) {
     // Un collegue a change le dossier : « Enregistrer » sait rejouer dessus.
     if (reponse.refus.code === 'reservation_modifiee') return null;
-    return { refus: String(reponse.refus.message || 'le serveur n’a pas donné de motif.'), lignes: [], ecrit: null, prixSuivi: false };
+    // (une activite en plus qui ne tient pas se dit aussi a sa rangee, rangeeEnPlusEditionHtml)
+    const enPlus = reponse.refus.enPlus ? { enPlusRefuse: { id: String(reponse.refus.enPlus), phrase: String(reponse.refus.message || '').replace(/\s*Rien n’a changé\.\s*$/, '') } } : {};
+    return { refus: String(reponse.refus.message || 'le serveur n’a pas donné de motif.').replace(/\s*Rien n’a changé\.\s*$/, ''), lignes: [], ecrit: null, prixSuivi: false, ...enPlus };
   }
   const ecrit = reponse.reservation;
   const r = state.selectedRes;
@@ -34714,7 +35030,8 @@ function lireVerdictEdition(reponse, envoi) {
   if (reponse.planNonRefait) lignes.push(`Le planning ne suivra pas : ${String(reponse.planNonRefait).replace(/\.$/, '')}.`);
   else if (ecrit.validationStatus === 'staff_review' && r.validationStatus !== 'staff_review') lignes.push('Le planning ne sait pas placer ce créneau : la réservation passera en « à surveiller ».');
   const voulues = envoi.lanesVoulues.join(', ');
-  const obtenues = (ecrit.lanes || []).join(', ');
+  // (les pistes du bowling de la formule : celles d un bowling en plus sont a lui, a son heure)
+  const obtenues = pistesDeLaFormuleSeule(ecrit).join(', ');
   if (!envoi.jourChange && envoi.requiresLanes && voulues && voulues !== obtenues) {
     lignes.push(obtenues ? `Ce sera piste${(ecrit.lanes || []).length > 1 ? 's' : ''} ${obtenues}, pas ${voulues} : le créneau ne les laisse pas libres.` : 'Aucune piste ne sera attribuée.');
   } else if (!envoi.jourChange && envoi.requiresLanes && obtenues && (ecrit.lanes || []).length < (r.lanes || []).length
@@ -34903,6 +35220,8 @@ function peindreVerdictEdition() {
   }
   // Le refus d une heure se lit a son activite (son champ en rouge, la phrase dessous).
   peindreRefusHeuresEdition();
+  // (celui d une activite en plus, a sa rangee ; son heure et son prix, ceux que le serveur ecrirait)
+  peindreRangeesEnPlusEdition();
   if (ton === 'calcul') return;
   const programme = document.querySelector('#posOverlay .fm-programme');
   const r = state.selectedRes;
@@ -35008,13 +35327,7 @@ function partiesActiviteHtml(etapes, activityId) {
   const separe = '<span class="fm-partie-sep" aria-hidden="true"> · </span>';
   if (activityId === 'bowling') {
     if (placees.length < 2) return '';
-    // (un bowling en plus d une formule, lib/formule-en-plus.js : « Formule à 16:00 · En plus à 18:30 », jamais
-    // un « 2e groupe » ; seuls les services d un groupe scinde se numerotent)
-    const services = placees.filter(etape => !etape.enPlus);
-    return placees.map((etape) => {
-      const mot = etape.enPlus ? 'En plus' : services.length < 2 ? 'Formule' : `${services.indexOf(etape) ? `${services.indexOf(etape) + 1}e` : '1er'} groupe`;
-      return `<span class="fm-partie">${mot} à <span class="fm-heure-mot">${escapeHtml(formatClockDisplay(etape.start))}</span></span>`;
-    }).join(separe);
+    return placees.map((etape, index) => `<span class="fm-partie">${index ? `${index + 1}e` : '1er'} groupe à <span class="fm-heure-mot">${escapeHtml(formatClockDisplay(etape.start))}</span></span>`).join(separe);
   }
   if (activityId !== 'laser_game' || !placees.length || partiesLaserDuDossier(placees) < 2) return '';
   const touchable = peutChangerHeureEdition(state.selectedRes, activityId);
@@ -35096,7 +35409,8 @@ function libellePointHeure(etape, etapes) {
 function pointsHeureEdition(r) {
   const points = new Map();
   if (!r) return points;
-  const programme = getGroupeProgramme(r);
+  // (l heure d une activite en plus d une formule se regle a sa rangee, jamais par le glisser d une partie)
+  const programme = getGroupeProgramme(r).filter(etape => !etape.enPlus);
   const etapes = programme.filter(etape => etape.start !== null && etape.start !== undefined && !etape.libre && !etape.aPlacer && etape.activityId);
   etapes.forEach((etape) => {
     const cle = cleHeureEtape(etape);
@@ -35996,7 +36310,8 @@ function preparerModificationEdition(options = {}) {
   // son plan (calculerLaModification) et la base les garde (lib/formule-adaptee.js).
   const pistesTenues = !requiresLanes && pistesTenuesParLaFormuleAdaptee(dossierFormule);
   const lanesFinales = requiresLanes ? lanes : pistesTenues ? (origine.lanes || []).map(Number) : [];
-  const pistesTouchees = valeurReservationComparable(lanesFinales) !== valeurReservationComparable(origine.lanes || []);
+  // (un bowling en plus garde ses pistes : seules celles de la formule se comparent, le serveur reprend les siennes)
+  const pistesTouchees = valeurReservationComparable(lanesFinales) !== valeurReservationComparable(pistesDeLaFormuleSeule(origine));
 
   // FORMULE ADAPTEE A CE DOSSIER : on envoie un PROGRAMME. Le serveur le
   // renormalise et replanifie (program est dans REPLAN_FIELDS) ; le catalogue
@@ -36038,8 +36353,11 @@ function preparerModificationEdition(options = {}) {
   // (prixQuiSuit, lib/droits-reservation). Un horaire d arcades deplace seul
   // reste chiffre ici : pour le serveur, une heure n est pas du contenu.
   const estimeEcran = getEditPrixEstime();
+  // LES ACTIVITES EN PLUS REGLEES ICI (2026-11-22) partent telles quelles, la liste entiere ; le serveur les juge
+  // avec la formule et pose leur prix du catalogue (calculerLaModification). Sans geste, rien ne part.
+  const enPlusEnvoyes = peutAdapterLeProgramme(state.selectedRes) && enPlusEditionChange() ? enPlusEnvoyesEdition() : null;
   const prixSuivi = !es.prixFige && Boolean(estimeEcran && estimeEcran.utilisable) && editionChangeLePrix()
-    && (formuleChangee || versProgrammeNormal || poseEditionChange() || editProgramAChange() || Number(es.pax) !== Number(state.selectedRes.pax));
+    && (formuleChangee || versProgrammeNormal || poseEditionChange() || editProgramAChange() || Boolean(enPlusEnvoyes) || Number(es.pax) !== Number(state.selectedRes.pax));
   // Les extras partent s ils ont change (nourriture, boissons, le reste).
   const extrasNouveaux = peutAdapterFormule() && editExtrasAChange() ? extrasDepuisLignes(es.extrasEdites, es.pax) : null;
   // L heure tapee sur une activite ajoutee part avec le programme (heuresNouvellesEnvoyees), et
@@ -36062,6 +36380,8 @@ function preparerModificationEdition(options = {}) {
     else if (pistesALaMainDuDossier(origine)) updated.pistesALaMain = 0;
     if (extrasNouveaux) updated.extras = extrasNouveaux;
     if (heuresPoseesNouvelles) updated.heuresPosees = heuresPoseesNouvelles;
+    if (enPlusEnvoyes) updated.enPlus = enPlusEnvoyes.map((ligne) => ({ ...ligne }));
+    else delete updated.enPlus;
     // (les notes de l equipe changees ici, posees sur la version ou l action se joue)
     const notesChangees = notesEnvoyeesEdition(dossier.notes);
     if (notesChangees !== null) updated.notes = notesChangees;
@@ -36086,8 +36406,8 @@ function preparerModificationEdition(options = {}) {
     // plein tarif en silence. La REFERENCE, elle, suit la nouvelle configuration.
     const ecartPrix = getReservationPriceGap(dossier);
     const programmeArcades=(dossier.program?.items || []).some(item=>item.activityId === 'arcade_time' && item.arcadeOfferId);
-    const pistesEnNombre=lanesFinales.length !== (dossier.lanes || []).length;
-    const changementOperationnel=Boolean(programme) || Boolean(nouvelleFormule) || touches.some(champ=>['pax','duration','date'].includes(champ)) || (pistesTouchees && pistesEnNombre) || (programmeArcades && touches.includes('startTime'));
+    const pistesEnNombre=lanesFinales.length !== pistesDeLaFormuleSeule(dossier).length;
+    const changementOperationnel=Boolean(programme) || Boolean(nouvelleFormule) || Boolean(enPlusEnvoyes) || touches.some(champ=>['pax','duration','date'].includes(champ)) || (pistesTouchees && pistesEnNombre) || (programmeArcades && touches.includes('startTime'));
     // RIEN DE CE QUI FAIT LE TARIF N A BOUGE (un nom, une heure, un telephone, une
     // occasion, des extras) : la reference reste celle du dossier, et le prix
     // ne bouge que de ses extras. La recalculer ici reecrivait celle d une
@@ -36195,7 +36515,7 @@ async function saveEdit(e) {
     // coche la 5 est un mensonge tranquille : il repart au comptoir avec la
     // mauvaise piste en tete.
     const voulues = lanesVoulues.join(', ');
-    const obtenues = ((payload.reservation && payload.reservation.lanes) || []).join(', ');
+    const obtenues = pistesDeLaFormuleSeule(payload.reservation || {}).join(', ');
     // ENREGISTRE N'EST PAS FORCEMENT PLACE. Quand le moteur n'a pas su
     // reconstruire le creneau (combinaison d'ancres refusee, plus rien de libre),
     // la reservation est bien ecrite mais elle part en « à surveiller » : le

@@ -40,6 +40,12 @@ function ok(cond, label) { console.log((cond ? 'ok  ' : 'FAIL') + '  ' + label);
 srv.listen(PORT, '127.0.0.1', async () => {
   const b = await chromium.launch({ executablePath: EDGE, headless: true });
   const pg = await b.newPage({ viewport: { width: 1500, height: 1000 } });
+  // L HEURE DU GATE, FIGEE LE MATIN (2026-11-22). Une arrivee changee pour une heure deja passee se refuse
+  // (arriveeDejaPasseeEdition) : [HEURE] pose 14:30 sur le dossier du jour, et passe 14:30 a Bruxelles la fiche
+  // refusait sans rien envoyer (la suite GitHub du soir : « aucun envoi »). 08:00 UTC du jour du centre, 9 h
+  // l hiver et 10 h l ete, avant toutes les heures que le gate pose.
+  const jourDuCentre = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Brussels', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  await pg.clock.setFixedTime(new Date(`${jourDuCentre}T08:00:00Z`));
   pg.on('pageerror', (e) => console.log('PAGEERROR', e.message));
   pg.on('console', (m) => { if (m.type() === 'error') console.log('CONSOLE-ERR', m.text()); });
   const expiresAt = new Date(Date.now() + 24 * 3600 * 1000).toISOString();

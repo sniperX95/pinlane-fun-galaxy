@@ -368,7 +368,7 @@ async function declencheursDeProduction(planF1) {
   bench.semer([moteur(), ligne(7204, { start_time: '18:00', lanes: [3, 4], pax: 4 })]);
   const piste = await patchHttp(7201, { activityId: 'bowling', startTime: '18:00', lanes: [3, 4] });
   check(ecrituresSql === ecrituresAvantRefus, 'refus serveur : aucun UPDATE SQL');
-  check(piste.status === 409 && /^Piste 3, 4 déjà prise de 18:00 à 19:00\.$/.test(piste.message || ''), `piste prise : refus 409 nomme la piste et l heure (${piste.message})`);
+  check(piste.status === 409 && /^Pistes 3 et 4 déjà prises de 18:00 à 19:00\.$/.test(piste.message || ''), `piste prise : refus 409 nomme la piste et l heure (${piste.message})`);
   const voisinIntact = await db.getReservationById(7201);
   check(voisinIntact.opsPlan.resourceBlocks.find((b) => b.resourceType === 'bowling_lane').startTime === '15:00', 'piste prise : la base est inchangee');
   bench.semer([moteur(), ligne(7204, { start_time: '18:00', lanes: [5, 6], pax: 4 })]);

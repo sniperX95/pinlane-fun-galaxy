@@ -375,7 +375,7 @@ async function scenarioPrise(browser) {
     const f = await lireFenetre(page);
     const b = ligneDe(f, 'bowling');
     const etats = b ? Object.fromEntries(b.pistes.map((p) => [p.n, p.cls])) : {};
-    ok(b && b.heure === '14:35' && b.mot === 'Ne passe pas' && /Piste 1, 2 déjà prise de 14:35 à 15:35\./.test(b.raison) && /Reste à 14:00\.$/.test(b.raison),
+    ok(b && b.heure === '14:35' && b.mot === 'Ne passe pas' && /Pistes 1 et 2 déjà prises de 14:35 à 15:35\./.test(b.raison) && /Reste à 14:00\.$/.test(b.raison),
       '[B] 14:35 : « Ne passe pas », la raison en clair (les pistes 1 et 2 prises de 14:35 a 15:35)', b);
     ok(b && b.libres.length >= 3 && b.libres.length <= 4 && b.libres.every((h) => mn(h) >= mn('14:10') && h !== '14:35' && Math.abs(mn(h) - mn('14:35')) <= 60) && b.libres.includes('14:30'),
       '[B] trois ou quatre heures libres proches en boutons, jamais avant l arrivee du groupe (14:10)', b && b.libres);

@@ -42,6 +42,11 @@
 //       qui tournent, 712 €.
 //   [F] 60 JOUEURS A 20:00, fermeture a 22:00 : le plan d avant finirait apres la fermeture, les groupes
 //       tournent d office, sans option a choisir, et le dossier nait ainsi (fin 22:00, 990 €).
+//   [G] UNE HEURE TOUCHEE NE MET JAMAIS UN SOUS-GROUPE A DEUX ENDROITS (le lot du 2026-11-22 : la pop-up et
+//       le glisser du planning complet sur un groupe qui tourne). 60 joueurs qui tournent a 15:30 : les heures
+//       que le planning demande au serveur (deplacerABlanc, essais) ne proposent pas le bowling a 16:00 ni a
+//       16:30 (« chevauche le Laser Game du groupe 1, de 16:30 à 16:55 »), ni le laser du groupe 1 a 16:00 ;
+//       le PATCH du toucher refuse avec la meme phrase et le dossier ne bouge pas ; 17:00 s enregistre.
 //   [*] Zero erreur JavaScript.
 //
 // CONTRE-PREUVES : `--contre-preuves` rejoue le gate sur du code casse expres, une mutation a la fois, en
@@ -81,6 +86,7 @@ const PLANNING = 'assets/pinlane-planning-global.js';
 const MOTEUR = 'lib/ops-engine.js';
 const GG = 'lib/grand-groupe.js';
 const OPS = 'lib/reservation-ops.js';
+const MOUVEMENT = 'lib/reservation-activity-move.js';
 
 // LES MUTATIONS : une regle retiree a la fois. `lettre` : le scenario qui doit rougir. `serveur` : le
 // code passe par le crochet de compilation du banc, sinon la console le recoit du serveur de fichiers.
@@ -121,6 +127,9 @@ const MUTATIONS = [
   { nom: 'pas-de-repli', lettre: 'F', serveur: true, fichier: MOTEUR, de: '    result = avant.ok ? avant : (enGroupes.ok || enGroupes.scenario || !avant.scenario ? enGroupes : avant);', vers: '    result = avant;' },
   { nom: 'duree-de-la-rotation-sommee', lettre: 'F', serveur: true, fichier: MOTEUR, de: '  const scheduledAnchorMinutes = rotation && anchorWindows.length\n    ? Math.max(...anchorWindows.map((window) => window.end)) - Math.min(...anchorWindows.map((window) => window.start))\n    : anchorWindows.reduce((sum, window) => sum + (window.end - window.start), 0);', vers: '  const scheduledAnchorMinutes = anchorWindows.reduce((sum, window) => sum + (window.end - window.start), 0);' },
   { nom: 'fenetre-refuse-d-avance', lettre: 'F', fichier: APP, de: '  return grand && grand.tourne ? Math.min(visite, rvDureeDUnGroupe()) : visite;', vers: '  return visite;' },
+  // [G] une heure deplacee (la pop-up du planning complet, son glisser, Modifier) ne regarde plus le
+  // sous-groupe : le compte des joueurs du groupe tient, le groupe 1 joue au bowling pendant son laser.
+  { nom: 'sous-groupe-deplace-a-deux-endroits', lettre: 'G', serveur: true, fichier: MOUVEMENT, de: '    const groupe = Number(movedBlock && movedBlock.sousGroupe) || 0;', vers: '    const groupe = 0;' },
 ];
 
 // ---------------------------------------------------------------------------
@@ -756,6 +765,50 @@ async function principal() {
         ok(gg && gg.tourne === true && JSON.stringify(gg.tailles) === '[30,30]', '[F] le plan garde ses groupes qui tournent, 30 et 30', gg);
         ok(erreurs.length === 0, '[*] zero erreur JavaScript (F)', erreurs.slice(0, 3).join(' | '));
       } finally { await ctx.close(); }
+    }
+
+    // =======================================================================
+    if (joue('G')) {
+      section('[G] UNE HEURE TOUCHEE NE MET JAMAIS UN SOUS-GROUPE A DEUX ENDROITS (PLANNING COMPLET, MODIFIER)');
+      const fx = semer('vide');
+      const jour = fx.staffState.date;
+      const cree = await serveur.appeler('POST', '/api/staff-reservations', {
+        name: 'Groupe Tourne', phone: '0470111222', email: '', notes: '', occasion: '', date: jour, startTime: '15:30', duration: 1, totalDuration: 2, lanes: [], pax: 60, status: 'pending', type: 'visite', formuleId: '',
+        program: [{ activityId: 'bowling', pax: 60, participants: 60, duration: 1 }, { activityId: 'laser_game', pax: 60, participants: 60, games: 1 }],
+        laserGames: 0, extras: [], channel: 'staff', requiresLanes: true, centerId: 'libramont',
+        preference: { activityOrder: ['bowling', 'laser_game'], preferredTimes: { bowling: '15:30', laser_game: '15:30' }, grandGroupe: { impose: true } },
+      });
+      const d = cree.json.reservation;
+      const ligne = (id) => B.base.reservations.get(Number(id)) || B.base.reservations.get(id);
+      const avant = d ? sansPistes(resume(blocsDe(ligne(d.id)))) : '';
+      ok(cree.statut < 300 && avant === 'B1@15:30x30 B2@16:30x30 L1@16:30x30 L2@15:30x30', '[G] le groupe tourne : groupe 1 bowling 15:30 puis laser 16:30, groupe 2 laser 15:30 puis bowling 16:30', `${cree.statut} ${cree.json.message || ''} ${avant}`);
+      if (d) {
+        const blocs = (d.opsPlan && d.opsPlan.resourceBlocks) || [];
+        const pistes = [...new Set(blocs.filter((b) => b.resourceType === 'bowling_lane').flatMap((b) => b.lanes || []))].sort((a, b) => a - b);
+        const laser1 = blocs.find((b) => b.resourceType === 'laser_arena' && Number(b.sousGroupe) === 1);
+        const cle1 = laser1 ? `${laser1.countIndex}.${laser1.groupWaveIndex}` : '';
+        // La pop-up et le glisser du planning complet demandent leurs heures ici (deplacerABlanc, essais) :
+        // seules celles qui passent se proposent.
+        const essais = async (moves) => (await serveur.appeler('POST', '/api/staff-reservations', { dryRun: true, deplacement: { id: d.id, centerId: 'libramont', baseUpdatedAt: d.updatedAt, essais: moves } })).json.essais || [];
+        const bowling = await essais(['15:00', '16:00', '16:30', '17:00'].map((h) => [{ activityId: 'bowling', startTime: h, lanes: pistes }]));
+        ok(bowling.length === 4 && bowling[0].passe === true && bowling[3].passe === true
+          && bowling[1].passe === false && /Laser Game du groupe 1, de 16:30 à 16:55/.test(bowling[1].raison || '')
+          && bowling[2].passe === false && /Laser Game du groupe 1/.test(bowling[2].raison || ''),
+        '[G] le bowling a 16:00 ou 16:30 ne se propose pas (« chevauche le Laser Game du groupe 1, de 16:30 à 16:55 ») ; 15:00 et 17:00 passent', bowling);
+        const laser = await essais(['16:00', '17:00'].map((h) => [{ activityId: 'laser_game', unitKey: cle1, startTime: h }]));
+        ok(Boolean(cle1) && laser.length === 2 && laser[0].passe === false && /Bowling du groupe 1, de 15:30 à 16:30/.test(laser[0].raison || '') && laser[1].passe === true,
+          '[G] le laser du groupe 1 a 16:00 chevauche son bowling et ne se propose pas ; 17:00 passe', { cle1, laser });
+        // Le toucher s enregistre par le PATCH activityMove : la meme regle, rien ne s ecrit.
+        const refuse = await serveur.appeler('PATCH', '/api/staff-reservations', { id: d.id, centerId: 'libramont', baseUpdatedAt: d.updatedAt, activityMove: { activityId: 'bowling', startTime: '16:00', lanes: pistes } });
+        const inchange = sansPistes(resume(blocsDe(ligne(d.id))));
+        ok(refuse.statut === 422 && /Laser Game du groupe 1/.test(refuse.json.message || '') && inchange === avant,
+          '[G] le PATCH du bowling a 16:00 est refuse avec la meme phrase, le dossier ne bouge pas', `${refuse.statut} ${refuse.json.message || ''} ${inchange}`);
+        // Une heure qui garde chaque sous-groupe a un seul endroit s enregistre.
+        const pris = await serveur.appeler('PATCH', '/api/staff-reservations', { id: d.id, centerId: 'libramont', baseUpdatedAt: d.updatedAt, activityMove: { activityId: 'bowling', startTime: '17:00', lanes: pistes } });
+        const deplace = blocsDe(ligne(d.id));
+        ok(pris.statut === 200 && sansPistes(resume(deplace)) === 'B1@17:00x30 B2@18:00x30 L1@16:30x30 L2@15:30x30' && sansChevauchement(deplace),
+          '[G] le bowling a 17:00 s enregistre : chaque sous-groupe reste a un seul endroit', `${pris.statut} ${pris.json.message || ''} ${sansPistes(resume(deplace))}`);
+      }
     }
   } catch (error) {
     ok(false, `exception : ${error.message}`, String(error.stack || '').split('\n').slice(0, 4).join(' | '));

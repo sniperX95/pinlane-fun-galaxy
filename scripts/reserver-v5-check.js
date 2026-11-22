@@ -911,7 +911,9 @@ async function scenarioI(page, verifier) {
   await page.waitForTimeout(400);
   const sans = await lireClient(page);
   const partisSans = await page.evaluate(() => window.__QA_CREES__.length);
-  verifier('I', partisSans === 0 && sans.focus === 'qbPhone' && sans.telManque && /obligatoire/.test(sans.telDit), 'Créer sans telephone : rien ne part, le champ dit pourquoi et prend le focus', JSON.stringify({ partisSans, focus: sans.focus, manque: sans.telManque, dit: sans.telDit }));
+  // (le telephone reste exige, mais un mot ou « / » le remplacent depuis le 2026-11-22, 551ab12 : le champ dit
+  // quoi ecrire, « Le téléphone du client est obligatoire. » ne se lit plus)
+  verifier('I', partisSans === 0 && sans.focus === 'qbPhone' && sans.telManque && /Écrivez un numéro, ou « par mail », ou « [/] » s.il n.y en a pas[.]/.test(sans.telDit), 'Créer sans telephone : rien ne part, le champ dit pourquoi et prend le focus', JSON.stringify({ partisSans, focus: sans.focus, manque: sans.telManque, dit: sans.telDit }));
 
   // 3. Un numero trop court, Entree dans le champ : rien ne part, le champ le dit
   // et garde la main.

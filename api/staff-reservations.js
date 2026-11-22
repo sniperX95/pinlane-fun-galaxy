@@ -46,7 +46,7 @@ const { refreshFormuleOverrides } = require('../lib/booking-config');
 const { refreshCatalog } = require('../lib/catalog-store');
 const { getPool } = require('../lib/database');
 const { exigerLesDroits, finDeLaVisite, notesSansLaNoteAPlacer, planifierPourLaFenetre, simulerAutres } = require('../lib/reserver-fenetre');
-const { ancresDuMoteur, debutDesActivites, heureDuPlan, lireHeuresPosees, memesActivites, poserLesHeures } = require('../lib/heures-posees');
+const { ancresALaMinute, ancresDuMoteur, debutDesActivites, heureDuPlan, lireHeuresPosees, memesActivites, poserLesHeures } = require('../lib/heures-posees');
 // La creation elle-meme vit dans lib/reserver-creation.js : la reservation en un clic d une demande
 // sur mesure (api/ops.js customRequestBook) prend le meme chemin.
 const { creerDepuisLaFenetre } = require('../lib/reserver-creation');
@@ -937,7 +937,7 @@ async function calculerLaModification({ body, current, session, requestedCenterI
   const operationalRequest = { ...current, ...patch };
   if (!Object.prototype.hasOwnProperty.call(patch, 'price')) delete operationalRequest.price;
   const ops = shouldReplan
-    ? await prepareReservationOps(operationalRequest, 'staff', { ignoreReservationId: Number(patch.id), heureEnregistree: current.startTime })
+    ? await prepareReservationOps(operationalRequest, 'staff', { ignoreReservationId: Number(patch.id), heureEnregistree: current.startTime, ...(ancresALaMinute(heuresAPoser) ? { aLaMinute: true } : {}) })
     : {};
   // UN PROGRAMME QUE LE PLAN NE PORTE PAS NE S ECRIT PAS (2026-11-20, dossier 1953 de Gembloux). Le
   // moteur refusait la Formule 5 avec son Bowling, et le dossier s ecrivait quand meme : le programme

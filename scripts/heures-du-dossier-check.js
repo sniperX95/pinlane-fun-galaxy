@@ -716,7 +716,7 @@ const MUTATIONS = [
   { nom: 'date-passee', lettre: 'H', scenarios: MOT, editions: [{ fichier: MOTEUR, serveur: true, de: '  if (date < today && !allowPastStart) {\n', vers: '  if (date < today) {\n' }] },
   { nom: 'seconde-partie-fabriquee', lettre: 'D', scenarios: ['deuxParties'], editions: [{ fichier: 'lib/reservation-activity-move.js', serveur: true, de: ' && !old.laserManual && !toutAPlacer) {\n', vers: ' && !old.laserManual) {\n' }] },
   { nom: 'ecart-au-premier-bloc', lettre: 'I', scenarios: MOT, editions: [{ fichier: OPS, serveur: true, de: '  if (avant && request.startTime) return timeToMinutes(String(request.startTime).slice(0, 5)) - timeToMinutes(avant);\n', vers: '' }] },
-  { nom: 'heure-non-transmise', lettre: 'I', scenarios: MOT, editions: [{ fichier: API, serveur: true, de: ', heureEnregistree: current.startTime })', vers: ' })' }] },
+  { nom: 'heure-non-transmise', lettre: 'I', scenarios: MOT, editions: [{ fichier: API, serveur: true, de: ', heureEnregistree: current.startTime, ...(ancresALaMinute', vers: ', ...(ancresALaMinute' }] },
   { nom: 'bowling-seul-rappele', lettre: 'I', scenarios: MOT, editions: [{ fichier: OPS, serveur: true, de: 'startTime: departDuMoteur(request),', vers: 'startTime: request.startTime,' }] },
   { nom: 'laser-seul-rappele', lettre: 'I', scenarios: MOT, editions: [{ fichier: OPS, serveur: true, de: '    recommended = garderLesPartiesPlacees(recommended, request, visitStartShiftMinutes(request));\n', vers: '' }] },
 ];

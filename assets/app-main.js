@@ -13314,8 +13314,10 @@ function getVisiteLibreApres(reservation, windows) {
   const items = reservation && reservation.program && Array.isArray(reservation.program.items) ? reservation.program.items : [];
   const posees = reservation && reservation.opsPlan && Array.isArray(reservation.opsPlan.timeline) ? reservation.opsPlan.timeline : [];
   const libres = items.filter(item => item && item.planned === false && !item.waitOffer && !ligneALaJournee(item)
-    // « Venir plus tot » : ce que le plan pose avant la premiere activite n allonge pas la fin.
-    && !(item.avant === true && posees.some(step => step && step.activityId === item.activityId && step.flexible === false && step.startTime)));
+    // « Venir plus tot » : ce que le plan pose avant la premiere activite n allonge pas la fin. Une heure
+    // posee au comptoir non plus : l activite compte a son heure (getStaffTerrainSpan, getEtapeAvant).
+    && !(item.avant === true && posees.some(step => step && step.activityId === item.activityId && step.flexible === false && step.startTime))
+    && !getEtapeAvant(reservation, item));
   const durees = libres.map(item => Math.max(0, Math.round(Number(item.minutes) || 0))).filter(duree => duree > 0);
   const minutes = durees.reduce((total, duree) => total + duree, 0);
   if (!minutes) return 0;
@@ -13403,8 +13405,11 @@ function getVisiteLibreApres(reservation, windows) {
 function getStaffTerrainSpan(reservation) {
   const windows = getStaffResourceWindows(reservation, 'all');
   // « Venir plus tot » : le groupe est la des son activite d avant, pas seulement a son bowling.
+  // L HEURE POSEE AU COMPTOIR COMPTE AUSSI (2026-11-22, la fiche disait « 16:10 → 18:35 » pour un
+  // minigolf pose de 18:40 a 19:25) : une activite libre qui a recu son heure (lib/heures-posees.js)
+  // se lit a cette heure, a la grille comme a la minute, jamais comme du temps libre ajoute a la fin.
   const etapesDuPlan = reservation && reservation.opsPlan && Array.isArray(reservation.opsPlan.timeline) ? reservation.opsPlan.timeline : [];
-  const avant = etapesDuPlan.filter(step => step && step.avant === true && step.startTime && step.endTime).map(step => ({ start: timeToNum(step.startTime), end: timeToNum(step.endTime) }));
+  const avant = etapesDuPlan.filter(step => step && (step.avant === true || step.heurePosee === true) && step.flexible !== true && step.startTime && step.endTime).map(step => ({ start: timeToNum(step.startTime), end: timeToNum(step.endTime) }));
   const items = [...getStaffFormulaTimedItems(reservation), ...getFormulaFreeWindows(reservation), ...avant];
   const starts = [...windows.map(window => Number(window.start)), ...items.map(item => item.start)];
   const ends = [...windows.map(window => Number(window.end)), ...items.map(item => item.end)];
@@ -40652,12 +40657,12 @@ function rvFormuleVraimentAdaptee() {
 }
 
 // L HEURE A LA MINUTE (2026-11-22, Ansar : « possibilité de mettre l'heure qu'on veut pour chaque
-// activité [...] à la minute [...] uniquement côté staff »). Le moteur ne place le bowling et le laser
-// qu aux heures pleines ou demies. Une ligne a 15:10 lui part a la demi-heure d avant (15:00), et son
-// heure part posee a la minute (heuresPosees) : le serveur la pose ensuite par le chemin de Modifier
-// (lib/heures-posees.js), pistes, armes, horaires et chevauchement du groupe juges sur les vraies plages.
-// Un bowling ou un laser seul a la minute part en visite de cette seule activite, au meme prix : le
-// moteur refuserait ce bowling et poserait ce laser a la demi-heure suivante. Les parties suivantes du
+// activité [...] à la minute [...] uniquement côté staff »). Une ligne a 15:10 part au moteur a 15:10,
+// et son heure part aussi posee (heuresPosees) : c est ce qui dit au serveur qu une heure du comptoir se
+// juge a sa minute (lib/reservation-ops.js aLaMinute), pistes et armes sur la vraie plage. Partie a la
+// demi-heure d avant (la premiere passe du 22/11), une piste prise de 15:00 a 15:10 faisait refuser
+// 15:10. Un bowling ou un laser seul a la minute part en visite de cette seule activite, au meme prix :
+// le moteur refuserait ce bowling et poserait ce laser a la demi-heure suivante. Les parties suivantes du
 // laser gardent leur ecart avec la premiere. Rend '' ou ce qui empeche d envoyer le dossier.
 function rvMinutesDe(heure) {
   const lu = /^(\d{2}):(\d{2})$/.exec(String(heure || ''));
@@ -40697,14 +40702,12 @@ function rvALaMinute(reservation, programme) {
     const heure = voulues[id];
     if (!rvHorsGrille(heure)) continue;
     const ecart = rvMinutesDe(heure) % 30;
-    voulues[id] = rvEnHeure(rvMinutesDe(heure) - ecart);
     posees[id] = heure;
     aLaMinute = true;
     if (id === 'laser_game' && Array.isArray(preference.laserGameTimes)) {
       const departs = preference.laserGameTimes.map((h) => (h ? rvMinutesDe(h) - ecart : NaN));
       const k = preference.laserGameTimes.findIndex((h, i) => h && (!Number.isFinite(departs[i]) || departs[i] % 30 !== 0));
       if (k > 0) return `Laser à ${heure} : ses autres parties suivent toutes les 30 minutes (${rvEnHeure(rvMinutesDe(heure) + 30)}). Pour placer la partie ${k + 1} à part, mettez la première sur une demi-heure.`;
-      preference.laserGameTimes = preference.laserGameTimes.map((h, i) => (h ? rvEnHeure(departs[i]) : h));
     }
   }
   if (!aLaMinute) return '';
@@ -41364,7 +41367,7 @@ function rsVersQuestion(q) {
   // (l heure tapee a la minute ne vit que sur sa page, rsMinuteHtml)
   b.minute = null;
   // (les heures ouvertes sous une activite ne vivent que sur la page des activites)
-  if (q !== 'activites') { b.heureAct = ''; b.heureActDit = null; }
+  if (q !== 'activites') { b.heureAct = ''; b.heureActDit = null; b.colonneAvant = null; }
 }
 
 // Toucher une ligne du ticket ouvre sa question.
@@ -42355,6 +42358,9 @@ function rsBasculerHeureAct(id) {
   const b = rsEtat();
   if (!b || !rsModeHeureAct(id)) return;
   if (b.heureAct === id) { rsFermerHeureAct(); return; }
+  // (la colonne d avant le panneau : refermee, elle y revient, rsRemettreLaColonne)
+  const colonne = document.getElementById('rsCol');
+  if (b.colonneAvant == null && colonne) b.colonneAvant = colonne.scrollTop;
   rsGeste(() => { b.heureAct = id; b.heureActDit = null; b.minute = null; }, { focus: false });
   const montrer = () => {
     const panneau = document.getElementById(`rsHA-${id}`);
@@ -42375,9 +42381,24 @@ function rsFermerHeureAct() {
   const id = b ? b.heureAct : '';
   if (!id) return false;
   rsGeste(() => { b.heureAct = ''; b.heureActDit = null; b.minute = null; }, { focus: false });
+  rsRemettreLaColonne(b);
   const bouton = document.getElementById(`rsHB-${id}`);
   if (bouton) bouton.focus({ preventScroll: true });
   return true;
+}
+
+// LA COLONNE REVIENT EN PLACE (2026-11-22, a 1366 x 768). Le panneau des heures d une activite se
+// montre en faisant defiler la colonne (rsBasculerHeureAct) : apres l heure d une 3e activite, elle
+// restait defilee, le haut de la fenetre (le groupe, le jour) cache. Le panneau referme (heure prise,
+// Echap, son bouton), la colonne reprend la position qu elle avait avant lui.
+function rsRemettreLaColonne(b) {
+  if (!b || b.colonneAvant == null) return;
+  const avant = b.colonneAvant;
+  b.colonneAvant = null;
+  const remettre = () => { const colonne = document.getElementById('rsCol'); if (colonne) colonne.scrollTop = avant; };
+  remettre();
+  // (la peinture complete suit la premiere, comme a l ouverture du panneau)
+  requestAnimationFrame(() => setTimeout(remettre, 0));
 }
 
 // UNE HEURE TOUCHEE DANS LE PANNEAU se prend tout de suite : le ticket, le prix et le resume suivent
@@ -42413,6 +42434,7 @@ function rsHeureAct(id, heure) {
     }
     rsDemanderLesJoueurs();
   }, { focus: false });
+  if (!refus) rsRemettreLaColonne(b);
   const bouton = refus ? null : document.getElementById(`rsHB-${id}`);
   if (bouton) bouton.focus({ preventScroll: true });
 }

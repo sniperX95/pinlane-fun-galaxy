@@ -15,6 +15,8 @@
 //   [A4] Echap laisse le nombre d avant, la fenetre reste ouverte ;
 //   [A5] un nombre tape puis « + » : ce nombre plus un, jamais le groupe plus un ;
 //   [A6] le groupe change ensuite (50) : les activites reglees gardent leur nombre ;
+//   [C1] PLUS QUE L ACTIVITE N ACCUEILLE : un minigolf qui accueille 12 joueurs, 15 tape se refuse
+//        sous son compteur (« 12 joueurs au plus »), rien ne bouge ; 10 se prend ;
 //   [A7] le prix suit (le serveur : 156 EUR de bowling, 300 EUR de laser) ;
 //   [A8] « Créer » ecrit 26 au bowling, 30 au laser, un groupe de 50 ;
 //   [M1] MODIFIER, LE NOMBRE SE TAPE : le compteur du bowling touche devient un champ, 18 puis
@@ -25,18 +27,31 @@
 //   [M4] 80 au laser se refuse avec sa raison, rien ne bouge ;
 //   [B1] RESERVER, « AUTRE HEURE » : la touche du bowling s appelle ainsi, sa page porte un champ a la
 //        minute (type time, pas de 60 s) ; la fenetre tient sans defiler a 1366 x 768 ;
-//   [B2] 16:10 tape puis Entree : le serveur juge le dossier a blanc (le moteur a 16:00, l heure posee
-//        a 16:10), elle se prend, le ticket dit 16:10 a 17:10 ;
+//   [B2] 16:10 tape puis Entree : le serveur juge le dossier a blanc, le moteur a 16:10 (l heure posee
+//        part telle quelle), elle se prend, le ticket dit 16:10 a 17:10 ;
 //   [B3] le laser a 17:25 et un minigolf a 18:40, chacun par son champ ;
+//   [B8] LA COLONNE REVIENT EN PLACE : le panneau des heures du minigolf (3e activite) fait defiler la
+//        colonne pour se montrer ; 18:40 prise, la colonne reprend sa position d avant (1366 x 768) ;
 //   [B4] 23:50 au bowling ne tient pas : le champ dit pourquoi, rien ne bouge ;
 //   [B5] « Créer » : le dossier a le bowling de 16:10 a 17:10, le laser a 17:25, le minigolf pose a
 //        18:40, l arrivee a 16:10 ;
 //   [B6] le planning et la fiche montrent 16:10 et 17:25 tels quels ;
+//   [F1] L EN-TETE DE LA FICHE finit a la vraie fin de la derniere activite : « 16:10 → 19:25 » (le
+//        minigolf pose de 18:40 a 19:25), plus « 18:35 » (le minigolf compte comme temps libre) ;
+//   [F2] a la grille aussi : le meme dossier, minigolf pose de 18:30 a 19:15, finit a 19:15 ;
 //   [B7] MODIFIER A LA MINUTE : le champ d heure du bowling accepte 18:05, « Enregistrer » l ecrit ;
 //   [S1] LE SERVEUR : un groupe qui change ne fait plus refuser un dossier a la minute, le bowling
 //        reste a 16:10 et le laser a 17:20 ;
 //   [S2] une minute qui ne tient plus (toutes les pistes prises des 17:00) se refuse avec sa raison,
 //        jamais l heure du moteur a sa place ;
+//   [P1] LA MINUTE SE JUGE A SA MINUTE : toutes les pistes prises de 15:10 a 16:10, un bowling pose a
+//        16:10 se cree (la demi-heure d avant, 16:00, le faisait refuser) ;
+//   [P2] les pistes du moteur ne vont pas a la minute : 3 a 8 prises jusqu a 16:10, 1 et 2 des 17:00 ;
+//        le bowling de 16:10 a 17:10 prend deux pistes cote a cote parmi 3 a 8 ;
+//   [P3] les armes a la minute : 25 joueurs au laser de 17:00 a 17:25, 8 joueurs poses a 17:25 se
+//        creent (a 17:00, il manquait des armes) ;
+//   [P4] UN BOWLING SEUL A LA MINUTE, replanifie (un joueur de plus) : le moteur le place a 16:00 sur les
+//        pistes 1 et 2, prises a 17:00 ; reposé a 16:10, il prend deux autres pistes libres, cote a cote ;
 //   [S3] le client et l assistant gardent la grille : un bowling public a 15:15 et un glisser sans la
 //        minute de l equipe se refusent ;
 //   [*]  zero erreur JavaScript.
@@ -45,7 +60,7 @@
 // scripts/reserver-banc.js (scripts/comptoir-banc.js) : aucune base reelle, aucun reseau.
 //
 // CONTRE-PREUVES : `--contre-preuves` sert le code casse expres, une mutation a la fois (en memoire,
-// le disque n est jamais touche) et exige que chacune rougisse sa cible. `--seul=A,M,B,S` ne joue que
+// le disque n est jamais touche) et exige que chacune rougisse sa cible. `--seul=A,C,M,B,S,P` ne joue que
 // ces lettres ; `--ancres` verifie seulement que chaque ancre existe une fois.
 // SAISIE_CAPTURES=<dossier> : les images (theme clair).
 'use strict';
@@ -66,6 +81,10 @@ const argument = (nom) => { const a = process.argv.find((x) => x === `--${nom}` 
 const APP = 'assets/app-main.js';
 const MOUVEMENT = 'lib/reservation-activity-move.js';
 const BASE = 'lib/database.js';
+const MOTEUR = 'lib/ops-engine.js';
+const FENETRE = 'lib/reserver-fenetre.js';
+const HEURES = 'lib/heures-posees.js';
+const B2 = '[B2] 16:10 : jugee a blanc a sa minute (moteur a 16:10), prise, le ticket dit 16:10 a 17:10';
 const OPS = 'lib/reservation-ops.js';
 const MUTATIONS = [
   { nom: 'nombre-en-texte', lettre: 'A', cible: '[A1] le compteur du bowling touche devient un champ, tout le nombre selectionne, clavier des chiffres', fichier: APP, de: '${saisie ? rsNombreHtml(saisie, valeur, aria) : `<b>${valeur}</b>`}', vers: '<b>${valeur}</b>' },
@@ -77,14 +96,21 @@ const MUTATIONS = [
   { nom: 'modifier-suit-a-chaque-frappe', lettre: 'M', cible: '[M2] le groupe tape 45 frappe par frappe : le bowling regle reste a 18, le laser suit le groupe', fichier: APP, de: '  if (!Array.isArray(e.suiventLeGroupe)) {\n    const reglees = Array.isArray(e.joueursRegles) ? e.joueursRegles : [];\n    e.suiventLeGroupe = actives.filter(([id, options]) => !reglees.includes(id) && (!(Number(options.participants) > 0) || Math.trunc(Number(options.participants)) === reference)).map(([id]) => id);\n  }', vers: '  {\n    e.suiventLeGroupe = actives.filter(([id, options]) => !(Number(options.participants) > 0) || participantsLigneProgramme(options, reference) === reference).map(([id]) => id);\n  }' },
   { nom: 'echap-groupe-sans-retour', lettre: 'M', cible: '[M3] Echap dans le groupe rend 50, la fiche reste ouverte', fichier: APP, de: "  if (event.key !== 'Escape' || !e || !e.groupeAvantSaisie || !champ) return;", vers: '  return;' },
   { nom: 'pas-d-autre-heure', lettre: 'B', cible: '[B1] « Autre heure » ouvre un champ a la minute, la fenetre tient sans defiler', fichier: APP, de: 'function rsMinuteHtml(id, courante) {\n', vers: "function rsMinuteHtml(id, courante) {\n  return '';\n" },
-  { nom: 'ancre-a-la-minute', lettre: 'B', cible: '[B2] 16:10 : jugee a blanc (moteur a 16:00, heure posee 16:10), prise, le ticket dit 16:10 a 17:10', fichier: APP, de: 'function rvALaMinute(reservation, programme) {\n', vers: "function rvALaMinute(reservation, programme) {\n  return '';\n" },
-  { nom: 'minute-refusee-au-glisser', lettre: 'B', cible: '[B2] 16:10 : jugee a blanc (moteur a 16:00, heure posee 16:10), prise, le ticket dit 16:10 a 17:10', fichier: MOUVEMENT, serveur: true, de: "(activity === 'bowling' && !aLaMinute && target % 30)", vers: "(activity === 'bowling' && target % 30)" },
+  { nom: 'ancre-a-la-minute', lettre: 'B', cible: B2, fichier: APP, de: 'function rvALaMinute(reservation, programme) {\n', vers: "function rvALaMinute(reservation, programme) {\n  return '';\n" },
+  { nom: 'minute-refusee-au-glisser', lettre: 'B', cible: '[B7] Modifier : le champ d heure du bowling accepte 18:05 et « Enregistrer » l ecrit', fichier: MOUVEMENT, serveur: true, de: "(activity === 'bowling' && !aLaMinute && target % 30)", vers: "(activity === 'bowling' && target % 30)" },
   { nom: 'pris-sans-verdict', lettre: 'B', cible: '[B4] 23:50 au bowling : le champ dit pourquoi, rien ne bouge', fichier: APP, de: '  const corps = rsCorpsALaMinute(id, heure, mode);\n', vers: '  rsPrendreHeureALaMinute(id, heure, mode);\n  return;\n  const corps = rsCorpsALaMinute(id, heure, mode);\n' },
   { nom: 'creation-sur-la-grille', lettre: 'B', cible: '[B5] le dossier cree : bowling 16:10 a 17:10, laser 17:25, minigolf pose a 18:40, arrivee 16:10', fichier: BASE, serveur: true, de: "  if (payload.channel === 'staff') return;\n", vers: '' },
   { nom: 'modifier-au-pas-de-30', lettre: 'B', cible: '[B7] Modifier : le champ d heure du bowling accepte 18:05 et « Enregistrer » l ecrit', fichier: APP, de: 'type="time" step="60" value="${escapeHtml(valeur)}" data-heure-champ=', vers: 'type="time" step="1800" value="${escapeHtml(valeur)}" data-heure-champ=' },
-  { nom: 'replan-sur-la-grille', lettre: 'S', cible: '[S1] un joueur de plus : le dossier a la minute se replanifie, bowling 16:10, laser 17:20', fichier: OPS, serveur: true, de: '  const minute = heuresALaMinute(request);\n  if (!minute.bowling && !minute.laser) return { times, laserGameTimes };', vers: '  return { times, laserGameTimes };' },
-  { nom: 'minute-perdue-sans-un-mot', lettre: 'S', cible: '[S2] le bowling a 16:10 ne tient plus : le changement se refuse avec sa raison', fichier: OPS, serveur: true, de: '    return { plan, refus: `Le bowling posé à ${move.startTime} ne tient plus :', vers: '    return { plan, sansMot: `Le bowling posé à ${move.startTime} ne tient plus :' },
+  { nom: 'replan-sur-la-grille', lettre: 'S', cible: '[S1] un joueur de plus : le dossier a la minute se replanifie, bowling 16:10, laser 17:20', fichier: OPS, serveur: true, de: '    const aLaMinute = staff && (options.aLaMinute === true || (isEdit && aLaMinuteDuDossier(request)));', vers: '    const aLaMinute = staff && options.aLaMinute === true;' },
+  { nom: 'minute-perdue-sans-un-mot', lettre: 'S', cible: '[S2] le bowling a 16:10 ne tient plus : le changement se refuse avec sa raison', fichier: OPS, serveur: true, de: '  if (ignoreReservationId && staff && aLaMinuteDuDossier(request) && planResult && planResult.ok === false && recommended) {', vers: '  if (false) {' },
   { nom: 'public-a-la-minute', lettre: 'S', cible: '[S3] le client et l assistant gardent la grille (15:15 refuse, glisser sans la minute refuse)', fichier: BASE, serveur: true, de: "  if (payload.channel === 'staff') return;\n", vers: "  if (payload.channel !== 'aucun') return;\n" },
+  { nom: 'minute-jugee-a-la-demi-heure', lettre: 'P', cible: '[P1] toutes les pistes prises de 15:10 a 16:10 : le bowling pose a 16:10 se cree', fichier: MOTEUR, serveur: true, de: '    if (!aLaMinute && start % PROGRAM_GRID_MINUTES !== 0) {', vers: '    if (start % PROGRAM_GRID_MINUTES !== 0) {' },
+  { nom: 'reserver-sans-la-minute', lettre: 'P', cible: '[P2] 1 et 2 prises a 17:00 : le bowling de 16:10 prend deux pistes cote a cote parmi 3 a 8', fichier: FENETRE, serveur: true, de: "...(ancresALaMinute(heuresPosees) ? { aLaMinute: true } : {})", vers: '' },
+  { nom: 'laser-a-la-demi-heure', lettre: 'P', cible: '[P3] 25 joueurs au laser jusqu a 17:25 : 8 joueurs poses a 17:25 se creent', fichier: MOTEUR, serveur: true, de: '  if (!laserOnSite && !aLaMinute) {', vers: '  if (!laserOnSite) {' },
+  { nom: 'pistes-du-moteur-gardees', lettre: 'P', cible: '[P4] le bowling seul pose a 16:10 se replanifie sur deux autres pistes libres, cote a cote', fichier: HEURES, serveur: true, de: '    if (!autres || autres.length !== voulues) throw error;\n    return essayer({ ...move, lanes: autres });', vers: '    throw error;' },
+  { nom: 'fin-sans-l-heure-posee', lettre: 'B', cible: '[F1] l en-tete de la fiche finit a 19:25, la fin du minigolf pose a 18:40', fichier: APP, de: '(step.avant === true || step.heurePosee === true) && step.flexible !== true', vers: 'step.avant === true && step.flexible !== true' },
+  { nom: 'colonne-reste-defilee', lettre: 'B', cible: '[B8] 18:40 prise au minigolf : la colonne reprend sa position d avant le panneau', fichier: APP, de: 'function rsRemettreLaColonne(b) {\n', vers: 'function rsRemettreLaColonne(b) {\n  return;\n' },
+  { nom: 'plus-que-l-activite', lettre: 'C', cible: '[C1] 15 au minigolf qui accueille 12 joueurs : la raison sous le compteur, rien ne bouge', fichier: APP, de: '  if (n > bornes.max) return `${nom} : ${rvPluriel(bornes.max, unite)} au plus.`;', vers: '  if (n > bornes.max * 9) return `${nom} : ${rvPluriel(bornes.max, unite)} au plus.`;' },
   { nom: 'assistant-a-la-minute', lettre: 'S', cible: '[S3] le client et l assistant gardent la grille (15:15 refuse, glisser sans la minute refuse)', fichier: MOUVEMENT, serveur: true, de: 'toutLeJeu = false, aLaMinute = false } = {}) {', vers: 'toutLeJeu = false, aLaMinute = true } = {}) {' },
 ];
 const LES_MUTATIONS = new Map(MUTATIONS.map((m) => [m.nom, m]));
@@ -237,6 +263,40 @@ async function scenarioA(browser) {
 }
 
 // ---------------------------------------------------------------------------
+// Plus que l activite n accueille.
+// ---------------------------------------------------------------------------
+async function scenarioC(browser) {
+  const m = await ouvrir(browser);
+  try {
+    const { page } = m;
+    // (un centre dont le minigolf accueille 12 joueurs : le reglage maxPax du catalogue)
+    await page.evaluate(() => setCenterActivities(getCenterActivities().map((a) => (a.id === 'minigolf_blacklight' ? { ...a, maxPax: 12, capacityPerUnit: null } : a))));
+    await page.locator('.btn-new').click();
+    await page.waitForTimeout(400);
+    await groupe(page, 20);
+    await page.locator('#rsT-minigolf_blacklight').click();
+    await attendre(page, () => rvActivites().includes('minigolf_blacklight'));
+    const lire = () => page.evaluate(() => ({ golf: getQuickVisitParticipants('minigolf_blacklight'), pax: Number(quickBookState.pax), bulle: ((document.querySelector('#quickBookOverlay .rs-pas-dit') || {}).textContent || '').trim(), champ: Boolean(document.getElementById('rsSaisie')) }));
+    const depart = await lire();
+    const nombre = page.locator('#quickBookOverlay [data-saisie="j:minigolf_blacklight"]');
+    await nombre.click();
+    await page.keyboard.type('15');
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(500);
+    const c1 = await lire();
+    ok(depart.golf === 12 && c1.golf === 12 && c1.pax === 20 && /12 joueurs au plus/.test(c1.bulle) && !/groupe compte/.test(c1.bulle), '[C1] 15 au minigolf qui accueille 12 joueurs : la raison sous le compteur, rien ne bouge', { depart, c1 });
+    await page.locator('#quickBookOverlay [data-saisie="j:minigolf_blacklight"]').click();
+    await page.keyboard.type('10');
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(500);
+    const c2 = await lire();
+    ok(c2.golf === 10 && c2.pax === 20 && !c2.bulle, '[C1] 10 au minigolf se prend, le groupe reste 20', c2);
+  } catch (error) {
+    if (!error.cibleRouge) ok(false, '[C] scenario interrompu', String(error.message || error).slice(0, 300));
+  } finally { await finir(m, 'C'); }
+}
+
+// ---------------------------------------------------------------------------
 // Modifier.
 // ---------------------------------------------------------------------------
 const lireM = (page) => page.evaluate(() => {
@@ -351,8 +411,8 @@ async function scenarioB(browser) {
     await attendre(page, () => { const p = rvPlanCourant(); return Boolean(p && p.disponible); }, null, 10000);
     const b2 = await lireR(page);
     const blancs = m.journal.slice(avant).filter((j) => j.m === 'POST' && j.corps && j.corps.dryRun && j.corps.heuresPosees && j.corps.heuresPosees.bowling === '16:10');
-    const jugee = blancs.find((j) => j.corps.preference && j.corps.preference.preferredTimes && j.corps.preference.preferredTimes.bowling === '16:00');
-    ok(Boolean(jugee) && b2.q === 'activites' && b2.heures.bowling === '16:10' && /16:10 à 17:10/.test(b2.ticket) && b2.plan && b2.plan.dispo === true, '[B2] 16:10 : jugee a blanc (moteur a 16:00, heure posee 16:10), prise, le ticket dit 16:10 a 17:10', { b2, blancs: blancs.length });
+    const jugee = blancs.find((j) => j.corps.preference && j.corps.preference.preferredTimes && j.corps.preference.preferredTimes.bowling === '16:10');
+    ok(Boolean(jugee) && b2.q === 'activites' && b2.heures.bowling === '16:10' && /16:10 à 17:10/.test(b2.ticket) && b2.plan && b2.plan.dispo === true, B2, { b2, blancs: blancs.length });
     if (await page.locator('#rsAjout-laser_game').count()) await page.locator('#rsAjout-laser_game').click();
     await attendre(page, () => rvActivites().includes('laser_game'));
     await page.locator('#rsZ-laser_game .rs-h-autres').click();
@@ -360,12 +420,18 @@ async function scenarioB(browser) {
     await minute(page, 'laser_game', '17:25', { bouton: true });
     await page.locator('#rsT-minigolf_blacklight').click();
     await attendre(page, () => rvActivites().includes('minigolf_blacklight'));
+    const colonne = () => page.evaluate(() => { const c = document.getElementById('rsCol'); return c ? Math.round(c.scrollTop) : null; });
+    const avantPanneau = await colonne();
     await page.locator('#rsHB-minigolf_blacklight').click();
     await page.waitForTimeout(400);
+    const panneauOuvert = await colonne();
     await minute(page, 'minigolf_blacklight', '18:40');
     await attendre(page, () => { const p = rvPlanCourant(); return Boolean(p && p.disponible); }, null, 10000);
+    await page.waitForTimeout(400);
+    const apresPanneau = await colonne();
     const b3 = await lireR(page);
     ok(b3.heures.bowling === '16:10' && b3.heures.laser_game === '17:25' && b3.heures.minigolf_blacklight === '18:40' && /17:25/.test(b3.ticket) && /18:40/.test(b3.ticket) && b3.plan && b3.plan.dispo === true, '[B3] le laser a 17:25 et le minigolf a 18:40, chacun par son champ', b3);
+    ok(panneauOuvert > avantPanneau && apresPanneau === avantPanneau, '[B8] 18:40 prise au minigolf : la colonne reprend sa position d avant le panneau', { avantPanneau, panneauOuvert, apresPanneau });
     await capture(page, '5-reserver-heures-a-la-minute.png');
     await page.locator('#rsZ-bowling .rs-h-autres').click();
     await page.waitForTimeout(400);
@@ -393,6 +459,14 @@ async function scenarioB(browser) {
     await page.waitForTimeout(600);
     const fiche = await page.evaluate(() => ((document.getElementById('posOverlay') || {}).innerText || '').replace(/\s+/g, ' '));
     ok(/16:10/.test(rangee) && /17:25/.test(rangee) && /16:10/.test(fiche) && /17:10/.test(fiche) && /17:25/.test(fiche) && /18:40/.test(fiche), '[B6] le planning et la fiche montrent 16:10, 17:25 et 18:40 tels quels', { rangee: rangee.slice(0, 300), fiche: fiche.slice(0, 500) });
+    const entete = await page.evaluate(() => { const r = state.selectedRes; return r ? getPosHeures(r, getStaffTerrainSpan(r)) : ''; });
+    ok(/^16:10 → 19:25$/.test(entete) && fiche.includes('16:10 → 19:25'), '[F1] l en-tete de la fiche finit a 19:25, la fin du minigolf pose a 18:40', { entete, fiche: fiche.slice(0, 200) });
+    const grille = await page.evaluate(() => {
+      const copie = JSON.parse(JSON.stringify(state.selectedRes));
+      (copie.opsPlan.timeline || []).forEach((s) => { if (s.activityId === 'minigolf_blacklight' && s.heurePosee) { s.startTime = '18:30'; s.endTime = '19:15'; } });
+      return getPosHeures(copie, getStaffTerrainSpan(copie));
+    });
+    ok(/^16:10 → 19:15$/.test(grille), '[F2] a la grille aussi : minigolf pose de 18:30 a 19:15, l en-tete finit a 19:15', grille);
     await capture(page, '8-fiche-a-la-minute.png');
     await page.evaluate(() => { const tab = [...document.querySelectorAll('#posOverlay button, #posOverlay [role="tab"]')].find((t) => /^Modifier$/i.test((t.textContent || '').trim())); if (tab) tab.click(); });
     await attendre(page, () => Boolean(state.editState));
@@ -455,7 +529,7 @@ async function scenarioS() {
     const items2 = (lu2.program && lu2.program.items) || [];
     const encore = await serveur.appeler('PATCH', '/api/staff-reservations', { id, centerId: 'libramont', baseUpdatedAt: lu2.updatedAt, pax: 10, program: { ...lu2.program, items: items2.map((it) => ({ ...it, participants: 10, pax: 10 })) } });
     const message = String((encore.json && encore.json.message) || '');
-    ok(encore.statut >= 400 && /Le bowling posé à 16:10 ne tient plus/.test(message) && /Piste/.test(message) && heuresEnBase(id) === 'bowling_lane@16:10 laser_arena@17:20' && Number(B.base.reservations.get(Number(id)).pax) === 9, '[S2] le bowling a 16:10 ne tient plus : le changement se refuse avec sa raison', { statut: encore.statut, message, heures: heuresEnBase(id) });
+    ok(encore.statut >= 400 && /16:10/.test(message) && /pistes libres/.test(message) && heuresEnBase(id) === 'bowling_lane@16:10 laser_arena@17:20' && Number(B.base.reservations.get(Number(id)).pax) === 9, '[S2] le bowling a 16:10 ne tient plus : le changement se refuse avec sa raison', { statut: encore.statut, message, heures: heuresEnBase(id) });
     // Le client et l assistant : la grille.
     let publicRefuse = '';
     try { DB.validateReservationResources({ centerId: 'libramont', channel: 'public', name: 'Client Grille', phone: '+32470000000', date: JOUR, duration: 1, lanes: [], pax: 4, type: 'bowling', label: 'Bowling Classique', laneCount: 1, requiresLanes: true, startTime: '15:15' }, [], {}); } catch (error) { publicRefuse = error.message; }
@@ -467,7 +541,70 @@ async function scenarioS() {
   }
 }
 
-const SCENARIOS = { A: scenarioA, M: scenarioM, B: scenarioB, S: scenarioS };
+// ---------------------------------------------------------------------------
+// La minute jugee a sa minute : pistes et armes sur la vraie plage.
+// ---------------------------------------------------------------------------
+function corpsPose(nom, { bowling = null, laser = null, pax = 8 } = {}) {
+  const program = [];
+  const preferredTimes = {};
+  const heuresPosees = {};
+  const order = [];
+  if (bowling) { program.push({ activityId: 'bowling', pax, participants: pax, duration: 1 }); preferredTimes.bowling = bowling; heuresPosees.bowling = bowling; order.push('bowling'); }
+  if (laser) { program.push({ activityId: 'laser_game', pax, participants: pax, games: 1 }); preferredTimes.laser_game = laser; heuresPosees.laser_game = laser; order.push('laser_game'); }
+  return {
+    centerId: 'libramont', date: JOUR, name: nom, phone: '0470111555', email: '', status: 'pending', channel: 'staff', allowPastStart: false,
+    startTime: bowling || laser, duration: 1, totalDuration: 2, pax, type: 'visite', lanes: [], laneCount: bowling ? 2 : 0, requiresLanes: Boolean(bowling),
+    program,
+    preference: { activityOrder: order, preferredTimes, ...(laser ? { laserGameTimes: [laser], laserPlacement: 'scheduled' } : {}) },
+    heuresPosees,
+  };
+}
+const rangeeBowling = (id, debut, fin, pistes, nom) => B.ligne(id, { date: JOUR, start_time: debut, lanes: pistes, name: nom, pax: 4 * pistes.length, type: 'bowling', duration: 1, total_duration: 1, ops_plan: { startTime: debut, endTime: fin, resourceBlocks: [{ type: 'activity', activityId: 'bowling', resourceType: 'bowling_lane', startTime: debut, endTime: fin, lanes: pistes, players: 4 * pistes.length }], timeline: [] } });
+const rangeeLaser = (id, debut, fin, joueurs, nom) => B.ligne(id, { date: JOUR, start_time: debut, lanes: [], name: nom, pax: joueurs, type: 'laser', duration: 0.5, total_duration: 0.5, ops_plan: { startTime: debut, endTime: fin, resourceBlocks: [{ type: 'activity', activityId: 'laser_game', resourceType: 'laser_arena', startTime: debut, endTime: fin, players: joueurs, countIndex: 1, groupWaveIndex: 1 }], timeline: [] } });
+const blocsDe = (id) => (planDe(B.base.reservations.get(Number(id))).resourceBlocks || []).map((b) => `${b.resourceType}@${b.startTime}-${b.endTime}${b.lanes && b.lanes.length ? `[${b.lanes.join(',')}]` : ''}`).sort().join(' ');
+const pistesDe = (id) => [...new Set((planDe(B.base.reservations.get(Number(id))).resourceBlocks || []).filter((b) => b.resourceType === 'bowling_lane').flatMap((b) => b.lanes || []).map(Number))].sort((a, b) => a - b);
+const seSuivent = (p) => p.length === 2 && p[1] === p[0] + 1;
+
+async function scenarioP() {
+  try {
+    serveur.changerSession(C.roleDe('direction'));
+    const DB = require(path.join(ROOT, 'lib/database.js'));
+    const poser = (lignes) => { B.semer([]); lignes.forEach((l) => B.base.reservations.set(Number(l.id), l)); };
+    const creer = async (corps) => { const rep = await serveur.appeler('POST', '/api/staff-reservations', corps); return { rep, id: rep.json && rep.json.reservation && rep.json.reservation.id }; };
+    poser([rangeeBowling(9101, '15:10', '16:10', [1, 2, 3, 4, 5, 6, 7, 8], 'Pistes Avant')]);
+    const p1 = await creer(corpsPose('Minute P1', { bowling: '16:10' }));
+    ok(p1.rep.statut === 201 && /^bowling_lane@16:10-17:10\[\d,\d\]$/.test(blocsDe(p1.id)), '[P1] toutes les pistes prises de 15:10 a 16:10 : le bowling pose a 16:10 se cree', { statut: p1.rep.statut, message: p1.rep.json && p1.rep.json.message, blocs: p1.id && blocsDe(p1.id) });
+    poser([rangeeBowling(9102, '15:10', '16:10', [3, 4, 5, 6, 7, 8], 'Pistes Avant'), rangeeBowling(9103, '17:00', '18:00', [1, 2], 'Pistes Apres')]);
+    const p2 = await creer(corpsPose('Minute P2', { bowling: '16:10' }));
+    const pistes2 = p2.id ? pistesDe(p2.id) : [];
+    ok(p2.rep.statut === 201 && /^bowling_lane@16:10-17:10/.test(blocsDe(p2.id)) && seSuivent(pistes2) && pistes2.every((p) => p >= 3), '[P2] 1 et 2 prises a 17:00 : le bowling de 16:10 prend deux pistes cote a cote parmi 3 a 8', { statut: p2.rep.statut, message: p2.rep.json && p2.rep.json.message, blocs: p2.id && blocsDe(p2.id) });
+    poser([rangeeLaser(9104, '17:00', '17:25', 25, 'Laser Avant')]);
+    const p3 = await creer(corpsPose('Minute P3', { laser: '17:25' }));
+    ok(p3.rep.statut === 201 && blocsDe(p3.id) === 'laser_arena@17:25-17:50', '[P3] 25 joueurs au laser jusqu a 17:25 : 8 joueurs poses a 17:25 se creent', { statut: p3.rep.statut, message: p3.rep.json && p3.rep.json.message, blocs: p3.id && blocsDe(p3.id) });
+    // Un bowling seul, deplace a 16:10 dans Modifier, puis un joueur de plus.
+    B.semer([]);
+    const seul = await serveur.appeler('POST', '/api/staff-reservations', { centerId: 'libramont', date: JOUR, name: 'Minute P4', phone: '0470111556', email: '', status: 'pending', channel: 'staff', startTime: '16:00', duration: 1, totalDuration: 1, pax: 8, type: 'bowling', lanes: [], laneCount: 2, requiresLanes: true });
+    const id4 = seul.json && seul.json.reservation && seul.json.reservation.id;
+    const lu4 = id4 ? await DB.getReservationById(Number(id4)) : null;
+    const pistes4 = id4 ? pistesDe(id4) : [];
+    const deplace = lu4 ? await serveur.appeler('PATCH', '/api/staff-reservations', { id: id4, centerId: 'libramont', baseUpdatedAt: lu4.updatedAt, activityMove: { activityId: 'bowling', startTime: '16:10', lanes: pistes4 } }) : { statut: 0 };
+    ok(seul.statut === 201 && deplace.statut === 200 && /^bowling_lane@16:10-17:10/.test(blocsDe(id4)), '[P] MONTAGE : un bowling seul deplace a 16:10', { creation: seul.statut, deplace: deplace.statut, message: deplace.json && deplace.json.message, blocs: id4 && blocsDe(id4) });
+    // Ses pistes prises jusqu a 16:30, 5 a 8 jusqu a 16:10, 1 et 2 des 17:00 : a 16:00, seules 1 et 2 sont
+    // libres (le moteur les prend) ; a 16:10, il faut deux pistes parmi 5 a 8.
+    const autres = [1, 2, 3, 4, 5, 6, 7, 8].filter((p) => !pistes4.includes(p));
+    const hautes = autres.slice(-4);
+    const basses = autres.filter((p) => !hautes.includes(p));
+    [rangeeBowling(9105, '15:30', '16:30', pistes4, 'Ses Pistes'), rangeeBowling(9106, '15:10', '16:10', hautes, 'Hautes Avant'), rangeeBowling(9107, '17:00', '18:00', basses, 'Basses Apres')].forEach((l) => B.base.reservations.set(Number(l.id), l));
+    const lu5 = await DB.getReservationById(Number(id4));
+    const plus = await serveur.appeler('PATCH', '/api/staff-reservations', { id: id4, centerId: 'libramont', baseUpdatedAt: lu5.updatedAt, pax: 9 });
+    const pistes5 = pistesDe(id4);
+    ok(plus.statut === 200 && Number(B.base.reservations.get(Number(id4)).pax) === 9 && /^bowling_lane@16:10-17:10/.test(blocsDe(id4)) && seSuivent(pistes5) && pistes5.every((p) => hautes.includes(p)), '[P4] le bowling seul pose a 16:10 se replanifie sur deux autres pistes libres, cote a cote', { statut: plus.statut, message: plus.json && plus.json.message, avant: pistes4, hautes, apres: blocsDe(id4) });
+  } catch (error) {
+    if (!error.cibleRouge) ok(false, '[P] scenario interrompu', String(error.message || error).slice(0, 300));
+  }
+}
+
+const SCENARIOS = { A: scenarioA, C: scenarioC, M: scenarioM, B: scenarioB, S: scenarioS, P: scenarioP };
 
 function verifierLesAncres() {
   let mortes = 0;
@@ -500,7 +637,7 @@ async function main() {
   if (argument('ancres')) process.exit(verifierLesAncres() ? 1 : 0);
   if (argument('contre-preuves')) { await contrePreuves(); return; }
   const seul = typeof argument('seul') === 'string' ? argument('seul').split(',') : Object.keys(SCENARIOS);
-  const navigateur = seul.some((nom) => nom !== 'S');
+  const navigateur = seul.some((nom) => nom !== 'S' && nom !== 'P');
   const http = navigateur ? await FX.servir({ port: PORT, transformer }) : null;
   const browser = navigateur ? await chromium.launch({ executablePath: C.BROWSER_PATH, headless: true }) : null;
   try {

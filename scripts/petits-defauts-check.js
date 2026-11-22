@@ -497,9 +497,28 @@ async function scenarioA(browser) {
     ok(!cases.f6.montant && /^8 crédits/.test(cases.f6.credit || '') && /par enfant/.test(cases.f6.credit || '') && !/\d\d:\d\d/.test(cases.f6.credit || ''),
       '[A] le planning montre « 8 crédits » (par enfant) pour les 8 credits d une formule, sans heure : des credits restent des credits', cases.f6);
     ok(/\d\d:\d\d/.test(cases.f8.cellule || '') && !cases.f8.credit, '[A] les arcades au temps (la F8) gardent leur heure au planning', cases.f8);
-    // (l image du planning a 1366 x 768 : la F6 en credits en haut du tableau, le sur mesure en argent dessous)
+    // (l image du planning a 1366 x 768, sans filtre : la molette descend le tableau, comme la main du gerant,
+    // jusqu a poser le sur mesure en argent en bas de l ecran, la F6 en credits au-dessus. Un defilement pose
+    // par le code ne tenait pas : la feuille suit l heure tant qu aucune main ne la bouge. Le toast de la
+    // creation se ferme d abord.)
     if (CAPTURES && !mutation) {
-      await page.evaluate((id) => { const tr = document.querySelector(`#globalPlanningGridWrap tr.gf-r[data-gf-id="${id}"]`); if (tr) tr.scrollIntoView({ block: 'start' }); }, f6.json.reservation.id);
+      await page.evaluate(() => document.getElementById('toast').classList.add('hidden'));
+      const ids = { f8: f8.json.reservation.id, f6: f6.json.reservation.id, sm: cree.id };
+      const lire = () => page.evaluate((liste) => {
+        const defile = document.querySelector('#globalPlanningGridWrap .gf-defile');
+        const boite = defile.getBoundingClientRect();
+        const tete = defile.querySelector('thead');
+        const haut = boite.top + (tete ? tete.getBoundingClientRect().height : 0);
+        const lignes = Object.fromEntries(Object.entries(liste).map(([cle, id]) => [cle, defile.querySelector(`tr.gf-r[data-gf-id="${id}"]`).getBoundingClientRect()]));
+        return { x: boite.left + boite.width / 2, y: boite.top + boite.height / 2, ecart: Math.max(0, Math.round(lignes.sm.bottom - boite.bottom + 8)),
+          aLEcran: Object.keys(lignes).filter((cle) => lignes[cle].top >= haut - 1 && lignes[cle].bottom <= boite.bottom + 1) };
+      }, ids);
+      const avant = await lire();
+      await page.mouse.move(avant.x, avant.y);
+      await page.mouse.wheel(0, avant.ecart);
+      await page.mouse.move(0, 0);
+      await page.waitForTimeout(600);
+      console.log(`      lignes entieres a l ecran : ${(await lire()).aLEcran.join(', ') || 'aucune'} (il faut f6 et sm)`);
       await photo(page, 'planning-arcades-credits-et-argent');
     }
     // LA FICHE : les arcades en argent sont « Libre », celles au temps ont leur heure.

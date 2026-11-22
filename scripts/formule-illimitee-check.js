@@ -877,7 +877,9 @@ async function scenarioI(browser) {
       return window.__vraiAppel('PATCH', '/api/staff-reservations', corps);
     }, { i: ID, formule: ID_ILLIMITEE });
     const message = String((forge.json || {}).message || (forge.json || {}).error || '');
-    ok(forge.statut >= 400 && JSON.stringify(B.base.reservations.get(ID)) === avant && /Laser/.test(message), '[I] une bascule forgee sur une heure pleine est refusee, avec la phrase, rien n est ecrit', { statut: forge.statut, message });
+    // (le refus du laser se dit en clair au comptoir depuis le 2026-11-22, 1672d14 : ce qui reste, ce qu il
+    // faut, la prochaine partie libre ; l ancienne phrase « Laser Game complet sur ce créneau » ne s y lit plus)
+    ok(forge.statut >= 400 && JSON.stringify(B.base.reservations.get(ID)) === avant && /Plus assez d.armes pour le laser à 20:00 : il en reste 5 sur 30, il en faut 10[.]/.test(message), '[I] une bascule forgee sur une heure pleine est refusee, avec la phrase, rien n est ecrit', { statut: forge.statut, message });
   } finally { await finir(m, 'I'); }
 }
 

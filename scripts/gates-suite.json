@@ -269,6 +269,7 @@
     "test:fiche-simple",
     "test:fiche-modifier",
     "test:extras-libres",
+    "test:petits-defauts",
     "test:heure-activite-dossier",
     "test:programme-complet",
     "test:reserver-heure-activite",

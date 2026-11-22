@@ -13608,8 +13608,8 @@ function renderStaffTerrainCard(item, phase, board) {
   // Le groupe en retard se rappelle : son numero est le geste utile, a la
   // place du temps relatif que sa pastille dit deja.
   const phone = String(reservation.phone || '').trim();
-  const call = phase === 'late' && phone
-    ? `<a class="terrain-call" href="tel:${escapeHtml(phone.replace(/[^0-9+]/g, ''))}" title="Appeler ${escapeHtml(reservation.name || 'le client')}">${STAFF_TERRAIN_PHONE_ICON}<span>${escapeHtml(phone)}</span></a>`
+  const call = phase === 'late' && rvTelephoneEnvoyable(phone)
+    ? `<a class="terrain-call" href="tel:${escapeHtml(rvTelephoneEnvoyable(phone))}" title="Appeler ${escapeHtml(reservation.name || 'le client')}">${STAFF_TERRAIN_PHONE_ICON}<span>${escapeHtml(phone)}</span></a>`
     : '';
   const actions = [renderStaffUtilityAction('Détail', `openStaffReservationDetail(${id})`)];
   // Arrivé : jamais sur un dossier deja paye, le statut est un seul champ et
@@ -29014,6 +29014,20 @@ function joueursDuDossier(r) {
 // du plan du moteur (getStaffFormulaTimedItems), et les activites libres d une
 // visite (minigolf, arcades, billard) n ont pas d heure : elles se font a la
 // guise du groupe. Une partie de laser sans heure au planning est « à placer ».
+// DES ARCADES VENDUES EN ARGENT (2026-11-22) : des credits remis au bar (« 8 crédits d'arcade »), une carte
+// chargee d un montant a la carte, ou un contenu de formule en argent. Elles n ont jamais d heure.
+function arcadesEnArgentDuDossier(r, item) {
+  const id = item && item.activityId;
+  if (id === 'arcade_credit') return true;
+  if (id !== 'arcade_time' || !r) return false;
+  const lignes = Array.isArray(r.program) ? r.program : (r.program && Array.isArray(r.program.items) ? r.program.items : []);
+  const ligne = lignes.find(l => l && l.activityId === 'arcade_time');
+  if (ligne && ligne.arcadeMode) return ligne.arcadeMode !== 'time';
+  const formule = r.formuleId && typeof resolveDisplayFormule === 'function' ? resolveDisplayFormule(r.formuleId) : null;
+  const contenu = formule ? dureeDuContenuDeLaFormule(formule, 'arcade_time') : null;
+  return Boolean(contenu && contenu.argent);
+}
+
 function getGroupeProgramme(r) {
   const etapes = [];
   const effectifActivite = id => participantsLigneProgramme(((r.program && r.program.items) || []).find(item => item.activityId === id), r.pax);
@@ -29080,6 +29094,13 @@ function getGroupeProgramme(r) {
   // LA PLAINE DE JEUX EST LIBRE TOUTE LA JOURNEE (2026-11-21, le gerant : « il n'y a pas d'heure,
   // c'est vraiment libre tout le temps ») : « Libre » au programme, jamais une heure.
   const accesIllimite = typeof illimiteDeSaCarte === 'function' && illimiteDeSaCarte(r);
+  // LES CRUCHES ET LES ARCADES EN ARGENT N ONT PAS D HEURE (2026-11-22, Ansar : « les cruches pour formules
+  // ça met un temps et ça me clc, ils prennent quand ils veulent » ; « pour les cartes avec argent tu dois
+  // juste mettre le montant, comme playground, c quand ils veulent »). Comme la plaine : « Libre » au
+  // programme, jamais une heure, quelle que soit l heure que le plan leur a posee. Seul « Servir à » d un
+  // extra donne une heure (plus bas). La jumelle du serveur dit pareil (lib/programme-a-cocher.js).
+  const sansHeure = (item) => item.activityId === 'playground' || /^service_/.test(String(item.activityId || ''))
+    || (typeof arcadesEnArgentDuDossier === 'function' && arcadesEnArgentDuDossier(r, item));
   getStaffFormulaTimedItems(r)
     .filter(item => item.activityId !== 'bowling' && item.activityId !== 'laser_game')
     .forEach(item => etapes.push({
@@ -29089,9 +29110,9 @@ function getGroupeProgramme(r) {
       quoi: accesIllimite ? 'à volonté' : '',
       ou: '',
       groupe: '',
-      start: accesIllimite || item.activityId === 'playground' ? null : item.start,
-      end: accesIllimite || item.activityId === 'playground' ? null : item.end,
-      ...(accesIllimite ? { libre: true, volonte: true } : item.activityId === 'playground' ? { libre: true } : {}),
+      start: accesIllimite || sansHeure(item) ? null : item.start,
+      end: accesIllimite || sansHeure(item) ? null : item.end,
+      ...(accesIllimite ? { libre: true, volonte: true } : sansHeure(item) ? { libre: true } : {}),
       fait: Boolean(item.done),
       coche: item.key,
       exige: true,
@@ -29509,8 +29530,8 @@ function renderGroupeActions(r, moment) {
       ${GROUPE_MOYENS.map(m => `<button type="button" class="gc-btn is-primary" onclick="encaisserReservation(${r.id}, '${m.valeur}', event)">${m.mot}</button>`).join('')}
     </span>`);
   }
-  if (moment && moment.late && r.phone) {
-    boutons.push(`<a class="gc-call" href="tel:${escapeHtml(String(r.phone).replace(/\s+/g, ''))}" onclick="event.stopPropagation()">Appeler ${escapeHtml(r.phone)}</a>`);
+  if (moment && moment.late && rvTelephoneEnvoyable(r.phone)) {
+    boutons.push(`<a class="gc-call" href="tel:${escapeHtml(rvTelephoneEnvoyable(r.phone))}" onclick="event.stopPropagation()">Appeler ${escapeHtml(r.phone)}</a>`);
   }
   if (!boutons.length) return '';
   return `<div class="gc-actions" onclick="event.stopPropagation()">${boutons.join('')}</div>`;
@@ -30792,8 +30813,9 @@ function fichePhraseMoment(r, moment, droits = ficheDroits()) {
 }
 
 function ficheAppeler(r) {
-  if (!r.phone) return '';
-  return `<a class="fx-appel" href="tel:${escapeHtml(String(r.phone).replace(/[^0-9+]/g, ''))}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span>Appeler</span></a>`;
+  const tel = rvTelephoneEnvoyable(r.phone);
+  if (!tel) return '';
+  return `<a class="fx-appel" href="tel:${escapeHtml(tel)}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span>Appeler</span></a>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -31096,16 +31118,19 @@ function ficheClient(r) {
   const valide = quand && !Number.isNaN(quand.getTime());
   const creee = valide ? quand.toLocaleDateString('fr-BE', { day: 'numeric', month: 'long', ...(quand.getFullYear() !== new Date().getFullYear() ? { year: 'numeric' } : {}) }) : '';
   const origine = { staff: 'Saisie par l’équipe', public: 'Réservée en ligne' }[String(r.channel || '').toLowerCase()] || 'Créée';
-  const tel = String(r.phone || '').replace(/[^0-9+]/g, '');
+  // 2026-11-22 : le telephone peut etre un mot (« par mail ») : il s affiche tel quel, sans lien d appel ;
+  // « / » dit « pas de numero » et compte comme un telephone absent.
+  const telTexte = rvTelephoneSaisiTexte(r.phone);
+  const tel = rvTelephoneEnvoyable(r.phone);
   const contacts = [
-    r.phone ? `<li>${STAFF_TERRAIN_PHONE_ICON}<a href="tel:${escapeHtml(tel)}">${escapeHtml(r.phone)}</a></li>` : '',
+    telTexte ? `<li>${STAFF_TERRAIN_PHONE_ICON}${tel ? `<a href="tel:${escapeHtml(tel)}">${escapeHtml(telTexte)}</a>` : `<span class="fx-tel-texte">${escapeHtml(telTexte)}</span>`}</li>` : '',
     r.email ? `<li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg><a href="mailto:${escapeHtml(r.email)}">${escapeHtml(r.email)}</a></li>` : '',
   ].join('');
-  const manque = !r.phone && !r.email ? 'Ni téléphone ni e-mail' : !r.phone ? 'Pas de téléphone' : !r.email ? 'Pas d’e-mail' : '';
+  const manque = !telTexte && !r.email ? 'Ni téléphone ni e-mail' : !telTexte ? 'Pas de téléphone' : !r.email ? 'Pas d’e-mail' : '';
   return `<section class="fx-bloc fx-client fz-carte" aria-label="Client">
       <h4 class="fx-titre">Client</h4>
       ${contacts ? `<ul class="fx-contact">${contacts}</ul>` : ''}
-      ${manque ? `<p class="fx-vide"><span>${manque}</span>${!r.phone && r.status !== 'cancelled' && ficheDroits(r).modifier ? `<button type="button" class="fz-bouton fz-ajouter-contact" data-pl-focus="fiche.contact.ajouter" onclick="modifierDepuisFiche('telephone', event)">Ajouter</button>` : ''}</p>` : ''}
+      ${manque ? `<p class="fx-vide"><span>${manque}</span>${!telTexte && r.status !== 'cancelled' && ficheDroits(r).modifier ? `<button type="button" class="fz-bouton fz-ajouter-contact" data-pl-focus="fiche.contact.ajouter" onclick="modifierDepuisFiche('telephone', event)">Ajouter</button>` : ''}</p>` : ''}
       ${valide || origine !== 'Créée' ? `<p class="fx-origine">${escapeHtml(origine)}${creee ? ` le ${escapeHtml(creee)}` : ''}.</p>` : ''}
     </section>`;
 }
@@ -34393,7 +34418,7 @@ function notesEquipeEditionHtml(r) {
 function refusTelephoneEdition(valeur, avant) {
   const tape = String(valeur || '').trim();
   if (!tape) return String(avant || '').trim() ? 'Le téléphone du client ne peut pas être vidé.' : '';
-  return rvTelephoneValide(tape) ? '' : 'Ce numéro de téléphone n’est pas valide, 8 chiffres au moins.';
+  return rvTelephoneValide(tape) ? '' : (rvRessembleAUnNumero(tape) ? 'Ce numéro de téléphone n’est pas valide, 8 chiffres au moins.' : 'Ce téléphone est trop long, 40 caractères au plus.');
 }
 
 // Sous le champ, une ligne : elle se montre en quittant le champ (ou a l enregistrement), et part des
@@ -35082,7 +35107,8 @@ function pointsHeureEdition(r) {
   // une heure sans valeur, qu on donne ici ; ni le bowling ni le laser (ils tiennent toujours une heure).
   // (ni les jetons d arcades remis au bar, ni la table d anniversaire, ni les boissons : rien ne s y joue a une heure ;
   // ni la plaine de jeux, libre toute la journee, 2026-11-21)
-  programme.filter(etape => etape.libre && etape.activityId && !['bowling', 'laser_game', 'party_table', 'arcade_credit', 'playground'].includes(etape.activityId) && !/^service_/.test(etape.activityId)).forEach((etape) => {
+  // (ni des arcades vendues en argent : le montant, jamais une heure, 2026-11-22)
+  programme.filter(etape => etape.libre && etape.activityId && !['bowling', 'laser_game', 'party_table', 'arcade_credit', 'playground'].includes(etape.activityId) && !/^service_/.test(etape.activityId) && !arcadesEnArgentDuDossier(r, etape)).forEach((etape) => {
     if (points.has(etape.activityId)) return;
     points.set(etape.activityId, { cle: etape.activityId, activityId: etape.activityId, unite: '', start: null, fin: null, libre: true, nom: etape.nom || nomActiviteHeureEdition(etape.activityId) });
   });
@@ -35185,6 +35211,8 @@ function champHeureNouvelleHtml(activityId) {
   const r = state.selectedRes;
   const e = state.editState;
   if (!e || !activiteAjouteeEdition(r, activityId) || !peutChangerHeureEdition(r, activityId)) return '';
+  // (des arcades en argent ajoutees ici : le montant, pas d heure, 2026-11-22)
+  if (activityId === 'arcade_time' && ((ensureEditProgram(r).othersOptions || {}).arcade_time || {}).arcadeMode === 'credit') return '';
   const valeur = (e.heuresNouvelles || {})[activityId] || '';
   const id = `editHeureNouvelle-${activityId.replace(/[^a-z0-9]/gi, '-')}`;
   return `<div class="fm-champ fm-heure-champ" data-heure-nouvelle-zone="${escapeHtml(activityId)}">
@@ -35785,7 +35813,7 @@ ${!adapte || (!isLaserRes && !editNeedsLanes && String(rf.type || '') !== 'formu
               <div class="fm-pli-corps">
                 <div class="fm-champ">
                   <label class="lbl" for="editPhoneInput">Téléphone</label>
-                  <input id="editPhoneInput" class="input" type="tel" value="${escapeHtml(e.phone)}" autocomplete="off" aria-describedby="editPhoneHint" oninput="setEditField('phone', this.value); peindreTelephoneEdition(false)" onblur="peindreTelephoneEdition(true)"${String(r.phone || '').trim() ? '' : ' placeholder="Facultatif"'}>
+                  <input id="editPhoneInput" class="input" type="text" maxlength="40" value="${escapeHtml(e.phone)}" autocomplete="off" aria-describedby="editPhoneHint" oninput="setEditField('phone', this.value); peindreTelephoneEdition(false)" onblur="peindreTelephoneEdition(true)"${String(r.phone || '').trim() ? '' : ' placeholder="Facultatif"'}>
                   <p class="field-hint is-hors" id="editPhoneHint" hidden></p>
                 </div>
                 <div class="fm-champ">
@@ -37694,9 +37722,20 @@ function setQuickFormule(id) {
   renderQuickBook();
 }
 
+// LE TELEPHONE PEUT ETRE UN MOT (Ansar, 2026-11-22 : « côté staff on peut écrire autre que des chiffres,
+// des fois c par mail, ou / quand y a pas »). Seul un texte fait de chiffres et de ponctuation de numero
+// prend l indicatif belge ; « par mail » et « / » restent tels quels et ne valent JAMAIS un numero
+// (rvTelephoneEnvoyable : aucun appel, aucun SMS n en part). Le serveur redit la regle
+// (lib/telephone-du-client.js : telephoneAccepte, telephoneEnvoyable).
+function rvRessembleAUnNumero(valeur) {
+  const brut = String(valeur || '').trim();
+  return /^[+\d\s().\/-]+$/.test(brut) && /\d/.test(brut);
+}
+
 function normalizePhoneInput(value = '') {
   const raw = String(value || '').replace(/\s+/g, ' ').trim();
   if (!raw) return '+32 ';
+  if (!rvRessembleAUnNumero(raw)) return raw;
   if (raw.startsWith('+')) return raw;
   if (raw.startsWith('00')) return `+${raw.slice(2)}`;
   if (raw.startsWith('0')) return `+32 ${raw.slice(1)}`.trim();
@@ -38346,7 +38385,10 @@ function rvDepartsLaser(heure) {
 // arcades vendues en argent (« 8 crédits d'arcade (8€) par enfant ») n ont pas de duree : { argent: true }.
 // null quand la carte ne le dit pas : le catalogue decide.
 function rvDureeDuContenu(id) {
-  const f = rvFormule();
+  return dureeDuContenuDeLaFormule(rvFormule(), id);
+}
+
+function dureeDuContenuDeLaFormule(f, id) {
   const ligne = f && Array.isArray(f.desc) ? f.desc.find((texte) => getFormulaActivityIds({ desc: [texte] }).includes(id)) : '';
   if (!ligne) return null;
   const t = formulaActivityToken(ligne);
@@ -38361,7 +38403,10 @@ function rvDureeDuContenu(id) {
 // chevauchent rien (le serveur ne leur en donne pas non plus, lib/reservation-activity-move.js jeuAHeure).
 function rvArcadesEnArgent(id) {
   const contenu = /^arcade/.test(id) ? rvDureeDuContenu(id) : null;
-  return Boolean(contenu && contenu.argent);
+  if (contenu && contenu.argent) return true;
+  // (2026-11-22) des cartes d arcades en credits, choisies a la carte : de l argent, sans heure non plus
+  if (id === 'arcade_time' && quickBookState && quickActiviteRetenue(id)) return getQuickVisitOptions(id).arcadeMode === 'credit';
+  return false;
 }
 
 // Combien de minutes la ligne occupe le groupe : les memes regles que
@@ -39326,8 +39371,24 @@ function rvNaitArrive(s = quickBookState) {
 // un numero etranger compte son indicatif. Le serveur redit la meme regle
 // (telephoneDuComptoirValide, api/staff-reservations.js).
 function rvTelephoneValide(valeur) {
-  const chiffres = String(normalizePhoneInput(valeur || '')).replace(/\D/g, '');
+  const brut = String(valeur || '').replace(/\s+/g, ' ').trim();
+  if (!brut || brut === '+32' || brut.length > 40) return false;
+  if (!rvRessembleAUnNumero(brut)) return true;
+  const chiffres = String(normalizePhoneInput(brut)).replace(/\D/g, '');
   return chiffres.length <= 15 && chiffres.replace(/^32/, '').length >= 8;
+}
+
+// Ce que le client a laisse comme telephone, a afficher : un numero, un mot (« par mail »), ou rien
+// (« / » dit « pas de numero »).
+function rvTelephoneSaisiTexte(valeur) {
+  const brut = String(valeur || '').replace(/\s+/g, ' ').trim();
+  return brut === '/' ? '' : brut;
+}
+
+// Le numero qui peut servir a appeler : un vrai numero, jamais un mot ni un « / ».
+function rvTelephoneEnvoyable(valeur) {
+  const brut = String(valeur || '').trim();
+  return rvRessembleAUnNumero(brut) && rvTelephoneValide(brut) ? brut.replace(/[^0-9+]/g, '') : '';
 }
 
 // LE NOM SUIT LE NUMERO (repris du champ unique, 2026-10-12). Changer de numero
@@ -39388,7 +39449,8 @@ function rsVersLeTelephone() {
 
 // Ce que dit le champ du telephone quand il manque : vide, ou trop court.
 function rsTelephoneDit(s = quickBookState) {
-  return String(s.phone || '').replace(/\D/g, '').length > 2 ? 'Numéro incomplet : il faut au moins 8 chiffres après l’indicatif.' : 'Le téléphone du client est obligatoire.';
+  const tape = String(s.phone || '').trim();
+  return rvRessembleAUnNumero(tape) && tape.replace(/\D/g, '').length > 2 ? 'Numéro incomplet : il faut au moins 8 chiffres après l’indicatif.' : 'Écrivez un numéro, ou « par mail », ou « / » s’il n’y en a pas.';
 }
 
 // LE NOM D UN CLIENT RECONNU SE REMPLACE D UN COUP (2026-10-12). Le numero
@@ -40578,6 +40640,8 @@ function rvConstruire({ simulation = false } = {}) {
   // activite seule : getBasePrice('activity') vaut 0).
   // LE SERVEUR TARIFE TOUT (2026-11-03) : la reference ne voyage plus, il la
   // calcule, et un prix qui s en ecarte exige sa raison, qui part avec lui.
+  // (une ligne libre restee en cours de saisie, nom ecrit sans ligne au ticket, est prise ici)
+  if (!simulation && rsEtat() && String(rsEtat().mesure.nom || '').trim() && !rsLibreEnCours()) rsLibreSynchro('', { peindre: false });
   const extras = quickExtrasLignes();
   const price = prixSaisi != null ? prixSaisi : undefined;
   const raisonPrix = rsRaisonPrix();
@@ -40639,7 +40703,9 @@ function rvConstruire({ simulation = false } = {}) {
 }
 
 function rvTelephoneEnvoye() {
-  const chiffres = quickBookState.phone.replace(/\D/g, '');
+  const brut = String(quickBookState.phone || '').trim();
+  if (brut && !rvRessembleAUnNumero(brut)) return brut;
+  const chiffres = brut.replace(/\D/g, '');
   return chiffres && chiffres !== '32' ? normalizePhoneInput(quickBookState.phone) : '';
 }
 
@@ -41006,7 +41072,7 @@ function rsDepart(s) {
     ticket: false,
     barre: null,
     variantes: {},
-    mesure: { categorie: '', ligne: '', nom: '', prix: '' },
+    mesure: { categorie: '', ligne: '', nom: '', prix: '', libreId: '' },
     faits: { combien: Number(s.pax) !== 4 },
     // L activite dont les heures sont ouvertes sous sa ligne, et ce que le panneau dit d une heure refusee.
     heureAct: '',
@@ -43163,11 +43229,11 @@ function rsDetailLigne(id, etapes, ligne, ids) {
 // Client), puis la note pour l equipe. L e-mail et l occasion restent a un toucher.
 function rsClientHtml() {
   const s = quickBookState;
-  const tel = String(s.phone || '').replace(/\D/g, '').length > 2 ? s.phone : '';
+  const tel = rvRessembleAUnNumero(s.phone) ? (String(s.phone || '').replace(/\D/g, '').length > 2 ? s.phone : '') : String(s.phone || '').trim();
   const reconnu = Boolean(s.clientConnu && s.clientConnu.etat === 'ok' && s.clientConnu.resultat);
   const manque = Boolean(s.telDemande) && !rvTelephoneValide(s.phone);
   const dit = rsTelephoneDit(s);
-  return `<label class="rs-tk-champ is-tel${manque ? ' is-manque' : ''}${reconnu ? ' a-tag' : ''}"><span class="rs-tk-lbl">Téléphone<em>obligatoire</em></span><input id="qbPhone" type="tel" inputmode="tel" value="${escapeHtml(tel)}" placeholder="Ex. 0470 12 34 56" autocomplete="off" required aria-required="true" aria-invalid="${manque}"${manque ? ' aria-describedby="rsTelDit"' : ''} aria-label="Téléphone du client, obligatoire" oninput="rvTelephoneSaisi(this.value); rsMajTicket()" onblur="rsTelFini(this)">${reconnu ? '<span class="rv-tag">reconnu</span>' : ''}</label>
+  return `<label class="rs-tk-champ is-tel${manque ? ' is-manque' : ''}${reconnu ? ' a-tag' : ''}"><span class="rs-tk-lbl">Téléphone<em>obligatoire</em></span><input id="qbPhone" type="text" inputmode="text" value="${escapeHtml(tel)}" placeholder="0470 12 34 56, par mail, /" maxlength="40" autocomplete="off" required aria-required="true" aria-invalid="${manque}"${manque ? ' aria-describedby="rsTelDit"' : ''} aria-label="Téléphone du client, obligatoire" oninput="rvTelephoneSaisi(this.value); rsMajTicket()" onblur="rsTelFini(this)">${reconnu ? '<span class="rv-tag">reconnu</span>' : ''}</label>
     ${manque ? `<p class="rs-tk-dit" id="rsTelDit" role="alert">${escapeHtml(dit)}</p>` : ''}
     <div class="rv-connu rs-connu" id="rvClientConnu" role="status">${rvClientConnuHtml()}</div>
     <label class="rs-tk-champ"><span class="rs-tk-lbl">Nom</span><input id="qbName" value="${escapeHtml(s.name)}" placeholder="Nom du client" autocomplete="off" aria-label="Nom du client" onfocus="rvNomAuFocus(this)" oninput="quickBookState.name=this.value; rsMajTicket()"></label>
@@ -43663,7 +43729,7 @@ function rsTelFini(champ) {
   const s = quickBookState;
   if (!s || !champ) return;
   const chiffres = String(champ.value || '').replace(/\D/g, '');
-  if (!chiffres) { s.phone = '+32 '; return; }
+  if (!chiffres && !String(champ.value || '').trim()) { s.phone = '+32 '; return; }
   s.phone = normalizePhoneInput(champ.value);
   champ.value = s.phone;
 }
@@ -44927,8 +44993,49 @@ function rsArticleChamp(cle, valeur) {
   rsMajTicket();
 }
 
+// LA LIGNE LIBRE S AJOUTE D ELLE-MEME (2026-11-22, Ansar : « quand on ajoute une boisson ou quoi on doit
+// appuyer sur ajouter, c pas clair et ils oublient tous d appuyer dessus »). Des que son nom est ecrit,
+// la ligne est au ticket ; le nom et le prix qu on continue de taper la mettent a jour, jamais une
+// seconde ligne ; sa quantite se regle ensuite. Le nom efface la retire. « Ajouter » ne fait plus
+// que preparer la suivante, et la creation reprend une ligne restee en cours (rsLibreSynchro).
+function rsLibreEnCours() {
+  const b = rsEtat();
+  return Boolean(b && b.mesure.libreId && rsPanier().some((l) => l.id === b.mesure.libreId));
+}
+
+function rsLibreSynchro(cle = '', { peindre = true } = {}) {
+  const b = rsEtat();
+  if (!b || !quickBookState) return null;
+  const m = b.mesure;
+  const nom = String(m.nom || '').trim().slice(0, 80);
+  const panier = rsPanier();
+  let ligne = m.libreId ? panier.find((l) => l.id === m.libreId) : null;
+  const prix = Number(String(m.prix).replace(',', '.'));
+  // (sans prix tape, ou au niveau catalogue, la ligne est « à payer »)
+  const prixUnitaire = () => (rsNiveau('surmesure') === 'libre' && Number.isFinite(prix) && String(m.prix).trim() !== '' ? Math.max(0, prix) : null);
+  if (!nom) {
+    if (ligne) { panier.splice(panier.indexOf(ligne), 1); if (m.ligne === ligne.id) m.ligne = ''; }
+    m.libreId = '';
+    ligne = null;
+  } else if (!ligne) {
+    rsCompteur += 1;
+    ligne = { id: `libre-${rsCompteur}`, articleId: '', categorie: m.categorie || 'autre', name: nom, qte: 1, suit: false, prixUnitaire: prixUnitaire(), heure: '', note: '' };
+    panier.push(ligne);
+    m.libreId = ligne.id;
+    m.ligne = ligne.id;
+  } else {
+    if (cle === 'nom') ligne.name = nom;
+    if (cle === 'prix') ligne.prixUnitaire = prixUnitaire();
+  }
+  const bouton = document.querySelector('#rsLibreAjouter b');
+  if (bouton) bouton.textContent = ligne ? 'Ajouter un autre' : 'Ajouter';
+  if (peindre) rsMajTicket();
+  return ligne;
+}
+
 function rsLibreChamp(cle, valeur) {
   rsEtat().mesure[cle] = valeur;
+  rsLibreSynchro(cle);
 }
 
 function rsLibreAjouter() {
@@ -44936,15 +45043,12 @@ function rsLibreAjouter() {
   if (!b) return;
   const nom = String(b.mesure.nom || '').trim().slice(0, 80);
   if (!nom) { const champ = document.getElementById('rsLibreNom'); if (champ) champ.focus(); return; }
-  const prix = Number(String(b.mesure.prix).replace(',', '.'));
   rsGeste(() => {
-    rsCompteur += 1;
-    // (sans prix tape, ou au niveau catalogue, la ligne est « à payer »)
-    const ligne = { id: `libre-${rsCompteur}`, articleId: '', categorie: b.mesure.categorie || 'autre', name: nom, qte: 1, suit: false, prixUnitaire: rsNiveau('surmesure') === 'libre' && Number.isFinite(prix) && String(b.mesure.prix).trim() !== '' ? Math.max(0, prix) : null, heure: '', note: '' };
-    rsPanier().push(ligne);
-    b.mesure.ligne = ligne.id;
+    const ligne = rsLibreSynchro('', { peindre: false });
+    if (ligne) b.mesure.ligne = ligne.id;
     b.mesure.nom = '';
     b.mesure.prix = '';
+    b.mesure.libreId = '';
     rsLacherChamp();
   }, { focus: false });
 }
@@ -45222,7 +45326,7 @@ function rsMesureHtml() {
   const prixLibre = niveau === 'libre'
     ? `<label class="rs-champ"><span>Prix</span><input id="rsLibrePrix" type="number" min="0" step="0.5" inputmode="decimal" placeholder="À payer" value="${escapeHtml(String(b.mesure.prix ?? ''))}" aria-label="Prix de l’article libre en ${nomsMonnaie()}, vide pour à payer" oninput="rsLibreChamp('prix',this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();rsLibreAjouter();}"></label>`
     : '<span class="rs-champ rs-libre-apayer"><span>Prix</span><b class="pl-a-payer" id="rsLibreAPayer">À payer</b></span>';
-  const libre = niveau === 'libre' || niveau === 'catalogue' ? `<div class="rs-libre"><label class="rs-champ"><span>Ajouter ce que vous voulez</span><input id="rsLibreNom" maxlength="80" autocomplete="off" value="${escapeHtml(b.mesure.nom || '')}" placeholder="Karaoké, open bar, gâteau…" aria-label="Nom de l’article libre" oninput="rsLibreChamp('nom',this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();rsLibreAjouter();}"></label>${prixLibre}<button type="button" class="rs-p" id="rsLibreAjouter" onclick="rsLibreAjouter()"><b>Ajouter</b></button></div>` : '';
+  const libre = niveau === 'libre' || niveau === 'catalogue' ? `<div class="rs-libre"><label class="rs-champ"><span>Ajouter ce que vous voulez</span><input id="rsLibreNom" maxlength="80" autocomplete="off" value="${escapeHtml(b.mesure.nom || '')}" placeholder="Karaoké, open bar, gâteau…" aria-label="Nom de l’article libre" oninput="rsLibreChamp('nom',this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();rsLibreAjouter();}"></label>${prixLibre}<button type="button" class="rs-p" id="rsLibreAjouter" onclick="rsLibreAjouter()" title="La ligne est déjà au ticket dès que vous écrivez son nom : ce bouton en prépare une autre."><b>${rsLibreEnCours() ? 'Ajouter un autre' : 'Ajouter'}</b></button></div>` : '';
   if (courante === 'arcades') return `${rsRetourHtml(droite)}${tabs}${rsMesureArcadesHtml()}${libre}`;
   if (courante === 'formule') return `${rsRetourHtml(rsFmActive() ? '<button type="button" class="rs-discret is-retirer" id="rsFmRetirer" onclick="rsFmRetirer()">Retirer la formule</button>' : droite)}${tabs}${rsFormuleMesureHtml()}`;
   if (!articles.length) {

@@ -382,7 +382,10 @@ const LOT_MAX = 12;
 // simulation n en a pas besoin ; une demande sur mesure reservee (customRequestBook)
 // garde le numero de sa demande.
 function exigerLeTelephone(corps) {
-  if (require('../lib/telephone-du-client').telephoneValide(corps && corps.phone)) return;
+  const T = require('../lib/telephone-du-client');
+  if (T.telephoneAccepte(corps && corps.phone)) return;
+  // 2026-11-22 : un mot passe (« par mail », « / »), jamais un numero trop court.
+  if (T.ressembleAUnNumero(corps && corps.phone) && String(corps.phone).trim().length <= T.TELEPHONE_MAX) throw createHttpError('Ce numéro de téléphone n’est pas valide, 8 chiffres au moins.', 422);
   throw createHttpError('Le téléphone du client est obligatoire.', 422);
 }
 
@@ -839,7 +842,7 @@ async function calculerLaModification({ body, current, session, requestedCenterI
   // d avant la regle, reserver-comptoir-check [D1]) ; l onglet Modifier, lui, ne le laisse pas vider.
   if (Object.prototype.hasOwnProperty.call(patch, 'phone') && String(patch.phone ?? '').trim() !== String(current.phone ?? '').trim()) {
     const tape = String(patch.phone ?? '').trim();
-    if (tape && !require('../lib/telephone-du-client').telephoneValide(tape)) throw createHttpError('Ce numéro de téléphone n’est pas valide, 8 chiffres au moins.', 422);
+    if (tape && !require('../lib/telephone-du-client').telephoneAccepte(tape)) throw createHttpError('Ce numéro de téléphone n’est pas valide, 8 chiffres au moins.', 422);
   }
   // LES DROITS DU DOSSIER (2026-11-03, lib/droits-reservation.js). La raison
   // du prix ne s ecrit pas telle quelle : elle part dans la note du serveur.

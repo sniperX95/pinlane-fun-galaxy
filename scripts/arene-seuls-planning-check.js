@@ -32,10 +32,11 @@ const MUTATION = {
   de: 'function lpGroupe(w) { return Math.max(1, Number(w.joueursReels ?? w.players) || Number(w.reservation?.pax) || 1); }',
   vers: 'function lpGroupe(w) { return Math.max(1, Number(w.players) || Number(w.reservation?.pax) || 1); }',
 };
-// La fiche relue sur les armes : la partie dit 30 joueurs.
+// La fiche relue sur les armes : la partie dit 30 joueurs. (l ancre vise la partie du groupe : la ligne commence
+// depuis 2026-11-22 par celle d une partie en plus d une formule, qui ecrit la meme expression avant elle)
 const MUTATION_FICHE = {
-  de: "quoi: `${Number(f.joueursReels ?? f.players) || effectifActivite('laser_game')} joueurs",
-  vers: "quoi: `${Number(f.players) || effectifActivite('laser_game')} joueurs",
+  de: ": `${Number(f.joueursReels ?? f.players) || effectifActivite('laser_game')} joueurs · ${parties > 1 ?",
+  vers: ": `${Number(f.players) || effectifActivite('laser_game')} joueurs · ${parties > 1 ?",
 };
 
 let echecs = 0;

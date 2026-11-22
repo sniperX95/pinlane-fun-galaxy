@@ -2206,7 +2206,7 @@ const MUTATIONS = [
     de: '  const frise = rangerLesLibres({ debut: finAccueil, occupees: [...plagesAncres, ...suite], libres });',
     vers: '  const frise = rangerLesLibres({ debut: arrivee, occupees: [...plagesAncres, ...suite], libres });', scenarios: ['L'] },
   { nom: 'la porte de la reservation ne voit plus l heure d arcade', fichier: 'lib/ops-engine.js',
-    de: 'bowlingConfig, arcadeStart, ...(demandeArrivee ? { arrivalStart: demandeArrivee.minutes, ouverture:', vers: 'bowlingConfig, ...(demandeArrivee ? { arrivalStart: demandeArrivee.minutes, ouverture:', scenarios: ['L', 'M'] },
+    de: 'bowlingConfig, arcadeStart, aLaMinute, ...(demandeArrivee ? { arrivalStart: demandeArrivee.minutes, ouverture:', vers: 'bowlingConfig, aLaMinute, ...(demandeArrivee ? { arrivalStart: demandeArrivee.minutes, ouverture:', scenarios: ['L', 'M'] },
   { nom: 'le refus des arcades ne nomme plus l activite posee qu elles chevauchent', fichier: 'lib/ops-engine.js',
     de: '  if (!sonde.ok) return refusArrivee(time, sonde.code, sonde.reason, sonde.conflict ? { conflict: sonde.conflict } : {});', vers: '  if (!sonde.ok) return refusArrivee(time, sonde.code, sonde.reason);', scenarios: ['L'] },
   { nom: 'un refus cause par les arcades se dit « complet »', fichier: 'lib/ops-engine.js',

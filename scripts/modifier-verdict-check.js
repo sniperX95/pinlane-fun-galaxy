@@ -197,9 +197,10 @@ async function scenarioRefus(browser) {
     '[V1] 24 joueurs sur deux pistes : « Ne passera pas » avant le clic, et le clic n ecrit rien', { verdict: c.avant.verdict, patchs: c.patchs.length, ecrit: c.ecrit });
   ok(/il n’y en a pas autant de libres/.test(c.avant.conseil) && !/complétée/.test(c.avant.conseil), '[V8] le conseil des pistes dit qu il n y en a pas assez de libres, sans promettre de les completer', c.avant.conseil);
   ok(c.intacte, '[V6] le calcul a blanc de Clara n a rien ecrit', { patchs: c.patchs.length });
-  // Manon a 15:00 : le lancement de 15:00 n a plus que 7 places pour 8.
-  const m = await jouerCas(browser, { id: MANON, geste: champ('#editStartInput', '15:00') });
-  ok(m.avant.ton === 'refus' && /Lancement de 15:00/.test(m.avant.verdict) && m.patchs.length === 0 && !m.ecrit, '[V1] un lancement laser plein se lit avant le clic', m.avant.verdict);
+  // Manon a 17:30 : le lancement de 17:30 n a plus que 6 places pour 8. (Il est 15:10 au banc : une arrivee
+  // deja passee, 15:00, se dit d abord « déjà passé » depuis le 2026-11-22, avant tout autre calcul.)
+  const m = await jouerCas(browser, { id: MANON, geste: champ('#editStartInput', '17:30') });
+  ok(m.avant.ton === 'refus' && /Lancement de 17:30/.test(m.avant.verdict) && m.patchs.length === 0 && !m.ecrit, '[V1] un lancement laser plein se lit avant le clic', m.avant.verdict);
   // Un prix a zero, au-dela de ce que le role peut ajuster : le serveur refuse.
   const p = await jouerCas(browser, { id: CLARA, geste: champ('#editPriceInput', '0') });
   ok(p.avant.ton === 'refus' && /20 % au plus : 23,60 €/.test(p.avant.verdict) && p.reponses.join() === '403' && !p.ecrit,

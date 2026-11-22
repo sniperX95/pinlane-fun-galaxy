@@ -361,7 +361,9 @@ async function declencheursDeProduction(planF1) {
   const laserAvantRefus = JSON.stringify(await laserBase(7201, '1.1'));
   const plein = await patchHttp(7201, { activityId: 'laser_game', unitKey: '1.1', startTime: '19:00' });
   check(plein.status === 409 && plein.ok === false, `arene pleine : refus 409 (${plein.message})`);
-  check(mots(plein.message) <= 14 && /complet/i.test(plein.message), `arene pleine : une ligne courte qui dit pourquoi (${mots(plein.message)} mots)`);
+  // (2026-11-22, Libramont : le refus du laser dit en clair combien d armes il reste et la prochaine partie
+  // libre, lib/database.js phraseLaserComplet ; une seule ligne, sans « 29/30 joueurs » ni « 1/1 lancement »)
+  check(!/\n/.test(plein.message) && mots(plein.message) <= 30 && /^Plus assez d’armes pour le laser à 19:00 : il en reste 1 sur 30, il en faut \d+\./.test(plein.message) && /La prochaine partie libre est à \d\d:\d\d\.$/.test(plein.message) && !/lancement|\/30/.test(plein.message), `arene pleine : une ligne qui dit pourquoi, ce qui reste et la prochaine partie libre (${mots(plein.message)} mots)`);
   check(JSON.stringify(await laserBase(7201, '1.1')) === laserAvantRefus, 'arene pleine : la base est inchangee');
   bench.semer([moteur(), ligne(7204, { start_time: '18:00', lanes: [3, 4], pax: 4 })]);
   const piste = await patchHttp(7201, { activityId: 'bowling', startTime: '18:00', lanes: [3, 4] });

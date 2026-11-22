@@ -46,7 +46,7 @@ const { refreshFormuleOverrides } = require('../lib/booking-config');
 const { refreshCatalog } = require('../lib/catalog-store');
 const { getPool } = require('../lib/database');
 const { exigerLesDroits, finDeLaVisite, notesSansLaNoteAPlacer, planifierPourLaFenetre, simulerAutres } = require('../lib/reserver-fenetre');
-const { ancresDuMoteur, debutDesActivites, heureDuPlan, lireHeuresPosees, memesActivites, poserLesHeures } = require('../lib/heures-posees');
+const { ancresALaMinute, ancresDuMoteur, debutDesActivites, heureDuPlan, lireHeuresPosees, memesActivites, poserLesHeures } = require('../lib/heures-posees');
 // La creation elle-meme vit dans lib/reserver-creation.js : la reservation en un clic d une demande
 // sur mesure (api/ops.js customRequestBook) prend le meme chemin.
 const { creerDepuisLaFenetre } = require('../lib/reserver-creation');
@@ -492,11 +492,13 @@ async function deplacerAvantLeReste(current, deplacements, session) {
   const lu = await readStaffState(current.date, current.centerId || 'libramont', { avecBlocages: true, avecFermetures: true });
   const voisins = (Array.isArray(lu.reservations) ? lu.reservations : []).filter((row) => Number(row.id) !== Number(current.id));
   const tenir = (dossier, d) => {
-    const suivant = buildActivityMove(dossier, d);
+    const suivant = buildActivityMove(dossier, d, { aLaMinute: true });
+    let verdict = null;
     try {
-      validateActivityMoveResources(suivant, d, voisins, lu.laneStatuses || {}, lu.blocks || [], current.date);
+      verdict = validateActivityMoveResources(suivant, d, voisins, lu.laneStatuses || {}, lu.blocks || [], current.date);
     } catch (error) { if (!error.statusCode) error.statusCode = 409; throw error; }
-    return suivant;
+    // (une partie calee sur celle d un autre groupe : lib/database.js rejoindreLesParties)
+    return verdict && verdict.opsPlan ? { ...suivant, opsPlan: verdict.opsPlan } : suivant;
   };
   let dossier = current;
   for (let i = 0; i < deplacements.length; i += 1) {
@@ -554,11 +556,13 @@ async function deplacerABlanc(req, res, corps) {
     const auPlusTot = Number.isFinite(Number(corps.auPlusTot)) && corps.auPlusTot !== null && corps.auPlusTot !== ''
       ? Math.max(0, Math.min(48 * 60, Math.round(Number(corps.auPlusTot)))) : null;
     const essayer = (base, deplacement) => {
-      const essai = buildActivityMove(base, deplacement);
+      const essai = buildActivityMove(base, deplacement, { aLaMinute: true });
+      let verdict = null;
       try {
-        validateActivityMoveResources(essai, deplacement, autres, snapshot.laneStatuses, blocs, current.date);
+        verdict = validateActivityMoveResources(essai, deplacement, autres, snapshot.laneStatuses, blocs, current.date);
       } catch (error) { if (!error.statusCode) error.statusCode = 409; throw error; }
-      return essai;
+      // (une partie calee sur celle d un autre groupe : la fenetre le dit, « Joue avec … »)
+      return verdict && verdict.opsPlan ? { ...essai, opsPlan: verdict.opsPlan } : essai;
     };
     let candidat = current;
     for (let rang = 0; rang < deplacements.length; rang += 1) {
@@ -940,7 +944,7 @@ async function calculerLaModification({ body, current, session, requestedCenterI
   const operationalRequest = { ...current, ...patch };
   if (!Object.prototype.hasOwnProperty.call(patch, 'price')) delete operationalRequest.price;
   const ops = shouldReplan
-    ? await prepareReservationOps(operationalRequest, 'staff', { ignoreReservationId: Number(patch.id), heureEnregistree: current.startTime })
+    ? await prepareReservationOps(operationalRequest, 'staff', { ignoreReservationId: Number(patch.id), heureEnregistree: current.startTime, ...(ancresALaMinute(heuresAPoser) ? { aLaMinute: true } : {}) })
     : {};
   // UN PROGRAMME QUE LE PLAN NE PORTE PAS NE S ECRIT PAS (2026-11-20, dossier 1953 de Gembloux). Le
   // moteur refusait la Formule 5 avec son Bowling, et le dossier s ecrivait quand meme : le programme
@@ -1500,14 +1504,15 @@ const traiter = async (req, res) => {
         }
         const { buildActivityMove } = require('../lib/reservation-activity-move');
         const { readStaffState, validateActivityMoveResources } = require('../lib/database');
-        const candidate = buildActivityMove(current, body.activityMove);
+        // (l heure a la minute du comptoir : lib/reservation-activity-move.js, aLaMinute)
+        const candidate = buildActivityMove(current, body.activityMove, { aLaMinute: true });
         // (les fermetures et privatisations du jour : `snapshot.blocks` etait toujours vide, seule
         // l ecriture sous verrou les jugeait ; la meme phrase, maintenant des ce controle)
         const snapshot = await readStaffState(current.date, requestedCenterId, { avecBlocages: true, avecFermetures: true });
         try {
           validateActivityMoveResources(candidate, body.activityMove, snapshot.reservations.filter(row => Number(row.id) !== Number(current.id)), snapshot.laneStatuses, snapshot.blocks || [], current.date);
         } catch (error) { if (!error.statusCode) error.statusCode = 409; throw error; }
-        const reservation = await updateReservation({ id: current.id, centerId: requestedCenterId, baseUpdatedAt: body.baseUpdatedAt, activityMove: body.activityMove, modifiePar: nomDeSession(session) });
+        const reservation = await updateReservation({ id: current.id, centerId: requestedCenterId, baseUpdatedAt: body.baseUpdatedAt, aLaMinute: true, activityMove: body.activityMove, modifiePar: nomDeSession(session) });
         const automation = await refreshReservationAutomation(current, reservation, { reason: 'activity_moved' });
         const auditMove = await writeAuditLog({ centerId: requestedCenterId, ...actorFromSession(session), surface: 'api/staff-reservations.js', action: 'moveReservationActivity', method: 'PATCH', entityType: 'reservation', entityId: current.id, outcome: 'success', changes: buildReservationAuditChanges(current, reservation), context: contexteRegistre(current, reservation, { activityMove: body.activityMove }), requestId: newRequestId() });
         sendJson(res, 200, { ok: true, reservation, activityMove: { ...body.activityMove, unchangedActivities: true }, automation, ...(auditMove.warning ? { warnings: [auditMove.warning] } : {}) });

@@ -176,7 +176,7 @@ function verifier(f, afficher = true) {
   v(f.laserBlocs === '1@15:00 2@15:30m', `[3] le laser seul pose ses 2 parties, la 2e comptee (${f.laserBlocs})`);
   v(f.quatreBlocs === 4 && f.quatrePrix === '140|140|4', `[3] 4 parties : 4 departs, 35 EUR par joueur (${f.quatreBlocs} departs, base|prix|parties ${f.quatrePrix})`);
   v(/^refus: /.test(f.secondMoteur), `[3] le moteur voit l arene pleine de la 2e partie (${f.secondMoteur})`);
-  v(/Laser Game complet sur ce créneau \(40\/30 joueurs/.test(f.secondBase), `[3] la base refuse le second groupe (${f.secondBase})`);
+  v(/Plus assez d’armes pour le laser à 15:30 : il en reste 10 sur 30, il en faut 20\./.test(f.secondBase), `[3] la base refuse le second groupe (${f.secondBase})`);
   v(f.pistes === '3,8,2', `[4] pistes du bowling seul : 3 demandees -> 3, 20 -> le parc (8), 1 pour 12 joueurs -> le minimum (2) : ${f.pistes}`);
   TUNNEL_AVANT.forEach(([nom, , attendu]) => {
     const mesure = (f.tunnel.find(([n]) => n === nom) || [])[1];

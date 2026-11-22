@@ -273,6 +273,7 @@
     "test:heure-activite-dossier",
     "test:programme-complet",
     "test:reserver-heure-activite",
+    "test:saisie-nombres-heures",
     "test:resa-lisible",
     "test:attribution-visible",
     "test:modifier-complet",

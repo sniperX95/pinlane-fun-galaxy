@@ -150,10 +150,10 @@ function verifier(f, afficher = true) {
   // Le refus dit ce qui reste (2026-10-12) : plus aucune des 30 places pour
   // les 4 du second groupe, a 15:00.
   v(/15:00/.test(f.secondMoteur) && /\b(aucune|0) place\b/.test(f.secondMoteur) && /\b30\b/.test(f.secondMoteur) && /\b4\b/.test(f.secondMoteur), `[2] le moteur voit la session pleine (${f.secondMoteur})`);
-  v(/^Laser Game complet sur ce créneau \(34\/30 joueurs/.test(f.secondBase), `[2] la base aussi (${f.secondBase})`);
+  v(/^L’arène est réservée « pour eux seuls » par Arene à 15:00 \(8 joueurs\) : aucun autre groupe n’y joue/.test(f.secondBase), `[2] la base aussi (${f.secondBase})`);
   v(f.conflit === JSON.stringify([{ type: 'arene', message: 'Arène déjà occupée par 6 joueurs à 15:00.', heure: '15:00', joueurs: 6 }]),
     `[3] le conflit dit l arene occupee (${f.conflit})`);
-  v(/^Laser Game complet sur ce créneau \(36\/30 joueurs/.test(f.conflitBase), `[3] sans « Créer quand même », la base refuse (${f.conflitBase})`);
+  v(/^« Pour vous seuls » n’est pas possible à 15:00 : Martin joue déjà dans l’arène à 15:00 \(6 joueurs\)/.test(f.conflitBase), `[3] sans « Créer quand même », la base refuse (${f.conflitBase})`);
   v(f.auto === '8|- ; second accepte (8 avant lui)', `[4] « auto » : le comportement d avant, la session se partage (${f.auto})`);
   v(f.modification === '16:00|30|8', `[5] deplace a 16:00 par une modification, le dossier garde l arene a lui (${f.modification})`);
   v(f.glisserPlan === '16:00|30|8', `[6] le glisser d une partie privatisee garde l arene (${f.glisserPlan})`);

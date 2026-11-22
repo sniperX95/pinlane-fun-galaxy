@@ -681,11 +681,13 @@ const GLISSER = ['glisser'];
 const MOT = ['moteur'];
 const SOURCES = ['sources'];
 const DRAPEAU = "allowPastStart: input.channel === 'staff' && Boolean(input.allowPastStart),";
+// (la ligne qui suit le drapeau dans planFormulaWithAnchors : l heure a la minute du comptoir, 2026-11-22)
+const MINUTE = "aLaMinute: input.channel === 'staff' && input.aLaMinute === true,";
 const MUTATIONS = [
   { nom: 'public-dans-la-modification', lettre: 'K', scenarios: SOURCES, editions: [{ fichier: OPS, serveur: true, de: 'Number(options.ignoreReservationId || (staff ? request.ignoreReservationId : 0) || 0)', vers: 'Number(options.ignoreReservationId || request.ignoreReservationId || 0)' }, { fichier: OPS, serveur: true, de: "  request.heureEnregistree = options.heureEnregistree || '';\n", vers: '' }] },
   { nom: 'a-placer-sans-arene', lettre: 'L', scenarios: SOURCES, editions: [{ fichier: OPS, serveur: true, de: 'if (!ancien || !ancien.laserManual || ancien.aPlacer) return plan;', vers: 'if (!ancien || !ancien.laserManual) return plan;' }] },
   { nom: 'plancher-sur-les-ancres', lettre: 'A', scenarios: COMPTE, editions: [{ fichier: MOTEUR, serveur: true, de: "    preMinutes: FORMULA_ARRIVAL_MINUTES,\n    allowPastStart,\n  });\n  if (!window.ok) return { ok: false, code: 'schedule', reason: window.reason, scenario: null };", vers: "    preMinutes: FORMULA_ARRIVAL_MINUTES,\n  });\n  if (!window.ok) return { ok: false, code: 'schedule', reason: window.reason, scenario: null };" }] },
-  { nom: 'drapeau-non-transmis', lettre: 'A', scenarios: COMPTE, editions: [{ fichier: MOTEUR, serveur: true, de: `    arcadeStart,\n    ${DRAPEAU}\n  });\n\n  const scenarios = result.scenario`, vers: '    arcadeStart,\n  });\n\n  const scenarios = result.scenario' }] },
+  { nom: 'drapeau-non-transmis', lettre: 'A', scenarios: COMPTE, editions: [{ fichier: MOTEUR, serveur: true, de: `    arcadeStart,\n    ${DRAPEAU}\n    ${MINUTE}\n  });\n\n  const scenarios = result.scenario`, vers: `    arcadeStart,\n    ${MINUTE}\n  });\n\n  const scenarios = result.scenario` }] },
   { nom: 'heures-du-libre-perdues', lettre: 'A', scenarios: COMPTE, editions: [{ fichier: OPS, serveur: true, de: '    recommended = garderLesHeuresDuLibre(recommended, request.opsPlan, visitStartShiftMinutes(request));\n', vers: '' }] },
   { nom: 'fin-qui-recule', lettre: 'A', scenarios: COMPTE, editions: [{ fichier: OPS, serveur: true, de: '    ...(depassement > 0 ? { endTime: minutesToTime(finGardee + marge), totalMinutes: Number(plan.totalMinutes || 0) + depassement } : {}),\n', vers: '' }] },
   { nom: 'boissons-sans-heure', lettre: 'A', scenarios: COMPTE, editions: [{ fichier: OPS, serveur: true, de: '      type: tenue.type,\n', vers: '' }] },
@@ -709,14 +711,14 @@ const MUTATIONS = [
   { nom: 'plancher-leve-pour-tous', lettre: 'G', scenarios: MOT, editions: [{ fichier: MOTEUR, serveur: true, de: '  if (date === today && !allowPastStart) {\n', vers: '  if (false) {\n' }] },
   { nom: 'drapeau-ouvert-en-ligne', lettre: 'G', scenarios: MOT, editions: [
     { fichier: OPS, serveur: true, de: "allowPastStart: channel === 'staff' && Boolean(request.allowPastStart),", vers: 'allowPastStart: Boolean(request.allowPastStart),' },
-    { fichier: MOTEUR, serveur: true, de: `    arcadeStart,\n    ${DRAPEAU}\n  });\n\n  const scenarios = result.scenario`, vers: '    arcadeStart,\n    allowPastStart: Boolean(input.allowPastStart),\n  });\n\n  const scenarios = result.scenario' },
+    { fichier: MOTEUR, serveur: true, de: `    arcadeStart,\n    ${DRAPEAU}\n    ${MINUTE}\n  });\n\n  const scenarios = result.scenario`, vers: `    arcadeStart,\n    allowPastStart: Boolean(input.allowPastStart),\n    ${MINUTE}\n  });\n\n  const scenarios = result.scenario` },
   ] },
   { nom: 'ecart-oublie', lettre: 'H', scenarios: MOT, editions: [{ fichier: OPS, serveur: true, de: '    const debut = heure(tenue.startTime) + ecart;\n    const fin = heure(tenue.endTime) + ecart;\n', vers: '    const debut = heure(tenue.startTime);\n    const fin = heure(tenue.endTime);\n' }] },
   { nom: 'heure-fausse-gardee', lettre: 'H', scenarios: MOT, editions: [{ fichier: OPS, serveur: true, de: '    if (prises.some((bloc) => debut < bloc.fin && bloc.debut < fin)) return;\n', vers: '' }] },
   { nom: 'date-passee', lettre: 'H', scenarios: MOT, editions: [{ fichier: MOTEUR, serveur: true, de: '  if (date < today && !allowPastStart) {\n', vers: '  if (date < today) {\n' }] },
   { nom: 'seconde-partie-fabriquee', lettre: 'D', scenarios: ['deuxParties'], editions: [{ fichier: 'lib/reservation-activity-move.js', serveur: true, de: ' && !old.laserManual && !toutAPlacer) {\n', vers: ' && !old.laserManual) {\n' }] },
   { nom: 'ecart-au-premier-bloc', lettre: 'I', scenarios: MOT, editions: [{ fichier: OPS, serveur: true, de: '  if (avant && request.startTime) return timeToMinutes(String(request.startTime).slice(0, 5)) - timeToMinutes(avant);\n', vers: '' }] },
-  { nom: 'heure-non-transmise', lettre: 'I', scenarios: MOT, editions: [{ fichier: API, serveur: true, de: ', heureEnregistree: current.startTime })', vers: ' })' }] },
+  { nom: 'heure-non-transmise', lettre: 'I', scenarios: MOT, editions: [{ fichier: API, serveur: true, de: ', heureEnregistree: current.startTime, ...(ancresALaMinute', vers: ', ...(ancresALaMinute' }] },
   { nom: 'bowling-seul-rappele', lettre: 'I', scenarios: MOT, editions: [{ fichier: OPS, serveur: true, de: 'startTime: departDuMoteur(request),', vers: 'startTime: request.startTime,' }] },
   { nom: 'laser-seul-rappele', lettre: 'I', scenarios: MOT, editions: [{ fichier: OPS, serveur: true, de: '    recommended = garderLesPartiesPlacees(recommended, request, visitStartShiftMinutes(request));\n', vers: '' }] },
 ];

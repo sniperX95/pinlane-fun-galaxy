@@ -308,7 +308,10 @@ async function scenarioPop(browser) {
       const evenements = [];
       const recevoir = (e) => { evenements.push(...e.value); };
       cdp.on('Tracing.dataCollected', recevoir);
-      await cdp.send('Tracing.start', { categories: 'devtools.timeline', transferMode: 'ReportEvents' });
+      // (les deux categories de la chronologie, comme formulaire-fluide-check : sur les machines GitHub, le rendu
+      // force par le script de l etalon ne sortait pas dans devtools.timeline seule, alors qu il reecrivait bien la
+      // table, « ecrit » 1 sur trois essais ; 2026-11-22)
+      await cdp.send('Tracing.start', { transferMode: 'ReportEvents', traceConfig: { includedCategories: ['devtools.timeline', 'disabled-by-default-devtools.timeline'] } });
       // (la trace du renderer demarre apres la reponse de Tracing.start : deux images et 100 ms avant le geste,
       // sinon un rendu joue aussitot tombe avant elle ; 2026-11-22, GitHub : « un rendu du tableau : 10 »)
       await page.evaluate(() => new Promise((fin) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(fin, 100)))));
@@ -319,7 +322,10 @@ async function scenarioPop(browser) {
       cdp.off('Tracing.dataCollected', recevoir);
       const styles = evenements.filter((e) => e.name === 'UpdateLayoutTree' && e.args && Number.isFinite(Number(e.args.elementCount))).map((e) => Number(e.args.elementCount));
       const pages = evenements.filter((e) => e.name === 'Layout' && e.args && e.args.beginData).map((e) => Number(e.args.beginData.dirtyObjects) || 0);
-      return { styleMax: styles.length ? Math.max(...styles) : 0, mises: pages.length, objetsMax: pages.length ? Math.max(...pages) : 0 };
+      // (ou les recalculs et les mises en page sont sortis : leur categorie, pour lire un rouge)
+      const categories = {};
+      evenements.filter((e) => e.name === 'UpdateLayoutTree' || e.name === 'Layout').forEach((e) => { categories[e.cat] = (categories[e.cat] || 0) + 1; });
+      return { styleMax: styles.length ? Math.max(...styles) : 0, mises: pages.length, objetsMax: pages.length ? Math.max(...pages) : 0, categories };
     };
     // (l etalon : un rendu entier du tableau, qui reecrit sa table (ecrit) ; une mesure qui ne voit pas ses
     // milliers d objets se rejoue, deux fois au plus : c est l etalon qui se mesure, le budget de la pop-up reste)

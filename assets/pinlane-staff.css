@@ -9717,7 +9717,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv.rs .rs-col:focus { outline: none; }
 .qb-modal.rv.rs .rs-rangee, .qb-modal.rv.rs .rs-seance, .qb-modal.rv.rs .rs-petits, .qb-modal.rv.rs .rs-portes, .qb-modal.rv.rs .rs-fs-e, .qb-modal.rv.rs .rs-fs-g, .qb-modal.rv.rs .rs-heures, .qb-modal.rv.rs .rs-tabs { flex-shrink: 0; }
 .qb-modal.rv.rs .rs-haut, .qb-modal.rv.rs .rs-corps, .qb-modal.rv.rs .rs-z { display: contents; }
-.qb-modal.rv.rs.is-q-ligne .rs-col, .qb-modal.rv.rs.is-q-autres .rs-col, .qb-modal.rv.rs.is-q-mesure .rs-col, .qb-modal.rv.rs.is-q-total .rs-col, .qb-modal.rv.rs.is-q-client .rs-col { justify-content: flex-start; gap: 14px; }
+.qb-modal.rv.rs.is-q-ligne .rs-col, .qb-modal.rv.rs.is-q-autres .rs-col, .qb-modal.rv.rs.is-q-mesure .rs-col, .qb-modal.rv.rs.is-q-total .rs-col, .qb-modal.rv.rs.is-q-client .rs-col, .qb-modal.rv.rs.is-q-groupes .rs-col { justify-content: flex-start; gap: 14px; }
 
 .qb-modal.rv.rs .rs-rangee { display: grid; grid-template-columns: 64px minmax(0, 1fr); align-items: center; gap: 10px; }
 .qb-modal.rv.rs .rs-rangee > .rs-seg { justify-self: start; }
@@ -10179,6 +10179,34 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv.rs .rs-texte { margin: 0; font-size: 15px; line-height: 1.4; color: var(--muted); }
 /* (2026-11-19) Une heure posee a la main qui ne tient pas : la phrase de Modifier, en rouge, sous la rangee. */
 .qb-modal.rv.rs .rs-texte.rs-heure-refus { color: var(--danger); font-weight: 600; }
+/* UN GRAND GROUPE (2026-11-22) : une rangee par groupe, une colonne par depart, ce que chacun y
+   joue (rsGrilleDesGroupesHtml). Le bowling et le laser gardent les teintes de leurs blocs. */
+.qb-modal.rv.rs .rs-gg-grille { display: flex; flex-direction: column; gap: 6px; }
+.qb-modal.rv.rs .rs-gg-r { display: grid; grid-template-columns: 110px repeat(var(--gg-cols, 2), minmax(0, 1fr)); gap: 6px; align-items: stretch; }
+.qb-modal.rv.rs .rs-gg-r.is-tete > span { padding: 0 4px; font-size: 13px; font-weight: 600; line-height: 1.2; color: var(--muted); font-variant-numeric: tabular-nums; }
+.qb-modal.rv.rs .rs-gg-q { display: flex; flex-direction: column; justify-content: center; min-width: 0; }
+.qb-modal.rv.rs .rs-gg-q b { font-size: 15px; font-weight: 600; line-height: 1.2; color: var(--text); }
+.qb-modal.rv.rs .rs-gg-q small { font-size: 13px; line-height: 1.3; color: var(--muted); }
+.qb-modal.rv.rs .rs-gg-c { display: flex; flex-direction: column; justify-content: center; gap: 1px; min-width: 0; min-height: 52px; padding: 6px 10px; border-radius: 10px; background: var(--rs-touche); }
+.qb-modal.rv.rs .rs-gg-c b { font-size: 15px; font-weight: 600; line-height: 1.2; color: var(--text); }
+.qb-modal.rv.rs .rs-gg-c small { font-size: 13px; line-height: 1.3; color: var(--muted); overflow-wrap: anywhere; }
+.qb-modal.rv.rs .rs-gg-c.is-bowling { box-shadow: inset 3px 0 0 var(--act-bowling, var(--console-selected)); }
+.qb-modal.rv.rs .rs-gg-c.is-laser { box-shadow: inset 3px 0 0 var(--act-laser, var(--console-selected)); }
+.qb-modal.rv.rs .rs-gg-c.is-vide { background: transparent; box-shadow: inset 0 0 0 1px var(--rs-ligne); }
+.qb-modal.rv.rs .rs-gg-ts { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 22px; }
+.qb-modal.rv.rs .rs-gg-reste { min-width: 44px; font-size: 17px; font-weight: 600; text-align: center; }
+.qb-modal.rv.rs .rs-gg-premier { grid-template-columns: 64px auto minmax(0, 1fr); }
+.qb-modal.rv.rs .rs-gg-dit { font-size: 13px; line-height: 1.3; color: var(--muted); }
+.qb-modal.rv.rs .rs-gg-tourne { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.qb-modal.rv.rs .rs-gg-tourne p { flex: 1 1 220px; margin: 0; font-size: 15px; line-height: 1.4; color: var(--text); }
+/* L option du ticket (« Faire tourner 2 groupes : fin à 17:00, 712 € ») : le second bouton de la
+   console, sur la largeur du ticket, son icone a la taille du « + ». */
+.qb-modal.rv.rs .rs-ajout-ligne.rs-gg-option { align-self: stretch; text-align: left; padding: 6px 16px 6px 12px; line-height: 1.35; }
+.qb-modal.rv.rs .rs-gg-option svg { width: 18px; height: 18px; }
+@media (max-width: 700px) {
+  .qb-modal.rv.rs .rs-gg-r { grid-template-columns: 76px repeat(var(--gg-cols, 2), minmax(0, 1fr)); }
+  .qb-modal.rv.rs .rs-gg-premier { grid-template-columns: minmax(0, 1fr); }
+}
 .qb-modal.rv.rs .rs-rangs { flex: 1 1 auto; display: flex; flex-direction: column; gap: 10px; }
 /* UNE RANGEE N EST JAMAIS PLUS PETITE QUE SES TOUCHES (2026-11-13, Ansar : « les heures partent
    dans des boutons en dessous »). `flex: 1 1 52px` avec un min-height pose a la main laissait la
@@ -20042,6 +20070,11 @@ body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme :is(.gc-finish, .gc-do
 /* L acces illimite, en une phrase sous le titre (2026-11-19) : ce qui est compris et garde. */
 body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .fz-acces { margin: 6px 0 8px; padding: 8px 12px; border-radius: 10px; box-shadow: inset 0 0 0 1.5px var(--accent); font-size: 13.5px; line-height: 1.45; color: var(--text); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .fz-acces b { color: var(--accent-strong); font-weight: 600; }
+/* Un grand groupe : ses sous-groupes, une ligne chacun, sur le meme cadre que l acces illimite. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .fz-groupes { margin: 6px 0 8px; padding: 8px 12px; border-radius: 10px; box-shadow: inset 0 0 0 1.5px var(--accent); font-size: 13.5px; line-height: 1.45; color: var(--text); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .fz-groupes > b { color: var(--accent-strong); font-weight: 600; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .fz-groupes ul { margin: 2px 0 0; padding: 0; list-style: none; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .fz-groupes li b { font-weight: 600; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .gc-finish { white-space: nowrap; min-height: 32px; padding: 0 12px; border: 1px solid var(--control-border); border-radius: 8px; background: var(--surface); color: var(--text); font-size: 13.5px; font-weight: 600; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .gc-finish:hover { background: var(--subtle); opacity: 1; }
 

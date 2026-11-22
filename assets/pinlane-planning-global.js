@@ -484,9 +484,10 @@
         if (!g.cases.has(c.cle)) { g.cases.set(c.cle, []); c.groupes += 1; }
         g.cases.get(c.cle).push(e);
       };
+      // (le sous-groupe d un grand groupe, lib/grand-groupe.js : la case dit lequel joue a cette heure)
       getBowlingWindowsFromReservation(r).forEach(function (w) {
         // (aVolonte : des pistes gardees toute la visite d un acces illimite, lib/a-volonte.js)
-        poser('bowling', { start: w.start, end: w.end, pistes: (w.lanes || []).filter(Number.isFinite), joueurs: Number(w.players) || Number(r.pax) || 0, aVolonte: Boolean(w.aVolonte) });
+        poser('bowling', { start: w.start, end: w.end, pistes: (w.lanes || []).filter(Number.isFinite), joueurs: Number(w.players) || Number(r.pax) || 0, aVolonte: Boolean(w.aVolonte), groupe: Number(w.sousGroupe) || 0 });
       });
       // Les vagues d une meme partie entrent ensemble : une seule heure.
       var parties = new Map();
@@ -494,13 +495,18 @@
         var k = Math.round(w.start * 60);
         var j = Math.max(1, Number(w.joueursReels != null ? w.joueursReels : w.players) || Number(r.pax) || 1);
         var deja = parties.get(k);
-        if (deja) { deja.joueurs += j; deja.end = Math.max(deja.end, w.end); return; }
-        var e = { start: w.start, end: w.end, joueurs: j, aVolonte: Boolean(w.aVolonte) };
+        if (deja) { deja.joueurs += j; deja.end = Math.max(deja.end, w.end); if (deja.groupe !== (Number(w.sousGroupe) || 0)) deja.groupe = 0; return; }
+        var e = { start: w.start, end: w.end, joueurs: j, aVolonte: Boolean(w.aVolonte), groupe: Number(w.sousGroupe) || 0, rang: Number(w.countIndex) || 1 };
         parties.set(k, e);
         poser('laser_game', e);
       });
       // (un depart garde a volonte n est pas une partie de plus : il ne se compte pas)
-      Array.from(parties.values()).filter(function (e) { return !e.aVolonte; }).sort(function (a, b) { return a.start - b.start; }).forEach(function (e, n, toutes) { e.partie = n + 1; e.parties = toutes.length; });
+      // (les departs d un grand groupe sont des sous-groupes, pas des parties : la partie est celle du plan)
+      Array.from(parties.values()).filter(function (e) { return !e.aVolonte; }).sort(function (a, b) { return a.start - b.start; }).forEach(function (e, n, toutes) {
+        var enGroupes = toutes.some(function (x) { return x.groupe; });
+        e.partie = enGroupes ? e.rang : n + 1;
+        e.parties = enGroupes ? Math.max.apply(null, toutes.map(function (x) { return x.rang; })) : toutes.length;
+      });
       g.prog.filter(function (e) { return e.aPlacer; }).forEach(function () { poser('laser_game', { aPlacer: true }); });
       // Les activites a heure d une formule (hors bowling, laser, table). Ses
       // credits d arcade restent un compteur, meme quand la formule leur donne
@@ -793,11 +799,14 @@
       // (la plaine qui commence a l heure de la ligne ne la redit pas : la
       // case dit les enfants)
       var desLeDebut = col.nature === 'plaine' && (e.journee || Math.abs(debut - g.heure) <= 0.25 + 1e-6);
+      // LE SOUS-GROUPE D UN GRAND GROUPE (2026-11-22, lib/grand-groupe.js) : « groupe 1 » dans la case,
+      // a cote de ses joueurs ; la bulle le redit.
+      var groupe = e.groupe ? 'groupe ' + e.groupe : '';
       t = desLeDebut ? '' : e.libre && !gfSeuleActivite(g) ? 'Libre' : gpHeure(debut);
       if (col.nature === 'bowling') {
         var n = e.pistes ? e.pistes.length : 0;
         d = n ? gfPistesEnMots(e.pistes) : 'pistes ?';
-        d2 = gfDureeHorsHabitude(r, e, minutes);
+        d2 = [groupe, gfDureeHorsHabitude(r, e, minutes)].filter(Boolean).join(' · ');
         d3 = gfJoueursHorsGroupe(r, e.joueurs);
         // UNE PISTE FERMEE SE VOIT SUR LA LIGNE DU GROUPE (2026-11-02) : fermee au planning
         // bowling, le tableau ne changeait pas, et le groupe arrivait sur une piste en
@@ -805,13 +814,14 @@
         var fermees = (e.pistes || []).filter(function (p) { return state.laneStatuses && state.laneStatuses[p] === 'maintenance'; });
         if (fermees.length && etat !== 'fini') { d = gfPistesEnMots(fermees) + (fermees.length > 1 ? ' fermées' : ' fermée'); d2 = ''; panne = true; }
         else if (n && gfRendueA(r, fin)) { d = gfPistesEnMots(e.pistes) + (n > 1 ? ' libérées' : ' libérée'); d2 = ''; }
-        bulle = 'Bowling de ' + gpHeure(debut) + ' à ' + gpHeure(fin) + ' · ' + (n ? (n > 1 ? 'pistes ' : 'piste ') + gpPistes(e.pistes) : 'pistes à attribuer') + ' · ' + (Number(e.joueurs) || Number(r.pax) || 0) + ' joueurs';
+        bulle = 'Bowling de ' + gpHeure(debut) + ' à ' + gpHeure(fin) + (groupe ? ' · ' + groupe : '') + ' · ' + (n ? (n > 1 ? 'pistes ' : 'piste ') + gpPistes(e.pistes) : 'pistes à attribuer') + ' · ' + (Number(e.joueurs) || Number(r.pax) || 0) + ' joueurs';
         if (e.aVolonte) { d2 = 'à volonté'; bulle = 'Bowling à volonté de ' + gpHeure(debut) + ' à ' + gpHeure(fin) + ' · ' + (n ? (n > 1 ? 'pistes ' : 'piste ') + gpPistes(e.pistes) + (n > 1 ? ' gardées' : ' gardée') + ' toute la visite' : 'pistes à attribuer') + ' · ' + (Number(e.joueurs) || Number(r.pax) || 0) + ' joueurs'; }
       } else if (col.nature === 'laser') {
         var armes = Number(e.joueurs) || 0;
+        d2 = groupe;
         d3 = gfJoueursHorsGroupe(r, armes, ['arme', 'armes']);
         if (gfRendueA(r, fin)) d = gfPluriel(armes || Number(r.pax) || 0, ['arme libérée', 'armes libérées']);
-        bulle = 'Laser à ' + gpHeure(debut) + (e.parties > 1 ? ' · partie ' + e.partie + ' sur ' + e.parties : '') + ' · ' + (armes || Number(r.pax) || 0) + ' armes';
+        bulle = 'Laser à ' + gpHeure(debut) + (groupe ? ' · ' + groupe : '') + (e.parties > 1 ? ' · partie ' + e.partie + ' sur ' + e.parties : '') + ' · ' + (armes || Number(r.pax) || 0) + ' armes';
         if (e.aVolonte) {
           d2 = 'à volonté';
           if (e.departs > 1 && !d) d = e.departs + ' départs';

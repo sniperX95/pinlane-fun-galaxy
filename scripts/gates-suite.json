@@ -238,6 +238,7 @@
     "test:pistes-reparties",
     "test:pistes-cote-a-cote",
     "test:autre-ordre",
+    "test:grands-groupes",
     "test:tour-controle",
     "test:migrations-attendues",
     "test:garde-postes",

@@ -29074,7 +29074,9 @@ function getGroupeProgramme(r) {
         : `${Number(f.players) || effectifActivite('bowling')} joueurs · ${formatDurationLabel(f.duration)}${bowlingCapacityMessage(f.bowlingCapacity) ? ' · ' + bowlingCapacityMessage(f.bowlingCapacity) : ''}`,
       ou: pistes.length ? `piste${pistes.length > 1 ? 's' : ''} ${joindrePistes(pistes)}${f.aVolonte ? ` gardée${pistes.length > 1 ? 's' : ''} toute la visite` : ''}` : 'pistes à attribuer',
       // (le nombre de joueurs du groupe est deja en tete de la ligne : « 10 joueurs · 1h · groupe 1/2 »)
-      groupe: bowling.length > 1 ? `groupe ${index + 1}/${bowling.length}` : '',
+      // (un sous-groupe d un grand groupe se nomme comme au ticket et au planning : « groupe 1 »)
+      groupe: Number(f.sousGroupe) > 0 ? `groupe ${Number(f.sousGroupe)}` : bowling.length > 1 ? `groupe ${index + 1}/${bowling.length}` : '',
+      sousGroupe: Number(f.sousGroupe) || 0,
       start: f.start,
       end: f.end,
       fait: faite(bowling.length === 1 ? 'bowling-1' : `bowling-g${index + 1}`),
@@ -29096,7 +29098,8 @@ function getGroupeProgramme(r) {
       ...(f.aVolonte ? { quoi: `${Number(f.players) || effectifActivite('laser_game')} armes à chaque départ · à volonté` } : {}),
       // (la partie commune avec un autre groupe : « avec Boucquiaux », partenairesLaser)
       ou: f.aVolonte && f.departs > 1 ? `${f.departs} départs` : f.aVolonte ? '' : partenairesEnMots(partenairesLaser(r, f)),
-      groupe: vagues > 1 ? `groupe ${Number(f.groupWaveIndex) || 1}/${vagues}` : '',
+      groupe: Number(f.sousGroupe) > 0 ? `groupe ${Number(f.sousGroupe)}` : vagues > 1 ? `groupe ${Number(f.groupWaveIndex) || 1}/${vagues}` : '',
+      sousGroupe: Number(f.sousGroupe) || 0,
       start: f.start,
       end: f.end,
       fait: faite(vagues === 1 ? `laser_game-${partie}` : `laser_game-${partie}-g${Number(f.groupWaveIndex) || 1}`),
@@ -29215,7 +29218,45 @@ function getGroupeProgramme(r) {
     });
   });
   const rang = e => (e.start !== null && e.start !== undefined ? 0 : e.aPlacer ? 1 : 2);
-  return etapes.sort((a, b) => rang(a) - rang(b) || (a.start || 0) - (b.start || 0) || (a.end || 0) - (b.end || 0));
+  // (a la meme heure, les sous-groupes d un grand groupe dans leur ordre : groupe 1, puis groupe 2)
+  return etapes.sort((a, b) => rang(a) - rang(b) || (a.start || 0) - (b.start || 0) || (a.sousGroupe || 0) - (b.sousGroupe || 0) || (a.end || 0) - (b.end || 0));
+}
+
+// LES SOUS-GROUPES D UN GRAND GROUPE, EN UNE PHRASE CHACUN (2026-11-22, lib/grand-groupe.js) : la fiche
+// dit qui joue quoi et quand, groupe par groupe (« Groupe 1, 30 joueurs : bowling 15:30, laser 16:30 »),
+// lu sur le plan du dossier. null pour tout autre dossier.
+function sousGroupesDuDossier(r) {
+  const blocs = r && r.opsPlan && Array.isArray(r.opsPlan.resourceBlocks) ? r.opsPlan.resourceBlocks : [];
+  const parGroupe = new Map();
+  blocs.forEach((b) => {
+    const n = Number(b && b.sousGroupe) || 0;
+    if (!n || !['bowling_lane', 'laser_arena'].includes(b.resourceType)) return;
+    if (!parGroupe.has(n)) parGroupe.set(n, []);
+    parGroupe.get(n).push(b);
+  });
+  if (parGroupe.size < 2) return null;
+  const gg = r.opsPlan.grandGroupe && typeof r.opsPlan.grandGroupe === 'object' ? r.opsPlan.grandGroupe : {};
+  const tailles = Array.isArray(gg.tailles) ? gg.tailles : [];
+  const groupes = [...parGroupe.entries()].sort((a, b) => a[0] - b[0]).map(([n, liste]) => {
+    const passages = liste.map((b) => ({ id: b.resourceType === 'bowling_lane' ? 'bowling' : 'laser_game', heure: String(b.startTime || '').slice(0, 5), joueurs: Number(b.joueursReels ?? b.players) || 0 }))
+      .filter((p) => p.heure).sort((x, y) => x.heure.localeCompare(y.heure));
+    // (les parties de laser d un groupe se disent ensemble : « laser 15:00 et 15:30 »)
+    const dits = [];
+    passages.forEach((p) => {
+      const der = dits[dits.length - 1];
+      if (der && der.id === p.id) { der.heures.push(p.heure); return; }
+      dits.push({ id: p.id, heures: [p.heure] });
+    });
+    const joueurs = Number(tailles[n - 1]) || Math.max(0, ...passages.map((p) => p.joueurs));
+    return { n, joueurs, texte: dits.map((d) => `${d.id === 'bowling' ? 'bowling' : 'laser'} ${joindreListe(d.heures)}`).join(', ') };
+  });
+  const tourne = gg.tourne === true || groupes.some((g) => /bowling/.test(g.texte) && /laser/.test(g.texte));
+  return { titre: tourne ? `${groupes.length} groupes qui tournent` : `${groupes.length} groupes, l’un après l’autre`, groupes };
+}
+
+function joindreListe(elements) {
+  const liste = elements.map(String);
+  return liste.length > 1 ? `${liste.slice(0, -1).join(', ')} et ${liste[liste.length - 1]}` : (liste[0] || '');
 }
 
 // « 1, 2 », « 1 à 4 » : des pistes qui se suivent se lisent en plage.
@@ -31073,11 +31114,15 @@ function ficheParcours(r, moment, droits) {
   // L ACCES ILLIMITE SE DIT EN UNE PHRASE (2026-11-19) : la visite, ce qui est garde, ce qui se joue
   // une fois a son heure, lus sur le plan du dossier (assets/pinlane-a-volonte.js).
   const acces = accesIllimiteDuDossier(r);
+  // UN GRAND GROUPE SE DIT GROUPE PAR GROUPE (2026-11-22) : qui joue quoi et quand, lu sur le plan du
+  // dossier (sousGroupesDuDossier) ; les etapes en dessous portent leur « groupe N ».
+  const groupes = r.status === 'cancelled' ? null : sousGroupesDuDossier(r);
   // (chaque activite du groupe en retard porte le rouge, retardDuGroupe)
   const rt = retardDuGroupe(r, moment);
   return `<section class="info-block gc-sheet-block fx-programme fz-carte${rt ? ` is-retard-${rt.etat}` : ''}" aria-label="Programme">
       <div class="gc-sheet-head"><h4 class="fx-titre">Programme</h4>${jauge}${renderGroupeTerminer(r)}</div>
       ${acces ? `<p class="fz-acces" id="ficheAcces"><b>Accès illimité</b> ${escapeHtml(acces.texte)}</p>` : ''}
+      ${groupes ? `<div class="fz-groupes" id="ficheGroupes"><b>${escapeHtml(groupes.titre)}</b><ul>${groupes.groupes.map(g => `<li><b>Groupe ${g.n}</b>${g.joueurs ? `, ${g.joueurs} joueur${g.joueurs > 1 ? 's' : ''}` : ''} : ${escapeHtml(g.texte)}</li>`).join('')}</ul></div>` : ''}
       ${ficheArrivee(r, moment, droits)}
       ${renderGroupeEtapes(r, moment, { coches: true }) || '<p class="pos-note">Aucune activité au programme.</p>'}
     </section>`;
@@ -38552,6 +38597,7 @@ const RV_I = {
   cal: rvSvg('<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M8 3v4M16 3v4M3 10h18"/>', 2),
   arene: rvSvg('<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>', 2),
   info: rvSvg('<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h.01"/>'),
+  groupes: rvSvg('<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>', 2),
 };
 
 // Plusieurs resas pour un meme client, un seul envoi (Movsar, 2026-10-08) :
@@ -39493,7 +39539,7 @@ function rvAvertissement() {
   if (!schedule) return 'Centre fermé à cette date.';
   if (!s.startTime) return 'Choisissez une heure.';
   syncQuickBookDuration();
-  const slotCheck = validateSlotWindow(s.date, s.startTime, rvDureeDuCreneau(s.totalDuration), { allowPastStart: quickBookAllowsPastSelectedTime() });
+  const slotCheck = validateSlotWindow(s.date, s.startTime, rvDureeAJuger(s.totalDuration), { allowPastStart: quickBookAllowsPastSelectedTime() });
   if (!slotCheck.ok) return slotCheck.message;
   const formule = rvFormule();
   if (formule) {
@@ -39526,7 +39572,11 @@ function rvRefusDuPlan() {
   const candidate = posee ? posee.activite : nomme ? (nomme.type === 'arene' ? 'laser_game' : 'bowling') : parType ? (parType.type === 'bowling_conflict' ? 'bowling' : 'laser_game') : parPhrase || (ids.length === 1 ? ids[0] : '');
   const activite = ids.includes(candidate) ? candidate : '';
   const ligne = activite ? rvHeuresDesLignes(ids)[activite] : null;
-  const heure = (nomme && nomme.heure) || (ligne && ligne.heure) || s.startTime || '';
+  // (un grand groupe : chaque sous-groupe a ses heures, la ligne n en a pas une ; l heure qui coince
+  // est celle que dit le refus, sinon le depart du groupe)
+  const grand = rvGrandGroupe();
+  const heureDuGrand = rvGroupesEnJeu(grand) ? ((/\b(\d{2}:\d{2})\b/.exec(raison) || [])[1] || s.startTime || '') : '';
+  const heure = (nomme && nomme.heure) || heureDuGrand || (ligne && ligne.heure) || s.startTime || '';
   const nom = activite ? rvNomCourt(activite) : '';
   return {
     activite,
@@ -40358,6 +40408,7 @@ function rvRepeindre({ sauf = [] } = {}) {
   rvPlacerHorloge();
   rsChercherLaProche();
   rvChargerAutreOrdre();
+  rvChargerAutrePlanDesGroupes();
   rsArmerCompteurs();
   // (apres la peinture : lire la hauteur maintenant forcerait la mise en page de la fenetre)
   requestAnimationFrame(rsOmbreDuTicket);
@@ -40927,7 +40978,299 @@ function rvPreference(ids, heures, programme) {
   }
   if (avecLaser && s.arene === 'seuls') preference.arene = 'seuls';
   if (s.type === 'formule' && !s.adaptee && s.formuleChoix) preference.formulaChoice = s.formuleChoix;
+  // UN GRAND GROUPE (rvGrandGroupe). Ses sous-groupes imposes (un bowling seul trop grand pour un
+  // service, ou « Faire tourner » touche) partent tous a l heure de sa premiere activite a heure, et
+  // le moteur pose chacun. Sinon la demande garde les heures de toujours : le moteur garde le plan
+  // d avant tant qu il tient, et ne fait tourner les groupes d office que quand il ne tient pas.
+  const grand = programme ? rvGrandGroupe() : null;
+  if (grand) {
+    const demande = rvDemandeGrandGroupe(grand);
+    if (demande.impose) {
+      const depart = (heures[grand.ids[0]] && heures[grand.ids[0]].heure) || s.startTime;
+      const preferredTimes = {};
+      grand.ids.forEach((id) => { preferredTimes[id] = depart; });
+      delete preference.laserGameTimes;
+      delete preference.laserPlacement;
+      preference.preferredTimes = preferredTimes;
+    }
+    preference.grandGroupe = demande;
+  }
   return Object.keys(preference).length ? preference : undefined;
+}
+
+// ── UN GRAND GROUPE (2026-11-22) ─────────────────────────────────────────────
+// Ansar : « Quand ya grand groupe et qu on réserve sur côté staff logiciel avec réservation par
+// exemple 60 personne pour bowling il gère pas dutout genre il est comme l autre qui sait diviser
+// groupe etc pour multi activité en plus etc ». La fenetre envoyait le bowling de 60 joueurs comme
+// un seul service : dix pistes sur huit, chaque heure refusee. Le formulaire en ligne, lui, coupe
+// le groupe sur la place du centre (splitGroupIntoBowlingServices, getLaserWaveCount : ses pistes,
+// ses joueurs par piste, ses armes, lus dans sa configuration). Un grand groupe part donc en
+// programme, le chemin du formulaire, et le moteur le coupe (lib/grand-groupe.js) : un bowling seul
+// en services l un apres l autre, le bowling et le laser en sous-groupes qui tournent (le groupe 1
+// au bowling pendant que le groupe 2 joue au laser, puis ils échangent). La fenetre ne recalcule
+// aucun plan : elle lit celui du serveur. Une formule et un laser seul gardent le leur.
+function rvGrandGroupe(s = quickBookState) {
+  if (!s || s !== quickBookState || s.type === 'formule' || s.type === 'laser' || s.type === 'activity' || rsFmActive(s)) return null;
+  const ids = rvActivites().filter((id) => RV_ANCRABLES.includes(id));
+  if (!ids.includes('bowling')) return null;
+  const parts = ids.map((id) => (id === 'bowling'
+    ? splitGroupIntoBowlingServices(getQuickVisitParticipants('bowling')).length
+    : getLaserWaveCount(getQuickVisitParticipants('laser_game'))));
+  const nombre = Math.max(1, ...parts);
+  return nombre > 1 ? { ids, nombre, tourne: ids.length > 1 } : null;
+}
+
+// Ce que le comptoir a regle pour le grand groupe : les tailles de ses sous-groupes, tant qu elles
+// font le groupe, et l activite du groupe 1. Rien de regle : le moteur fait des parts egales.
+// `impose` : les sous-groupes sont voulus. Un bowling seul trop grand pour un service n a pas de
+// plan d avant (un seul service refusait chaque heure) ; bowling et laser ne tournent d office que
+// quand le plan d avant ne tient pas, sinon seulement quand le comptoir l a choisi (rsFaireTourner).
+function rvDemandeGrandGroupe(grand = rvGrandGroupe()) {
+  const s = quickBookState;
+  const voulu = (s && s.grandGroupe) || {};
+  const pax = Math.max(1, Number(s && s.pax) || 1);
+  const tailles = grand && Array.isArray(voulu.tailles) && voulu.tailles.length === grand.nombre
+    && voulu.tailles.every((n) => Number.isInteger(n) && n >= 1) && voulu.tailles.reduce((t, n) => t + n, 0) === pax
+    ? voulu.tailles.slice() : null;
+  const premier = grand && grand.tourne && grand.ids.includes(voulu.premier) ? voulu.premier : '';
+  const impose = Boolean(grand) && (!grand.tourne || voulu.tourne === true);
+  return { ...(tailles ? { tailles } : {}), ...(premier ? { premier } : {}), ...(impose ? { impose: true } : {}) };
+}
+
+// LES GROUPES TOURNENT-ILS ? (2026-11-22, le coordinateur : « aucun changement de prix silencieux
+// pour les groupes qui passaient déjà »). Bowling et laser : oui quand le comptoir l a choisi, ou
+// quand le plan du serveur les a poses d office (le plan d avant ne tenait pas) ; pendant un calcul,
+// ce que le dernier plan disait. Un bowling seul trop grand : ses services l un apres l autre sont
+// toujours en jeu (rvGroupesEnJeu).
+function rvRotationEnJeu(grand = rvGrandGroupe()) {
+  const s = quickBookState;
+  if (!s || !grand || !grand.tourne) return false;
+  if (s.grandGroupe && s.grandGroupe.tourne === true) return true;
+  const plan = rvPlanCourant();
+  if (plan) return Boolean(plan.grandGroupe && plan.grandGroupe.tourne);
+  return Boolean(s.rotationVue);
+}
+
+function rvGroupesEnJeu(grand = rvGrandGroupe()) {
+  return Boolean(grand) && (!grand.tourne || rvRotationEnJeu(grand));
+}
+
+// Le temps d un groupe qui tourne : son bowling, puis ses parties de laser (une demi-heure chacune,
+// la grille du centre). Les groupes qui tournent durent au moins cela.
+function rvDureeDUnGroupe() {
+  const visit = (quickBookState && quickBookState.visit) || {};
+  const bowling = visit.bowling && visit.bowling.on ? Number(visit.bowling.duration || 1) : 0;
+  const parties = visit.laser_game && visit.laser_game.on ? Math.max(1, Number(visit.laser_game.games || 1)) : 0;
+  return Math.max(0.5, bowling + parties * 0.5);
+}
+
+// LA DUREE QUE LA FENETRE JUGE D AVANCE (rvAvertissement, rvConstruire) : celle de la visite. Un
+// grand groupe au bowling et au laser peut tourner, chaque groupe ne joue que son bowling et son
+// laser : le serveur pose les groupes qui tournent quand le plan d avant finirait trop tard (60
+// joueurs a 20:00, fermeture a 22:00). La fenetre ne refuse d avance que ce qu aucun ne tient.
+function rvDureeAJuger(annoncee) {
+  const grand = rvGrandGroupe();
+  const visite = rvDureeDuCreneau(annoncee);
+  return grand && grand.tourne ? Math.min(visite, rvDureeDUnGroupe()) : visite;
+}
+
+// Les tailles des sous-groupes : celles du plan du serveur quand il les dit, sinon celles reglees,
+// sinon le groupe entier (le plan les donnera).
+function rvTaillesDuGrandGroupe(grand = rvGrandGroupe(), plan = rvPlanCourant()) {
+  const duPlan = plan && plan.grandGroupe && Array.isArray(plan.grandGroupe.tailles) ? plan.grandGroupe.tailles : null;
+  if (duPlan && grand && duPlan.length === grand.nombre) return duPlan.map(Number);
+  const reglees = rvDemandeGrandGroupe(grand).tailles;
+  return reglees || [];
+}
+
+// LE PLAN PAR SOUS-GROUPE, tel que le serveur l a pose : pour chaque groupe, ses passages dans
+// l ordre de la journee. Le groupe se lit sur le bloc (`sousGroupe`), sinon son rang de service ou
+// de vague (un bowling seul en deux services, un laser seul en deux vagues).
+function rvGroupesDuPlan(plan = rvPlanCourant()) {
+  const blocs = plan && Array.isArray(plan.blocs) ? plan.blocs : [];
+  const groupes = new Map();
+  blocs.forEach((b) => {
+    if (!RV_ANCRABLES.includes(b.activite) || !b.debut) return;
+    const n = Number(b.sousGroupe) || (Number(b.vagues) > 1 ? Number(b.vague) : 0);
+    if (!n) return;
+    if (!groupes.has(n)) groupes.set(n, []);
+    groupes.get(n).push(b);
+  });
+  return [...groupes.entries()].sort((a, b) => a[0] - b[0])
+    .map(([n, passages]) => ({ n, passages: passages.sort((x, y) => timeToNum(x.debut) - timeToNum(y.debut)) }));
+}
+
+// Les pistes d un passage, dites comme au planning : « pistes 4 à 8 ».
+function rvPistesDites(pistes) {
+  const liste = (pistes || []).map(Number).filter(Number.isFinite);
+  return liste.length ? `${liste.length > 1 ? 'pistes' : 'piste'} ${joindrePistes(liste)}` : 'pistes à attribuer';
+}
+
+// La ligne du ticket d une activite d un grand groupe : quel groupe y joue a quelle heure, puis ses
+// pistes. null tant que le plan du serveur ne la coupe pas.
+function rvLigneDuGrandGroupe(id) {
+  const groupes = rvGroupesDuPlan();
+  if (groupes.length < 2) return null;
+  const parGroupe = groupes.map((g) => ({ n: g.n, passages: g.passages.filter((p) => p.activite === id) })).filter((g) => g.passages.length);
+  if (!parGroupe.length) return null;
+  parGroupe.sort((a, b) => timeToNum(a.passages[0].debut) - timeToNum(b.passages[0].debut) || a.n - b.n);
+  const detail = parGroupe.map((g, i) => `${i ? 'groupe' : 'Groupe'} ${g.n} à ${rvListe(g.passages.map((p) => p.debut))}`).join(', ');
+  if (id !== 'bowling') return { detail, apres: '' };
+  const dites = parGroupe.map((g) => rvPistesDites(g.passages[0].pistes));
+  const apres = new Set(dites).size === 1 ? dites[0] : parGroupe.map((g, i) => `groupe ${g.n} ${dites[i]}`).join(', ');
+  return { detail, apres };
+}
+
+// LA LIGNE DES SOUS-GROUPES AU TICKET : combien de groupes, de combien, et s ils tournent. Un
+// toucher ouvre leurs reglages (rsGroupesHtml).
+function rsLigneGrandGroupeHtml() {
+  const grand = rvGrandGroupe();
+  if (!rvGroupesEnJeu(grand) || !rsEtat().faits.combien) return '';
+  const tailles = rvTaillesDuGrandGroupe(grand);
+  const nom = grand.tourne ? `${grand.nombre} groupes qui tournent` : `${grand.nombre} groupes, l’un après l’autre`;
+  const detail = tailles.length ? `${rvListe(tailles)} joueurs` : `${Math.max(1, Number(quickBookState.pax) || 1)} joueurs à partager`;
+  return rsLigne({ cle: 'groupes', action: "rsOuvrir('groupes')", icone: RV_I.groupes, nom, detail, aria: rsAriaLigne(nom, detail, '') });
+}
+
+// Ce qu un groupe peut faire d un coup : les armes de l arene, les pistes du centre a leur capacite
+// de secours. Seules comptent les activites que tout le groupe joue (les autres se partagent au
+// prorata, le serveur les juge).
+function rvPlafondDUnGroupe(grand) {
+  const pax = Math.max(1, Number(quickBookState.pax) || 1);
+  const plafonds = grand.ids.filter((id) => getQuickVisitParticipants(id) >= pax).map((id) => (id === 'laser_game'
+    ? getLaserArenaCapacity()
+    : (getAvailabilityLaneCount() || getTotalLanes()) * Math.max(getMaxPerLane(), getEmergencyMaxPerLane())));
+  return plafonds.length ? Math.min(...plafonds) : pax;
+}
+
+// « Le groupe 1 au bowling pendant que le groupe 2 joue au laser, puis ils échangent. »
+function rvPhraseDesGroupes(grand, groupes, plan) {
+  const fin = plan && plan.disponible && plan.fin ? ` Fin vers ${plan.fin}.` : '';
+  if (!grand.tourne) return `Les groupes jouent l’un après l’autre.${fin}`;
+  const premiers = groupes.map((g) => g.passages[0]).filter(Boolean);
+  const depart = premiers.length ? premiers[0].debut : '';
+  const ensemble = premiers.filter((p) => p.debut === depart);
+  if (grand.nombre === 2 && ensemble.length === 2 && ensemble[0].activite !== ensemble[1].activite) {
+    const au = (id) => (id === 'laser_game' ? 'au laser' : `au ${rvMinuscule(rsNomCourt(id))}`);
+    return `Le groupe 1 ${au(ensemble[0].activite)} pendant que le groupe 2 joue ${au(ensemble[1].activite)}, puis ils échangent.${fin}`;
+  }
+  return `Chaque groupe joue au bowling et au laser, à tour de rôle.${fin}`;
+}
+
+// LE PLAN D UN COUP D OEIL : une rangee par groupe, une colonne par depart, ce que chacun y joue.
+// Les passages qui se suivent sur la meme activite (les parties de laser d un groupe) font une case.
+function rsGrilleDesGroupesHtml(groupes, tailles) {
+  if (!groupes.length) {
+    return `<p class="rs-texte" id="rsGgCalcul">${escapeHtml(rvPlanEnCalcul() ? 'Le planning partage le groupe…' : 'Le planning dira qui joue où dès qu’une heure tient.')}</p>`;
+  }
+  const lignes = groupes.map((g) => {
+    const cases = [];
+    g.passages.forEach((p) => {
+      const derniere = cases[cases.length - 1];
+      if (derniere && derniere.activite === p.activite && derniere.fin && timeToNum(p.debut) - timeToNum(derniere.fin) < 0.1) {
+        derniere.fin = p.fin;
+        derniere.parties += 1;
+        return;
+      }
+      cases.push({ activite: p.activite, debut: p.debut, fin: p.fin, pistes: p.pistes, parties: 1 });
+    });
+    return { n: g.n, cases };
+  });
+  const departs = [...new Set(lignes.flatMap((l) => l.cases.map((c) => c.debut)))].sort((a, b) => timeToNum(a) - timeToNum(b));
+  const tete = `<div class="rs-gg-r is-tete" role="row"><span role="columnheader" class="rs-gg-q">Groupe</span>${departs.map((h) => `<span role="columnheader">${escapeHtml(h)}</span>`).join('')}</div>`;
+  const rangees = lignes.map((l) => {
+    const taille = Number(tailles[l.n - 1]) || 0;
+    const cellules = departs.map((h) => {
+      const c = l.cases.find((x) => x.debut === h);
+      if (!c) return '<span role="cell" class="rs-gg-c is-vide"></span>';
+      const quoi = c.activite === 'bowling' ? rvPistesDites(c.pistes) : c.parties > 1 ? `${c.parties} parties` : `jusqu’à ${c.fin}`;
+      return `<span role="cell" class="rs-gg-c is-${c.activite === 'bowling' ? 'bowling' : 'laser'}" data-groupe="${l.n}" data-activite="${escapeHtml(c.activite)}" data-heure="${escapeHtml(h)}"><b>${escapeHtml(rsNomCourt(c.activite))}</b><small>${escapeHtml(quoi)}</small></span>`;
+    }).join('');
+    return `<div class="rs-gg-r" role="row"><span role="rowheader" class="rs-gg-q"><b>Groupe ${l.n}</b>${taille ? `<small>${escapeHtml(rvPluriel(taille, 'joueur'))}</small>` : ''}</span>${cellules}</div>`;
+  }).join('');
+  return `<div class="rs-gg-grille" id="rsGgGrille" role="table" aria-label="Qui joue où, groupe par groupe" style="--gg-cols:${departs.length}">${tete}${rangees}</div>`;
+}
+
+// LA TAILLE DE CHAQUE GROUPE (« nombre par sous-groupe ») : un de plus, un de moins, le dernier
+// groupe prend le reste. Jamais plus que ce que le centre prend d un coup : la touche s arrete la.
+function rsTaillesDesGroupesHtml(grand, tailles) {
+  if (tailles.length !== grand.nombre) return '';
+  const plafond = rvPlafondDUnGroupe(grand);
+  const dernier = tailles.length - 1;
+  const cases = tailles.map((n, rang) => {
+    if (rang === dernier) return `<span class="rs-cpt rs-gg-t" data-groupe="${rang + 1}"><span class="rs-cpt-l">Groupe ${rang + 1}</span><b class="rs-gg-reste" aria-label="${escapeHtml(`Groupe ${rang + 1}, ${rvPluriel(n, 'joueur')}, le reste du groupe`)}">${n}</b></span>`;
+    const reste = tailles[dernier];
+    const moins = n > 1 && reste + 1 <= plafond ? `rsFixer(() => rsTailleGroupe(${rang}, ${n - 1}))` : '';
+    const plus = n + 1 <= plafond && reste > 1 ? `rsFixer(() => rsTailleGroupe(${rang}, ${n + 1}))` : '';
+    return rsCompteurHtml(`Groupe ${rang + 1}`, n, moins, plus, `data-groupe="${rang + 1}"`, `Joueurs du groupe ${rang + 1}`);
+  });
+  return `<div class="rs-rangee rs-gg-tailles"><span class="rs-lbl">Joueurs</span><div class="rs-gg-ts" role="group" aria-label="Joueurs par groupe">${cases.join('')}</div></div>`;
+}
+
+// L ACTIVITE DU GROUPE 1 quand ils tournent : l autre groupe commence par l autre.
+function rsPremierDesGroupesHtml(grand, plan) {
+  const actuel = (plan && plan.grandGroupe && grand.ids.includes(plan.grandGroupe.premier) && plan.grandGroupe.premier) || rvDemandeGrandGroupe(grand).premier || grand.ids[0];
+  const cles = grand.ids.map((id) => `<button type="button" class="${id === actuel ? 'is-on' : ''}" id="rsGgPremier-${escapeHtml(id)}" data-premier="${escapeHtml(id)}" aria-pressed="${id === actuel}" onclick="rsFixer(() => rsPremierGroupe(this.dataset.premier))">${escapeHtml(rsNomCourt(id))}</button>`).join('');
+  return `<div class="rs-rangee rs-gg-premier"><span class="rs-lbl" id="rsGgPremierT">Groupe 1</span><div class="rs-seg" role="group" aria-labelledby="rsGgPremierT">${cles}</div><small class="rs-gg-dit">commence par cette activité</small></div>`;
+}
+
+function rsTailleGroupe(rang, n) {
+  const s = quickBookState;
+  const grand = rvGrandGroupe();
+  if (!s || !grand) return;
+  const tailles = rvTaillesDuGrandGroupe(grand).slice();
+  const dernier = tailles.length - 1;
+  if (tailles.length !== grand.nombre || rang < 0 || rang >= dernier) return;
+  tailles[rang] = Math.max(1, Math.trunc(Number(n)) || 1);
+  tailles[dernier] = Math.max(1, Number(s.pax) || 1) - tailles.slice(0, dernier).reduce((t, x) => t + x, 0);
+  if (tailles[dernier] < 1) return;
+  s.grandGroupe = { ...(s.grandGroupe || {}), tailles };
+  s.forcer = false;
+  s.error = '';
+}
+
+function rsPremierGroupe(id) {
+  const s = quickBookState;
+  const grand = rvGrandGroupe();
+  if (!s || !grand || !grand.ids.includes(id)) return;
+  s.grandGroupe = { ...(s.grandGroupe || {}), premier: id };
+  s.forcer = false;
+  s.error = '';
+}
+
+// LA PAGE DES SOUS-GROUPES (2026-11-22). Le plan du serveur d un coup d oeil (qui joue ou, a quelle
+// heure, sur quelles pistes), puis ce qui se regle : la taille de chaque groupe et, quand ils
+// tournent, l activite du groupe 1. Chaque reglage repart au serveur, qui recalcule tout.
+function rsGroupesHtml() {
+  const s = quickBookState;
+  const grand = rvGrandGroupe();
+  const pax = Math.max(1, Number(s.pax) || 1);
+  if (!rvGroupesEnJeu(grand)) {
+    return `${rsRetourHtml()}
+    <section class="rs-seance is-page rs-gg" aria-labelledby="rsQ"><div class="rs-s-t"><div class="rs-s-n"><h2 class="rs-q" id="rsQ" tabindex="-1">${escapeHtml(`${rvPluriel(pax, 'joueur')}, un seul groupe`)}</h2><small>Les pistes et l’arène prennent tout le groupe d’un coup : il n’est pas partagé.</small></div></div></section>`;
+  }
+  const plan = rvPlanCourant();
+  const groupes = rvGroupesDuPlan(plan);
+  const tailles = rvTaillesDuGrandGroupe(grand, plan);
+  return `${rsRetourHtml()}
+    <section class="rs-seance is-page rs-gg" aria-labelledby="rsQ">
+      <div class="rs-s-t"><div class="rs-s-n"><h2 class="rs-q" id="rsQ" tabindex="-1">${escapeHtml(`${pax} joueurs en ${grand.nombre} groupes`)}</h2><small id="rsGgPhrase">${escapeHtml(rvPhraseDesGroupes(grand, groupes, plan))}</small></div></div>
+      ${rsGrilleDesGroupesHtml(groupes, tailles)}
+      ${rsTaillesDesGroupesHtml(grand, tailles)}
+      ${grand.tourne ? rsPremierDesGroupesHtml(grand, plan) : ''}
+    </section>`;
+}
+
+// UNE ACTIVITE QUI TOURNE AVEC LA PREMIERE (un grand groupe) : elle part a la meme heure, un
+// sous-groupe a chacune. Son bloc dit quel groupe y joue a quelle heure au lieu de ses propres
+// heures, et mene aux reglages des groupes.
+function rsTourneAvecHtml(id) {
+  const grand = rvGrandGroupe();
+  if (!rvRotationEnJeu(grand) || id === grand.ids[0] || !grand.ids.includes(id)) return '';
+  const ligne = rvLigneDuGrandGroupe(id);
+  const tete = grand.ids[0] === 'laser_game' ? 'le laser' : `le ${rvMinuscule(rsNomCourt(grand.ids[0]))}`;
+  const phrase = ligne ? `${ligne.detail}.` : `Part avec ${tete}, un groupe à chacun.`;
+  return `<div class="rs-gg-tourne" id="rsTourne-${escapeHtml(id)}"><p>${escapeHtml(phrase)}</p><button type="button" class="attr-b" id="rsTourneRegler-${escapeHtml(id)}" onclick="rsOuvrir('groupes')">Régler les groupes</button></div>`;
 }
 
 // ── LE DOSSIER QUE LA FENETRE CREE ───────────────────────────────────────────
@@ -40945,7 +41288,8 @@ function rvConstruire({ simulation = false } = {}) {
   const formule = s.type === 'formule' ? resolveDisplayFormule(s.formuleId) : null;
   if (s.type === 'formule' && !formule) return { erreur: 'Sélectionnez une formule.' };
   const adaptee = Boolean(formule) && rvFormuleVraimentAdaptee();
-  const programme = s.type === 'visite' || adaptee || rsFmActive(s);
+  // (un grand groupe part en programme, comme au formulaire en ligne : rvGrandGroupe)
+  const programme = s.type === 'visite' || adaptee || rsFmActive(s) || Boolean(rvGrandGroupe());
   syncQuickBookDuration();
   const ids = rvActivites();
   const heures = rvHeuresDesLignes(ids);
@@ -40971,7 +41315,7 @@ function rvConstruire({ simulation = false } = {}) {
   const forcer = !simulation && Boolean(s.forcer) && Boolean(planActuel && !planActuel.disponible);
   const duration = Number(s.duration);
   const totalDuration = Number(s.totalDuration || duration);
-  const slotCheck = validateSlotWindow(s.date, s.startTime, rvDureeDuCreneau(totalDuration), { allowPastStart: quickBookAllowsPastSelectedTime() });
+  const slotCheck = validateSlotWindow(s.date, s.startTime, rvDureeAJuger(totalDuration), { allowPastStart: quickBookAllowsPastSelectedTime() });
   if (!slotCheck.ok && !forcer) return { erreur: slotCheck.message };
   // Une formule hors regles part quand meme (choix du comptoir) : la raison
   // s ecrit dans la note du dossier, pour que la caisse la comprenne.
@@ -41190,6 +41534,8 @@ async function rvSimuler() {
   }
   const plan = rvPlanCourant();
   if (plan && plan.disponible) quickBookState.heureArretee = true;
+  // (ce que le plan a pose pour un grand groupe : ses groupes tournent-ils, rvRotationEnJeu)
+  if (plan) quickBookState.rotationVue = Boolean(plan.grandGroupe && plan.grandGroupe.tourne);
   // (une fermeture ou une privatisation ne se force pas : le serveur la refuserait aussi « à placer »)
   if (plan && plan.fermeture) quickBookState.forcer = false;
   // Un refus : on cherche tout de suite les heures ou TOUT tient.
@@ -42320,10 +42666,12 @@ function rsBlocHtml(id) {
     <div class="rs-s-t"><span class="rs-ic">${rsIcone(id)}</span><div class="rs-s-n"><b>${escapeHtml(nom)}</b><small>${escapeHtml(rsInfoBloc(id))}</small></div>${segment}<button type="button" class="rs-ajout" id="rsAjout-${escapeHtml(id)}" data-quoi="${escapeHtml(id)}" aria-label="${escapeHtml(aria)}" onclick="rsAjouterBloc(this.dataset.quoi)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg>${mot}</button></div>${rsRetenuesHtml(id)}
   </section>`;
   }
+  // (un grand groupe qui tourne : la deuxieme activite part avec la premiere, rsTourneAvecHtml)
+  const tourne = rsTourneAvecHtml(id);
   return `<section class="rs-seance${rsAuTicket(id) ? ' is-on' : ''}" aria-label="${escapeHtml(nom)}">
     <div class="rs-s-t"><span class="rs-ic">${rsIcone(id)}</span><div class="rs-s-n"><b>${escapeHtml(nom)}</b><small>${escapeHtml(rsInfoBloc(id))}</small></div>${rsReglagesBlocHtml(id)}${segment}</div>
-    <div class="rs-s-h" role="group" aria-label="${escapeHtml(`Heures, ${nom}`)}">${rsHeuresHtml(id)}</div>
-    ${id === 'laser_game' ? rsPartiesHtml() : ''}
+    ${tourne || `<div class="rs-s-h" role="group" aria-label="${escapeHtml(`Heures, ${nom}`)}">${rsHeuresHtml(id)}</div>
+    ${id === 'laser_game' ? rsPartiesHtml() : ''}`}
     ${rsRetenuesHtml(id)}
   </section>`;
 }
@@ -43252,6 +43600,10 @@ function rsCoince(x, id) {
   if (!v || v.statut !== 'ko') return null;
   // (un refus de la fenetre elle-meme, « trop tard », est celui de CETTE heure : il se dit toujours)
   if (v.local) return v;
+  // (un grand groupe qui tourne part tout entier a l heure de sa premiere activite, et l autre n a
+  // pas de rangee : celle-ci dit le verdict de tout le groupe, quelle que soit l activite qui coince)
+  const grand = rvGrandGroupe();
+  if (rvRotationEnJeu(grand) && id === grand.ids[0]) return v;
   const refus = rvRefusDuPlan();
   const deja = refus && refus.activite && refus.activite !== id ? refus.activite : '';
   if (!deja) return v;
@@ -43323,10 +43675,13 @@ function rsPendant(id, heure, plages = rsPlagesDuTicket()) {
   const { ids, lignes, minutes } = plages;
   const debut = timeToNum(heure);
   const fin = debut + (minutes[id] ?? rvMinutesActivite(id)) / 60;
+  // (un grand groupe qui tourne : ses activites a heure partent ensemble, un sous-groupe a chacune)
+  const grand = rvGrandGroupe();
+  const ensemble = rvRotationEnJeu(grand) && grand.ids.includes(id) ? grand.ids : [];
   for (const autre of ids) {
     const l = lignes[autre];
     // (une activite libre posee a la main a son heure aussi : le groupe y est)
-    if (autre === id || !l || !l.heure || !(RV_ANCRABLES.includes(autre) || l.posee)) continue;
+    if (autre === id || ensemble.includes(autre) || !l || !l.heure || !(RV_ANCRABLES.includes(autre) || l.posee)) continue;
     const debutAutre = timeToNum(l.heure);
     const finAutre = debutAutre + minutes[autre] / 60;
     if (debut < finAutre - 1e-9 && debutAutre < fin - 1e-9) {
@@ -44133,7 +44488,9 @@ function rsHeureProche() {
   const c = s.candidats;
   if (!c || c.etat !== 'ok' || c.base !== s.cleCourante) return '';
   const refus = rvRefusDuPlan();
-  if (refus && rvActivites().includes(refus.activite) && c.id !== refus.activite) return '';
+  // (un grand groupe : les heures de sa premiere activite jugent tout le groupe, rsChercherLaProche)
+  const grand = rvGrandGroupe();
+  if (rvGroupesEnJeu(grand) ? c.id !== grand.ids[0] || c.partie : refus && rvActivites().includes(refus.activite) && c.id !== refus.activite) return '';
   const depart = timeToNum((c.id && rvHeureReglee(c.id, c.partie || 0)) || s.startTime || '00:00');
   const bonnes = rvHeuresDuPlanning(c, s).sort((x, y) => Math.abs(timeToNum(x.heure) - depart) - Math.abs(timeToNum(y.heure) - depart) || (x.statut === 'ok' ? 0 : 1) - (y.statut === 'ok' ? 0 : 1));
   return bonnes.length ? bonnes[0].heure : '';
@@ -44217,7 +44574,9 @@ function rsChercherLaProche() {
   const refus = rvRefusDuPlan();
   if (!refus) return;
   const ids = rvActivites();
-  const id = ids.includes(refus.activite) ? refus.activite : ids[0];
+  // (un grand groupe se deplace tout entier par l heure de sa premiere activite)
+  const grand = rvGrandGroupe();
+  const id = rvGroupesEnJeu(grand) ? grand.ids[0] : ids.includes(refus.activite) ? refus.activite : ids[0];
   if (!id) return;
   // Une recherche en panne ne se relance pas d elle-meme : chaque repeint la relancait
   // (512 requetes en 4 s, « Recherche… » sans fin). Le refus se dit ; un geste qui change
@@ -45105,6 +45464,10 @@ function rvChevauchements(ids = rvActivites()) {
   if (!quickBookState || ids.length < 2 || !rvModifiable()) return res;
   const lignes = rvHeuresDesLignes(ids);
   const plages = [];
+  // (un grand groupe qui tourne est au bowling et au laser en meme temps, un sous-groupe a chacun :
+  // le serveur juge chaque sous-groupe, lib/grand-groupe.js)
+  const grand = rvGrandGroupe();
+  if (rvRotationEnJeu(grand)) return res;
   ids.forEach((id) => {
     const l = lignes[id];
     if (!l || !l.heure || !(RV_ANCRABLES.includes(id) || l.posee)) return;
@@ -45191,6 +45554,8 @@ function rsLignesActivites() {
   }
   // La derniere activite ne se retire pas : il faut bien reserver quelque chose.
   const retirable = ids.length > 1;
+  // Un grand groupe dit d abord ses sous-groupes, une ligne qui ouvre leurs reglages (rsGroupesHtml).
+  lignes.push(rsLigneGrandGroupeHtml());
   ids.forEach((id) => {
     const e = etapes.filter((x) => x.id === id);
     const nom = id === 'bowling' ? `Bowling ${rvHeuresLabel(rvBowlingDuree())}` : id === 'laser_game' ? `Laser, ${rvPluriel(rvPartiesLaser(), 'partie')}` : rvNomActivite(id);
@@ -45199,9 +45564,13 @@ function rsLignesActivites() {
     const plan = rvPlanCourant();
     const meme = plan && plan.heureRefusee && plan.heureRefusee.activite === id && e.some((x) => x.ko) ? null : chevauche.get(id);
     const ko = Boolean(meme) || e.some((x) => x.ko);
-    const detail = meme ? rsPhraseChevauche(heures[id].heure, meme) : ko ? rsPhrase(e.find((x) => x.ko).d) : rsDetailLigne(id, e, heures[id], ids);
+    // (un grand groupe : quel sous-groupe joue a quelle heure, puis ses pistes, lus sur le plan du serveur)
+    const enGroupes = ko ? null : rvLigneDuGrandGroupe(id);
+    const detail = meme ? rsPhraseChevauche(heures[id].heure, meme) : ko ? rsPhrase(e.find((x) => x.ko).d) : enGroupes ? enGroupes.detail : rsDetailLigne(id, e, heures[id], ids);
     const plus = ko ? '' : rsPartage(id, e);
-    const apres = ko ? '' : rsPlusDuTicket(id, heures[id]);
+    const joueursAct = getQuickVisitParticipants(id);
+    const surLeGroupe = joueursAct < Math.max(1, Number(s.pax) || 1) ? `${rvPluriel(joueursAct, 'joueur')} sur ${Math.max(1, Number(s.pax) || 1)}` : '';
+    const apres = ko ? '' : enGroupes ? [enGroupes.apres, surLeGroupe].filter(Boolean).join(', ') : rsPlusDuTicket(id, heures[id]);
     // (dans une formule adaptee, ce qu elle comprend est dans son prix ; une activite ajoutee dit le sien)
     const ajout = ajouts ? ajouts.ajoutees.find((a) => a.id === id) : null;
     const prix = !combien ? '' : ajout ? (ajout.montant != null ? rsEuros(ajout.montant) : 'sur place') : s.adaptee ? '' : prixFormule != null ? 'compris' : rsPrixDeLigne(id);
@@ -45209,7 +45578,89 @@ function rsLignesActivites() {
     const bouge = s.deplace && s.deplace.id === id && heures[id] && heures[id].heure === s.deplace.apres ? `Déplacé de ${s.deplace.avant} à ${s.deplace.apres}` : '';
     lignes.push(rsLigne({ cle: `a-${id}`, action: 'rsOuvrirLigne(this.dataset.activite)', data: `data-activite="${escapeHtml(id)}"`, icone: rsIcone(id), nom, detail, plus, apres, ko, prix, bouge, aria: rsAriaLigne(nom, [bouge, detail, plus, apres].filter(Boolean).join(', '), prix), retirer: retirable ? 'rsRetirer(this.dataset.activite)' : '' }));
   });
+  // (un grand groupe dont le plan d avant tient : faire tourner ses groupes est une option, qui dit
+  // ce qu elle change, rsOptionDesGroupesHtml)
+  lignes.push(rsOptionDesGroupesHtml());
   return lignes.join('');
+}
+
+// FAIRE TOURNER LES GROUPES, AU CHOIX DU COMPTOIR (2026-11-22, le coordinateur : « aucun changement
+// de prix silencieux pour les groupes qui passaient déjà [...] Le staff choisit, rien ne bascule
+// seul »). Un grand groupe au bowling et au laser dont le plan d avant tient (40 joueurs a 15:30 :
+// tout le bowling, puis le laser en deux vagues, 673 €, fin 17:25) le garde. Le ticket propose les
+// groupes qui tournent, avec ce qu ils changent, lus sur le plan que le serveur a joue a blanc :
+// « Faire tourner 2 groupes : fin à 17:00, 712 € ». Choisis, il propose l inverse. Quand le plan
+// d avant ne tient pas, les groupes tournent d office : rien a proposer.
+let rvAutrePlanSeq = 0;
+function rvAutrePlanDesGroupesPossible() {
+  const s = quickBookState;
+  const grand = rvGrandGroupe();
+  const plan = rvPlanCourant();
+  if (!s || !grand || !grand.tourne || !plan || s.forcer || rvResas.length > 1) return false;
+  const choisie = Boolean(s.grandGroupe && s.grandGroupe.tourne === true);
+  // (choisis, les groupes qui tournent se defont toujours, meme a une heure ou ils ne tiennent pas)
+  if (!plan.disponible && !choisie) return false;
+  return choisie || !rvRotationEnJeu(grand);
+}
+
+async function rvChargerAutrePlanDesGroupes() {
+  const s = quickBookState;
+  if (rsLeger || !s || !rvAutrePlanDesGroupesPossible()) return;
+  const cle = s.cleCourante;
+  if (!cle || (s.autrePlanGroupes && s.autrePlanGroupes.base === cle)) return;
+  const tourne = !(s.grandGroupe && s.grandGroupe.tourne === true);
+  // (le corps de l autre choix, construit sur une copie : la fenetre ne bouge pas)
+  const garde = quickBookState;
+  let corps = null;
+  try {
+    quickBookState = JSON.parse(JSON.stringify(garde));
+    quickBookState.grandGroupe = { ...(quickBookState.grandGroupe || {}), tourne };
+    corps = rvCorpsDeSimulation();
+  } catch (error) {
+    corps = null;
+  } finally {
+    quickBookState = garde;
+  }
+  if (!corps) return;
+  const seq = ++rvAutrePlanSeq;
+  s.autrePlanGroupes = { base: cle, etat: 'calcul', tourne };
+  let suite;
+  try {
+    const payload = await apiRequest(API_ENDPOINTS.staffReservations, { method: 'POST', body: JSON.stringify({ ...corps, dryRun: true }) });
+    suite = { base: cle, etat: 'ok', tourne, plan: (payload && payload.dryRun && payload.plan) || null };
+  } catch (error) {
+    suite = { base: cle, etat: 'erreur', tourne };
+  }
+  if (seq !== rvAutrePlanSeq || quickBookState !== s) return;
+  s.autrePlanGroupes = suite;
+  rvRepeindre();
+}
+
+// L autre plan, quand il tient et qu il change bien quelque chose (les groupes tournent ou non).
+function rvAutrePlanDesGroupes() {
+  const s = quickBookState;
+  const a = s && s.autrePlanGroupes;
+  if (!rvAutrePlanDesGroupesPossible() || !a || a.base !== s.cleCourante || a.etat !== 'ok' || !a.plan || !a.plan.disponible) return null;
+  const tournent = Boolean(a.plan.grandGroupe && a.plan.grandGroupe.tourne);
+  return tournent === a.tourne ? a : null;
+}
+
+function rsOptionDesGroupesHtml() {
+  const a = rvAutrePlanDesGroupes();
+  if (!a) return '';
+  const nombre = (a.plan.grandGroupe && a.plan.grandGroupe.nombre) || (rvGrandGroupe() || {}).nombre || 2;
+  const prix = Number.isFinite(Number(a.plan.prix)) && a.plan.prix !== null ? rsEuros(Number(a.plan.prix)) : '';
+  const ce = [a.plan.fin ? `fin à ${a.plan.fin}` : '', prix].filter(Boolean).join(', ');
+  const mot = `${a.tourne ? `Faire tourner ${nombre} groupes` : 'Ne pas faire tourner'}${ce ? ` : ${ce}` : ''}`;
+  return `<button type="button" class="rs-ajout-ligne rs-gg-option" id="rsGgOption" data-tourne="${a.tourne ? '1' : '0'}" data-prix="${escapeHtml(String(a.plan.prix ?? ''))}" data-fin="${escapeHtml(a.plan.fin || '')}" onclick="rsFixer(() => rsFaireTourner(this.dataset.tourne === '1'))">${RV_I.groupes}<span>${escapeHtml(mot)}</span></button>`;
+}
+
+function rsFaireTourner(oui) {
+  const s = quickBookState;
+  if (!s || !rvGrandGroupe()) return;
+  s.grandGroupe = { ...(s.grandGroupe || {}), tourne: Boolean(oui) };
+  s.forcer = false;
+  s.error = '';
 }
 
 // Sous une ligne du ticket : ses joueurs quand ce n est pas tout le groupe, et ce qui restera
@@ -45412,7 +45863,7 @@ function rsCreer() {
 // ── LA COQUILLE ET LA PEINTURE ───────────────────────────────────────────────
 function rsCorpsHtml() {
   const b = rsEtat();
-  const pages = { formules: rsFormulesHtml, illimite: rsIllimiteHtml, mesure: rsMesureHtml, autres: rsAutresHtml, ligne: rsLigneHtml, total: rsTotalHtml, client: rsQuiHtml };
+  const pages = { formules: rsFormulesHtml, illimite: rsIllimiteHtml, mesure: rsMesureHtml, autres: rsAutresHtml, ligne: rsLigneHtml, total: rsTotalHtml, client: rsQuiHtml, groupes: rsGroupesHtml };
   return (pages[b.q] || rsActivitesHtml)();
 }
 

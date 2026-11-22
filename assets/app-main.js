@@ -39213,7 +39213,7 @@ function rvAvertissement() {
   if (!schedule) return 'Centre fermé à cette date.';
   if (!s.startTime) return 'Choisissez une heure.';
   syncQuickBookDuration();
-  const slotCheck = validateSlotWindow(s.date, s.startTime, rvDureeDuCreneau(s.totalDuration), { allowPastStart: quickBookAllowsPastSelectedTime() });
+  const slotCheck = validateSlotWindow(s.date, s.startTime, rvDureeAJuger(s.totalDuration), { allowPastStart: quickBookAllowsPastSelectedTime() });
   if (!slotCheck.ok) return slotCheck.message;
   const formule = rvFormule();
   if (formule) {
@@ -39249,7 +39249,7 @@ function rvRefusDuPlan() {
   // (un grand groupe : chaque sous-groupe a ses heures, la ligne n en a pas une ; l heure qui coince
   // est celle que dit le refus, sinon le depart du groupe)
   const grand = rvGrandGroupe();
-  const heureDuGrand = grand ? ((/\b(\d{2}:\d{2})\b/.exec(raison) || [])[1] || s.startTime || '') : '';
+  const heureDuGrand = rvGroupesEnJeu(grand) ? ((/\b(\d{2}:\d{2})\b/.exec(raison) || [])[1] || s.startTime || '') : '';
   const heure = (nomme && nomme.heure) || heureDuGrand || (ligne && ligne.heure) || s.startTime || '';
   const nom = activite ? rvNomCourt(activite) : '';
   return {
@@ -40065,6 +40065,7 @@ function rvRepeindre({ sauf = [] } = {}) {
   rvPlacerHorloge();
   rsChercherLaProche();
   rvChargerAutreOrdre();
+  rvChargerAutrePlanDesGroupes();
   rsArmerCompteurs();
   // (apres la peinture : lire la hauteur maintenant forcerait la mise en page de la fenetre)
   requestAnimationFrame(rsOmbreDuTicket);
@@ -40574,17 +40575,22 @@ function rvPreference(ids, heures, programme) {
   }
   if (avecLaser && s.arene === 'seuls') preference.arene = 'seuls';
   if (s.type === 'formule' && !s.adaptee && s.formuleChoix) preference.formulaChoice = s.formuleChoix;
-  // UN GRAND GROUPE (rvGrandGroupe) : il part a l heure de sa premiere activite a heure, toutes ses
-  // activites a cette heure ; le moteur coupe le groupe et pose chaque sous-groupe.
+  // UN GRAND GROUPE (rvGrandGroupe). Ses sous-groupes imposes (un bowling seul trop grand pour un
+  // service, ou « Faire tourner » touche) partent tous a l heure de sa premiere activite a heure, et
+  // le moteur pose chacun. Sinon la demande garde les heures de toujours : le moteur garde le plan
+  // d avant tant qu il tient, et ne fait tourner les groupes d office que quand il ne tient pas.
   const grand = programme ? rvGrandGroupe() : null;
   if (grand) {
-    const depart = (heures[grand.ids[0]] && heures[grand.ids[0]].heure) || s.startTime;
-    const preferredTimes = {};
-    grand.ids.forEach((id) => { preferredTimes[id] = depart; });
-    delete preference.laserGameTimes;
-    delete preference.laserPlacement;
-    preference.preferredTimes = preferredTimes;
-    preference.grandGroupe = rvDemandeGrandGroupe(grand);
+    const demande = rvDemandeGrandGroupe(grand);
+    if (demande.impose) {
+      const depart = (heures[grand.ids[0]] && heures[grand.ids[0]].heure) || s.startTime;
+      const preferredTimes = {};
+      grand.ids.forEach((id) => { preferredTimes[id] = depart; });
+      delete preference.laserGameTimes;
+      delete preference.laserPlacement;
+      preference.preferredTimes = preferredTimes;
+    }
+    preference.grandGroupe = demande;
   }
   return Object.keys(preference).length ? preference : undefined;
 }
@@ -40613,6 +40619,9 @@ function rvGrandGroupe(s = quickBookState) {
 
 // Ce que le comptoir a regle pour le grand groupe : les tailles de ses sous-groupes, tant qu elles
 // font le groupe, et l activite du groupe 1. Rien de regle : le moteur fait des parts egales.
+// `impose` : les sous-groupes sont voulus. Un bowling seul trop grand pour un service n a pas de
+// plan d avant (un seul service refusait chaque heure) ; bowling et laser ne tournent d office que
+// quand le plan d avant ne tient pas, sinon seulement quand le comptoir l a choisi (rsFaireTourner).
 function rvDemandeGrandGroupe(grand = rvGrandGroupe()) {
   const s = quickBookState;
   const voulu = (s && s.grandGroupe) || {};
@@ -40621,7 +40630,45 @@ function rvDemandeGrandGroupe(grand = rvGrandGroupe()) {
     && voulu.tailles.every((n) => Number.isInteger(n) && n >= 1) && voulu.tailles.reduce((t, n) => t + n, 0) === pax
     ? voulu.tailles.slice() : null;
   const premier = grand && grand.tourne && grand.ids.includes(voulu.premier) ? voulu.premier : '';
-  return { ...(tailles ? { tailles } : {}), ...(premier ? { premier } : {}) };
+  const impose = Boolean(grand) && (!grand.tourne || voulu.tourne === true);
+  return { ...(tailles ? { tailles } : {}), ...(premier ? { premier } : {}), ...(impose ? { impose: true } : {}) };
+}
+
+// LES GROUPES TOURNENT-ILS ? (2026-11-22, le coordinateur : « aucun changement de prix silencieux
+// pour les groupes qui passaient déjà »). Bowling et laser : oui quand le comptoir l a choisi, ou
+// quand le plan du serveur les a poses d office (le plan d avant ne tenait pas) ; pendant un calcul,
+// ce que le dernier plan disait. Un bowling seul trop grand : ses services l un apres l autre sont
+// toujours en jeu (rvGroupesEnJeu).
+function rvRotationEnJeu(grand = rvGrandGroupe()) {
+  const s = quickBookState;
+  if (!s || !grand || !grand.tourne) return false;
+  if (s.grandGroupe && s.grandGroupe.tourne === true) return true;
+  const plan = rvPlanCourant();
+  if (plan) return Boolean(plan.grandGroupe && plan.grandGroupe.tourne);
+  return Boolean(s.rotationVue);
+}
+
+function rvGroupesEnJeu(grand = rvGrandGroupe()) {
+  return Boolean(grand) && (!grand.tourne || rvRotationEnJeu(grand));
+}
+
+// Le temps d un groupe qui tourne : son bowling, puis ses parties de laser (une demi-heure chacune,
+// la grille du centre). Les groupes qui tournent durent au moins cela.
+function rvDureeDUnGroupe() {
+  const visit = (quickBookState && quickBookState.visit) || {};
+  const bowling = visit.bowling && visit.bowling.on ? Number(visit.bowling.duration || 1) : 0;
+  const parties = visit.laser_game && visit.laser_game.on ? Math.max(1, Number(visit.laser_game.games || 1)) : 0;
+  return Math.max(0.5, bowling + parties * 0.5);
+}
+
+// LA DUREE QUE LA FENETRE JUGE D AVANCE (rvAvertissement, rvConstruire) : celle de la visite. Un
+// grand groupe au bowling et au laser peut tourner, chaque groupe ne joue que son bowling et son
+// laser : le serveur pose les groupes qui tournent quand le plan d avant finirait trop tard (60
+// joueurs a 20:00, fermeture a 22:00). La fenetre ne refuse d avance que ce qu aucun ne tient.
+function rvDureeAJuger(annoncee) {
+  const grand = rvGrandGroupe();
+  const visite = rvDureeDuCreneau(annoncee);
+  return grand && grand.tourne ? Math.min(visite, rvDureeDUnGroupe()) : visite;
 }
 
 // Les tailles des sous-groupes : celles du plan du serveur quand il les dit, sinon celles reglees,
@@ -40675,7 +40722,7 @@ function rvLigneDuGrandGroupe(id) {
 // toucher ouvre leurs reglages (rsGroupesHtml).
 function rsLigneGrandGroupeHtml() {
   const grand = rvGrandGroupe();
-  if (!grand || !rsEtat().faits.combien) return '';
+  if (!rvGroupesEnJeu(grand) || !rsEtat().faits.combien) return '';
   const tailles = rvTaillesDuGrandGroupe(grand);
   const nom = grand.tourne ? `${grand.nombre} groupes qui tournent` : `${grand.nombre} groupes, l’un après l’autre`;
   const detail = tailles.length ? `${rvListe(tailles)} joueurs` : `${Math.max(1, Number(quickBookState.pax) || 1)} joueurs à partager`;
@@ -40795,7 +40842,7 @@ function rsGroupesHtml() {
   const s = quickBookState;
   const grand = rvGrandGroupe();
   const pax = Math.max(1, Number(s.pax) || 1);
-  if (!grand) {
+  if (!rvGroupesEnJeu(grand)) {
     return `${rsRetourHtml()}
     <section class="rs-seance is-page rs-gg" aria-labelledby="rsQ"><div class="rs-s-t"><div class="rs-s-n"><h2 class="rs-q" id="rsQ" tabindex="-1">${escapeHtml(`${rvPluriel(pax, 'joueur')}, un seul groupe`)}</h2><small>Les pistes et l’arène prennent tout le groupe d’un coup : il n’est pas partagé.</small></div></div></section>`;
   }
@@ -40816,7 +40863,7 @@ function rsGroupesHtml() {
 // heures, et mene aux reglages des groupes.
 function rsTourneAvecHtml(id) {
   const grand = rvGrandGroupe();
-  if (!grand || !grand.tourne || id === grand.ids[0] || !grand.ids.includes(id)) return '';
+  if (!rvRotationEnJeu(grand) || id === grand.ids[0] || !grand.ids.includes(id)) return '';
   const ligne = rvLigneDuGrandGroupe(id);
   const tete = grand.ids[0] === 'laser_game' ? 'le laser' : `le ${rvMinuscule(rsNomCourt(grand.ids[0]))}`;
   const phrase = ligne ? `${ligne.detail}.` : `Part avec ${tete}, un groupe à chacun.`;
@@ -40865,7 +40912,7 @@ function rvConstruire({ simulation = false } = {}) {
   const forcer = !simulation && Boolean(s.forcer) && Boolean(planActuel && !planActuel.disponible);
   const duration = Number(s.duration);
   const totalDuration = Number(s.totalDuration || duration);
-  const slotCheck = validateSlotWindow(s.date, s.startTime, rvDureeDuCreneau(totalDuration), { allowPastStart: quickBookAllowsPastSelectedTime() });
+  const slotCheck = validateSlotWindow(s.date, s.startTime, rvDureeAJuger(totalDuration), { allowPastStart: quickBookAllowsPastSelectedTime() });
   if (!slotCheck.ok && !forcer) return { erreur: slotCheck.message };
   // Une formule hors regles part quand meme (choix du comptoir) : la raison
   // s ecrit dans la note du dossier, pour que la caisse la comprenne.
@@ -41078,6 +41125,8 @@ async function rvSimuler() {
   }
   const plan = rvPlanCourant();
   if (plan && plan.disponible) quickBookState.heureArretee = true;
+  // (ce que le plan a pose pour un grand groupe : ses groupes tournent-ils, rvRotationEnJeu)
+  if (plan) quickBookState.rotationVue = Boolean(plan.grandGroupe && plan.grandGroupe.tourne);
   // (une fermeture ou une privatisation ne se force pas : le serveur la refuserait aussi « à placer »)
   if (plan && plan.fermeture) quickBookState.forcer = false;
   // Un refus : on cherche tout de suite les heures ou TOUT tient.
@@ -42878,7 +42927,7 @@ function rsCoince(x, id) {
   // (un grand groupe qui tourne part tout entier a l heure de sa premiere activite, et l autre n a
   // pas de rangee : celle-ci dit le verdict de tout le groupe, quelle que soit l activite qui coince)
   const grand = rvGrandGroupe();
-  if (grand && grand.tourne && id === grand.ids[0]) return v;
+  if (rvRotationEnJeu(grand) && id === grand.ids[0]) return v;
   const refus = rvRefusDuPlan();
   const deja = refus && refus.activite && refus.activite !== id ? refus.activite : '';
   if (!deja) return v;
@@ -42952,7 +43001,7 @@ function rsPendant(id, heure, plages = rsPlagesDuTicket()) {
   const fin = debut + (minutes[id] ?? rvMinutesActivite(id)) / 60;
   // (un grand groupe qui tourne : ses activites a heure partent ensemble, un sous-groupe a chacune)
   const grand = rvGrandGroupe();
-  const ensemble = grand && grand.tourne && grand.ids.includes(id) ? grand.ids : [];
+  const ensemble = rvRotationEnJeu(grand) && grand.ids.includes(id) ? grand.ids : [];
   for (const autre of ids) {
     const l = lignes[autre];
     // (une activite libre posee a la main a son heure aussi : le groupe y est)
@@ -43763,7 +43812,7 @@ function rsHeureProche() {
   const refus = rvRefusDuPlan();
   // (un grand groupe : les heures de sa premiere activite jugent tout le groupe, rsChercherLaProche)
   const grand = rvGrandGroupe();
-  if (grand ? c.id !== grand.ids[0] || c.partie : refus && rvActivites().includes(refus.activite) && c.id !== refus.activite) return '';
+  if (rvGroupesEnJeu(grand) ? c.id !== grand.ids[0] || c.partie : refus && rvActivites().includes(refus.activite) && c.id !== refus.activite) return '';
   const depart = timeToNum((c.id && rvHeureReglee(c.id, c.partie || 0)) || s.startTime || '00:00');
   const bonnes = rvHeuresDuPlanning(c, s).sort((x, y) => Math.abs(timeToNum(x.heure) - depart) - Math.abs(timeToNum(y.heure) - depart) || (x.statut === 'ok' ? 0 : 1) - (y.statut === 'ok' ? 0 : 1));
   return bonnes.length ? bonnes[0].heure : '';
@@ -43849,7 +43898,7 @@ function rsChercherLaProche() {
   const ids = rvActivites();
   // (un grand groupe se deplace tout entier par l heure de sa premiere activite)
   const grand = rvGrandGroupe();
-  const id = grand ? grand.ids[0] : ids.includes(refus.activite) ? refus.activite : ids[0];
+  const id = rvGroupesEnJeu(grand) ? grand.ids[0] : ids.includes(refus.activite) ? refus.activite : ids[0];
   if (!id) return;
   // Une recherche en panne ne se relance pas d elle-meme : chaque repeint la relancait
   // (512 requetes en 4 s, « Recherche… » sans fin). Le refus se dit ; un geste qui change
@@ -44739,7 +44788,7 @@ function rvChevauchements(ids = rvActivites()) {
   // (un grand groupe qui tourne est au bowling et au laser en meme temps, un sous-groupe a chacun :
   // le serveur juge chaque sous-groupe, lib/grand-groupe.js)
   const grand = rvGrandGroupe();
-  if (grand && grand.tourne) return res;
+  if (rvRotationEnJeu(grand)) return res;
   ids.forEach((id) => {
     const l = lignes[id];
     if (!l || !l.heure || !(RV_ANCRABLES.includes(id) || l.posee)) return;
@@ -44850,7 +44899,89 @@ function rsLignesActivites() {
     const bouge = s.deplace && s.deplace.id === id && heures[id] && heures[id].heure === s.deplace.apres ? `Déplacé de ${s.deplace.avant} à ${s.deplace.apres}` : '';
     lignes.push(rsLigne({ cle: `a-${id}`, action: 'rsOuvrirLigne(this.dataset.activite)', data: `data-activite="${escapeHtml(id)}"`, icone: rsIcone(id), nom, detail, plus, apres, ko, prix, bouge, aria: rsAriaLigne(nom, [bouge, detail, plus, apres].filter(Boolean).join(', '), prix), retirer: retirable ? 'rsRetirer(this.dataset.activite)' : '' }));
   });
+  // (un grand groupe dont le plan d avant tient : faire tourner ses groupes est une option, qui dit
+  // ce qu elle change, rsOptionDesGroupesHtml)
+  lignes.push(rsOptionDesGroupesHtml());
   return lignes.join('');
+}
+
+// FAIRE TOURNER LES GROUPES, AU CHOIX DU COMPTOIR (2026-11-22, le coordinateur : « aucun changement
+// de prix silencieux pour les groupes qui passaient déjà [...] Le staff choisit, rien ne bascule
+// seul »). Un grand groupe au bowling et au laser dont le plan d avant tient (40 joueurs a 15:30 :
+// tout le bowling, puis le laser en deux vagues, 673 €, fin 17:25) le garde. Le ticket propose les
+// groupes qui tournent, avec ce qu ils changent, lus sur le plan que le serveur a joue a blanc :
+// « Faire tourner 2 groupes : fin à 17:00, 712 € ». Choisis, il propose l inverse. Quand le plan
+// d avant ne tient pas, les groupes tournent d office : rien a proposer.
+let rvAutrePlanSeq = 0;
+function rvAutrePlanDesGroupesPossible() {
+  const s = quickBookState;
+  const grand = rvGrandGroupe();
+  const plan = rvPlanCourant();
+  if (!s || !grand || !grand.tourne || !plan || s.forcer || rvResas.length > 1) return false;
+  const choisie = Boolean(s.grandGroupe && s.grandGroupe.tourne === true);
+  // (choisis, les groupes qui tournent se defont toujours, meme a une heure ou ils ne tiennent pas)
+  if (!plan.disponible && !choisie) return false;
+  return choisie || !rvRotationEnJeu(grand);
+}
+
+async function rvChargerAutrePlanDesGroupes() {
+  const s = quickBookState;
+  if (rsLeger || !s || !rvAutrePlanDesGroupesPossible()) return;
+  const cle = s.cleCourante;
+  if (!cle || (s.autrePlanGroupes && s.autrePlanGroupes.base === cle)) return;
+  const tourne = !(s.grandGroupe && s.grandGroupe.tourne === true);
+  // (le corps de l autre choix, construit sur une copie : la fenetre ne bouge pas)
+  const garde = quickBookState;
+  let corps = null;
+  try {
+    quickBookState = JSON.parse(JSON.stringify(garde));
+    quickBookState.grandGroupe = { ...(quickBookState.grandGroupe || {}), tourne };
+    corps = rvCorpsDeSimulation();
+  } catch (error) {
+    corps = null;
+  } finally {
+    quickBookState = garde;
+  }
+  if (!corps) return;
+  const seq = ++rvAutrePlanSeq;
+  s.autrePlanGroupes = { base: cle, etat: 'calcul', tourne };
+  let suite;
+  try {
+    const payload = await apiRequest(API_ENDPOINTS.staffReservations, { method: 'POST', body: JSON.stringify({ ...corps, dryRun: true }) });
+    suite = { base: cle, etat: 'ok', tourne, plan: (payload && payload.dryRun && payload.plan) || null };
+  } catch (error) {
+    suite = { base: cle, etat: 'erreur', tourne };
+  }
+  if (seq !== rvAutrePlanSeq || quickBookState !== s) return;
+  s.autrePlanGroupes = suite;
+  rvRepeindre();
+}
+
+// L autre plan, quand il tient et qu il change bien quelque chose (les groupes tournent ou non).
+function rvAutrePlanDesGroupes() {
+  const s = quickBookState;
+  const a = s && s.autrePlanGroupes;
+  if (!rvAutrePlanDesGroupesPossible() || !a || a.base !== s.cleCourante || a.etat !== 'ok' || !a.plan || !a.plan.disponible) return null;
+  const tournent = Boolean(a.plan.grandGroupe && a.plan.grandGroupe.tourne);
+  return tournent === a.tourne ? a : null;
+}
+
+function rsOptionDesGroupesHtml() {
+  const a = rvAutrePlanDesGroupes();
+  if (!a) return '';
+  const nombre = (a.plan.grandGroupe && a.plan.grandGroupe.nombre) || (rvGrandGroupe() || {}).nombre || 2;
+  const prix = Number.isFinite(Number(a.plan.prix)) && a.plan.prix !== null ? rsEuros(Number(a.plan.prix)) : '';
+  const ce = [a.plan.fin ? `fin à ${a.plan.fin}` : '', prix].filter(Boolean).join(', ');
+  const mot = `${a.tourne ? `Faire tourner ${nombre} groupes` : 'Ne pas faire tourner'}${ce ? ` : ${ce}` : ''}`;
+  return `<button type="button" class="rs-ajout-ligne rs-gg-option" id="rsGgOption" data-tourne="${a.tourne ? '1' : '0'}" data-prix="${escapeHtml(String(a.plan.prix ?? ''))}" data-fin="${escapeHtml(a.plan.fin || '')}" onclick="rsFixer(() => rsFaireTourner(this.dataset.tourne === '1'))">${RV_I.groupes}<span>${escapeHtml(mot)}</span></button>`;
+}
+
+function rsFaireTourner(oui) {
+  const s = quickBookState;
+  if (!s || !rvGrandGroupe()) return;
+  s.grandGroupe = { ...(s.grandGroupe || {}), tourne: Boolean(oui) };
+  s.forcer = false;
+  s.error = '';
 }
 
 // Sous une ligne du ticket : ses joueurs quand ce n est pas tout le groupe, et ce qui restera

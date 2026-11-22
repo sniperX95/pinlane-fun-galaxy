@@ -4,27 +4,44 @@
 // Ansar : « Quand ya grand groupe et qu'on réserve sur côté staff logiciel avec réservation par exemple 60
 // personne pour bowling il gère pas dutout genre il est comme l'autre qui sait diviser groupe etc pour multi
 // activité en plus etc ». La fenetre Reserver envoyait 60 joueurs au bowling comme UN service : dix pistes
-// sur huit, chaque heure refusee. Le formulaire en ligne, lui, coupe le groupe sur la place du centre. Ce
-// gate joue la VRAIE console (scripts/planning-v3-fixtures.js), le VRAI handler api/staff-reservations.js et
-// le vrai moteur (scripts/reserver-banc.js, base en memoire), avec de vrais clics a 1366 x 768, et verifie
+// sur huit, chaque heure refusee. Le formulaire en ligne, lui, coupe le groupe sur la place du centre.
+// LA REGLE DU COORDINATEUR (2026-11-22) : « aucun changement de prix silencieux pour les groupes qui
+// passaient déjà ». Au bowling et au laser, un grand groupe garde le plan d avant tant qu il tient ; ses
+// groupes ne tournent d office que quand il ne tient pas ; sinon la rotation est une option du ticket, qui
+// dit ce qu elle change, et le staff choisit : rien ne bascule seul.
+// Ce gate joue la VRAIE console (scripts/planning-v3-fixtures.js), le VRAI handler api/staff-reservations.js
+// et le vrai moteur (scripts/reserver-banc.js, base en memoire), avec de vrais clics a 1366 x 768 : le
+// nombre du groupe se tape dans « Autre », rien n est suppose des compteurs par activite. Il verifie
 // toujours le dossier cree en base, pas seulement l ecran :
 //   [A] 60 JOUEURS AU BOWLING SEUL, un dimanche vide : deux groupes l un apres l autre, cinq pistes cote a
 //       cote chacun, 390 € ; le planning et la fiche disent « groupe 1 » et « groupe 2 ».
-//   [B] 60 JOUEURS AU BOWLING ET AU LASER : deux groupes de 30 qui tournent (le groupe 1 au bowling pendant
-//       que le groupe 2 joue au laser, puis ils echangent), 990 €. La page des groupes montre le plan d un
-//       coup d oeil et tient a l ecran ; l activite du groupe 1 se change d un toucher et le moteur
-//       recalcule ; une taille ne depasse jamais les 30 armes ; planning et fiche par groupe ; « Ils sont
-//       58 » a l arrivee refait le plan, les deux groupes et leur ordre restent.
-//   [C] LE PLAN IMPOSSIBLE : 60 joueurs a 15:30 un jour ou le laser de 16:30 n a plus que 20 armes. La
-//       rangee du bowling le dit (« laser, manque 10 armes »), le ticket aussi (« Laser à 16:30
-//       impossible »), et « Prendre 17:30 » propose l heure ou tout le groupe tient ; un toucher, et le
-//       dossier nait a 17:30. Rien ne part avant « Créer ».
+//   [B] 60 JOUEURS AU BOWLING ET AU LASER a 15:30 : le plan d avant tient (le bowling en deux services, puis
+//       le laser), il reste, 990 € ; le ticket propose « Faire tourner 2 groupes : fin à 17:30, 990 € ».
+//       Touche : deux groupes de 30 qui tournent (le groupe 1 au bowling pendant que le groupe 2 joue au
+//       laser, puis ils echangent), et l inverse se propose. La page des groupes montre le plan d un coup
+//       d oeil et tient a l ecran ; l activite du groupe 1 se change d un toucher et le moteur recalcule ;
+//       une taille ne depasse jamais les 30 armes ; planning et fiche par groupe ; « Ils sont 58 » a
+//       l arrivee refait le plan, les deux groupes et leur ordre restent.
+//   [C] LE PLAN IMPOSSIBLE : 60 joueurs a 19:30 un jour charge. Le plan d avant ne rentre pas avant la
+//       fermeture, et les groupes qui tournent manquent de 12 armes au laser de 19:30 (18 places sur 30).
+//       La rangee du bowling dit le verdict de tout le groupe (« laser, manque 12 armes »), le ticket aussi
+//       (« Laser à 19:30 impossible »), et « Prendre 18:00 » propose l heure ou tout le groupe tient ; un
+//       toucher, et le dossier nait a 18:00, ses groupes tournant d office. Rien ne part avant « Créer ».
 //   [D] LE SERVEUR, sans navigateur : le prix suit les vrais joueurs de chaque activite (60 au bowling, 40 au
 //       laser : 790 €) ; les tailles posees au comptoir (28 et 22) font les blocs et les pistes ; une taille
 //       au-dessus des armes est refusee en le disant ; un autre centre se coupe sur sa propre place (Gembloux,
-//       20 armes : 3 groupes de 20, deux au bowling en meme temps sur des pistes differentes) ; une
+//       20 armes : 3 groupes de 20, deux au bowling en meme temps sur des pistes differentes) ; sans
+//       « Faire tourner », le plan d avant, le meme que sans aucune demande (40 joueurs : 673 €), et les
+//       groupes qui tournent d office quand il ne tient pas (60 joueurs a 20:00 : fin 22:00) ; une
 //       modification garde les groupes ; le canal public ne lit jamais la demande (le formulaire en ligne ne
 //       change pas).
+//   [E] 40 JOUEURS AU BOWLING ET AU LASER a 15:30 : sans toucher, le plan et le prix d avant (tout le bowling
+//       sur 7 pistes, puis le laser en deux vagues, 673 €, fin 17:25), rien ne bascule seul, et le dossier
+//       nait ainsi. Le ticket propose « Faire tourner 2 groupes : fin à 17:00, 712 € », un bouton encadre ;
+//       touche, la rotation au prix affiche, l inverse se propose, et le dossier nait en deux groupes de 20
+//       qui tournent, 712 €.
+//   [F] 60 JOUEURS A 20:00, fermeture a 22:00 : le plan d avant finirait apres la fermeture, les groupes
+//       tournent d office, sans option a choisir, et le dossier nait ainsi (fin 22:00, 990 €).
 //   [*] Zero erreur JavaScript.
 //
 // CONTRE-PREUVES : `--contre-preuves` rejoue le gate sur du code casse expres, une mutation a la fois, en
@@ -80,9 +97,9 @@ const MUTATIONS = [
   { nom: 'sous-groupe-a-deux-endroits', lettre: 'B', serveur: true, fichier: MOTEUR, de: '    const cle = Number(fenetre.sousGroupe) || 0;', vers: '    const cle = 0;' },
   { nom: 'compte-sans-groupes', lettre: 'B', serveur: true, fichier: OPS, de: '    ...(isEdit ? grandGroupeGarde(request) : {}),\n', vers: '' },
   // [C] la rangee se tait, la proche se cherche sur le laser, le refus dit l heure de la ligne.
-  { nom: 'rangee-muette', lettre: 'C', fichier: APP, de: '  if (grand && grand.tourne && id === grand.ids[0]) return v;\n', vers: '' },
-  { nom: 'proche-sur-le-laser', lettre: 'C', fichier: APP, de: '  const id = grand ? grand.ids[0] : ids.includes(refus.activite) ? refus.activite : ids[0];', vers: '  const id = ids.includes(refus.activite) ? refus.activite : ids[0];' },
-  { nom: 'heure-de-la-ligne', lettre: 'C', fichier: APP, de: "  const heureDuGrand = grand ? ((/\\b(\\d{2}:\\d{2})\\b/.exec(raison) || [])[1] || s.startTime || '') : '';", vers: "  const heureDuGrand = '';" },
+  { nom: 'rangee-muette', lettre: 'C', fichier: APP, de: '  if (rvRotationEnJeu(grand) && id === grand.ids[0]) return v;\n', vers: '' },
+  { nom: 'proche-sur-le-laser', lettre: 'C', fichier: APP, de: '  const id = rvGroupesEnJeu(grand) ? grand.ids[0] : ids.includes(refus.activite) ? refus.activite : ids[0];', vers: '  const id = ids.includes(refus.activite) ? refus.activite : ids[0];' },
+  { nom: 'heure-de-la-ligne', lettre: 'C', fichier: APP, de: "  const heureDuGrand = rvGroupesEnJeu(grand) ? ((/\\b(\\d{2}:\\d{2})\\b/.exec(raison) || [])[1] || s.startTime || '') : '';", vers: "  const heureDuGrand = '';" },
   // [D] le laser prend les tailles du groupe, les tailles posees sont ignorees, la capacite ne refuse plus,
   // la modification perd les groupes, le canal public lit la demande.
   { nom: 'laser-sur-les-tailles', lettre: 'D', serveur: true, fichier: GG, de: '    const parts = joueurs === personnes ? choisies.slice() : partsAuProrata(joueurs, choisies);', vers: '    const parts = choisies.slice();' },
@@ -91,6 +108,19 @@ const MUTATIONS = [
   { nom: 'modification-sans-groupes', lettre: 'D', serveur: true, fichier: OPS, de: '    ...(isEdit ? grandGroupeGarde(request) : {}),\n', vers: '' },
   { nom: 'public-lit-la-demande', lettre: 'D', serveur: true, fichier: MOTEUR, de: "  const demandeGrandGroupe = input.channel === 'staff' ? lireGrandGroupe(preference.grandGroupe) : null;", vers: '  const demandeGrandGroupe = lireGrandGroupe(preference.grandGroupe);' },
   { nom: 'pistes-du-groupe-partagees', lettre: 'D', serveur: true, fichier: MOTEUR, de: "      const occupees = dejaPoses.length ? [...reservations, pseudoReservationFromBlocks('grand-groupe', dejaPoses)] : reservations;", vers: '      const occupees = reservations;' },
+  // [E] les groupes tournent d office meme quand le plan d avant tient (le prix change en silence) ;
+  // l option manque, dit le prix d avant, ne fait rien ; le ticket croit les groupes en jeu sans que le
+  // plan les pose.
+  { nom: 'rotation-d-office', lettre: 'E', serveur: true, fichier: MOTEUR, de: '  if (grandGroupe && !grandGroupe.impose && !grandGroupe.rejoue) {', vers: '  if (false) {' },
+  { nom: 'option-absente', lettre: 'E', fichier: APP, de: '  lignes.push(rsOptionDesGroupesHtml());\n', vers: '' },
+  { nom: 'option-au-prix-d-avant', lettre: 'E', fichier: APP, de: "  const prix = Number.isFinite(Number(a.plan.prix)) && a.plan.prix !== null ? rsEuros(Number(a.plan.prix)) : '';", vers: '  const prix = rsEuros(Number((rvPlanCourant() || {}).prix));' },
+  { nom: 'option-sans-effet', lettre: 'E', fichier: APP, de: '  s.grandGroupe = { ...(s.grandGroupe || {}), tourne: Boolean(oui) };\n', vers: '' },
+  { nom: 'rotation-affichee-sans-le-plan', lettre: 'E', fichier: APP, de: '  if (plan) return Boolean(plan.grandGroupe && plan.grandGroupe.tourne);', vers: '  if (plan) return true;' },
+  // [F] le plan d avant refuse sans repli sur les groupes qui tournent ; leur temps se somme au lieu
+  // d aller du premier depart a la derniere fin ; la fenetre refuse d avance l heure du soir.
+  { nom: 'pas-de-repli', lettre: 'F', serveur: true, fichier: MOTEUR, de: '    result = avant.ok ? avant : (enGroupes.ok || enGroupes.scenario || !avant.scenario ? enGroupes : avant);', vers: '    result = avant;' },
+  { nom: 'duree-de-la-rotation-sommee', lettre: 'F', serveur: true, fichier: MOTEUR, de: '  const scheduledAnchorMinutes = rotation && anchorWindows.length\n    ? Math.max(...anchorWindows.map((window) => window.end)) - Math.min(...anchorWindows.map((window) => window.start))\n    : anchorWindows.reduce((sum, window) => sum + (window.end - window.start), 0);', vers: '  const scheduledAnchorMinutes = anchorWindows.reduce((sum, window) => sum + (window.end - window.start), 0);' },
+  { nom: 'fenetre-refuse-d-avance', lettre: 'F', fichier: APP, de: '  return grand && grand.tourne ? Math.min(visite, rvDureeDUnGroupe()) : visite;', vers: '  return visite;' },
 ];
 
 // ---------------------------------------------------------------------------
@@ -206,6 +236,7 @@ async function principal() {
       .every((b, i, t) => i === 0 || enMin(b.startTime) >= enMin(t[i - 1].endTime)));
   };
   const resume = (blocs) => blocs.map((b) => `${b.resourceType === 'bowling_lane' ? 'B' : 'L'}${b.sousGroupe || 0}@${b.startTime}x${b.players}${b.lanes && b.lanes.length ? `[${b.lanes.join(',')}]` : ''}`).sort().join(' ');
+  const sansPistes = (t) => t.replace(/\[[^\]]*\]/g, '');
 
   // -------------------------------------------------------------------------
   // LA CONSOLE, sur une fixture : la session de direction, les appels du comptoir au vrai handler.
@@ -254,20 +285,52 @@ async function principal() {
     fs.mkdirSync(CAPTURES, { recursive: true });
     await page.screenshot({ path: path.join(CAPTURES, `${nom}.png`) });
   };
-  // Le nombre tape dans « Autre », comme au comptoir, puis la tabulation qui le valide.
+  // Le nombre du groupe tape dans « Autre », comme au comptoir, puis la tabulation qui le valide : la
+  // fenetre l a pris quand son groupe le dit et que les heures du bowling se montrent. Rien n est
+  // suppose des compteurs par activite (ils peuvent devenir des champs a taper).
   async function soixante(page, n = 60) {
     await page.locator('.btn-new').first().click();
     await page.waitForSelector('#qbPax');
     await page.locator('#qbPax').click();
+    // (ce que le champ contenait part sous la frappe, qu il se selectionne au focus ou non)
+    await page.keyboard.press('Control+A');
     await page.keyboard.type(String(n));
     await page.keyboard.press('Tab');
-    await page.waitForFunction(() => /groupes/.test((document.querySelector('#rsL-groupes') || {}).textContent || ''), null, { timeout: 12000 });
+    await page.waitForFunction((nb) => typeof quickBookState !== 'undefined' && quickBookState && Number(quickBookState.pax) === nb
+      && Boolean(document.querySelector('.rs-seance [data-activite="bowling"][data-heure]')), n, { timeout: 12000 });
   }
   const pret = (page) => page.waitForFunction(() => { const b = document.querySelector('#rvCreer'); return b && b.dataset.pret === '1'; }, null, { timeout: 15000 });
   async function toucher(page, sel, attente = 0) {
     await page.locator(sel).first().click();
     if (attente) await page.waitForTimeout(attente);
   }
+  // Le groupe, le bowling a son heure, puis le laser ajoute : le ticket attend le plan du serveur.
+  async function bowlingEtLaser(page, n, heure) {
+    await soixante(page, n);
+    await toucher(page, `.rs-seance [data-activite="bowling"][data-heure="${heure}"]`);
+    await pret(page).catch(() => {});
+    await toucher(page, '#rsAjout-laser_game');
+    await page.waitForFunction(() => /\d{2}:\d{2}/.test((document.querySelector('#rsL-a-laser_game') || {}).textContent || ''), null, { timeout: 15000 }).catch(() => {});
+    await pret(page).catch(() => {});
+  }
+  // L option « Faire tourner » du ticket : son texte, ce qu elle choisirait, et son allure (un bouton
+  // encadre : fond clair ou transparent, un bord, jamais souligne).
+  const option = (page) => page.evaluate(() => {
+    const b = document.querySelector('#rsGgOption');
+    if (!b) return null;
+    const st = getComputedStyle(b);
+    const rgb = (st.backgroundColor.match(/\d+(\.\d+)?/g) || []).map(Number);
+    const transparent = rgb.length >= 4 && rgb[3] < 0.1;
+    const bord = (st.borderTopColor.match(/\d+(\.\d+)?/g) || []).map(Number);
+    return {
+      texte: b.textContent.replace(/\s+/g, ' ').trim(), tourne: b.dataset.tourne, tag: b.tagName,
+      clair: transparent || (rgb.length >= 3 && (0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]) > 128),
+      bord: st.borderTopStyle !== 'none' && !(bord.length >= 4 && bord[3] < 0.1) ? parseFloat(st.borderTopWidth) || 0 : 0,
+      souligne: /underline/.test(st.textDecorationLine),
+    };
+  });
+  const attendreOption = (page, tourne) => page.waitForFunction((t) => { const b = document.querySelector('#rsGgOption'); return Boolean(b && b.dataset.tourne === t); }, tourne, { timeout: 15000 }).catch(() => {});
+  const tournent = (page) => page.waitForFunction(() => /2 groupes qui tournent/.test((document.querySelector('#rsL-groupes') || {}).textContent || ''), null, { timeout: 15000 }).catch(() => {});
   async function nouveaux(page, avant) {
     for (let i = 0; i < 80; i += 1) {
       const lignes = [...B.base.reservations.entries()].filter(([id]) => !avant.has(id)).map(([, r]) => r);
@@ -307,7 +370,7 @@ async function principal() {
     return { col: col ? col.scrollHeight - col.clientHeight : 99, dehors: r.top < 0 || r.bottom > window.innerHeight ? 1 : 0 };
   });
 
-  const navigateur = ['A', 'B', 'C'].some(joue);
+  const navigateur = ['A', 'B', 'C', 'E', 'F'].some(joue);
   if (navigateur) {
     const { chromium } = require('playwright-core');
     browser = await chromium.launch({ executablePath: BROWSER_PATH, headless: true });
@@ -353,23 +416,40 @@ async function principal() {
 
     // =======================================================================
     if (joue('B')) {
-      section('[B] 60 JOUEURS AU BOWLING ET AU LASER : DEUX GROUPES QUI TOURNENT');
+      section('[B] 60 JOUEURS AU BOWLING ET AU LASER : LE PLAN D AVANT TIENT, LES GROUPES TOURNENT AU CHOIX');
       const { ctx, page, erreurs, avant } = await ouvrir('vide');
       try {
-        await soixante(page);
-        await toucher(page, '.rs-seance [data-activite="bowling"][data-heure="15:30"]');
-        await pret(page).catch(() => {});
-        await toucher(page, '#rsAjout-laser_game');
+        await bowlingEtLaser(page, 60, '15:30');
+        await attendreOption(page, '1');
+        // Sans toucher : le plan d avant (le bowling en deux services, puis le laser), au prix d avant.
+        const groupesAvant = await texte(page, '#rsL-groupes');
+        const bowlingAvant = await texte(page, '#rsL-a-bowling');
+        const laserAvant = await texte(page, '#rsL-a-laser_game');
+        const totalAvant = await texte(page, '#rvTotalPied');
+        ok(groupesAvant === '' && /Groupe 1 à 15:30, groupe 2 à 16:30/.test(bowlingAvant) && /17:30/.test(laserAvant) && /18:00/.test(laserAvant) && /990 €/.test(totalAvant),
+          '[B] sans toucher, le plan d avant : le bowling en deux services (15:30, 16:30), puis le laser (17:30, 18:00), 990 €', { groupesAvant, bowlingAvant, laserAvant, totalAvant });
+        const propose = await option(page);
+        ok(propose && propose.tourne === '1' && propose.texte === 'Faire tourner 2 groupes : fin à 17:30, 990 €', '[B] le ticket propose « Faire tourner 2 groupes : fin à 17:30, 990 € »', propose);
+        ok(propose && propose.tag === 'BUTTON' && propose.clair && propose.bord >= 1 && !propose.souligne, '[B] l option est un bouton encadre, ni noir ni lien', propose);
+        const ecranOption = await tientALEcran(page);
+        ok(ecranOption.col <= 1 && !ecranOption.dehors, '[B] Reserver tient a l ecran en 1366 x 768 (le plan d avant et l option)', ecranOption);
+        await capture(page, '60-bowling-laser-option');
+        // Le staff choisit : les deux groupes de 30 tournent.
+        await toucher(page, '#rsGgOption');
+        await tournent(page);
         await page.waitForFunction(() => /Groupe 2 à 15:30/.test((document.querySelector('#rsL-a-laser_game') || {}).textContent || ''), null, { timeout: 15000 }).catch(() => {});
         await pret(page).catch(() => {});
+        await attendreOption(page, '0');
         const groupes = await texte(page, '#rsL-groupes');
         const bowling = await texte(page, '#rsL-a-bowling');
         const laser = await texte(page, '#rsL-a-laser_game');
         const total = await texte(page, '#rvTotalPied');
-        ok(/2 groupes qui tournent/.test(groupes) && /30 et 30 joueurs/.test(groupes), '[B] le ticket dit « 2 groupes qui tournent », 30 et 30 joueurs', groupes);
+        ok(/2 groupes qui tournent/.test(groupes) && /30 et 30 joueurs/.test(groupes), '[B] touche : le ticket dit « 2 groupes qui tournent », 30 et 30 joueurs', groupes);
         ok(/Groupe 1 à 15:30, groupe 2 à 16:30/.test(bowling) && /390 €/.test(bowling), '[B] bowling : groupe 1 a 15:30, groupe 2 a 16:30, 390 €', bowling);
         ok(/Groupe 2 à 15:30, groupe 1 à 16:30/.test(laser) && /600 €/.test(laser), '[B] laser : groupe 2 a 15:30, groupe 1 a 16:30, 600 €', laser);
-        ok(/990 €/.test(total), '[B] total 990 €', total);
+        ok(/990 €/.test(total), '[B] total 990 €, le prix que l option affichait', total);
+        const inverse = await option(page);
+        ok(inverse && inverse.tourne === '0' && inverse.texte === 'Ne pas faire tourner : fin à 18:25, 990 €', '[B] choisis, le ticket propose l inverse : « Ne pas faire tourner : fin à 18:25, 990 € »', inverse);
         const tourne = await texte(page, '#rsTourne-laser_game');
         ok(/Groupe 2 à 15:30, groupe 1 à 16:30\./.test(tourne), '[B] le bloc du laser dit quel groupe y joue a quelle heure', tourne);
         const bouton = await page.evaluate(() => {
@@ -390,6 +470,8 @@ async function principal() {
         ok(grille.every(Boolean), '[B] la page des groupes : groupe 1 bowling 15:30 puis laser 16:30, groupe 2 laser 15:30 puis bowling 16:30', grille);
         const phrase = await texte(page, '#rsGgPhrase');
         ok(/Le groupe 1 au bowling pendant que le groupe 2 joue au laser, puis ils échangent\./.test(phrase), '[B] la phrase du plan : le groupe 1 au bowling pendant que le groupe 2 joue au laser', phrase);
+        // (les tailles se reglent par « un de plus » et « un de moins » ; un champ a taper, s il vient, ne
+        // change rien a la regle : aucun bouton du groupe 1 n est actif)
         const pas = await page.evaluate(() => Array.from(document.querySelectorAll('.rs-gg-ts [data-groupe="1"]')).filter((b) => b.tagName === 'BUTTON').map((b) => b.disabled));
         ok(pas.length === 2 && pas.every(Boolean), '[B] 30 et 30 avec 30 armes : ni un de plus ni un de moins au groupe 1', pas);
         const ecranGroupes = await tientALEcran(page);
@@ -440,7 +522,7 @@ async function principal() {
         const blocs58 = blocsDe(apresCompte);
         const gg58 = apresCompte && apresCompte.ops_plan && apresCompte.ops_plan.grandGroupe;
         ok(apresCompte && Number(apresCompte.pax) === 58 && Number(apresCompte.price) === 970
-          && resume(blocs58).replace(/\[[^\]]*\]/g, '') === 'B1@16:30x29 B2@15:30x29 L1@15:30x29 L2@16:30x29' && gg58 && gg58.premier === 'laser_game',
+          && sansPistes(resume(blocs58)) === 'B1@16:30x29 B2@15:30x29 L1@15:30x29 L2@16:30x29' && gg58 && gg58.premier === 'laser_game',
         '[B] « Ils sont 58 » : le moteur refait le plan, deux groupes de 29 qui tournent dans le meme ordre, 970 €', apresCompte && `${apresCompte.pax} ${apresCompte.price} ${resume(blocs58)} ${JSON.stringify(gg58)}`);
         await page.waitForFunction(() => /Groupe 1, 29 joueurs : laser 15:30, bowling 16:30/.test((document.querySelector('#ficheGroupes') || {}).textContent || ''), null, { timeout: 12000 }).catch(() => {});
         const fiche58 = await texte(page, '#ficheGroupes');
@@ -455,59 +537,73 @@ async function principal() {
       const { ctx, page, erreurs, avant } = await ouvrir('normal');
       try {
         await soixante(page);
-        await toucher(page, '.rs-seance [data-activite="bowling"][data-heure="15:30"]');
+        await toucher(page, '.rs-seance [data-activite="bowling"][data-heure="19:30"]');
         await page.waitForTimeout(800);
         await toucher(page, '#rsAjout-laser_game');
         await page.waitForFunction(() => /Prendre/.test((document.querySelector('#rvCreer') || {}).textContent || ''), null, { timeout: 15000 }).catch(() => {});
-        await page.waitForFunction(() => /manque/.test((document.querySelector('.rs-seance .rs-h[data-activite="bowling"][data-heure="15:30"]') || {}).textContent || ''), null, { timeout: 8000 }).catch(() => {});
+        await page.waitForFunction(() => /manque/.test((document.querySelector('.rs-seance .rs-h[data-activite="bowling"][data-heure="19:30"]') || {}).textContent || ''), null, { timeout: 8000 }).catch(() => {});
+        // Ni le plan d avant (il finirait apres la fermeture), ni les groupes qui tournent : c est le refus
+        // des groupes qui se dit, le plan qui se poserait d office.
+        const groupes = await texte(page, '#rsL-groupes');
+        ok(/2 groupes qui tournent/.test(groupes) && !(await option(page)), '[C] le ticket dit le plan qui se poserait d office, « 2 groupes qui tournent », sans option a choisir', groupes);
         const rangee = await page.evaluate(() => Object.fromEntries(Array.from(document.querySelectorAll('.rs-seance .rs-h[data-activite="bowling"][data-heure]')).map((b) => [b.dataset.heure, b.textContent.replace(/\s+/g, ' ').trim()])));
-        ok(/laser, manque 10 armes/.test(rangee['15:30'] || '') && /laser, manque/.test(rangee['16:00'] || '') && /reste/.test(rangee['17:30'] || ''),
-          '[C] la rangee du bowling dit le verdict de tout le groupe : 15:30 « laser, manque 10 armes », 17:30 tient', rangee);
+        ok(/laser, manque 12 armes/.test(rangee['19:30'] || '') && /laser, manque/.test(rangee['20:00'] || '') && /reste/.test(rangee['18:00'] || ''),
+          '[C] la rangee du bowling dit le verdict de tout le groupe : 19:30 « laser, manque 12 armes », 18:00 tient', rangee);
         const laser = await texte(page, '#rsL-a-laser_game');
-        ok(/Laser à 16:30, il reste 20 places sur 30, il en faut 30/.test(laser), '[C] la ligne du laser dit pourquoi : il reste 20 places sur 30 a 16:30', laser);
+        ok(/Laser à 19:30, il reste 18 places sur 30, il en faut 30/.test(laser), '[C] la ligne du laser dit pourquoi : il reste 18 places sur 30 a 19:30', laser);
         const dit = await texte(page, '.rs-tk .rs-sr');
-        ok(/Laser à 16:30 impossible/.test(dit), '[C] le refus dit l heure qui coince (16:30), pas l heure d une ligne', dit);
+        ok(/Laser à 19:30 impossible/.test(dit), '[C] le refus dit l heure qui coince (19:30), pas l heure d une ligne', dit);
         const bouton = await page.evaluate(() => { const b = document.querySelector('#rvCreer'); return b ? { texte: b.textContent.replace(/\s+/g, ' ').trim(), proche: b.dataset.proche || '' } : null; });
-        ok(bouton && bouton.proche === '17:30' && /^Prendre 17:30/.test(bouton.texte), '[C] « Prendre 17:30 » : l heure la plus proche ou tout le groupe tient', bouton);
+        ok(bouton && bouton.proche === '18:00' && /^Prendre 18:00/.test(bouton.texte), '[C] « Prendre 18:00 » : l heure la plus proche ou tout le groupe tient', bouton);
         ok([...B.base.reservations.keys()].every((id) => avant.has(id)), '[C] rien ne part avant « Créer »', [...B.base.reservations.keys()].length);
-        await capture(page, '60-impossible-15h30');
+        await capture(page, '60-impossible-19h30');
         await toucher(page, '#rvCreer');
         await pret(page).catch(() => {});
         const repris = await texte(page, '#rvCreer');
         const bowling = await texte(page, '#rsL-a-bowling');
-        ok(/Créer à 17:30/.test(repris) && /Groupe 1 à 17:30, groupe 2 à 18:30/.test(bowling), '[C] un toucher : « Créer à 17:30 », groupe 1 au bowling a 17:30, groupe 2 a 18:30', `${repris} | ${bowling}`);
-        await capture(page, '60-impossible-pris-17h30');
+        const laserPris = await texte(page, '#rsL-a-laser_game');
+        ok(/Créer à 18:00/.test(repris) && /Groupe 1 à 18:00, groupe 2 à 19:00/.test(bowling) && /Groupe 2 à 18:00, groupe 1 à 19:00/.test(laserPris),
+          '[C] un toucher : « Créer à 18:00 », bowling groupe 1 a 18:00, groupe 2 a 19:00, le laser a l inverse', `${repris} | ${bowling} | ${laserPris}`);
+        await capture(page, '60-impossible-pris-18h00');
         const r = await creer(page, avant);
         const blocs = blocsDe(r);
-        ok(r && String(r.start_time).slice(0, 5) === '17:30' && Number(r.price) === 990
-          && resume(blocs).replace(/\[[^\]]*\]/g, '') === 'B1@17:30x30 B2@18:30x30 L1@18:30x30 L2@17:30x30',
-        '[C] le dossier nait a 17:30 : groupe 1 bowling 17:30 puis laser 18:30, groupe 2 laser 17:30 puis bowling 18:30', r && `${r.start_time} ${r.price} ${resume(blocs)}`);
+        ok(r && String(r.start_time).slice(0, 5) === '18:00' && Number(r.price) === 990
+          && sansPistes(resume(blocs)) === 'B1@18:00x30 B2@19:00x30 L1@19:00x30 L2@18:00x30',
+        '[C] le dossier nait a 18:00 : groupe 1 bowling 18:00 puis laser 19:00, groupe 2 laser 18:00 puis bowling 19:00', r && `${r.start_time} ${r.price} ${resume(blocs)}`);
         ok(erreurs.length === 0, '[*] zero erreur JavaScript (C)', erreurs.slice(0, 3).join(' | '));
       } finally { await ctx.close(); }
     }
 
     // =======================================================================
     if (joue('D')) {
-      section('[D] LE SERVEUR : LES VRAIS JOUEURS, LES TAILLES, LA MODIFICATION, LE CANAL PUBLIC');
+      section('[D] LE SERVEUR : LES VRAIS JOUEURS, LES TAILLES, LE PLAN D AVANT, LA MODIFICATION, LE CANAL PUBLIC');
       const fx = semer('vide');
       const jour = fx.staffState.date;
+      // (les sous-groupes imposes, comme les envoie le comptoir qui a touche « Faire tourner »)
       const corps = (pax, laser, extra = {}) => ({
         name: 'Groupe Essai', phone: '0470111222', email: '', notes: '', occasion: '', date: jour, startTime: '15:30', duration: 1, totalDuration: 2, lanes: [], pax, status: 'pending', type: 'visite', formuleId: '',
         program: [{ activityId: 'bowling', pax, participants: pax, duration: 1 }, { activityId: 'laser_game', pax, participants: laser, games: 1 }],
         laserGames: 0, extras: [], channel: 'staff', requiresLanes: true, centerId: 'libramont',
-        preference: { activityOrder: ['bowling', 'laser_game'], preferredTimes: { bowling: '15:30', laser_game: '15:30' }, grandGroupe: {} },
+        preference: { activityOrder: ['bowling', 'laser_game'], preferredTimes: { bowling: '15:30', laser_game: '15:30' }, grandGroupe: { impose: true } },
         ...extra,
+      });
+      // (la demande du comptoir qui n a pas touche « Faire tourner » : les heures de toujours, le laser
+      // apres le bowling ; `gg` null : aucune demande de grand groupe, le chemin d avant)
+      const dAvant = (pax, heure, laserA, total, gg) => corps(pax, pax, {
+        startTime: heure, totalDuration: total,
+        preference: { activityOrder: ['bowling', 'laser_game'], preferredTimes: { bowling: heure, laser_game: laserA }, laserGameTimes: [laserA], laserPlacement: 'scheduled', ...(gg ? { grandGroupe: gg } : {}) },
       });
       const simuler = async (c) => (await serveur.appeler('POST', '/api/staff-reservations', { ...c, dryRun: true })).json.plan || {};
       const passages = (plan) => (plan.blocs || []).filter((b) => b.sousGroupe).map((b) => `${b.activite === 'bowling' ? 'B' : 'L'}${b.sousGroupe}x${b.joueursReels || b.joueurs}${b.activite === 'bowling' ? `/${(b.pistes || []).length}p` : ''}`).sort().join(' ');
+      const signature = (plan) => (plan.blocs || []).map((b) => `${b.activite}@${b.debut}-${b.fin}x${b.joueursReels || b.joueurs}[${(b.pistes || []).join(',')}]#${b.sousGroupe || 0}`).sort().join(' ');
 
       const partiel = await simuler(corps(60, 40));
       ok(partiel.disponible && Number(partiel.prix) === 790 && passages(partiel) === 'B1x30/5p B2x30/5p L1x20 L2x20',
         '[D] 60 au bowling, 40 au laser : chaque groupe envoie 20 joueurs au laser, 790 €', { prix: partiel.prix, passages: passages(partiel), refus: partiel.refus });
-      const tailles = await simuler(corps(50, 50, { preference: { activityOrder: ['bowling', 'laser_game'], preferredTimes: { bowling: '15:30', laser_game: '15:30' }, grandGroupe: { tailles: [28, 22] } } }));
+      const tailles = await simuler(corps(50, 50, { preference: { activityOrder: ['bowling', 'laser_game'], preferredTimes: { bowling: '15:30', laser_game: '15:30' }, grandGroupe: { tailles: [28, 22], impose: true } } }));
       ok(tailles.disponible && passages(tailles) === 'B1x28/5p B2x22/4p L1x28 L2x22' && Number(tailles.prix) === 851,
         '[D] tailles posees 28 et 22 : 5 puis 4 pistes, 28 puis 22 armes, 851 € (9 pistes et 50 joueurs au laser)', { prix: tailles.prix, passages: passages(tailles), refus: tailles.refus });
-      const trop = await simuler(corps(60, 60, { preference: { activityOrder: ['bowling', 'laser_game'], preferredTimes: { bowling: '15:30', laser_game: '15:30' }, grandGroupe: { tailles: [40, 20] } } }));
+      const trop = await simuler(corps(60, 60, { preference: { activityOrder: ['bowling', 'laser_game'], preferredTimes: { bowling: '15:30', laser_game: '15:30' }, grandGroupe: { tailles: [40, 20], impose: true } } }));
       ok(trop.disponible === false && /Groupe 1 : 40 joueurs au laser, 30 armes à la fois/.test(trop.refus || ''), '[D] 40 et 20 avec 30 armes : refuse, et le refus dit pourquoi', trop.refus);
       // Un autre centre, sa propre place (sa configuration, jamais un chiffre du code) : Gembloux a 20 armes,
       // 60 joueurs y font 3 groupes de 20 ; deux groupes au bowling en meme temps n ont jamais une piste commune.
@@ -519,20 +615,35 @@ async function principal() {
       ok(gembloux.disponible && gembloux.grandGroupe && JSON.stringify(gembloux.grandGroupe.tailles) === '[20,20,20]' && quilles.length === 3 && simultanes && !communes && Number(gembloux.prix) === 1068,
         '[D] Gembloux, 20 armes : 3 groupes de 20, deux groupes au bowling en meme temps sur des pistes differentes, 1068 €', { prix: gembloux.prix, refus: gembloux.refus, bowling: quilles.map((b) => `${b.sousGroupe}@${b.debut}[${(b.pistes || []).join(',')}]`) });
 
+      // Sans « Faire tourner » : le plan d avant tant qu il tient, le meme que sans aucune demande ; les
+      // groupes qui tournent d office seulement quand il ne tient pas.
+      const auto40 = await simuler(dAvant(40, '15:30', '16:30', 2, {}));
+      const sans40 = await simuler(dAvant(40, '15:30', '16:30', 2, null));
+      ok(auto40.disponible && Number(auto40.prix) === 673 && auto40.fin === '17:25' && !auto40.grandGroupe && (auto40.blocs || []).every((b) => !b.sousGroupe),
+        '[D] 40 au bowling et au laser, sans « Faire tourner » : le plan d avant, 673 €, fin 17:25, aucun sous-groupe', { prix: auto40.prix, fin: auto40.fin, gg: auto40.grandGroupe, refus: auto40.refus });
+      ok(signature(auto40) !== '' && signature(auto40) === signature(sans40) && Number(sans40.prix) === Number(auto40.prix),
+        '[D] ce plan est celui d avant : le meme, bloc pour bloc et au meme prix, que sans aucune demande de grand groupe', { auto: signature(auto40), sans: signature(sans40) });
+      const tourne40 = await simuler(corps(40, 40));
+      ok(tourne40.disponible && Number(tourne40.prix) === 712 && tourne40.fin === '17:00' && passages(tourne40) === 'B1x20/4p B2x20/4p L1x20 L2x20' && tourne40.grandGroupe && tourne40.grandGroupe.tourne === true,
+        '[D] les memes 40 que le comptoir fait tourner : deux groupes de 20, 4 pistes chacun, fin 17:00, 712 €', { prix: tourne40.prix, fin: tourne40.fin, passages: passages(tourne40), refus: tourne40.refus });
+      const soir = await simuler(dAvant(60, '20:00', '22:00', 3, {}));
+      ok(soir.disponible && Number(soir.prix) === 990 && soir.fin === '22:00' && soir.grandGroupe && soir.grandGroupe.tourne === true && passages(soir) === 'B1x30/5p B2x30/5p L1x30 L2x30',
+        '[D] 60 a 20:00 : le plan d avant finirait apres la fermeture, les groupes tournent d office, fin 22:00, 990 €', { prix: soir.prix, fin: soir.fin, gg: soir.grandGroupe, passages: passages(soir), refus: soir.refus });
+
       // Une modification (le depart decale d une demi-heure) garde les groupes et leur ordre.
-      const cree = await serveur.appeler('POST', '/api/staff-reservations', corps(60, 60, { preference: { activityOrder: ['bowling', 'laser_game'], preferredTimes: { bowling: '15:30', laser_game: '15:30' }, grandGroupe: { premier: 'laser_game' } } }));
+      const cree = await serveur.appeler('POST', '/api/staff-reservations', corps(60, 60, { preference: { activityOrder: ['bowling', 'laser_game'], preferredTimes: { bowling: '15:30', laser_game: '15:30' }, grandGroupe: { premier: 'laser_game', impose: true } } }));
       const dossier = cree.json.reservation;
       ok(cree.statut < 300 && dossier && dossier.opsPlan && dossier.opsPlan.grandGroupe && dossier.opsPlan.grandGroupe.premier === 'laser_game', '[D] creation : les groupes tournent, le groupe 1 commence au laser', cree.json.message || (dossier && dossier.opsPlan && dossier.opsPlan.grandGroupe));
       if (dossier) {
         const modif = await serveur.appeler('PATCH', '/api/staff-reservations', { id: dossier.id, centerId: 'libramont', startTime: '16:00', baseUpdatedAt: dossier.updatedAt });
         const apres = B.base.reservations.get(Number(dossier.id)) || B.base.reservations.get(dossier.id);
         const blocs = blocsDe(apres);
-        ok(modif.statut < 300 && resume(blocs).replace(/\[[^\]]*\]/g, '') === 'B1@17:00x30 B2@16:00x30 L1@16:00x30 L2@17:00x30' && apres.ops_plan.grandGroupe && apres.ops_plan.grandGroupe.premier === 'laser_game',
+        ok(modif.statut < 300 && sansPistes(resume(blocs)) === 'B1@17:00x30 B2@16:00x30 L1@16:00x30 L2@17:00x30' && apres.ops_plan.grandGroupe && apres.ops_plan.grandGroupe.premier === 'laser_game',
           '[D] decale a 16:00, le dossier garde ses deux groupes et leur ordre (groupe 1 laser 16:00 puis bowling 17:00)', `${modif.statut} ${modif.json.message || ''} ${resume(blocs)}`);
       }
 
-      // Le formulaire en ligne : la meme demande, par le chemin de la reservation publique
-      // (api/public-reservations.js, prepareReservationOps canal public), ne fait aucun sous-groupe.
+      // Le formulaire en ligne : la meme demande (des sous-groupes imposes), par le chemin de la reservation
+      // publique (api/public-reservations.js, prepareReservationOps canal public), ne fait aucun sous-groupe.
       semer('vide');
       const { prepareReservationOps } = require(path.join(ROOT, OPS));
       const demande = { ...corps(60, 60), channel: undefined };
@@ -541,6 +652,110 @@ async function principal() {
       const enLigne = await prepareReservationOps({ ...demande }, 'public');
       const auComptoir = await prepareReservationOps({ ...demande }, 'staff');
       ok(sousGroupesDu(enLigne) === 0 && sousGroupesDu(auComptoir) > 0, '[D] la demande d un grand groupe ne vaut qu au comptoir : le canal public garde son plan', { public: sousGroupesDu(enLigne), staff: sousGroupesDu(auComptoir), refusPublic: enLigne && enLigne.planRefusal });
+    }
+
+    // =======================================================================
+    if (joue('E')) {
+      section('[E] 40 JOUEURS AU BOWLING ET AU LASER : LE PLAN D AVANT RESTE, FAIRE TOURNER EST UNE OPTION');
+      // E1 : sans toucher a l option, le plan et le prix d avant, jusqu au dossier.
+      {
+        const { ctx, page, erreurs, avant } = await ouvrir('vide');
+        try {
+          await bowlingEtLaser(page, 40, '15:30');
+          await attendreOption(page, '1');
+          const propose = await option(page);
+          ok(propose && propose.tourne === '1' && propose.texte === 'Faire tourner 2 groupes : fin à 17:00, 712 €', '[E] le ticket propose « Faire tourner 2 groupes : fin à 17:00, 712 € »', propose);
+          ok(propose && propose.tag === 'BUTTON' && propose.clair && propose.bord >= 1 && !propose.souligne, '[E] l option est un bouton encadre, ni noir ni lien', propose);
+          const ecran = await tientALEcran(page);
+          ok(ecran.col <= 1 && !ecran.dehors, '[E] Reserver tient a l ecran en 1366 x 768 avec l option', ecran);
+          await capture(page, '40-option-ticket');
+          // Rien ne bascule seul : le temps passe, le ticket garde le plan d avant.
+          await page.waitForTimeout(1500);
+          const groupes = await texte(page, '#rsL-groupes');
+          const bowling = await texte(page, '#rsL-a-bowling');
+          const laser = await texte(page, '#rsL-a-laser_game');
+          const total = await texte(page, '#rvTotalPied');
+          const choisi = await page.evaluate(() => Boolean(quickBookState && quickBookState.grandGroupe && quickBookState.grandGroupe.tourne));
+          ok(groupes === '' && !choisi && /673 €/.test(total) && /15:30/.test(bowling) && !/[Gg]roupe/.test(bowling),
+            '[E] sans toucher, le plan d avant : aucun groupe qui tourne, tout le bowling a 15:30, 673 €', { groupes, bowling, total, choisi });
+          ok(/16:30/.test(laser) && /17:00/.test(laser), '[E] le laser apres le bowling, en deux vagues : 16:30 et 17:00', laser);
+          const creerDit = await texte(page, '#rvCreer');
+          ok(/Créer à 15:30/.test(creerDit), '[E] « Créer à 15:30 »', creerDit);
+          const r = await creer(page, avant);
+          const blocs = blocsDe(r);
+          const bowlings = blocs.filter((b) => b.resourceType === 'bowling_lane');
+          const gg = r && r.ops_plan && r.ops_plan.grandGroupe;
+          ok(r && Number(r.pax) === 40 && Number(r.price) === 673 && !gg && blocs.every((b) => !b.sousGroupe), '[E] le dossier en base au prix d avant : 40 joueurs, 673 €, aucun sous-groupe', r && { pax: r.pax, price: r.price, gg, blocs: resume(blocs) });
+          ok(bowlings.length === 1 && bowlings[0].startTime === '15:30' && bowlings[0].endTime === '16:30' && Number(bowlings[0].players) === 40 && (bowlings[0].lanes || []).length === 7
+            && resume(blocs.filter((b) => b.resourceType === 'laser_arena')) === 'L0@16:30x20 L0@17:00x20',
+          '[E] le plan d avant en base : tout le bowling 15:30-16:30 sur 7 pistes, puis le laser en deux vagues de 20 (16:30, 17:00)', resume(blocs));
+          ok(erreurs.length === 0, '[*] zero erreur JavaScript (E, sans toucher)', erreurs.slice(0, 3).join(' | '));
+        } finally { await ctx.close(); }
+      }
+      // E2 : l option touchee, la rotation au prix affiche, jusqu au dossier.
+      {
+        const { ctx, page, erreurs, avant } = await ouvrir('vide');
+        try {
+          await bowlingEtLaser(page, 40, '15:30');
+          await attendreOption(page, '1');
+          const propose = await option(page);
+          const affiche = propose ? Number((/(\d+) €$/.exec(propose.texte) || [])[1]) : NaN;
+          await toucher(page, '#rsGgOption');
+          await tournent(page);
+          await pret(page).catch(() => {});
+          await attendreOption(page, '0');
+          const groupes = await texte(page, '#rsL-groupes');
+          const total = await texte(page, '#rvTotalPied');
+          const inverse = await option(page);
+          ok(/2 groupes qui tournent/.test(groupes) && /20 et 20 joueurs/.test(groupes), '[E] touche : « 2 groupes qui tournent », 20 et 20 joueurs', groupes);
+          ok(affiche === 712 && new RegExp(`(^|\\D)${affiche} €`).test(total), '[E] la rotation au prix affiche : 712 € au total', { affiche, total });
+          ok(inverse && inverse.tourne === '0' && inverse.texte === 'Ne pas faire tourner : fin à 17:25, 673 €', '[E] l inverse se propose : « Ne pas faire tourner : fin à 17:25, 673 € »', inverse);
+          await capture(page, '40-rotation-choisie');
+          const r = await creer(page, avant);
+          const blocs = blocsDe(r);
+          const gg = r && r.ops_plan && r.ops_plan.grandGroupe;
+          ok(r && Number(r.pax) === 40 && Number(r.price) === affiche, '[E] le dossier en base au prix affiche : 40 joueurs, 712 €', r && { pax: r.pax, price: r.price });
+          ok(sansPistes(resume(blocs)) === 'B1@15:30x20 B2@16:00x20 L1@16:30x20 L2@15:30x20' && sansChevauchement(blocs)
+            && blocs.filter((b) => b.resourceType === 'bowling_lane').every((b) => (b.lanes || []).length === 4 && seSuivent(b.lanes)),
+          '[E] deux groupes de 20 qui tournent : groupe 1 bowling 15:30 puis laser 16:30, groupe 2 laser 15:30 puis bowling 16:00, 4 pistes cote a cote chacun', resume(blocs));
+          ok(gg && gg.tourne === true && JSON.stringify(gg.tailles) === '[20,20]', '[E] le plan garde ses groupes : ils tournent, 20 et 20', gg);
+          ok(erreurs.length === 0, '[*] zero erreur JavaScript (E, rotation choisie)', erreurs.slice(0, 3).join(' | '));
+        } finally { await ctx.close(); }
+      }
+    }
+
+    // =======================================================================
+    if (joue('F')) {
+      section('[F] 60 JOUEURS A 20:00 : LE PLAN D AVANT NE TIENT PAS, LES GROUPES TOURNENT D OFFICE');
+      const { ctx, page, erreurs, avant } = await ouvrir('vide');
+      try {
+        await bowlingEtLaser(page, 60, '20:00');
+        await tournent(page);
+        await pret(page).catch(() => {});
+        // (le temps d un calcul de l autre plan, s il en partait un : aucun ne doit partir)
+        await page.waitForTimeout(1200);
+        const groupes = await texte(page, '#rsL-groupes');
+        const bowling = await texte(page, '#rsL-a-bowling');
+        const laser = await texte(page, '#rsL-a-laser_game');
+        const total = await texte(page, '#rvTotalPied');
+        const creerDit = await texte(page, '#rvCreer');
+        const propose = await option(page);
+        ok(/2 groupes qui tournent/.test(groupes) && /30 et 30 joueurs/.test(groupes), '[F] sans rien toucher, le ticket dit « 2 groupes qui tournent », 30 et 30 joueurs', groupes);
+        ok(/Groupe 1 à 20:00, groupe 2 à 21:00/.test(bowling) && /Groupe 2 à 20:00, groupe 1 à 21:00/.test(laser) && /990 €/.test(total),
+          '[F] bowling groupe 1 a 20:00, groupe 2 a 21:00 ; laser groupe 2 a 20:00, groupe 1 a 21:00 ; 990 €', { bowling, laser, total });
+        ok(!propose, '[F] rien a choisir : le plan d avant ne tient pas, aucune option', propose);
+        ok(/Créer à 20:00/.test(creerDit), '[F] « Créer à 20:00 » : le plan tient', creerDit);
+        await capture(page, '60-soir-d-office');
+        const r = await creer(page, avant);
+        const blocs = blocsDe(r);
+        const gg = r && r.ops_plan && r.ops_plan.grandGroupe;
+        ok(r && String(r.start_time).slice(0, 5) === '20:00' && Number(r.price) === 990
+          && sansPistes(resume(blocs)) === 'B1@20:00x30 B2@21:00x30 L1@21:00x30 L2@20:00x30'
+          && Math.max(...blocs.map((b) => enMin(b.endTime))) === enMin('22:00'),
+        '[F] le dossier nait a 20:00 en deux groupes qui tournent, fin 22:00, 990 €', r && `${r.start_time} ${r.price} ${resume(blocs)}`);
+        ok(gg && gg.tourne === true && JSON.stringify(gg.tailles) === '[30,30]', '[F] le plan garde ses groupes qui tournent, 30 et 30', gg);
+        ok(erreurs.length === 0, '[*] zero erreur JavaScript (F)', erreurs.slice(0, 3).join(' | '));
+      } finally { await ctx.close(); }
     }
   } catch (error) {
     ok(false, `exception : ${error.message}`, String(error.stack || '').split('\n').slice(0, 4).join(' | '));
@@ -551,6 +766,6 @@ async function principal() {
 
   console.log(rouges
     ? `\ngrands-groupes-check: ${rouges} ROUGE(S)`
-    : '\ngrands-groupes-check: ALL OK - un grand groupe se coupe au comptoir comme en ligne, tourne entre bowling et laser, se lit au ticket, au planning et a la fiche, et un plan impossible propose l heure qui tient');
+    : '\ngrands-groupes-check: ALL OK - un grand groupe se coupe au comptoir comme en ligne ; au bowling et au laser il garde le plan et le prix d avant tant qu ils tiennent, tourne au choix du comptoir au prix affiche, d office quand le plan d avant ne tient pas ; il se lit au ticket, au planning et a la fiche, et un plan impossible propose l heure qui tient');
   process.exit(rouges ? 1 : 0);
 }

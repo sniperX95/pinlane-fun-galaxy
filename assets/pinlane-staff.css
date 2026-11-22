@@ -10199,6 +10199,10 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv.rs .rs-gg-dit { font-size: 13px; line-height: 1.3; color: var(--muted); }
 .qb-modal.rv.rs .rs-gg-tourne { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
 .qb-modal.rv.rs .rs-gg-tourne p { flex: 1 1 220px; margin: 0; font-size: 15px; line-height: 1.4; color: var(--text); }
+/* L option du ticket (« Faire tourner 2 groupes : fin à 17:00, 712 € ») : le second bouton de la
+   console, sur la largeur du ticket, son icone a la taille du « + ». */
+.qb-modal.rv.rs .rs-ajout-ligne.rs-gg-option { align-self: stretch; text-align: left; padding: 6px 16px 6px 12px; line-height: 1.35; }
+.qb-modal.rv.rs .rs-gg-option svg { width: 18px; height: 18px; }
 @media (max-width: 700px) {
   .qb-modal.rv.rs .rs-gg-r { grid-template-columns: 76px repeat(var(--gg-cols, 2), minmax(0, 1fr)); }
   .qb-modal.rv.rs .rs-gg-premier { grid-template-columns: minmax(0, 1fr); }

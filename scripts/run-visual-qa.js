@@ -2177,7 +2177,10 @@ async function main() {
     // champs, quatre controles de plus. Mesure : generique 70, case 70 ; plafonds a la mesure plus trois.
     const PLAFOND_GENERIQUE = 73;
     const PLAFOND_CASE = 73;
-    const PLAFOND_LASER = 79;
+    // 80 : la porte « Accès illimité » toujours visible, a cote de Formules et Sur mesure, meme sans offre
+    // au catalogue (demande d Ansar du 2026-11-21 : il se cree ici). Un controle de plus, le seul : le
+    // laser en mesure 80 sur la meme vitrine, son plafond passe de 79 a 80, sans marge ajoutee.
+    const PLAFOND_LASER = 80;
     const PLAFOND_LANCEMENT = 54;
     const PLAFOND_FORMULE = 42;
     // Une condition qui tient : au delai, relue une fois (un gel de la machine

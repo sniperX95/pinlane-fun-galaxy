@@ -33416,9 +33416,16 @@ function lireLesFormulesGardeesPourModifier() {
   const centre = getCurrentStaffCenterId();
   if (!centre || formulesGardeesLuesPourModifier === centre || (catalogueSurMesureConsole.centre === centre && catalogueSurMesureConsole.articles)) return;
   formulesGardeesLuesPourModifier = centre;
-  // (sans offre aussi : « Accès illimité » s y cree, renderEditIllimiteACreer ; deja la, rien a redessiner)
   Promise.resolve(chargerCatalogueSurMesure()).then(() => {
-    if (state.editState && state.activeTab === 'modifier' && !document.getElementById('editAcces')) renderPos();
+    if (!state.editState || state.activeTab !== 'modifier') return;
+    if (getEffectiveCatalogFormules().some(estFormuleIllimitee)) { renderPos(); return; }
+    // SANS OFFRE (2026-11-22) : l entree « Accès illimité » (renderEditIllimiteACreer) se pose en place,
+    // la ou la fiche la dessine. Redessiner toute la fiche coupait son ouverture, le champ touche
+    // perdait son focus, et une reponse sans catalogue la redessinait pour rien.
+    const titre = document.querySelector('#posOverlay .fm-programme #fmProgrammeTitre');
+    if (!titre || document.getElementById('editAcces') || !titre.parentElement.querySelector('.fm-replan')) return;
+    const entree = renderEditIllimiteChoix();
+    if (entree) titre.insertAdjacentHTML('afterend', entree);
   }).catch(() => {});
 }
 

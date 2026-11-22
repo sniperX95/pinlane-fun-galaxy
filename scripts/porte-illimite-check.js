@@ -18,8 +18,10 @@
 //   [S] SANS LE DROIT TARIFS : la porte et sa page disent qu un responsable le cree dans Tarifs &
 //       formules, bouton « + Accès illimité » ; ni champ ni bouton ; Modifier pareil ; un envoi force est
 //       refuse ; rien ne s enregistre.
-//   [M] MODIFIER, SANS OFFRE : « À la carte | Accès illimité » ; « Accès illimité » ouvre la meme creation ;
-//       creee, le dossier la prend et s enregistre en acces illimite.
+//   [M] MODIFIER, SANS OFFRE : « À la carte | Accès illimité » ; ouvert avant que la console ait lu les
+//       offres, l entree se pose sous « Programme » a leur arrivee, sans redessiner la fiche (son ouverture,
+//       le champ touche et son focus restent) ; « Accès illimité » ouvre la meme creation ; creee, le
+//       dossier la prend et s enregistre en acces illimite.
 //   [O] AVEC UNE OFFRE, RIEN NE CHANGE : la porte dit l acces et son prix et ouvre ses tuiles, sans
 //       creation ; Modifier propose l acces du catalogue.
 //   [H] AVEC UNE OFFRE, UN JOUR CHARGE (deux horaires retenus en ligne) : a 1366 x 768, la fenetre tient
@@ -59,6 +61,8 @@ const MUTATIONS = [
   { nom: 'tuile-figee', lettre: 'R', cible: '[R] une activite se retire en tuile', fichier: APP, de: '  illNouvelRepeindre(ou, () => { n.retirees = f.illimite.activites.filter((x) => !suite.activites.includes(x)); });', vers: '  illNouvelRepeindre(ou, () => {});' },
   { nom: 'creation-sans-tuiles', lettre: 'R', cible: '[R] cree, les tuiles de l acces s ouvrent aussitot', fichier: APP, de: "  if (ou === 'ed') passerEnIllimiteEdition(id);\n  else rsOuvrirIllimite(id);", vers: "  if (ou === 'ed') passerEnIllimiteEdition(id);\n  else rvRepeindre();" },
   { nom: 'modifier-sans-entree', lettre: 'M', cible: '[M] Modifier sans offre : « À la carte | Accès illimité »', fichier: APP, de: '  if (!choix.length) { lireLesFormulesGardeesPourModifier(); return renderEditIllimiteACreer(deLOrigine); }', vers: "  if (!choix.length) { lireLesFormulesGardeesPourModifier(); return ''; }" },
+  // (la fiche entiere redessinee a l arrivee des offres, comme le 21/11 : son ouverture coupee, le focus perdu)
+  { nom: 'modifier-redessine', lettre: 'M', cible: '[M] les offres lues apres l ouverture', fichier: APP, de: "    if (entree) titre.insertAdjacentHTML('afterend', entree);", vers: '    if (entree) renderPos();' },
   { nom: 'fenetre-qui-defile', lettre: 'H', cible: '[H] avec une offre, un jour charge, la fenetre tient sans defiler', fichier: CSS, de: HAUTEUR, vers: '' },
   { nom: 'ecart-de-12', lettre: 'H', cible: '[H] avec une offre, un jour charge, la fenetre tient sans defiler', fichier: CSS, de: '@media (min-width: 1101px) { .qb-modal.rv.rs.is-q-activites .rs-col { gap: 4px; } }', vers: '' },
   { nom: 'offre-ignoree', lettre: 'O', cible: '[O] avec une offre, la porte dit l acces et son prix', fichier: APP, de: "  const liste = s ? rsIllimitees() : [];\n  if (!liste.length) return '';", vers: "  const liste = s ? rsIllimitees() : [];\n  if (liste.length) return '';" },
@@ -317,16 +321,25 @@ async function scenarioR(browser) {
 // ---------------------------------------------------------------------------
 // [S] SANS LE DROIT TARIFS
 // ---------------------------------------------------------------------------
-// Le dossier de Modifier : une visite bowling creee au comptoir, poussee dans la page.
-async function unDossier(page, nom) {
+// Le dossier de Modifier : une visite bowling creee au comptoir, poussee dans la page. `avantLesOffres` :
+// la console n a pas encore lu les offres du centre (elle vient de s ouvrir), Modifier les lit lui-meme.
+// Le titre « Programme » est marque a l ouverture : apres leur arrivee, le meme titre dit que la fiche
+// ne s est pas redessinee (son ouverture et le champ touche restent).
+async function unDossier(page, nom, avantLesOffres = false) {
   const cree = await serveur.appeler('POST', '/api/staff-reservations', { centerId: CENTRE, date: JOUR, startTime: '16:00', duration: 1, totalDuration: 1, lanes: [], pax: JOUEURS, status: 'confirmed', type: 'visite', name: nom, phone: TEL, program: [{ activityId: 'bowling', pax: JOUEURS, participants: JOUEURS, duration: 1 }], preference: { activityOrder: ['bowling'], preferredTimes: { bowling: '16:00' } } });
   const id = Number(cree.json.reservation && cree.json.reservation.id);
   if (!id) return { id: 0, statut: cree.statut, message: cree.json.message };
   await page.evaluate((r) => { window.__FIXTURE__.jours[window.__FIXTURE__.jour].push(r); upsertReservationInState(r); renderStaff(); }, cree.json.reservation);
   await page.evaluate(() => { serveurSaitModifierABlanc = true; }); // eslint-disable-line no-undef
-  await page.evaluate((i) => { closePos(); openPos(i); setTab('modifier'); }, id);
+  const ouverture = await page.evaluate(({ i, avant }) => {
+    if (avant) { catalogueSurMesureConsole = { centre: '', categories: [], articles: null }; formulesGardeesLuesPourModifier = ''; } // eslint-disable-line no-undef
+    closePos(); openPos(i); setTab('modifier');
+    const titre = document.getElementById('fmProgrammeTitre');
+    if (titre) titre.dataset.porteOuverture = '1';
+    return { entreeDOffice: Boolean(document.getElementById('editAcces')) };
+  }, { i: id, avant: avantLesOffres });
   await page.waitForSelector('#editAcces', { timeout: 8000 }).catch(() => {});
-  return { id };
+  return { id, ...ouverture };
 }
 const lireChoix = (page) => page.evaluate(() => {
   const z = document.getElementById('editAcces');
@@ -398,11 +411,16 @@ async function scenarioM(browser) {
   const m = await ouvrir(browser, { role: 'manager' });
   try {
     const { page, journal } = m;
-    const { id, statut, message } = await unDossier(page, 'Groupe Modifier');
+    const { id, statut, message, entreeDOffice } = await unDossier(page, 'Groupe Modifier', true);
     ok(Boolean(id), '[M] le dossier de depart (une visite bowling) est cree', { statut, message });
     if (!id) return;
     const avant = await lireChoix(page);
     ok(avant.segments.join() === 'À la carte=true,Accès illimité=false' && avant.dit === 'Ce centre n’a pas encore d’accès illimité.', '[M] Modifier sans offre : « À la carte | Accès illimité », et la phrase dit qu il n y en a pas', avant);
+    const place = await page.evaluate(() => {
+      const titre = document.getElementById('fmProgrammeTitre');
+      return { memeFiche: Boolean(titre && titre.dataset.porteOuverture === '1'), sous: titre && titre.nextElementSibling ? titre.nextElementSibling.id : '' };
+    });
+    ok(entreeDOffice === false && place.memeFiche && place.sous === 'editAcces', '[M] les offres lues apres l ouverture : l entree se pose sous « Programme », sans redessiner la fiche', { entreeDOffice, ...place });
     if (!(await page.locator('#editAccesCreer').count())) return;
     await page.locator('#editAccesCreer').click();
     await page.waitForSelector('#edIlN', { timeout: 8000 }).catch(() => {});

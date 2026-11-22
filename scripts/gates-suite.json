@@ -450,6 +450,7 @@
     "test:retard-verrou",
     "test:retard-visible",
     "test:retard-deux-copies",
+    "test:retard-minute",
     "test:comptoir-dotation",
     "test:attente-verrou",
     "test:confirmation-en-file",

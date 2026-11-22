@@ -1642,7 +1642,10 @@ function laConsole() {
     'renderCardActivityTag', 'getPlanningCardOfferLabel', 'getPlanningCardLabel', 'planningLabelWidthUnits',
     // peutAdapterLeProgramme (2026-11-07) : la vraie regle, qui lit le stub
     // peutAdapterFormule ci-dessous (le comptoir, pas un manager).
-    'renderActivitesCourtes', 'formuleAcheteeDuDossier', 'peutAdapterLeProgramme', 'renderEditFormuleBloc'].forEach((nom) => {
+    'renderActivitesCourtes', 'formuleAcheteeDuDossier', 'peutAdapterLeProgramme',
+    // (renderEditFormuleBloc lit les activites en plus de la formule, 2026-11-22 : enPlusEdition, qui part du
+    // dossier par enPlusDuDossierEdition ; sans fiche en cours d edition, elle n en a aucune)
+    'enPlusDuDossierEdition', 'enPlusEdition', 'renderEditFormuleBloc'].forEach((nom) => {
     const debut = app.indexOf(`\nfunction ${nom}(`);
     const fin = debut < 0 ? -1 : app.indexOf('\n}\n', debut + 1);
     if (fin < 0) { manquantes.push(nom); return; }

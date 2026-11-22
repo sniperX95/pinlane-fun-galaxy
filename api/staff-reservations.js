@@ -682,8 +682,11 @@ function heuresDesEssais({ current, essais, autres, auPlusTot, essayer }) {
 // demande ici ce que donnerait chaque nouvelle heure : le meme controle que le verdict de
 // « Modifier » (deplacerABlanc), sur la journee relue, fermetures et blocages compris. Rien ne
 // s ecrit. La reponse dit, activite par activite, si elle passe, sinon pourquoi.
+// LA FENETRE COMPLETE (2026-11-22) : les heures posees a la main (`heures`) s y jugent avec les
+// autres ; chaque activite dit ses places a sa nouvelle heure (pistes, armes : placesDuDeplacement),
+// et une heure qui ne passe pas, les heures libres les plus proches (heuresLibresDuRetard).
 async function simulerRetard(req, res, corps) {
-  const { lireRetard, etapesDuRetard, jugerDeplacements, maintenantDuJour, sansLesGroupesQuiJouent } = require('../lib/retard-arrivee');
+  const { lireRetard, etapesDuRetard, jugerDeplacements, jugeDuRetard, heuresLibresDuRetard, maintenantDuJour } = require('../lib/retard-arrivee');
   if (!corps.id) throw createHttpError('Reservation manquante.', 400);
   const current = await getReservationById(corps.id);
   if (!current) throw createHttpError('Reservation introuvable.', 404);
@@ -693,25 +696,26 @@ async function simulerRetard(req, res, corps) {
   try {
     const lu = lireRetard(corps);
     if (!corps.baseUpdatedAt || !memeVersion(current.updatedAt, lireVersionAttendue(corps.baseUpdatedAt))) throw reservationModifieeEntreTemps(current);
-    const { buildActivityMove } = require('../lib/reservation-activity-move');
-    const { validateActivityMoveResources } = require('../lib/database');
+    const { validateActivityMoveResources, placesDuDeplacement } = require('../lib/database');
     const snapshot = await readStaffState(current.date, centre, { avecBlocages: true, avecFermetures: true });
     const autres = snapshot.reservations.filter(row => Number(row.id) !== Number(current.id));
     // (une activite commencee est gelee, la sienne comme celle d un groupe qui joue)
     const maintenant = maintenantDuJour(current.date);
-    const essayer = (base, move) => {
-      const essai = buildActivityMove(base, move);
-      sansLesGroupesQuiJouent(current, move, autres, maintenant, () => {
-        try { validateActivityMoveResources(essai, move, autres, snapshot.laneStatuses, snapshot.blocks || [], current.date); }
-        catch (error) { if (!error.statusCode) error.statusCode = 409; throw error; }
-      });
-      return essai;
-    };
+    const essayer = jugeDuRetard({ current, autres, maintenant, valider: (essai, move) => {
+      try { return validateActivityMoveResources(essai, move, autres, snapshot.laneStatuses, snapshot.blocks || [], current.date); }
+      catch (error) { if (!error.statusCode) error.statusCode = 409; throw error; }
+    } });
     const etapes = etapesDuRetard(current, { ...lu, maintenant });
-    const jugement = jugerDeplacements(current, etapes.map((etape) => etape.move), essayer);
+    const jugement = jugerDeplacements(current, etapes.map((etape) => etape.move), essayer, {
+      refusees: etapes.map((etape) => etape.refus || ''),
+      proposer: (dossier, move, i) => heuresLibresDuRetard(dossier, move, { auPlusTot: etapes[i].auPlusTot, essayer }),
+    });
+    const places = (move) => {
+      try { return placesDuDeplacement(current, move, autres, snapshot.laneStatuses, snapshot.blocks || [], current.date); } catch (error) { return null; }
+    };
     return {
       ok: true, dryRun: true, retard: true, toutPasse: jugement.toutPasse,
-      etapes: etapes.map(({ move, ...etape }, i) => ({ ...etape, ...jugement.etapes[i] })),
+      etapes: etapes.map(({ move, refus, ...etape }, i) => ({ ...etape, ...jugement.etapes[i], places: places(move) })),
     };
   } catch (error) {
     if (!error || !error.statusCode || error.statusCode >= 500 || estErreurInfra(error)) throw error;
@@ -749,7 +753,9 @@ async function patcherRetard(req, res, body, current, requestedCenterId) {
   if (lu.cles.length && dateValide(current.date) && current.date < aujourdhuiABruxelles() && !sessionHasPermission(session, 'planning.past')) throw createHttpError('Changer un jour passé ne fait pas partie de votre rôle.', 403);
   await warmCenterKnowledge();
   const { ecrireRetard } = require('../lib/database');
-  const reservation = await ecrireRetard({ id: current.id, baseUpdatedAt: body.baseUpdatedAt, status: statut, paymentMethod: moyen, minutes: lu.minutes, de: lu.de, faites: lu.faites, choix: lu.choix, cles: lu.cles, dejaNote: lu.dejaNote, modifiePar: nomDeSession(session) });
+  // (les heures posees a la main, et celles que la fenetre a montrees : l ecriture les rejuge, puis
+  // n ecrit que si elle retombe sur elles)
+  const reservation = await ecrireRetard({ id: current.id, baseUpdatedAt: body.baseUpdatedAt, status: statut, paymentMethod: moyen, minutes: lu.minutes, de: lu.de, faites: lu.faites, choix: lu.choix, cles: lu.cles, heures: lu.heures, attendues: lu.attendues, dejaNote: lu.dejaNote, modifiePar: nomDeSession(session) });
   const automation = await refreshReservationAutomation(current, reservation, { reason: statut ? 'reservation_status_updated' : 'activity_moved' });
   const audit = await writeAuditLog({ centerId: centre, ...actorFromSession(session), surface: 'api/staff-reservations.js', action: 'noterRetard', method: 'PATCH', entityType: 'reservation', entityId: current.id, outcome: 'success', changes: buildReservationAuditChanges(current, reservation), context: contexteRegistre(current, reservation, { retard: { minutes: lu.minutes, de: lu.de, statut, choix: lu.choix, decalees: lu.cles.length, ...(lu.dejaNote ? { dejaNote: true } : {}) } }), requestId: newRequestId() });
   const secours = lu.cles.length ? await copierAuSecours(reservation, 'modifiee', current, session) : '';

@@ -42,7 +42,8 @@
 //       aucun chevauchement ; des arcades en credits passent « libre », sans heure ;
 //   [P] « PAYÉ » EN RETARD (Clara, bowling a 15:00, la piste 6 prise a 16:30) : paye tout de
 //       suite, le retard note avec ; la fenetre ensuite : son bowling manque (15:00, avant son
-//       arrivee a 15:20) n est pas « commence », il se propose a 15:30 et ne passe pas ;
+//       arrivee a 15:20) n est pas « commence », il se propose a 15:20 (a la minute, le 22/11 :
+//       scripts/retard-minute-check.js) et ne passe pas ;
 //       « Garder les heures » seul, il ferme sans rien ecrire ; le bowling garde son heure, la
 //       marque reste ;
 //   [E] UN GROUPE A L HEURE (Sacha) : « Arrivé » n ouvre aucune fenetre, aucun rouge apres ;
@@ -303,7 +304,8 @@ const LIRE = `
     const r = f.getBoundingClientRect();
     return {
       titre: f.querySelector('.rt-titre').textContent, sous: f.querySelector('.rt-sous').textContent, etat: f.querySelector('.rt-etat').textContent,
-      etapes: [...f.querySelectorAll('.rt-etape')].map((li) => ({ cle: li.getAttribute('data-rt-cle'), nom: li.querySelector('.rt-etape__nom').textContent, heures: li.querySelector('.rt-etape__heures').textContent.replace(/\\s+/g, ' ').trim(), mot: li.querySelector('.rt-etape__mot').textContent, raison: (li.querySelector('.rt-etape__raison') || {}).textContent || '' })),
+      // (la nouvelle heure est un champ depuis le 22/11 : sa valeur se lit a sa place)
+      etapes: [...f.querySelectorAll('.rt-etape')].map((li) => ({ cle: li.getAttribute('data-rt-cle'), nom: li.querySelector('.rt-etape__nom').textContent, heures: [...li.querySelector('.rt-etape__heures').childNodes].map((n) => (n.nodeName === 'INPUT' ? n.value : n.textContent)).join('').replace(/\\s+/g, ' ').trim(), mot: li.querySelector('.rt-etape__mot').textContent, raison: (li.querySelector('.rt-etape__raison') || {}).textContent || '' })),
       boutons: [...f.querySelectorAll('.rt-pied button')].map((b) => { const q = b.getBoundingClientRect(); return { t: b.textContent, choix: b.getAttribute('data-rt-choix'), plein: b.classList.contains('est-plein'), fond: getComputedStyle(b).backgroundColor, bleu, haut: Math.round(q.height), large: Math.round(q.width) }; }),
       titreCouleur: getComputedStyle(f.querySelector('.rt-titre')).color, titreAA: __rv.contraste(f.querySelector('.rt-titre')),
       cadre: { g: Math.round(r.left), d: Math.round(r.right), h: Math.round(r.top), b: Math.round(r.bottom), large: Math.round(r.width) }, vue: { l: window.innerWidth, h: window.innerHeight },
@@ -530,8 +532,8 @@ async function scenarioToutEtPaye(browser) {
     const payee = enBase(CLARA);
     ok(paye.length === 1 && paye[0].status === 'paid' && paye[0].paymentMethod === 'Carte Bancaire' && !paye[0].retard && payee.statut === 'paid' && payee.retard && payee.retard.minutes === 20 && payee.heures.bowling === '15:00',
       '[P] « Payé » s ecrit tout de suite, en un geste, son retard de 20 min note avec', { paye, payee });
-    ok(g && g.titre === 'Arrivé avec 20 min de retard' && g.etapes.length === 1 && g.etapes[0].mot === 'Ne passe pas' && /15:00 → 15:30/.test(g.etapes[0].heures) && g.etapes[0].raison.length > 20 && g.boutons.map((b) => b.choix).join() === 'garder' && g.boutons[0].plein,
-      '[P] la fenetre s ouvre ensuite ; le bowling manque se propose a 15:30 et ne passe pas, sa raison ; « Garder les heures » seul', g);
+    ok(g && g.titre === 'Arrivé avec 20 min de retard' && g.etapes.length === 1 && g.etapes[0].mot === 'Ne passe pas' && /15:00 → 15:20/.test(g.etapes[0].heures) && g.etapes[0].raison.length > 20 && g.boutons.map((b) => b.choix).join() === 'garder' && g.boutons[0].plein,
+      '[P] la fenetre s ouvre ensuite ; le bowling manque se propose a 15:20, a la minute, et ne passe pas, sa raison ; « Garder les heures » seul', g);
     await page.locator('#retardFenetre [data-rt-choix="garder"]').click();
     await attendreFermee(page);
     await FX.repos(page, 300);
@@ -674,8 +676,8 @@ async function scenarioGel() {
     const departB = JSON.stringify(enBase(CLARA));
     const sim = await serveur.appeler('POST', '/api/staff-reservations', { dryRun: true, centerId: 'libramont', retard: { id: CLARA, baseUpdatedAt: clara.updatedAt, minutes: 40, de: '14:30' } });
     const bowling = ((sim.json && sim.json.etapes) || []).find((e) => e.cle === 'bowling');
-    ok(bowling && bowling.apres === '15:30' && bowling.passe === false && bowling.raison === 'Bowling 15:30 : la piste 1 est prise par un groupe qui joue.' && pistesDuPlan(LOUISE) === departA,
-      '[G] la fenetre : « Bowling 15:30 : la piste 1 est prise par un groupe qui joue. », rien ne bouge', sim.json);
+    ok(bowling && bowling.apres === '15:10' && bowling.passe === false && bowling.raison === 'Bowling 15:10 : la piste 1 est prise par un groupe qui joue.' && pistesDuPlan(LOUISE) === departA,
+      '[G] la fenetre : « Bowling 15:10 : la piste 1 est prise par un groupe qui joue. », rien ne bouge', sim.json);
     const tout = await serveur.appeler('PATCH', '/api/staff-reservations', { id: CLARA, centerId: 'libramont', baseUpdatedAt: clara.updatedAt, status: 'arrived', retard: { minutes: 40, de: '14:30', choix: 'tout', cles: ['bowling'] } });
     ok(tout.statut === 409 && pistesDuPlan(LOUISE) === departA && JSON.stringify(enBase(CLARA)) === departB,
       '[G] « Tout décaler » refuse : la piste 1 du groupe qui joue ne bouge pas, ni sa piste ni son heure, rien ne s ecrit', { statut: tout.statut, json: tout.json, a: pistesDuPlan(LOUISE) });
@@ -866,8 +868,8 @@ const MUTATIONS = [
   { nom: 'bulle-ancien-plan', lettre: 'H', scenarios: ['bulle'], editions: [{ fichier: PG, de: 'ouvrirRetardFiche(Number(id), Math.min(240, deja + Number(n)), ev);', vers: 'openDelayImpact(Number(id), Math.min(240, deja + Number(n)), ev);' }] },
   { nom: 'groupe-qui-joue-pousse', lettre: 'G', scenarios: ['gel'], editions: [
     { fichier: LIB, serveur: true, de: '  if (enJeu && enJeu.exclusif) throw refus(enJeu.phrase, 409);', vers: '' },
-    { fichier: 'api/staff-reservations.js', serveur: true, de: '        try { validateActivityMoveResources(essai, move, autres, snapshot.laneStatuses, snapshot.blocks || [], current.date); }', vers: "        try { validateActivityMoveResources(essai, move, autres.filter((o) => !['arrived', 'paid'].includes(o.status)), snapshot.laneStatuses, snapshot.blocks || [], current.date); }" },
-    { fichier: BASE, serveur: true, de: '          try { validateActivityMoveResources(essai, move, reservations, laneStatuses, blocks, current.date); }', vers: "          try { validateActivityMoveResources(essai, move, reservations.filter((o) => !['arrived', 'paid'].includes(o.status)), laneStatuses, blocks, current.date); }" },
+    { fichier: 'api/staff-reservations.js', serveur: true, de: '      try { return validateActivityMoveResources(essai, move, autres, snapshot.laneStatuses, snapshot.blocks || [], current.date); }', vers: "      try { return validateActivityMoveResources(essai, move, autres.filter((o) => !['arrived', 'paid'].includes(o.status)), snapshot.laneStatuses, snapshot.blocks || [], current.date); }" },
+    { fichier: BASE, serveur: true, de: '        try { return validateActivityMoveResources(essai, move, reservations, laneStatuses, blocks, current.date); }', vers: "        try { return validateActivityMoveResources(essai, move, reservations.filter((o) => !['arrived', 'paid'].includes(o.status)), laneStatuses, blocks, current.date); }" },
   ] },
 ];
 

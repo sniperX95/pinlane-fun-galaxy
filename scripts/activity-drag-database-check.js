@@ -52,7 +52,7 @@ async function main() {
   equal(Number.isInteger(heldLane)&&heldLane>0,true,'real public hold keeps a lane');
   await denied({activityId:'bowling',startTime:'17:30',lanes:heldLane%2?[heldLane,heldLane+1]:[heldLane-1,heldLane]},/piste|créneau|libre/i);
   bench.semer([fixture(),bench.reservationLigne(779,'18:00',[],{type:'laser',pax:29,duration:0.5})]);
-  await denied({activityId:'laser_game',unitKey:'1.1',startTime:'18:00'},/Laser Game complet/);
+  await denied({activityId:'laser_game',unitKey:'1.1',startTime:'18:00'},/Plus assez d’armes pour le laser à 18:00 : il en reste 1 sur 30, il en faut \d+\./);
   bench.semer([fixture()]);
   availability=[{id:10,center_id:'libramont',scope_type:'lane',scope_ref:'3',recurrence:'once',date:bench.JOUR,start_time:'17:00',end_time:'19:00'}];
   await denied({activityId:'bowling',startTime:'17:30',lanes:[3,4]},/piste|créneau|indisponible|bloqu/i);availability=[];
@@ -70,7 +70,7 @@ async function main() {
   equal(repl.opsPlan.resourceBlocks.filter(b=>b.resourceType==='laser_arena').map(b=>b.countIndex),[2],'pending second game requeues without inventing first');
   bench.base.reservations.set(779,bench.reservationLigne(779,'19:00',[],{type:'laser',pax:29,duration:0.5}));
   const manualCount=writes;const other=await db.getReservationById(779);
-  await assert.rejects(db.updateReservation({id:779,centerId:'libramont',baseUpdatedAt:new Date(other.updatedAt).toISOString(),activityMove:{activityId:'laser_game',unitKey:'1.1',startTime:'18:00'}}),/Laser Game complet/);checks++;equal(writes,manualCount,'persisted manual laser blocks next other reservation');
+  await assert.rejects(db.updateReservation({id:779,centerId:'libramont',baseUpdatedAt:new Date(other.updatedAt).toISOString(),activityMove:{activityId:'laser_game',unitKey:'1.1',startTime:'18:00'}}),/Plus assez d’armes pour le laser à 18:00 : il en reste \d+ sur 30, il en faut 29\./);checks++;equal(writes,manualCount,'persisted manual laser blocks next other reservation');
   const services=fixture();services.pax=18;services.lanes=[1,2,3];services.program.items[0].participants=18;services.program.items[1].participants=18;
   const s1={...bowling,players:12,groupWaveCount:2,groupWaveIndex:1};const s2={...bowling,players:6,requiredLanes:1,lanes:[3],groupWaveCount:2,groupWaveIndex:2,start:960,end:1020,startTime:'16:00',endTime:'17:00'};const otherLaser=laser(1110,1,18);
   services.ops_plan.resourceBlocks=[s1,s2,otherLaser];services.ops_plan.timeline=[s1,s2,otherLaser];services.ops_plan.assignedLanes=[1,2,3];bench.semer([services]);

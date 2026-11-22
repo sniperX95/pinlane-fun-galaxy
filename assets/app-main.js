@@ -13317,7 +13317,7 @@ function getVisiteLibreApres(reservation, windows) {
     // « Venir plus tot » : ce que le plan pose avant la premiere activite n allonge pas la fin. Une heure
     // posee au comptoir non plus : l activite compte a son heure (getStaffTerrainSpan, getEtapeAvant).
     && !(item.avant === true && posees.some(step => step && step.activityId === item.activityId && step.flexible === false && step.startTime))
-    && !getEtapeAvant(reservation, item));
+    && !posees.some(step => step && step.activityId === item.activityId && step.flexible === false && step.heurePosee === true && step.startTime && step.endTime));
   const durees = libres.map(item => Math.max(0, Math.round(Number(item.minutes) || 0))).filter(duree => duree > 0);
   const minutes = durees.reduce((total, duree) => total + duree, 0);
   if (!minutes) return 0;
@@ -29080,7 +29080,8 @@ function getGroupeProgramme(r) {
       quoi: `${Number(f.joueursReels ?? f.players) || effectifActivite('laser_game')} joueurs · ${parties > 1 ? `partie ${partie}/${parties}` : '1 partie'}`,
       // (des armes gardees a chaque depart d un acces illimite, lib/a-volonte.js)
       ...(f.aVolonte ? { quoi: `${Number(f.players) || effectifActivite('laser_game')} armes à chaque départ · à volonté` } : {}),
-      ou: f.aVolonte && f.departs > 1 ? `${f.departs} départs` : '',
+      // (la partie commune avec un autre groupe : « avec Boucquiaux », partenairesLaser)
+      ou: f.aVolonte && f.departs > 1 ? `${f.departs} départs` : f.aVolonte ? '' : partenairesEnMots(partenairesLaser(r, f)),
       groupe: vagues > 1 ? `groupe ${Number(f.groupWaveIndex) || 1}/${vagues}` : '',
       start: f.start,
       end: f.end,
@@ -33858,7 +33859,7 @@ function renderEditFormuleBloc(r, formule, lignes, controls = {}) {
       if (Number(programme.laser_game.games) > 1) options += renderDossierJoueursDesParties(programme.laser_game, state.editState.pax);
       // LES VAGUES DU LASER, EN UNE LIGNE (2026-11-20) : elles suivent le groupe en place
       // (peindreVaguesLaserEdition), sans carte ni bouton.
-      options += `<p class="fm-act-vagues" data-laser-vagues>${escapeHtml(vaguesLaserEnMots(joueursLaserEdition(state.editState, r)))}</p>`;
+      options += `<p class="fm-act-vagues" data-laser-vagues>${escapeHtml(vaguesLaserEditionEnMots(state.editState, r))}</p>`;
     }
     const item = !estBowling && !estLaser && choice.id !== 'arcade_time' ? getEditProgramItems().find(line => line.activityId === choice.id) : null;
     // Readonly presentation retains stored units/day metadata that is not edited here.
@@ -34727,6 +34728,7 @@ function lireVerdictEdition(reponse, envoi) {
   }
   const aPlacer = partiesLaserAPlacer(ecrit) - partiesLaserAPlacer(r);
   if (aPlacer > 0) lignes.push(`${aPlacer} partie${aPlacer > 1 ? 's' : ''} de laser à placer au planning.`);
+  lignes.push(...phrasesPartageLaser(ecrit, r));
   if (r.formuleId && !ecrit.formuleId) lignes.push('La formule devient une visite à la carte.');
   // UN DOSSIER DEJA ENCAISSE DONT LE PRIX CHANGE : la caisse doit le savoir.
   const prix = Number(ecrit.price);
@@ -34842,10 +34844,49 @@ function eclairerPastillesEdition() {
 // Les vagues du laser, en place : le groupe tape ne redessine pas la fiche.
 function peindreVaguesLaserEdition() {
   const ligne = document.querySelector('#posOverlay .fm [data-laser-vagues]');
-  const joueurs = ligne ? joueursLaserEdition(state.editState, state.selectedRes) : null;
-  if (joueurs === null) return;
-  const texte = vaguesLaserEnMots(joueurs);
+  const texte = ligne ? vaguesLaserEditionEnMots(state.editState, state.selectedRes) : '';
+  if (!texte) return;
   if (ligne.textContent !== texte) ligne.textContent = texte;
+}
+
+// LA PARTIE COMMUNE SE LIT (2026-11-22, Libramont, dossier « Radelet » : un groupe « Auto, partagée si
+// besoin » rejoint la partie d un autre groupe, lib/database.js rejoindreLesParties). Les autres groupes
+// du jour dont la partie a le meme depart et la meme fin : la fiche les nomme (« avec Boucquiaux »), et
+// la vague de Modifier compte leurs armes avec celles du groupe (« 1 vague de 11 armes »).
+function partenairesLaser(r, fenetre) {
+  if (!r || !fenetre || typeof state === 'undefined' || !Array.isArray(state.reservations)) return [];
+  const meme = (a, b) => Math.abs(Number(a) - Number(b)) < 1 / 120;
+  return state.reservations
+    .filter(autre => autre && Number(autre.id) !== Number(r.id) && autre.date === r.date && autre.status !== 'cancelled' && !autre.absentAt)
+    .flatMap(autre => getStaffResourceWindows(autre, 'all')
+      .filter(f => f.resourceType === 'laser_arena' && meme(f.start, fenetre.start) && meme(f.end, fenetre.end))
+      .map(f => ({ nom: String(autre.name || '').trim() || 'un autre groupe', joueurs: Number(f.joueursReels ?? f.players) || Number(autre.pax) || 0 })));
+}
+
+function partenairesEnMots(partenaires) {
+  const noms = [...new Set(partenaires.map(p => p.nom))];
+  return noms.length ? `avec ${enEnumeration(noms)}` : '';
+}
+
+// « 1 vague de 7 armes », ou, la partie partagee, « 1 vague de 11 armes, avec Boucquiaux ».
+function vaguesLaserEditionEnMots(e, r) {
+  const joueurs = joueursLaserEdition(e, r);
+  if (joueurs === null) return '';
+  const premiere = r ? getStaffResourceWindows(r, 'all').filter(f => f.resourceType === 'laser_arena' && !f.aVolonte).sort((a, b) => a.start - b.start)[0] : null;
+  const partenaires = premiere && Math.max(1, Number(premiere.groupWaveCount) || 1) === 1 ? partenairesLaser(r, premiere) : [];
+  if (!partenaires.length) return vaguesLaserEnMots(joueurs);
+  return `${vaguesLaserEnMots(joueurs + partenaires.reduce((total, p) => total + p.joueurs, 0))}, ${partenairesEnMots(partenaires)}`;
+}
+
+// « Joue avec Boucquiaux à 17:30. » : une partie que le serveur vient de caler sur celle d un autre groupe
+// (partageAvec), et que le dossier a l ecran n avait pas encore.
+function phrasesPartageLaser(ecrit, r) {
+  const blocs = (dossier) => (dossier && dossier.opsPlan && Array.isArray(dossier.opsPlan.resourceBlocks) ? dossier.opsPlan.resourceBlocks : [])
+    .filter(b => b && b.resourceType === 'laser_arena' && b.partageAvec && b.partageAvec.heure && b.partageAvec.heure === String(b.startTime || '').slice(0, 5));
+  const deja = new Set(blocs(r).map(b => `${b.partageAvec.heure}|${String(b.startTime || '').slice(0, 5)}`));
+  return [...new Set(blocs(ecrit)
+    .filter(b => !deja.has(`${b.partageAvec.heure}|${String(b.startTime || '').slice(0, 5)}`))
+    .map(b => `Joue avec ${enEnumeration((b.partageAvec.noms || []).length ? b.partageAvec.noms : ['un autre groupe'])} à ${b.partageAvec.heure}.`))];
 }
 
 function eclatPastille(bouton, arrive) {
@@ -35465,6 +35506,8 @@ function lireVerdictDeplacement(reponse, envoi) {
         if (!lignes.includes(phrase)) lignes.push(phrase);
       });
   });
+  // (une partie calee sur celle d un autre groupe : « Joue avec Boucquiaux à 17:30. »)
+  lignes.push(...phrasesPartageLaser(ecrit, state.selectedRes));
   return { refus: '', lignes, ecrit, prixSuivi: false, silencieux: true };
 }
 
@@ -35775,7 +35818,7 @@ function renderPosEdit(r) {
             </div>
             <div class="fm-champ fm-arrivee">
               <label class="lbl" for="editStartInput">Arrivée</label>
-              <input id="editStartInput" class="input" type="time" value="${e.startTime}" oninput="setEditField('startTime', this.value, true)" required>
+              <input id="editStartInput" class="input" type="time" value="${e.startTime}" oninput="setEditField('startTime', this.value, true)" onkeydown="gardeArriveeEdition(event)" onwheel="if (document.activeElement === this) this.blur()" required>
             </div>
 ${!adapte || (!isLaserRes && !editNeedsLanes && String(rf.type || '') !== 'formule') ? durationControl : ''}
             <div class="fm-champ fm-joueurs">
@@ -35954,6 +35997,28 @@ function failEdit(message) {
 // (envoyerModificationReservation). saveEdit et le compte a l arrivee
 // (preparerCompte) partent d ici : un seul calcul, un seul chemin serveur.
 // Un controle qui echoue rend { erreur }.
+// UNE ARRIVEE DEJA PASSEE SE DIT D ABORD (2026-11-22, Libramont a 11:55 : la barre disait « Arrivée
+// 14:30 → 10:30 » et le bandeau ne parlait que du laser). Changee aujourd hui pour une heure deja
+// passee, l arrivee se refuse avec cette phrase, avant le calcul du planning. '' sinon.
+function arriveeDejaPasseeEdition(es, origine) {
+  const voulue = String((es && es.startTime) || '').slice(0, 5);
+  if (!/^\d{2}:\d{2}$/.test(voulue) || voulue === String((origine && origine.startTime) || '').slice(0, 5)) return '';
+  const jour = (es && es.date) || (state.selectedRes && state.selectedRes.date);
+  if (jour !== todayStr() || typeof currentTimeDecimal !== 'function') return '';
+  const maintenant = Math.ceil(currentTimeDecimal() * 60);
+  return minutesHeureEdition(voulue) < maintenant ? `${voulue} est déjà passé : il est ${formatClockDisplay(maintenant / 60)}.` : '';
+}
+
+// L ARRIVEE NE BOUGE PAS AUX FLECHES (2026-11-22, la meme fiche : personne n avait change l arrivee). Le
+// champ prend le focus quand on touche l heure en tete de fiche (modifierDepuisFiche) ; une fleche pour
+// descendre dans la fiche reculait alors l heure d arrivee d une heure, et tout le dossier avec elle :
+// quatre fleches, 14:30 devenait 10:30. L arrivee se tape ; les fleches et les pages font defiler la fiche.
+function gardeArriveeEdition(event) {
+  if (!['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown'].includes(event.key)) return;
+  event.preventDefault();
+  event.currentTarget.blur();
+}
+
 function preparerModificationEdition(options = {}) {
   const es = state.editState;
   // DEUX POSTES, UNE RESERVATION : ce que la personne a CHANGE se mesure contre
@@ -35984,6 +36049,9 @@ function preparerModificationEdition(options = {}) {
   const jourChange = Boolean(es.date) && es.date !== state.selectedRes.date;
   const jourLong = jourChange ? jourLongEdition(es.date) : '';
   if (jourChange && es.date < todayStr()) return { erreur: 'Choisissez aujourd’hui ou un jour à venir pour déplacer ce dossier.' };
+  // (une arrivee changee pour une heure deja passee se dit d abord, avant tout autre calcul)
+  const arriveePassee = arriveeDejaPasseeEdition(es, origine);
+  if (arriveePassee) return { erreur: arriveePassee };
   const slotCheck = validateSlotWindow(jourChange ? es.date : state.selectedRes.date, es.startTime, duration, { allowPastStart: true });
   if (!slotCheck.ok) return { erreur: slotCheck.message };
   // Un autre jour part avec les pistes du dossier, inchangees : le serveur les

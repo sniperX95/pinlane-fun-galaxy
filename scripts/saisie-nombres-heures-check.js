@@ -54,13 +54,26 @@
 //        pistes 1 et 2, prises a 17:00 ; reposé a 16:10, il prend deux autres pistes libres, cote a cote ;
 //   [S3] le client et l assistant gardent la grille : un bowling public a 15:15 et un glisser sans la
 //        minute de l equipe se refusent ;
+//   [R1] OUVRIR MODIFIER NE CHANGE AUCUNE HEURE (Libramont, 22/11 a 11:55, dossier 2053 « Radelet » :
+//        « À enregistrer : Arrivée 14:30 → 10:30 » sans geste) : l onglet ouvert, puis l heure de l en-tete
+//        touchee (le champ Arrivee prend le focus), la barre « À enregistrer » reste vide ;
+//   [R2] quatre fleches vers le bas pour descendre dans la fiche ne reculent plus l arrivee de quatre
+//        heures (la cause du 10:30) ;
+//   [R3] une arrivee deja passee se dit d abord : « 10:30 est déjà passé : il est 15:10. » ;
+//   [L1] LA PARTIE SE PARTAGE QUAND LES ARMES SUFFISENT : le laser du groupe (7) passe a 17:25, la partie
+//        de Boucquiaux (4) part a 17:30 ; le verdict dit « Joue avec Boucquiaux à 17:30. », « Enregistrer »
+//        ecrit 17:30 ; la fiche dit « avec Boucquiaux », la vague « 1 vague de 11 armes » ;
+//   [L2] les armes manquent (25 joueurs a 18:30) : le refus le dit en clair, il en reste 5, la prochaine
+//        partie libre ;
+//   [L3] l autre groupe a choisi « Pour vous seuls » (19:30) : le refus le dit, avec la prochaine partie
+//        libre ; jamais « 2/1 lancement » ni « joueurs/30 » ;
 //   [*]  zero erreur JavaScript.
 // La console reelle (journee « pic » de scripts/planning-v3-fixtures.js, samedi 16 janvier 2027 a
 // 15:10), ses POST au VRAI handler api/staff-reservations.js sur la base en memoire de
 // scripts/reserver-banc.js (scripts/comptoir-banc.js) : aucune base reelle, aucun reseau.
 //
 // CONTRE-PREUVES : `--contre-preuves` sert le code casse expres, une mutation a la fois (en memoire,
-// le disque n est jamais touche) et exige que chacune rougisse sa cible. `--seul=A,C,M,B,S,P` ne joue que
+// le disque n est jamais touche) et exige que chacune rougisse sa cible. `--seul=A,C,M,B,S,P,R,L` ne joue que
 // ces lettres ; `--ancres` verifie seulement que chaque ancre existe une fois.
 // SAISIE_CAPTURES=<dossier> : les images (theme clair).
 'use strict';
@@ -111,6 +124,12 @@ const MUTATIONS = [
   { nom: 'fin-sans-l-heure-posee', lettre: 'B', cible: '[F1] l en-tete de la fiche finit a 19:25, la fin du minigolf pose a 18:40', fichier: APP, de: '(step.avant === true || step.heurePosee === true) && step.flexible !== true', vers: 'step.avant === true && step.flexible !== true' },
   { nom: 'colonne-reste-defilee', lettre: 'B', cible: '[B8] 18:40 prise au minigolf : la colonne reprend sa position d avant le panneau', fichier: APP, de: 'function rsRemettreLaColonne(b) {\n', vers: 'function rsRemettreLaColonne(b) {\n  return;\n' },
   { nom: 'plus-que-l-activite', lettre: 'C', cible: '[C1] 15 au minigolf qui accueille 12 joueurs : la raison sous le compteur, rien ne bouge', fichier: APP, de: '  if (n > bornes.max) return `${nom} : ${rvPluriel(bornes.max, unite)} au plus.`;', vers: '  if (n > bornes.max * 9) return `${nom} : ${rvPluriel(bornes.max, unite)} au plus.`;' },
+  { nom: 'ouverture-change-l-heure', lettre: 'R', cible: '[R1] Modifier ouvert, puis l heure de l en-tete touchee : la barre « À enregistrer » reste vide', fichier: APP, de: '  const etat = { ...reservation };\n  etat.lanesStr = (reservation.lanes || []).join(\', \');', vers: '  const etat = { ...reservation, startTime: \'10:30\' };\n  etat.lanesStr = (reservation.lanes || []).join(\', \');' },
+  { nom: 'arrivee-aux-fleches', lettre: 'R', cible: '[R2] quatre fleches vers le bas ne reculent pas l arrivee', fichier: APP, de: "  if (!['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown'].includes(event.key)) return;\n", vers: '  return;\n' },
+  { nom: 'arrivee-passee-muette', lettre: 'R', cible: '[R3] 10:30 deja passee : le verdict le dit d abord', fichier: APP, de: '  if (arriveePassee) return { erreur: arriveePassee };\n', vers: '' },
+  { nom: 'partie-jamais-partagee', lettre: 'L', cible: '[L1] 17:25 se cale sur la partie de Boucquiaux : « Joue avec Boucquiaux à 17:30. »', fichier: BASE, serveur: true, de: '  if (!equipe || !plan || !Array.isArray(plan.resourceBlocks)) return null;', vers: '  return null;' },
+  { nom: 'armes-en-chiffres', lettre: 'L', cible: '[L2] 25 joueurs a 18:30 : le refus dit en clair qu il reste 5 armes, et la prochaine partie libre', fichier: BASE, serveur: true, de: '      if (!equipe) throw new Error(`Laser Game complet sur ce créneau (', vers: '      if (true) throw new Error(`Laser Game complet sur ce créneau (' },
+  { nom: 'pour-eux-seuls-tu', lettre: 'L', cible: '[L3] « Pour vous seuls » a 19:30 : le refus le dit, avec la prochaine partie libre', fichier: BASE, serveur: true, de: '    seuls: bloc.arene === \'seuls\',\n', vers: '    seuls: false,\n' },
   { nom: 'assistant-a-la-minute', lettre: 'S', cible: '[S3] le client et l assistant gardent la grille (15:15 refuse, glisser sans la minute refuse)', fichier: MOUVEMENT, serveur: true, de: 'toutLeJeu = false, aLaMinute = false } = {}) {', vers: 'toutLeJeu = false, aLaMinute = true } = {}) {' },
 ];
 const LES_MUTATIONS = new Map(MUTATIONS.map((m) => [m.nom, m]));
@@ -604,7 +623,133 @@ async function scenarioP() {
   }
 }
 
-const SCENARIOS = { A: scenarioA, C: scenarioC, M: scenarioM, B: scenarioB, S: scenarioS, P: scenarioP };
+// ---------------------------------------------------------------------------
+// Libramont, 22/11 : l arrivee qui bougeait seule, la partie laser qui ne se partageait pas.
+// ---------------------------------------------------------------------------
+// Un autre groupe du jour, en base et dans la page (le planning et la fiche le lisent).
+async function autreGroupe(page, id, { nom, debut, fin, joueurs, seuls = false }) {
+  const DB = require(path.join(ROOT, 'lib/database.js'));
+  const bloc = { type: 'activity', activityId: 'laser_game', resourceType: 'laser_arena', startTime: debut, endTime: fin, players: seuls ? 30 : joueurs, countIndex: 1, groupWaveIndex: 1, groupWaveCount: 1, ...(seuls ? { joueursReels: joueurs, arene: 'seuls', weaponNeed: 30 } : {}) };
+  B.base.reservations.set(id, B.ligne(id, { date: JOUR, start_time: debut, lanes: [], name: nom, pax: joueurs, type: 'laser', status: 'confirmed', duration: 0.5, total_duration: 0.5, ops_plan: { startTime: debut, endTime: fin, resourceBlocks: [bloc], timeline: [], ...(seuls ? { arene: 'seuls' } : {}) } }));
+  const lu = await DB.getReservationById(id);
+  await page.evaluate((r) => { window.__FIXTURE__.jours[window.__FIXTURE__.jour].push(r); state.reservations.push(r); renderStaff(); }, JSON.parse(JSON.stringify(lu)));
+}
+
+const lireBarre = (page) => page.evaluate(() => ({
+  modifs: typeof resumeModifsEdition === 'function' ? resumeModifsEdition() : null,
+  barre: [...document.querySelectorAll('#posOverlay .fm-modif')].map((n) => n.textContent.trim()),
+  arrivee: state.editState ? state.editState.startTime : null,
+  champ: (document.getElementById('editStartInput') || {}).value || '',
+  actif: document.activeElement ? document.activeElement.id : '',
+  verdict: etatVerdictEdition(),
+  heureRefusee: (verdictEdition().resultat || {}).heureRefusee || null,
+}));
+
+async function scenarioR(browser) {
+  const m = await ouvrir(browser);
+  try {
+    const { page } = m;
+    // (le verdict a blanc de Modifier : le serveur du banc le sait, comme api/staff-state.js le dit)
+    await page.evaluate(() => { serveurSaitModifierABlanc = true; }); // eslint-disable-line no-undef
+    const r = await creerParLaFenetre(page, { pax: 7, nom: 'Radelet', telephone: '0470 12 34 61' });
+    ok(Boolean(r), '[R] MONTAGE : le dossier de 7 avec bowling et laser est cree', r ? r.id : 'aucun');
+    await ouvrirModifier(page, r.id);
+    await page.waitForTimeout(800);
+    const r1a = await lireBarre(page);
+    await page.evaluate(() => { setTab('details'); });
+    await page.waitForTimeout(300);
+    await page.evaluate(() => modifierDepuisFiche('heure'));
+    await page.waitForTimeout(800);
+    const r1b = await lireBarre(page);
+    ok(r1a.modifs.length === 0 && !r1a.barre.length && r1b.actif === 'editStartInput' && r1b.modifs.length === 0 && !r1b.barre.length && r1b.arrivee === r.start_time, '[R1] Modifier ouvert, puis l heure de l en-tete touchee : la barre « À enregistrer » reste vide', { r1a, r1b, debut: r.start_time });
+    for (let i = 0; i < 4; i += 1) { await page.keyboard.press('ArrowDown'); await page.waitForTimeout(120); }
+    await page.waitForTimeout(500);
+    const r2 = await lireBarre(page);
+    ok(r2.arrivee === r.start_time && r2.champ === r.start_time && r2.modifs.length === 0, '[R2] quatre fleches vers le bas ne reculent pas l arrivee', { r2, debut: r.start_time });
+    await page.locator('#editStartInput').click();
+    await page.keyboard.type('1030');
+    await page.waitForTimeout(1500);
+    const r3 = await lireBarre(page);
+    ok(r3.arrivee === '10:30' && r3.verdict.ton === 'refus' && r3.verdict.texte === 'Ne passera pas : 10:30 est déjà passé : il est 15:10.', '[R3] 10:30 deja passee : le verdict le dit d abord', r3);
+    await capture(page, '11-modifier-arrivee-passee.png');
+  } catch (error) {
+    if (!error.cibleRouge) ok(false, '[R] scenario interrompu', String(error.message || error).slice(0, 300));
+  } finally { await finir(m, 'R'); }
+}
+
+// (la fiche refermee puis rouverte : un etat d edition neuf, l heure du dossier dans le champ)
+async function rouvrirModifier(page, id) {
+  await page.evaluate(() => { if (typeof closePos === 'function') closePos(); });
+  await page.waitForTimeout(400);
+  await ouvrirModifier(page, id);
+}
+
+async function laserA(page, heure) {
+  await page.evaluate(() => { if (heureOuverteEdition !== 'laser_game:1.1') ouvrirHeureActivite('laser_game:1.1'); });
+  await page.waitForTimeout(300);
+  const champ = page.locator('#posOverlay [data-heure-champ="laser_game:1.1"]');
+  await champ.click();
+  await page.keyboard.type(heure.replace(':', ''));
+  await attendre(page, () => { const v = verdictEdition(); return v.pour === state.editState && !v.enCours && Boolean(v.resultat); }, null, 10000);
+  await page.waitForTimeout(400);
+  return lireBarre(page);
+}
+
+async function scenarioL(browser) {
+  const m = await ouvrir(browser);
+  try {
+    const { page } = m;
+    await autreGroupe(page, 9301, { nom: 'Boucquiaux', debut: '17:30', fin: '17:55', joueurs: 4 });
+    await autreGroupe(page, 9302, { nom: 'Groupe Plein', debut: '18:30', fin: '18:55', joueurs: 25 });
+    await autreGroupe(page, 9303, { nom: 'Groupe Prive', debut: '19:30', fin: '19:55', joueurs: 6, seuls: true });
+    // (le verdict a blanc de Modifier : le serveur du banc le sait, comme api/staff-state.js le dit)
+    await page.evaluate(() => { serveurSaitModifierABlanc = true; }); // eslint-disable-line no-undef
+    const r = await creerParLaFenetre(page, { pax: 7, nom: 'Radelet Laser', telephone: '0470 12 34 62' });
+    ok(Boolean(r), '[L] MONTAGE : le dossier de 7 avec bowling et laser est cree', r ? r.id : 'aucun');
+    await ouvrirModifier(page, r.id);
+    const l2 = await laserA(page, '18:25');
+    const phrase2 = (l2.heureRefusee && l2.heureRefusee.phrase) || '';
+    ok(phrase2 === 'Plus assez d’armes pour le laser à 18:25 : il en reste 5 sur 30, il en faut 7. La prochaine partie libre est à 19:00.' && !/lancement|joueurs, /.test(phrase2), '[L2] 25 joueurs a 18:30 : le refus dit en clair qu il reste 5 armes, et la prochaine partie libre', l2);
+    await capture(page, '13-modifier-laser-armes.png');
+    await rouvrirModifier(page, r.id);
+    const l3 = await laserA(page, '19:25');
+    const phrase3 = (l3.heureRefusee && l3.heureRefusee.phrase) || '';
+    ok(phrase3.startsWith('L’arène est réservée « pour eux seuls » par Groupe Prive à 19:30 (6 joueurs)') && phrase3.endsWith('La prochaine partie libre est à 20:00.') && !/lancement|joueurs, /.test(phrase3), '[L3] « Pour vous seuls » a 19:30 : le refus le dit, avec la prochaine partie libre', l3);
+    await rouvrirModifier(page, r.id);
+    const l1 = await laserA(page, '17:25');
+    const ecrit = await page.evaluate(() => { const v = verdictEdition(); const blocs = (((v.resultat || {}).ecrit || {}).opsPlan || {}).resourceBlocks || []; return blocs.filter((b) => b.resourceType === 'laser_arena').map((b) => `${b.startTime}-${b.endTime}`).join(' '); });
+    ok(l1.verdict.texte === 'Joue avec Boucquiaux à 17:30.' && ecrit === '17:30-17:55', '[L1] 17:25 se cale sur la partie de Boucquiaux : « Joue avec Boucquiaux à 17:30. »', { l1, ecrit });
+    await capture(page, '12-modifier-laser-partage.png');
+    await page.locator('#posOverlay button', { hasText: /^Enregistrer$/ }).first().click();
+    let laser = '';
+    for (let i = 0; i < 60; i += 1) {
+      const lu = (planDe(B.base.reservations.get(Number(r.id))).resourceBlocks || []).find((b) => b.resourceType === 'laser_arena');
+      laser = lu ? `${lu.startTime}-${lu.endTime}${lu.partageAvec ? ` avec ${lu.partageAvec.noms.join(',')}` : ''}` : '';
+      if (laser.startsWith('17:30')) break;
+      await page.waitForTimeout(100);
+    }
+    await page.waitForTimeout(1200);
+    const fiche = await page.evaluate((rid) => {
+      const res = state.reservations.find((x) => Number(x.id) === Number(rid)) || state.selectedRes;
+      const etape = getGroupeProgramme(res).find((e) => e.activityId === 'laser_game');
+      return { ou: etape ? etape.ou : '' };
+    }, Number(r.id));
+    await rouvrirModifier(page, r.id);
+    await page.waitForTimeout(500);
+    fiche.vague = await page.evaluate(() => ((document.querySelector('#posOverlay .fm [data-laser-vagues]') || {}).textContent || '').trim());
+    ok(laser === '17:30-17:55 avec Boucquiaux' && fiche.ou === 'avec Boucquiaux' && fiche.vague === '1 vague de 11 armes, avec Boucquiaux', '[L1] « Enregistrer » ecrit 17:30 ; la fiche dit « avec Boucquiaux », la vague « 1 vague de 11 armes »', { laser, fiche });
+    await page.evaluate(() => { if (typeof closePos === 'function') closePos(); });
+    await page.waitForTimeout(600);
+    await capture(page, '14-planning-partie-commune.png');
+    await page.evaluate((rid) => openPos(rid), Number(r.id));
+    await page.waitForTimeout(800);
+    await capture(page, '15-fiche-partie-commune.png');
+  } catch (error) {
+    if (!error.cibleRouge) ok(false, '[L] scenario interrompu', String(error.message || error).slice(0, 300));
+  } finally { await finir(m, 'L'); }
+}
+
+const SCENARIOS = { A: scenarioA, C: scenarioC, M: scenarioM, B: scenarioB, S: scenarioS, P: scenarioP, R: scenarioR, L: scenarioL };
 
 function verifierLesAncres() {
   let mortes = 0;

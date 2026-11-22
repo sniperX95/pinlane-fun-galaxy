@@ -422,7 +422,7 @@ async function scenarioModifier(browser) {
       await page.click('#posOverlay .fm-act[data-edit-activity="laser_game"] [data-arene="seuls"]');
       await verdictPose(page);
       const refus = await page.evaluate(lire);
-      ok(/Laser Game complet sur ce créneau/.test(refus.verdict), '[P2] « Pour vous seuls » quand d autres groupes jouent : le serveur le refuse avant le clic, comme une creation', refus.verdict);
+      ok(/« Pour vous seuls » n’est pas possible à \d\d:\d\d : .+ joue déjà dans l’arène/.test(refus.verdict), '[P2] « Pour vous seuls » quand d autres groupes jouent : le serveur le refuse avant le clic, comme une creation', refus.verdict);
       await ouvrirModifier(page, ARENE);
       const a = await page.evaluate(lire);
       ok(a.laser.some((g) => /^Parties par joueur:.*\+ Partie/.test(g)) && a.laser.includes('Arène:Autopartagée si besoin*|Pour vous seulspersonne d’autre'),

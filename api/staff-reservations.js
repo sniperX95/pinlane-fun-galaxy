@@ -490,10 +490,12 @@ async function deplacerAvantLeReste(current, deplacements, session) {
   const voisins = (Array.isArray(lu.reservations) ? lu.reservations : []).filter((row) => Number(row.id) !== Number(current.id));
   const tenir = (dossier, d) => {
     const suivant = buildActivityMove(dossier, d, { aLaMinute: true });
+    let verdict = null;
     try {
-      validateActivityMoveResources(suivant, d, voisins, lu.laneStatuses || {}, lu.blocks || [], current.date);
+      verdict = validateActivityMoveResources(suivant, d, voisins, lu.laneStatuses || {}, lu.blocks || [], current.date);
     } catch (error) { if (!error.statusCode) error.statusCode = 409; throw error; }
-    return suivant;
+    // (une partie calee sur celle d un autre groupe : lib/database.js rejoindreLesParties)
+    return verdict && verdict.opsPlan ? { ...suivant, opsPlan: verdict.opsPlan } : suivant;
   };
   let dossier = current;
   for (let i = 0; i < deplacements.length; i += 1) {
@@ -552,10 +554,12 @@ async function deplacerABlanc(req, res, corps) {
       ? Math.max(0, Math.min(48 * 60, Math.round(Number(corps.auPlusTot)))) : null;
     const essayer = (base, deplacement) => {
       const essai = buildActivityMove(base, deplacement, { aLaMinute: true });
+      let verdict = null;
       try {
-        validateActivityMoveResources(essai, deplacement, autres, snapshot.laneStatuses, blocs, current.date);
+        verdict = validateActivityMoveResources(essai, deplacement, autres, snapshot.laneStatuses, blocs, current.date);
       } catch (error) { if (!error.statusCode) error.statusCode = 409; throw error; }
-      return essai;
+      // (une partie calee sur celle d un autre groupe : la fenetre le dit, « Joue avec … »)
+      return verdict && verdict.opsPlan ? { ...essai, opsPlan: verdict.opsPlan } : essai;
     };
     let candidat = current;
     for (let rang = 0; rang < deplacements.length; rang += 1) {

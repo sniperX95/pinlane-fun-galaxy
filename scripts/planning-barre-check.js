@@ -822,7 +822,10 @@ async function dossier(browser) {
     ok(equipeI.texte === 'Bougies au bar à 17:00' && !/252/.test(equipeI.bulle || ''), '[I] Équipe : la note se lit seule, aucun nom colle apres, sans la note de prix', equipeI);
     ok(equipeI.bulle === 'Bougies au bar à 17:00\nÉcrite par Julie le 15/01 à 17:05', '[I] Équipe : la bulle redit la note, puis qui l a ecrite et quand', equipeI);
     ok(((rub.Fiche || {}).texte || '') === 'Client fidèle, 3e anniversaire chez nous', '[I] Fiche : la note permanente du client, a part', rub.Fiche);
-    ok(/^\d\d:\d\d à \d\d:\d\d(, .+ à \d\d:\d\d)?$/.test((rub.Table || {}).texte || ''), '[I] Table : de quand a quand, et les boissons', rub.Table);
+    // (les cruches n ont plus d heure depuis le 2026-11-22, Ansar : « ils prennent quand ils veulent », 551ab12 ;
+    // la table garde de quand a quand)
+    const tableI = (rub.Table || {}).texte || '';
+    ok(/^\d\d:\d\d à \d\d:\d\d(, .+)?$/.test(tableI) && !/ à \d\d:\d\d$/.test(tableI.replace(/^\d\d:\d\d à \d\d:\d\d/, '')), '[I] Table : de quand a quand, et les boissons, sans heure', rub.Table);
     ok(((rub['Sur mesure'] || {}).texte || '') === '13 × Pizza margherita, Gâteau d’anniversaire', '[I] Sur mesure : quantite et nom lisibles', rub['Sur mesure']);
     ok(((rub.Prix || {}).texte || '') === '252 € au lieu de 280 €, geste commercial', '[I] Prix : le prix ajuste et sa raison', rub.Prix);
     const gerard = await rubriquesDe(page, 'Famille Gérard');

@@ -413,10 +413,16 @@ async function scenarioB(browser) {
     // Le temps descend a la seconde, sans repeindre la fenetre.
     const base = FX.instant(JOUR, C.HEURE).getTime();
     const noeud = await page.evaluateHandle(() => document.querySelector('#rsZ-bowling .rs-s-l'));
+    // (pendant la mesure, les repeints de la fenetre attendent : seul le compteur ecrit le temps. Le prix des
+    // tuiles (rsChiffrerTuiles, une visite a blanc puis un repeint) arrivait parfois apres le saut de 30 s,
+    // sur GitHub : son repeint ecrivait le temps nouveau a la place du compteur, et la contre-preuve
+    // temps-fige restait verte. Un repeint retenu se joue apres la mesure ; 2026-11-22.)
+    await page.evaluate(() => { window.__repeintsRetenus = { repeindre: rvRepeindre, n: 0 }; window.rvRepeindre = () => { window.__repeintsRetenus.n += 1; }; });
     await page.clock.setFixedTime(new Date(base + 30000));
     await page.waitForFunction(() => /7 min 42 s/.test((document.querySelector('#rsZ-bowling [data-echeance]') || {}).textContent || ''), null, { timeout: 4000 }).catch(() => {});
     ok(/7 min 42 s/.test(await phrase('bowling')), '[B] le temps de la retenue descend a la seconde', await phrase('bowling'));
     ok(await noeud.evaluate((n) => n.isConnected), '[B] le temps qui descend ne repeint pas les heures');
+    await page.evaluate(() => { const { repeindre, n } = window.__repeintsRetenus; window.rvRepeindre = repeindre; if (n) rvRepeindre(); });
     // Echue, elle rend sa place tout de suite.
     const apres = base + 5 * 60000;
     globalThis.__comptoirMaintenant = apres;

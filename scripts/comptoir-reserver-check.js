@@ -102,6 +102,8 @@ const MUTATIONS = [
   { nom: 'recherche-sans-fin', lettre: 'R1', bloc: 'aucune', cible: '[R1] si les heures candidates ne repondent pas', fichier: APP, de: "  return !(c && c.base === s.cleCourante && (c.etat === 'ok' || c.etat === 'erreur' || c.etat === 'local'));", vers: '  return true;' },
   { nom: 'panne-relancee', lettre: 'R1', bloc: 'aucune', cible: '[R1] une recherche en panne ne se relance pas d elle-meme', fichier: APP, de: "  if (c && c.etat === 'erreur' && c.id === id && c.partie === 0 && c.base === quickBookState.cleCourante) return;\n", vers: '' },
   { nom: 'passe-deplace', lettre: 'R2', cible: '[R2] une heure deja passee reste un choix', fichier: APP, de: 'heureSouhaitee: !rvHeurePassee(state.currentDate, heure)', vers: 'heureSouhaitee: true' },
+  // (un depart verrouille pris pour une heure a la minute : le laser de 15:30 se cree a 15:25, 2026-11-22)
+  { nom: 'depart-verrouille-a-la-minute', lettre: 'R2', cible: '[R2] le laser garde openQuickBookForLaserSession', fichier: APP, de: '  if (s && s.lockStartTime) return \'\';\n', vers: '' },
   { nom: 'laser-commence', lettre: 'R2', cible: '[R2] une partie de laser commencee ne se propose pas', fichier: APP, de: '    .filter((h) => !(laserDabord && maintenant !== null && timeToNum(h) <= maintenant + 1e-9));', vers: ';' },
   // (la phrase « 15:30 ne tient pas » se dit sur la ligne d etat du ticket, rsVerdictHtml ; depuis
   // le 18/11, un bloc qui dit aussi pour qui une heure privatisee est prise : l ancre vise son ouverture)

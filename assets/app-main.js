@@ -41766,6 +41766,11 @@ function rvHorsGrille(heure) {
 
 function rvALaMinute(reservation, programme) {
   const s = quickBookState;
+  // UN DEPART VERROUILLE N EST JAMAIS UNE HEURE A LA MINUTE (2026-11-22, comptoir-reserver [R2]). La porte du
+  // laser (openQuickBookForLaserSession) pose l arrivee quelques minutes avant la partie touchee (15:25 pour
+  // 15:30) et la verrouille : prise ici pour un laser a 15:25, elle partait au moteur a la minute et le
+  // dossier quittait la partie choisie. Le depart reste celui de la partie.
+  if (s && s.lockStartTime) return '';
   let preference = reservation.preference ? JSON.parse(JSON.stringify(reservation.preference)) : null;
   if (!programme) {
     if (!((s.type === 'bowling' || s.type === 'laser') && rvHorsGrille(reservation.startTime))) return '';

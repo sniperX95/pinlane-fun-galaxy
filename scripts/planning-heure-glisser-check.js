@@ -309,6 +309,9 @@ async function scenarioPop(browser) {
       const recevoir = (e) => { evenements.push(...e.value); };
       cdp.on('Tracing.dataCollected', recevoir);
       await cdp.send('Tracing.start', { categories: 'devtools.timeline', transferMode: 'ReportEvents' });
+      // (la trace du renderer demarre apres la reponse de Tracing.start : deux images et 100 ms avant le geste,
+      // sinon un rendu joue aussitot tombe avant elle ; 2026-11-22, GitHub : « un rendu du tableau : 10 »)
+      await page.evaluate(() => new Promise((fin) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(fin, 100)))));
       await geste();
       const fini = new Promise((resolu) => cdp.once('Tracing.tracingComplete', resolu));
       await cdp.send('Tracing.end');
@@ -318,7 +321,15 @@ async function scenarioPop(browser) {
       const pages = evenements.filter((e) => e.name === 'Layout' && e.args && e.args.beginData).map((e) => Number(e.args.beginData.dirtyObjects) || 0);
       return { styleMax: styles.length ? Math.max(...styles) : 0, mises: pages.length, objetsMax: pages.length ? Math.max(...pages) : 0 };
     };
-    const tableau = await tracer(() => page.evaluate(() => { const w = document.getElementById('globalPlanningGridWrap'); w._gfParties = null; renderGlobalPlanning(w); return document.body.offsetHeight; }));
+    // (l etalon : un rendu entier du tableau, qui reecrit sa table (ecrit) ; une mesure qui ne voit pas ses
+    // milliers d objets se rejoue, deux fois au plus : c est l etalon qui se mesure, le budget de la pop-up reste)
+    const etalon = async () => {
+      const avant = await page.evaluate(() => window.__gfStats.ecritures);
+      const mesure = await tracer(() => page.evaluate(() => { const w = document.getElementById('globalPlanningGridWrap'); w._gfParties = null; renderGlobalPlanning(w); return document.body.offsetHeight; }));
+      return { ...mesure, ecrit: (await page.evaluate(() => window.__gfStats.ecritures)) - avant };
+    };
+    let tableau = await etalon();
+    for (let essai = 2; essai <= 3 && tableau.objetsMax < 1000; essai += 1) tableau = { ...(await etalon()), essai };
     await page.waitForTimeout(150);
     const puce = await centre(page, sel);
     // (la souris sur la pastille d abord : son survol n est pas la pop-up)

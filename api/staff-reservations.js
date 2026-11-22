@@ -45,7 +45,7 @@ const { getCenter, refreshCenterOverrides } = require('../lib/ops-knowledge');
 const { refreshFormuleOverrides } = require('../lib/booking-config');
 const { refreshCatalog } = require('../lib/catalog-store');
 const { getPool } = require('../lib/database');
-const { exigerLesDroits, finDeLaVisite, notesSansLaNoteAPlacer, planifierPourLaFenetre, simulerAutres } = require('../lib/reserver-fenetre');
+const { exigerLesDroits, finDeLaVisite, notesSansLaNoteAPlacer, planifierPourLaFenetre, reposerLesEnPlus, simulerAutres } = require('../lib/reserver-fenetre');
 const { ancresDuMoteur, debutDesActivites, heureDuPlan, lireHeuresPosees, memesActivites, poserLesHeures } = require('../lib/heures-posees');
 // La creation elle-meme vit dans lib/reserver-creation.js : la reservation en un clic d une demande
 // sur mesure (api/ops.js customRequestBook) prend le meme chemin.
@@ -881,6 +881,22 @@ async function calculerLaModification({ body, current, session, requestedCenterI
     if (a !== de) patch.notes = notesAvecCompte(current.notes, { de, a, par: nomDeSession(session) });
   }
   if (patch.program && !patch.formuleSurMesure && current.program && current.program.formuleSurMesure) patch.formuleSurMesure = current.program.formuleSurMesure;
+  // LES ACTIVITES EN PLUS D UNE FORMULE (2026-11-22, lib/formule-en-plus.js) : Modifier ne les perd jamais. Un
+  // programme envoye (la formule adaptee ici, ou une visite) les reprend parmi ses activites, a leur prix du
+  // catalogue ; celle qu il a deja (un deuxieme bowling) ne s y double pas, et rien ne s ecrit. Sans programme,
+  // elles se replacent a leur heure sur le plan refait (reposerLesEnPlus, plus bas).
+  const enPlusAvant = require('../lib/formule-en-plus').enPlusDuDossier(current);
+  if (enPlusAvant && patch.program) {
+    const brut = Array.isArray(patch.program) ? patch.program : Array.isArray(patch.program.items) ? patch.program.items : [];
+    const groupe = Math.max(1, Math.trunc(Number(patch.pax ?? current.pax)) || 1);
+    const doubles = enPlusAvant.items.filter((x) => brut.some((item) => item && item.activityId === x.activityId));
+    if (doubles.length) {
+      const noms = doubles.map((x) => String(x.name || x.activityId)).join(' et ');
+      throw createHttpError(`${noms} en plus de la formule ne se reprend pas dans ce programme, qui en a déjà : rien n’a changé.`, 422);
+    }
+    const reprises = enPlusAvant.items.map((x) => ({ activityId: x.activityId, pax: groupe, participants: Math.min(groupe, Math.trunc(Number(x.participants)) || groupe), ...(Number(x.duration) > 0 ? { duration: Number(x.duration) } : {}), ...(Number(x.games) > 0 ? { games: Number(x.games) } : {}) }));
+    patch.program = Array.isArray(patch.program) ? [...brut, ...reprises] : { ...patch.program, items: [...brut, ...reprises] };
+  }
   const proposedProgram = patch.program ?? current.program;
   const proposedItems = Array.isArray(proposedProgram) ? proposedProgram
     : Array.isArray(proposedProgram?.items) ? proposedProgram.items : [];
@@ -936,6 +952,14 @@ async function calculerLaModification({ body, current, session, requestedCenterI
   }
   const operationalRequest = { ...current, ...patch };
   if (!Object.prototype.hasOwnProperty.call(patch, 'price')) delete operationalRequest.price;
+  // (un dossier avec des activites en plus : sa formule se replanifie depuis sa propre arrivee, decalee comme le
+  // dossier, jamais depuis une activite en plus posee avant elle)
+  const reposer = Boolean(enPlusAvant) && shouldReplan && !patch.program;
+  const decalage = reposer ? minuteDeLaFenetre(String(patch.startTime ?? current.startTime ?? '').slice(0, 5)) - minuteDeLaFenetre(String(current.startTime || '').slice(0, 5)) : 0;
+  if (reposer && Number.isFinite(minuteDeLaFenetre(enPlusAvant.arrivee))) {
+    const arrivee = minuteDeLaFenetre(enPlusAvant.arrivee) + (Number.isFinite(decalage) ? decalage : 0);
+    if (arrivee >= 0 && arrivee < 24 * 60) operationalRequest.startTime = `${String(Math.floor(arrivee / 60)).padStart(2, '0')}:${String(arrivee % 60).padStart(2, '0')}`;
+  }
   const ops = shouldReplan
     ? await prepareReservationOps(operationalRequest, 'staff', { ignoreReservationId: Number(patch.id), heureEnregistree: current.startTime })
     : {};
@@ -963,6 +987,22 @@ async function calculerLaModification({ body, current, session, requestedCenterI
     if (Number.isFinite(premiere) && Number.isFinite(arrivee) && premiere < arrivee) {
       ops.startTime = `${String(Math.floor(premiere / 60)).padStart(2, '0')}:${String(premiere % 60).padStart(2, '0')}`;
     }
+  }
+  // Les activites en plus reprennent leur heure sur le plan refait, jugees avec la formule ; celle qui ne tient
+  // plus le dit, et rien ne s ecrit. Leur prix reste dans la reference.
+  if (reposer && ops.opsPlan && ops.planAvailable !== false) {
+    if (String(operationalRequest.type) !== 'formule') throw createHttpError('Ce dossier a des activités en plus de sa formule : il garde sa formule.', 422);
+    const lignes = require('../lib/formule-en-plus').lignesARePoser(current, { pax: operationalRequest.pax, delta: Number.isFinite(decalage) ? decalage : 0 });
+    const reprise = await reposerLesEnPlus({ dossier: { ...operationalRequest, ...ops }, lignes, session, ignorer: current.id });
+    if (reprise.refus) throw createHttpError(`${reprise.refus.message} Rien n’a changé.`, 422);
+    ['opsPlan', 'startTime', 'totalDuration', 'lanes', 'laneCount', 'requiresLanes'].forEach((champ) => { if (reprise.dossier[champ] !== undefined) ops[champ] = reprise.dossier[champ]; });
+    // (chaque service garde ses pistes : celles de la formule, choisies ou non, et celles de l activite en plus)
+    if (Array.isArray(reprise.dossier.lanes) && reprise.dossier.lanes.length) patch.lanes = reprise.dossier.lanes.map(Number);
+    if (Number.isFinite(Number(ops.basePrice))) ops.basePrice = Math.round((Number(ops.basePrice) + (Number(reprise.lignes.prix) || 0)) * 100) / 100;
+  } else if (reposer) {
+    // (la formule ne tient plus : le dossier part a surveiller, ses activites en plus restent a son plan et a son prix)
+    if (ops.opsPlan) ops.opsPlan = { ...ops.opsPlan, enPlus: enPlusAvant };
+    if (Number.isFinite(Number(ops.basePrice))) ops.basePrice = Math.round((Number(ops.basePrice) + (Number(enPlusAvant.prix) || 0)) * 100) / 100;
   }
   // UNE FORMULE ADAPTEE RESTE SA FORMULE (2026-11-20, dossier 1953 de Gembloux, lib/formule-adaptee.js).
   // Le moteur la planifie depuis sa formule (buildAdaptedFormula : sa table, ses boissons), mais son

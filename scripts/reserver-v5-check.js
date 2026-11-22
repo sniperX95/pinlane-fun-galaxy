@@ -120,7 +120,7 @@ const MUTATIONS = {
   creation: { fichier: 'assets/app-main.js', de: '  // pied, comparee a son dernier rendu, se croyait a jour (2026-10-08).\n  renderQuickBook();', vers: "  // pied, comparee a son dernier rendu, se croyait a jour (2026-10-08).\n  { const b = document.getElementById('rvCreer'); if (b) { b.disabled = true; b.setAttribute('aria-busy', 'true'); b.textContent = 'Création…'; } }", vise: ['C'] },
   // Les heures d une partie de laser ne partent plus au planning : leur
   // verdict ne vient plus du serveur (l horloge de l ancienne fenetre).
-  horloge: { fichier: 'assets/app-main.js', de: "body: JSON.stringify({ ...base, dryRun: true, candidats: variantes })", vers: "body: JSON.stringify({ ...base, dryRun: true, candidats: [] })", vise: ['D'] },
+  horloge: { fichier: 'assets/app-main.js', de: '  const variantes = toutes.slice(0, 48);', vers: '  const variantes = [];', vise: ['D'] },
   // Les seances ne partent plus au planning : une heure qu il refuse a l air
   // de tenir.
   seances: { fichier: 'assets/app-main.js', de: 'body: JSON.stringify({ ...demande.corps, dryRun: true, candidats: demande.variantes })', vers: 'body: JSON.stringify({ ...demande.corps, dryRun: true, candidats: [] })', vise: ['D'] },

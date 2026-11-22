@@ -281,6 +281,7 @@
     "test:formule-adaptee",
     "test:reserver-formule-ajout",
     "test:reserver-formule-heures",
+    "test:reserver-formule-en-plus",
     "test:planning-liens",
     "test:one-screen",
     "test:funnel-clarity",

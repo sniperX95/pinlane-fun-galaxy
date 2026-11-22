@@ -434,8 +434,13 @@ async function scenarioTypes(browser) {
       },
     });
     const k = (faits.find((f) => f.type === type) || {}).k || cle;
-    ok(c.apres && c.apres.fermee && c.base.heures[k] === choisie && c.patchs.length === 1,
-      `[T1] ${type} (dossier ${ligne.id}) : ${ligne.heure} → ${choisie}${choisie !== voulue ? ` (heure proposee, ${voulue} ne passait pas)` : ''}, enregistre en base`, { verdict: c.avant.verdict, refus: c.avant.refus, base: c.base.heures, apres: c.apres && c.apres.verdict });
+    // (une partie a quelques minutes de celle d un autre groupe, armes suffisantes, la rejoint : le verdict
+    // le dit, « Joue avec … à 16:00. », et c est cette heure qui s ecrit ; 2026-11-22, lib/database.js
+    // rejoindreLesParties)
+    const partage = /Joue avec .+ à (\d{2}:\d{2})\./.exec(String(c.avant.verdict || ''));
+    const ecrite = partage ? partage[1] : choisie;
+    ok(c.apres && c.apres.fermee && c.base.heures[k] === ecrite && c.patchs.length === 1,
+      `[T1] ${type} (dossier ${ligne.id}) : ${ligne.heure} → ${ecrite}${partage ? ` (partie commune, ${voulue} demandee)` : choisie !== voulue ? ` (heure proposee, ${voulue} ne passait pas)` : ''}, enregistre en base`, { verdict: c.avant.verdict, refus: c.avant.refus, base: c.base.heures, apres: c.apres && c.apres.verdict });
   }
   ok(!erreurs.length, '[J1] aucune erreur JS (tous les types)', erreurs.slice(0, 3));
 }

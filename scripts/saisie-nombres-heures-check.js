@@ -63,6 +63,7 @@
 //   [L1] LA PARTIE SE PARTAGE QUAND LES ARMES SUFFISENT : le laser du groupe (7) passe a 17:25, la partie
 //        de Boucquiaux (4) part a 17:30 ; le verdict dit « Joue avec Boucquiaux à 17:30. », « Enregistrer »
 //        ecrit 17:30 ; la fiche dit « avec Boucquiaux », la vague « 1 vague de 11 armes » ;
+//        « Enregistrer » le redit et referme la fiche (jamais « Pas enregistré » pour une partie calee) ;
 //   [L2] les armes manquent (25 joueurs a 18:30) : le refus le dit en clair, il en reste 5, la prochaine
 //        partie libre ;
 //   [L3] l autre groupe a choisi « Pour vous seuls » (19:30) : le refus le dit, avec la prochaine partie
@@ -130,6 +131,7 @@ const MUTATIONS = [
   { nom: 'partie-jamais-partagee', lettre: 'L', cible: '[L1] 17:25 se cale sur la partie de Boucquiaux : « Joue avec Boucquiaux à 17:30. »', fichier: BASE, serveur: true, de: '  if (!equipe || !plan || !Array.isArray(plan.resourceBlocks)) return null;', vers: '  return null;' },
   { nom: 'armes-en-chiffres', lettre: 'L', cible: '[L2] 25 joueurs a 18:30 : le refus dit en clair qu il reste 5 armes, et la prochaine partie libre', fichier: BASE, serveur: true, de: '      if (!equipe) throw new Error(`Laser Game complet sur ce créneau (', vers: '      if (true) throw new Error(`Laser Game complet sur ce créneau (' },
   { nom: 'pour-eux-seuls-tu', lettre: 'L', cible: '[L3] « Pour vous seuls » a 19:30 : le refus le dit, avec la prochaine partie libre', fichier: BASE, serveur: true, de: '    seuls: bloc.arene === \'seuls\',\n', vers: '    seuls: false,\n' },
+  { nom: 'partie-calee-pas-tenue', lettre: 'L', cible: '[L1] « Enregistrer » dit « Joue avec Boucquiaux à 17:30. » et referme la fiche, jamais « Pas enregistré »', fichier: APP, de: "    return d.point.activityId === 'laser_game' && partieCaleeEdition(dossier, d, apres);", vers: '    return false;' },
   { nom: 'assistant-a-la-minute', lettre: 'S', cible: '[S3] le client et l assistant gardent la grille (15:15 refuse, glisser sans la minute refuse)', fichier: MOUVEMENT, serveur: true, de: 'toutLeJeu = false, aLaMinute = false } = {}) {', vers: 'toutLeJeu = false, aLaMinute = true } = {}) {' },
 ];
 const LES_MUTATIONS = new Map(MUTATIONS.map((m) => [m.nom, m]));
@@ -721,6 +723,9 @@ async function scenarioL(browser) {
     ok(l1.verdict.texte === 'Joue avec Boucquiaux à 17:30.' && ecrit === '17:30-17:55', '[L1] 17:25 se cale sur la partie de Boucquiaux : « Joue avec Boucquiaux à 17:30. »', { l1, ecrit });
     await capture(page, '12-modifier-laser-partage.png');
     await page.locator('#posOverlay button', { hasText: /^Enregistrer$/ }).first().click();
+    const toastVu = await attendre(page, () => /Joue avec Boucquiaux à 17:30\./.test((document.getElementById('toast') || {}).textContent || ''), null, 8000);
+    const apresClic = await page.evaluate(() => ({ toast: ((document.getElementById('toast') || {}).textContent || '').replace(/\s+/g, ' ').trim(), note: noteHeuresEdition ? noteHeuresEdition.texte || '' : '', fiche: Boolean(document.querySelector('#posOverlay:not(.hidden) .edit-modal')) }));
+    ok(toastVu && /^Heure changée : /.test(apresClic.toast) && !/Pas enregistré/.test(apresClic.note) && !apresClic.fiche, '[L1] « Enregistrer » dit « Joue avec Boucquiaux à 17:30. » et referme la fiche, jamais « Pas enregistré »', apresClic);
     let laser = '';
     for (let i = 0; i < 60; i += 1) {
       const lu = (planDe(B.base.reservations.get(Number(r.id))).resourceBlocks || []).find((b) => b.resourceType === 'laser_arena');

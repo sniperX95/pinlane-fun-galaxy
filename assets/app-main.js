@@ -34878,6 +34878,17 @@ function vaguesLaserEditionEnMots(e, r) {
   return `${vaguesLaserEnMots(joueurs + partenaires.reduce((total, p) => total + p.joueurs, 0))}, ${partenairesEnMots(partenaires)}`;
 }
 
+// La partie de ce deplacement, calee par le serveur sur celle d un autre groupe (partageAvec, a son depart)
+// a quelques minutes de l heure demandee : l heure tient, c est celle de la partie commune.
+function partieCaleeEdition(dossier, d, apres) {
+  const unite = String((d && d.point && d.point.unite) || '1.1');
+  const blocs = dossier && dossier.opsPlan && Array.isArray(dossier.opsPlan.resourceBlocks) ? dossier.opsPlan.resourceBlocks : [];
+  const bloc = blocs.find(b => b && b.resourceType === 'laser_arena' && `${Number(b.countIndex || 1)}.${Number(b.groupWaveIndex || 1)}` === unite);
+  const debut = bloc ? String(bloc.startTime || '').slice(0, 5) : '';
+  return Boolean(bloc && bloc.partageAvec && bloc.partageAvec.heure === debut && apres
+    && Math.abs(Math.round(apres.start * 60) - minutesHeureEdition(d.heure)) <= 15);
+}
+
 // « Joue avec Boucquiaux à 17:30. » : une partie que le serveur vient de caler sur celle d un autre groupe
 // (partageAvec), et que le dossier a l ecran n avait pas encore.
 function phrasesPartageLaser(ecrit, r) {
@@ -35568,7 +35579,12 @@ async function enregistrerHeuresEdition() {
   // (une heure rendue libre se confirme libre, une heure par son heure)
   const tenue = (dossier, d) => {
     const apres = pointsHeureEdition(dossier).get(d.cle);
-    return d.move && d.move.libre ? Boolean(apres && apres.libre) : Boolean(apres) && Math.round(apres.start * 60) === minutesHeureEdition(d.heure);
+    if (d.move && d.move.libre) return Boolean(apres && apres.libre);
+    if (!apres) return false;
+    if (Math.round(apres.start * 60) === minutesHeureEdition(d.heure)) return true;
+    // (une partie calee par le serveur sur celle d un autre groupe, a quelques minutes pres, tient aussi :
+    // lib/database.js rejoindreLesParties, « Joue avec … »)
+    return d.point.activityId === 'laser_game' && partieCaleeEdition(dossier, d, apres);
   };
   try {
     for (const d of deplacements) {
@@ -35605,7 +35621,9 @@ async function enregistrerHeuresEdition() {
     // Le planning, la liste et les cartes suivent tout de suite.
     renderStaffData();
     // (le reste se dit avec ses mots, et un planning qui n a pas suivi le nombre de joueurs aussi)
-    const phrase = `${faits.length > 1 ? 'Heures changées' : 'Heure changée'} : ${dit(faits)}.${resteEnMots ? ` ${resteEnMots} : enregistré${planNonRefait ? `, mais le planning n’a pas suivi : ${String(planNonRefait).replace(/\.$/, '')}` : ''}.` : ''}`;
+    // (une partie calee sur celle d un autre groupe le dit : « Joue avec Boucquiaux à 17:30. »)
+    const partage = phrasesPartageLaser(derniere, versionDeBase).join(' ');
+    const phrase = `${faits.length > 1 ? 'Heures changées' : 'Heure changée'} : ${dit(faits)}.${partage ? ` ${partage}` : ''}${resteEnMots ? ` ${resteEnMots} : enregistré${planNonRefait ? `, mais le planning n’a pas suivi : ${String(planNonRefait).replace(/\.$/, '')}` : ''}.` : ''}`;
     toast(changeEntreTemps ? `${phrase} Modifié entre-temps et conservé : ${changeEntreTemps}.` : phrase);
   } catch (error) {
     if (derniere) {

@@ -29142,6 +29142,39 @@ function getGroupeProgramme(r) {
       coche: `libre-${item.activityId}`,
     });
   });
+  // CE QUI S AJOUTE AU DOSSIER SE COCHE AUSSI (2026-11-21, un gerant : « ça doit le mettre dans la liste
+  // à cocher aussi, bien complet »). Chaque ligne d extra (boissons, tables, nourriture, une ligne libre
+  // « à payer ») est une case, son nom et sa quantite, comme « 2 cruches boissons » d une formule ; servie
+  // a une heure, elle s y place. Sa cle, extra-<id de la ligne> dans les signes qu une coche accepte
+  // (CLE_ACTIVITE, lib/database.js), est celle de la jumelle du serveur (lib/programme-a-cocher.js).
+  const extrasVus = new Map();
+  (Array.isArray(r && r.extras) ? r.extras : []).filter(x => x && typeof x === 'object' && String(x.name || '').trim()).forEach((x, i) => {
+    const base = String(x.id || '').trim().replace(/[^A-Za-z0-9_.:-]/g, '-').slice(0, 60) || String(i + 1);
+    const n = (extrasVus.get(base) || 0) + 1;
+    extrasVus.set(base, n);
+    const cle = `extra-${base}${n > 1 ? `-${n}` : ''}`;
+    const nom = String(x.name).trim();
+    const qte = Math.trunc(Number(x.qte));
+    const heure = /^\d{2}:\d{2}$/.test(String(x.heure || '')) ? timeToNum(x.heure) : null;
+    etapes.push({
+      cle,
+      activityId: '',
+      nom: /×\s*\d+$/.test(nom) || !(qte > 1) ? nom : `${nom} × ${qte}`,
+      quoi: [x.parPersonne === true ? 'par personne' : '', String(x.note || '').trim()].filter(Boolean).join(' · '),
+      ou: '',
+      groupe: '',
+      start: heure,
+      end: heure,
+      ...(heure === null ? { libre: true } : {}),
+      extra: true,
+      // (son icone : le verre des boissons, l etiquette d un article pour le reste)
+      icone: x.categorie === 'boissons' ? 'service_drinks' : 'extra',
+      aPayer: x.aPayer === true,
+      fait: faite(cle),
+      coche: cle,
+      exige: heure !== null,
+    });
+  });
   const rang = e => (e.start !== null && e.start !== undefined ? 0 : e.aPlacer ? 1 : 2);
   return etapes.sort((a, b) => rang(a) - rang(b) || (a.start || 0) - (b.start || 0) || (a.end || 0) - (b.end || 0));
 }
@@ -29258,7 +29291,7 @@ function renderGroupeEtapes(r, moment, options = {}) {
     const puces = libres.map(etape => {
       const cochable = Boolean(etape.coche) && r.status !== 'cancelled' && peutCocher;
       const appel = cochable ? `toggleFormulaActivity(${Number(r.id)}, '${escapeJsString(etape.coche)}', event)` : '';
-      return `<button type="button" class="gc-libre${etape.fait ? ' is-fait' : ''}" ${cochable ? `onclick="${appel}" aria-pressed="${etape.fait}" aria-label="${escapeHtml(etape.nom)}${etape.quoi ? ` ${escapeHtml(etape.quoi)}` : ''} : ${etape.fait ? 'fait, annuler' : 'marquer comme fait'}" data-pl-focus="carte.activite.${Number(r.id)}.${escapeHtml(etape.coche)}"` : 'disabled'}>${etape.fait ? ACTIVITY_CHECK_SVG : ''}<span>${escapeHtml(etape.nom)}</span>${etape.quoi && !etape.volonte ? `<small>${escapeHtml(etape.quoi)}</small>` : ''}</button>`;
+      return `<button type="button" class="gc-libre${etape.fait ? ' is-fait' : ''}" ${cochable ? `onclick="${appel}" aria-pressed="${etape.fait}" aria-label="${escapeHtml(etape.nom)}${etape.quoi ? ` ${escapeHtml(etape.quoi)}` : ''}${etape.aPayer ? ', à payer' : ''} : ${etape.fait ? 'fait, annuler' : 'marquer comme fait'}" data-pl-focus="carte.activite.${Number(r.id)}.${escapeHtml(etape.coche)}"` : 'disabled'}>${etape.fait ? ACTIVITY_CHECK_SVG : ''}<span>${escapeHtml(etape.nom)}</span>${etape.quoi && !etape.volonte ? `<small>${escapeHtml(etape.quoi)}</small>` : ''}${etape.aPayer ? '<small class="pl-a-payer">À payer</small>' : ''}</button>`;
     }).join('');
     // « Libre » dit deja « a leur rythme » : la ligne laisse toute la place
     // aux puces (le mot reste pour les lecteurs d ecran).
@@ -29286,7 +29319,9 @@ function renderGroupeEtapes(r, moment, options = {}) {
       ? `<span class="gc-step-time">${formatClockDisplay(etape.start)}${etape.end !== null && etape.end !== undefined && formatClockDisplay(etape.end) !== formatClockDisplay(etape.start) ? `<small>${formatClockDisplay(etape.end)}</small>` : ''}</span>`
       : `<span class="gc-step-time is-free">${etape.aPlacer ? '--:--' : 'Libre'}</span>`;
     const details = [etape.quoi, etape.ou, etape.groupe].filter(Boolean).join(' · ');
-    const montant = prix && prix.has(etape.cle) ? `<span class="gc-step-price">${escapeHtml(prix.get(etape.cle))}</span>` : '';
+    // (une ligne ajoutee dont le prix se regle au comptoir le dit, jamais « 0 € »)
+    const montant = prix && prix.has(etape.cle) ? `<span class="gc-step-price">${escapeHtml(prix.get(etape.cle))}</span>`
+      : etape.aPayer ? '<span class="gc-step-price pl-a-payer">À payer</span>' : '';
     // CHAQUE ACTIVITE SE COCHE, SUR LA CARTE COMME DANS LA FICHE (Movsar,
     // 2026-10-01 : « il faut qu on puisse cliquer sur les activites pour dire
     // que ca a ete fait, et terminer »). La case remplace l icone ; toute la
@@ -29301,10 +29336,10 @@ function renderGroupeEtapes(r, moment, options = {}) {
     // son icone dans le rond.
     const enFiche = Boolean(options.coches);
     const repere = cochable
-      ? `<button type="button" class="gc-check${etape.fait ? ' is-on' : ''}" data-pl-focus="${enFiche ? 'fiche' : 'carte'}.activite.${Number(r.id)}.${escapeHtml(etape.coche)}" aria-pressed="${etape.fait}" aria-label="${escapeHtml(etape.nom)}${etape.quoi ? ` ${escapeHtml(etape.quoi)}` : ''} : ${etape.fait ? 'fait, annuler' : 'marquer comme fait'}" onclick="${appel}">${etape.fait ? ACTIVITY_CHECK_SVG : (enFiche ? '' : `<span class="gc-check-icon" aria-hidden="true">${renderActivityIcon(etape.activityId)}</span>`)}</button>`
+      ? `<button type="button" class="gc-check${etape.fait ? ' is-on' : ''}" data-pl-focus="${enFiche ? 'fiche' : 'carte'}.activite.${Number(r.id)}.${escapeHtml(etape.coche)}" aria-pressed="${etape.fait}" aria-label="${escapeHtml(etape.nom)}${etape.quoi ? ` ${escapeHtml(etape.quoi)}` : ''} : ${etape.fait ? 'fait, annuler' : 'marquer comme fait'}" onclick="${appel}">${etape.fait ? ACTIVITY_CHECK_SVG : (enFiche ? '' : `<span class="gc-check-icon" aria-hidden="true">${renderActivityIcon(etape.activityId || etape.icone)}</span>`)}</button>`
       : (enFiche
         ? `<span class="gc-check is-lecture${etape.fait ? ' is-on' : ''}" aria-hidden="true">${etape.fait ? ACTIVITY_CHECK_SVG : ''}</span>`
-        : `<span class="gc-step-icon" aria-hidden="true">${renderActivityIcon(etape.activityId)}</span>`);
+        : `<span class="gc-step-icon" aria-hidden="true">${renderActivityIcon(etape.activityId || etape.icone)}</span>`);
     if (enFiche) {
       // UNE LIGNE PAR ACTIVITE, SANS REDITE (2026-11-15, Ansar : « trop d info, trop
       // long [...] faut tout one shot ») : le nombre de joueurs ne s ecrit que s il
@@ -29444,7 +29479,9 @@ function renderGroupePrix(r, moment) {
   // Sans montant connu (activites tarifees au comptoir), la carte ne montre
   // pas « 0 € » : elle dit ou se fait le prix.
   const montant = prixDossierConnu(r) ? `<b>${formatMoneyCentimes(r.price)}</b>` : '<b class="is-none">Prix sur place</b>';
-  return `<div class="gc-price${paye ? ' is-paid' : ''}">${montant}${etat}</div>`;
+  // (une ligne « à payer » ne compte pas dans ce montant : la carte dit qu il y a encore a regler)
+  const enPlus = !paye && (Array.isArray(r.extras) ? r.extras : []).some(e => e && e.aPayer === true) ? '<small class="pl-a-payer">+ à payer</small>' : '';
+  return `<div class="gc-price${paye ? ' is-paid' : ''}">${montant}${enPlus}${etat}</div>`;
 }
 
 // LES GESTES, UN SEUL A LA FOIS : ce que la carte attend maintenant. Valider
@@ -30450,6 +30487,8 @@ const ACTIVITY_ICON_PATHS = {
   playground: '<circle cx="12" cy="12" r="9"/><path d="M8.4 14.8a4.2 4.2 0 0 0 7.2 0"/><path d="M9 9.8h.01M15 9.8h.01"/>',
   party_table: '<path d="M5 21h14M7 21v-6a5 5 0 0 1 10 0v6M12 6.2V3.6"/><path d="M10.6 3.6h2.8"/>',
   service_drinks: '<path d="M7 8h10l-1 11.2a2 2 0 0 1-2 1.8H10a2 2 0 0 1-2-1.8L7 8z"/><path d="M9 8V6.6a3 3 0 0 1 6 0V8"/>',
+  // Une ligne ajoutee au dossier (nourriture, table, ligne libre) : l etiquette d un article.
+  extra: '<path d="M3.5 12.2V4.6a1.1 1.1 0 0 1 1.1-1.1h7.6l8.3 8.3a1.5 1.5 0 0 1 0 2.1l-6.2 6.2a1.5 1.5 0 0 1-2.1 0z"/><circle cx="8.2" cy="8.2" r="1.3"/>',
 };
 function renderActivityIcon(activityId) {
   const paths = ACTIVITY_ICON_PATHS[activityId] || '<circle cx="12" cy="12" r="8"/>';
@@ -30780,7 +30819,7 @@ function ficheAppeler(r) {
 const FICHE_PHOTO_PAR_ID = { playground: 'plaine', fun_run: 'pixel', party_table: 'anniv' };
 function ficheVisuelActivite(r, etape) {
   const centre = String(r.centerId || (typeof getActiveOpsCenterId === 'function' ? getActiveOpsCenterId() : '') || '');
-  const id = String(etape.activityId || '');
+  const id = String(etape.activityId || etape.icone || '');
   const cle = `${FICHE_PHOTO_PAR_ID[id] || id} ${etape.nom || ''}`;
   const trouve = (BDG_PHOTOS[centre] || []).find(([motif]) => motif.test(cle));
   return trouve
@@ -31024,6 +31063,12 @@ function ficheCaisse(r, moment, droits) {
       ? `${mot('Encaissé')} ${montant(formatMoneyCentimes(r.amountPaid != null ? r.amountPaid : r.price))}${remise || moyenEcrit ? ` <span class="fz-caisse-suite">${remise ? `sur ${escapeHtml(formatMoneyCentimes(r.price))}${r.discountReason ? `, ${escapeHtml(r.discountReason)}` : ''}` : ''}${moyenEcrit}</span>` : ''}`
       : `${montant('Payé', true)}${moyenEcrit ? ` <span class="fz-caisse-suite">${moyenEcrit}</span>` : ''}`)
     : (connu ? `${mot('À encaisser')} ${montant(formatMoneyCentimes(r.price))}` : montant('Prix au comptoir', true));
+  // CE QUI SE REGLE EN PLUS (2026-11-21) : une ligne « à payer » n a pas de prix, le montant ne la
+  // compte pas. Elle se dit juste sous lui, avant les boutons : personne n encaisse sans la voir.
+  const aPayer = annule || paid ? [] : (Array.isArray(r.extras) ? r.extras : []).filter(e => e && e.aPayer === true);
+  const enPlus = aPayer.length
+    ? `<p class="fz-caisse-apayer" id="ficheAPayer${Number(r.id)}">+ ${escapeHtml(aPayer.map(e => e.name || 'Extra').join(', '))} <b class="pl-a-payer">À payer</b></p>`
+    : '';
   const suivant = ficheGesteSuivant(r, moment) === 'payer';
   const boutons = droits.encaisser && !annule
     ? GROUPE_MOYENS.map(m => {
@@ -31033,10 +31078,11 @@ function ficheCaisse(r, moment, droits) {
     : '';
   return `<section class="info-block gc-bill fz-carte fz-caisse${paid ? ' is-paye' : ''}" aria-label="Caisse">
       ${argent ? `<p class="pos-act-money ${paid ? 'is-paid' : ''}">${argent}</p>` : '<h4 class="fx-titre">Prix</h4>'}
+      ${enPlus}
       ${addition.unite && !annule ? `<p class="gc-bill-unit">${addition.unite}</p>` : ''}
       ${boutons ? `<div class="res-status-row gc-sheet-states fz-payer">${boutons}</div>` : ''}
       ${paid ? `<div class="fz-caisse-apres">${droits.statut ? `<button type="button" class="fz-bouton fz-desencaisser" data-pl-focus="fiche.desencaisser.${Number(r.id)}" onclick="setReservationStatusDirect(${r.id}, 'arrived', event)">Annuler l’encaissement</button>` : ''}${renderGroupeEncaisseAbsence(r)}</div>` : ''}
-      ${addition.lignes.length || addition.etat.ajuste ? `<dl class="gc-bill-lines">${addition.lignes.map(l => `<div><dt>${escapeHtml(l.nom)}${l.detail ? ` <small>${escapeHtml(l.detail)}</small>` : ''}</dt><dd>${escapeHtml(l.montant || '')}</dd></div>`).join('')}
+      ${addition.lignes.length || addition.etat.ajuste ? `<dl class="gc-bill-lines">${addition.lignes.map(l => `<div${l.aPayer ? ' class="is-a-payer"' : ''}><dt>${escapeHtml(l.nom)}${l.detail ? ` <small>${escapeHtml(l.detail)}</small>` : ''}</dt><dd${l.aPayer ? ' class="pl-a-payer"' : ''}>${escapeHtml(l.montant || '')}</dd></div>`).join('')}
         ${addition.etat.ajuste ? `<div class="is-adjust"><dt>Prix ajusté <small>tarif ${escapeHtml(formatMoneyCentimes(addition.etat.reference))}</small></dt><dd>${addition.etat.ecart < 0 ? '−' : '+'}${escapeHtml(formatMoneyCentimes(Math.abs(addition.etat.ecart)))}</dd></div>` : ''}
       </dl>` : ''}
       ${addition.incomplet ? '<p class="pos-note">Les activités « au comptoir » se règlent en plus, au tarif du jour.</p>' : ''}
@@ -31548,7 +31594,8 @@ function additionDuGroupe(r) {
     const base = Math.max(0, etat.reference - totalExtras);
     lignes.push({ nom: getReservationLabel(r), detail: '', montant: base > 0 ? formatMoneyCentimes(base) : '' });
   }
-  extras.forEach(e => lignes.push({ nom: e.name || 'Extra', detail: e.parPersonne ? 'par personne' : '', montant: e.offert ? 'offert' : formatMoneyCentimes(Number(e.price) || 0) }));
+  // (une ligne a payer se regle au comptoir : elle le dit, jamais « 0 € », lib/droits-reservation.js)
+  extras.forEach(e => lignes.push({ nom: e.name || 'Extra', detail: e.parPersonne ? 'par personne' : '', montant: e.aPayer === true ? 'À payer' : e.offert ? 'offert' : formatMoneyCentimes(Number(e.price) || 0), aPayer: e.aPayer === true }));
   const total = Number(r.price) || 0;
   const connu = prixDossierConnu(r);
   // Au centime : 280 € pour 30 joueurs, c est 9,33 €, pas « 9 € ».
@@ -32792,7 +32839,7 @@ function getEditPrixEstime() {
   if (!extras.length) return estime;
   const total = Math.round((estime.total + sumExtras(extras)) * 100) / 100;
   const joueurs = Math.max(1, Number(state.editState.pax) || 1);
-  return { ...estime, total, lignes: [...estime.lignes, ...extras.map((x) => ({ nom: x.name || 'Extra', detail: '', montant: Number(x.price) || 0 }))], parPersonne: Math.round(total / joueurs) };
+  return { ...estime, total, lignes: [...estime.lignes, ...extras.map((x) => ({ nom: x.name || 'Extra', detail: '', montant: Number(x.price) || 0, ...(x.aPayer === true ? { aPayer: true } : {}) }))], parPersonne: Math.round(total / joueurs) };
 }
 
 function ensureEditProgram(r) {
@@ -33198,7 +33245,7 @@ function renderEditIllimiteChoix() {
   const illimitees = getEffectiveCatalogFormules().filter(estFormuleIllimitee);
   // (la formule du dossier reste au selecteur meme si le catalogue ne la propose plus)
   const choix = origineIllimitee && !illimitees.some((f) => String(f.id) === String(origineIllimitee.id)) ? [origineIllimitee, ...illimitees] : illimitees;
-  if (!choix.length) { lireLesFormulesGardeesPourModifier(); return ''; }
+  if (!choix.length) { lireLesFormulesGardeesPourModifier(); return renderEditIllimiteACreer(deLOrigine); }
   const actuelle = !e.versProgrammeNormal && String(e.type || '') === 'formule' && e.formuleId ? resolveDisplayFormule(e.formuleId) : null;
   const enIllimite = estFormuleIllimitee(actuelle);
   const gauche = deLOrigine && !origineIllimitee ? rvNomFormule(deLOrigine) : 'À la carte';
@@ -33230,6 +33277,37 @@ function renderEditIllimiteChoix() {
     dit = `Accès illimité, ${phraseDeLIllimite(f).court.replace(/^Tout/, 'tout')}, ${formatMontant(f.price)} par joueur.`;
   }
   return `<div class="fm-choix-acces" id="editAcces" role="group" aria-label="Programme"><div class="fm-choix-seg" role="radiogroup" aria-label="À la carte ou accès illimité">${segments}</div>${dit ? `<p class="fm-choix-dit${enIllimite ? ' is-acces' : ''}" role="status">${escapeHtml(dit)}</p>` : ''}${tuiles}</div>`;
+}
+
+// SANS OFFRE AU CATALOGUE (2026-11-21) : le meme selecteur, et « Accès illimité » ouvre la creation sur
+// place de Reserver (illSansOffreHtml) ; l acces cree, le dossier le prend (illNouvelCreer). Rien tant
+// que les offres du centre ne sont pas lues : Modifier les lit (lireLesFormulesGardeesPourModifier).
+function renderEditIllimiteACreer(deLOrigine) {
+  const e = state.editState;
+  if (!e || !illOffresLues()) return '';
+  const ouvert = Boolean(e.illNouvel && e.illNouvel.ouvert);
+  const segment = (on, attributs, mot) => `<button type="button" role="radio" aria-checked="${on}" class="${on ? 'is-on' : ''}" ${attributs}>${escapeHtml(mot)}</button>`;
+  const segments = [
+    segment(!ouvert, 'id="editAccesSortir" onclick="fermerIllimiteACreerEdition()"', deLOrigine ? rvNomFormule(deLOrigine) : 'À la carte'),
+    segment(ouvert, 'id="editAccesCreer" onclick="ouvrirIllimiteACreerEdition()"', 'Accès illimité'),
+  ].join('');
+  return `<div class="fm-choix-acces" id="editAcces" role="group" aria-label="Programme"><div class="fm-choix-seg" role="radiogroup" aria-label="À la carte ou accès illimité">${segments}</div>${ouvert ? illSansOffreHtml('ed') : '<p class="fm-choix-dit" role="status">Ce centre n’a pas encore d’accès illimité.</p>'}</div>`;
+}
+
+function ouvrirIllimiteACreerEdition() {
+  const n = illNouvel('ed');
+  if (!n || n.ouvert) return;
+  n.ouvert = true;
+  renderPos();
+}
+
+// « À la carte » : la creation se replie, ce qui est tape reste pour la rouvrir.
+function fermerIllimiteACreerEdition() {
+  const e = state.editState;
+  const n = e && e.illNouvel;
+  if (!n || !n.ouvert || n.enCours) return;
+  n.ouvert = false;
+  renderPos();
 }
 
 // LE CHOIX DE L ACCES DANS MODIFIER : celui que la personne a touche, sinon celui du dossier (son plan),
@@ -33338,8 +33416,9 @@ function lireLesFormulesGardeesPourModifier() {
   const centre = getCurrentStaffCenterId();
   if (!centre || formulesGardeesLuesPourModifier === centre || (catalogueSurMesureConsole.centre === centre && catalogueSurMesureConsole.articles)) return;
   formulesGardeesLuesPourModifier = centre;
+  // (sans offre aussi : « Accès illimité » s y cree, renderEditIllimiteACreer ; deja la, rien a redessiner)
   Promise.resolve(chargerCatalogueSurMesure()).then(() => {
-    if (state.editState && state.activeTab === 'modifier' && getEffectiveCatalogFormules().some(estFormuleIllimitee)) renderPos();
+    if (state.editState && state.activeTab === 'modifier' && !document.getElementById('editAcces')) renderPos();
   }).catch(() => {});
 }
 
@@ -33880,7 +33959,8 @@ function renderEditPrix(r) {
 // « Bowling 1h · 2 pistes · 78 € » explique pourquoi passer de 12 a 13
 // joueurs ajoute 39 EUR ; sans lui, le montant a l air arbitraire.
 function lignesDetailPrixHtml(estime) {
-  return estime.lignes.map(l => `<li><span>${escapeHtml(l.nom)}${l.detail ? ` <em>${escapeHtml(l.detail)}</em>` : ''}</span><b>${l.montant == null ? 'sur place' : `${Math.round((l.montant) * 100) / 100} ${signeMonnaie()}`}</b></li>`).join('');
+  // (une ligne a payer n a pas de montant : « À payer », jamais « 0 € »)
+  return estime.lignes.map(l => `<li><span>${escapeHtml(l.nom)}${l.detail ? ` <em>${escapeHtml(l.detail)}</em>` : ''}</span>${l.aPayer ? '<b class="pl-a-payer">À payer</b>' : `<b>${l.montant == null ? 'sur place' : `${Math.round((l.montant) * 100) / 100} ${signeMonnaie()}`}</b>`}</li>`).join('');
 }
 
 // NOURRITURE ET EXTRAS DANS L ONGLET MODIFIER (2026-10-27, Movsar : « faut
@@ -33936,14 +34016,16 @@ function extrasEditionDepuis(extras, pax) {
     // (la quantite du libelle, sinon celle que la ligne porte)
     const qteLue = Math.trunc(Number(extra.qte));
     const qte = multiple ? Math.max(1, Math.trunc(Number(multiple[2]))) : (qteLue >= 1 ? qteLue : 1);
-    const prix = String(centimes(montant / qte));
+    // (une ligne a payer n a pas de prix : son champ reste vide, jamais « 0 »)
+    const aPayer = !offert && extra.aPayer === true;
+    const prix = aPayer ? '' : String(centimes(montant / qte));
     const groupe = groupeExtraDossier(extra, choix);
     const parPersonne = extra.parPersonne === true;
     const heure = texteDeLExtra(extra.heure);
     const note = texteDeLExtra(extra.note);
     const garde = { id: texteDeLExtra(extra.id) };
     EXTRA_GARDE.forEach((cle) => { if (texteDeLExtra(extra[cle])) garde[cle] = texteDeLExtra(extra[cle]); });
-    const meme = !parPersonne && !offert && modele[groupe].find((l) => l.choix === choix && l.prix === prix && !l.parPersonne && !l.offert
+    const meme = !parPersonne && !offert && !aPayer && modele[groupe].find((l) => l.choix === choix && l.prix === prix && !l.parPersonne && !l.offert && !l.aPayer
       && (l.heure || '') === heure && (l.note || '') === note && EXTRA_GARDE.every((cle) => (l.garde[cle] || '') === (garde[cle] || '')));
     if (meme) {
       meme.qte += qte;
@@ -33951,8 +34033,8 @@ function extrasEditionDepuis(extras, pax) {
       meme.garde.lignes.push({ ...extra });
       return;
     }
-    const ligne = { choix, qte, prix, ...(heure ? { heure } : {}), ...(note ? { note } : {}), ...(parPersonne ? { parPersonne: true } : {}), ...(offert ? { offert: true } : {}) };
-    ligne.garde = { ...garde, depart: { choix, qte, prix, heure, note, parPersonne, offert }, lignes: [{ ...extra }] };
+    const ligne = { choix, qte, prix, ...(heure ? { heure } : {}), ...(note ? { note } : {}), ...(parPersonne ? { parPersonne: true } : {}), ...(offert ? { offert: true } : {}), ...(aPayer ? { aPayer: true } : {}) };
+    ligne.garde = { ...garde, depart: { choix, qte, prix, heure, note, parPersonne, offert, aPayer }, lignes: [{ ...extra }] };
     modele[groupe].push(ligne);
   });
   return modele;
@@ -33991,8 +34073,31 @@ const prixLigneExtra = (v) => Math.max(0, Number(String(v ?? '').replace(',', '.
 function qteLigneExtra(ligne) {
   return ligne.parPersonne ? Math.max(1, Math.trunc(Number(state.editState && state.editState.pax) || 1)) : Math.max(1, Math.trunc(Number(ligne.qte) || 1));
 }
+// UNE LIGNE « À PAYER » DANS MODIFIER (2026-11-21, un gerant : « avec le compte staff j'ai pas su écrire
+// ce que je voulais [...] je sais pas c'est quoi le prix, donc on peut choisir « à payer » »). Elle l est
+// quand on le choisit, quand son prix reste vide, et, au niveau « Depuis le catalogue », pour toute ligne
+// hors de la carte : c est le seul geste hors catalogue de ce niveau, un nom et une quantite, sans prix
+// (resoudreExtras, lib/droits-reservation.js). Une ligne d avant qui garde son nom garde son prix.
+function prixExtraPermis(l) {
+  if (typeof niveauStaff !== 'function' || niveauStaff('surmesure') !== 'catalogue') return true;
+  if (articleDeLaLigneExtra(l)) return true;
+  const depart = l && l.garde && l.garde.depart;
+  return Boolean(depart && !depart.aPayer && String(l.choix || '').trim() === depart.choix);
+}
+function extraAPayer(l) {
+  if (!l || l.offert) return false;
+  return Boolean(l.aPayer) || !prixExtraPermis(l) || String(l.prix ?? '').trim() === '';
+}
 function sommeLigneExtra(ligne) {
+  if (extraAPayer(ligne)) return 'À payer';
   return ligne.offert ? 'offert' : formatMoneyCentimes(Math.round(prixLigneExtra(ligne.prix) * qteLigneExtra(ligne) * 100) / 100);
+}
+// Le total des extras ne compte pas ce qui est a payer : il le dit (« 15 € + à payer »).
+function totalExtrasEditionTexte(modele, pax) {
+  const lignes = extrasDepuisLignes(modele, pax);
+  const total = sumExtras(lignes);
+  const aPayer = lignes.some(l => l.aPayer === true);
+  return total > 0 ? `${formatMoneyCentimes(total)}${aPayer ? ' + à payer' : ''}` : aPayer ? 'À payer' : '';
 }
 function sommeArcadesExtra(arcades) {
   return formatMoneyCentimes(Math.round(prixLigneExtra(arcades.prix) * Math.max(1, Math.trunc(Number(arcades.joueurs) || 1)) * 100) / 100);
@@ -34019,21 +34124,23 @@ function renderEditExtras(r) {
       ${modele[groupe].map((l, i) => `<div class="fm-x-ligne" data-x="${groupe}-${i}">
         ${champ(groupe, i, 'choix', l.choix, `list="fmx-${groupe}" placeholder="${invite}" aria-label="${titre} : ${invite.toLowerCase()}"`)}
         ${l.parPersonne ? `<span class="fm-x-qte fm-x-tous" id="fmxQte-${groupe}-${i}">${qteLigneExtra(l)}</span>` : champ(groupe, i, 'qte', l.qte, 'type="number" min="1" max="999" inputmode="numeric" aria-label="Quantité"')}
-        <span class="fm-euro">${champ(groupe, i, 'prix', l.prix, `type="number" min="0" step="0.5" inputmode="decimal" placeholder="Prix" aria-label="Prix à l’unité en ${nomsMonnaie()}"`)}<span aria-hidden="true">${signeMonnaie()}</span></span>
-        <b class="fm-x-somme" id="fmxSomme-${groupe}-${i}">${escapeHtml(sommeLigneExtra(l))}</b>
+        <span class="fm-euro" id="fmxPrix-${groupe}-${i}"${prixExtraPermis(l) ? '' : ' hidden'}>${champ(groupe, i, 'prix', l.aPayer ? '' : l.prix, `type="number" min="0" step="0.5" inputmode="decimal" placeholder="Prix" aria-label="Prix à l’unité en ${nomsMonnaie()}"${l.aPayer ? ' disabled' : ''}`)}<span aria-hidden="true">${signeMonnaie()}</span></span>
+        <b class="fm-x-somme${extraAPayer(l) ? ' pl-a-payer' : ''}" id="fmxSomme-${groupe}-${i}">${escapeHtml(sommeLigneExtra(l))}</b>
         <button type="button" class="fm-x-retirer" aria-label="Retirer ${escapeHtml(l.choix || 'cette ligne')}" onclick="retirerEditExtra('${groupe}',${i})">×</button>
         <span class="fm-x-opts">
           <button type="button" class="fm-x-opt${l.parPersonne ? ' is-on' : ''}" aria-pressed="${Boolean(l.parPersonne)}" onclick="basculerEditExtra('${groupe}',${i},'parPersonne')">Par personne</button>
           ${niveauStaff('prix') === 'non' ? '<button type="button" class="fm-x-opt" disabled aria-describedby="fmxDroitPrix">Offert</button>' : `<button type="button" class="fm-x-opt${l.offert ? ' is-on' : ''}" aria-pressed="${Boolean(l.offert)}" onclick="basculerEditExtra('${groupe}',${i},'offert')">Offert</button>`}
+          ${/* (au niveau libre, le prix se tape ou se laisse « à payer » ; au catalogue, une ligne hors de la carte l est d office) */''}
+          ${niveauStaff('surmesure') === 'libre' ? `<button type="button" class="fm-x-opt${l.aPayer ? ' is-on' : ''}" aria-pressed="${Boolean(l.aPayer)}" onclick="basculerEditExtra('${groupe}',${i},'aPayer')">À payer</button>` : ''}
           ${serviceLigneExtraHtml(groupe, i, l)}
         </span>
       </div>`).join('')}
     </div>`).join('');
-  const total = sumExtras(extrasDepuisLignes(modele, state.editState.pax));
+  const total = totalExtrasEditionTexte(modele, state.editState.pax);
   const listes = listesSurMesure('fmx');
   chargerCatalogueSurMesure();
   return `<section class="fm-extras" aria-labelledby="fmExtrasTitre">
-    <div class="fm-x-tete"><h4 class="fm-titre" id="fmExtrasTitre">Nourriture et extras</h4><span class="fm-x-total" id="fmExtrasTotal"${total > 0 ? '' : ' hidden'}>${escapeHtml(formatMoneyCentimes(total))}</span></div>
+    <div class="fm-x-tete"><h4 class="fm-titre" id="fmExtrasTitre">Nourriture et extras</h4><span class="fm-x-total${total === 'À payer' ? ' pl-a-payer' : ''}" id="fmExtrasTotal"${total ? '' : ' hidden'}>${escapeHtml(total)}</span></div>
     ${arcades}${groupes}
     ${/* Ajouter une ligne, c est « Ajouter du sur mesure » (resoudreExtras) :
          au niveau « Non », pas de bouton (2026-11-07). */''}
@@ -34104,6 +34211,9 @@ function basculerEditExtra(groupe, i, cle) {
   if (!ligne) return;
   ligne[cle] = !ligne[cle];
   if (cle === 'parPersonne' && !ligne.parPersonne) ligne.qte = 1;
+  // (« À payer » et « Offert » ne vont pas ensemble : une offre a un prix connu)
+  if (cle === 'aPayer' && ligne.aPayer) { delete ligne.offert; ligne.prix = ''; }
+  if (cle === 'offert' && ligne.offert) delete ligne.aPayer;
   if (!ligne[cle]) delete ligne[cle];
   renderPos();
 }
@@ -34151,7 +34261,10 @@ function peindreExtrasEdition() {
   if (!e || !e.extrasEdites) return;
   EXTRAS_GROUPES.forEach(([groupe]) => e.extrasEdites[groupe].forEach((ligne, i) => {
     const somme = document.getElementById(`fmxSomme-${groupe}-${i}`);
-    if (somme) somme.textContent = sommeLigneExtra(ligne);
+    if (somme) { somme.textContent = sommeLigneExtra(ligne); somme.classList.toggle('pl-a-payer', extraAPayer(ligne)); }
+    // (le nom tape relie un article de la carte, ou la ligne en sort : son prix se tape, ou elle est a payer)
+    const prix = document.getElementById(`fmxPrix-${groupe}-${i}`);
+    if (prix) prix.hidden = !prixExtraPermis(ligne);
     const tous = document.getElementById(`fmxQte-${groupe}-${i}`);
     if (tous) tous.textContent = qteLigneExtra(ligne);
   }));
@@ -34162,9 +34275,10 @@ function peindreExtrasEdition() {
   if (parJoueur && arcades) parJoueur.textContent = `par joueur × ${Math.max(1, Math.trunc(Number(arcades.joueurs) || 1))}`;
   const total = document.getElementById('fmExtrasTotal');
   if (total) {
-    const montant = sumExtras(extrasDepuisLignes(e.extrasEdites, e.pax));
-    total.textContent = formatMoneyCentimes(montant);
-    total.hidden = !(montant > 0);
+    const texte = totalExtrasEditionTexte(e.extrasEdites, e.pax);
+    total.textContent = texte;
+    total.hidden = !texte;
+    total.classList.toggle('pl-a-payer', texte === 'À payer');
   }
 }
 
@@ -37384,7 +37498,9 @@ function extrasDepuisLignes(e, pax, arcadesComprises = false) {
       const nom = String(ligne.choix || '').trim();
       const qte = ligne.parPersonne ? groupe : Math.max(1, Math.trunc(Number(ligne.qte) || 1));
       if (!nom) return;
-      const unitaire = prix(ligne.prix);
+      // (une ligne a payer part sans prix, et le dit : extraAPayer)
+      const aPayer = extraAPayer(ligne);
+      const unitaire = aPayer ? 0 : prix(ligne.prix);
       const valeur = Math.round(unitaire * qte * 100) / 100;
       const heure = String(ligne.heure || '').trim();
       const note = String(ligne.note || '').trim();
@@ -37393,7 +37509,8 @@ function extrasDepuisLignes(e, pax, arcadesComprises = false) {
       const depart = garde && garde.depart;
       const intacte = Boolean(depart && Array.isArray(garde.lignes) && garde.lignes.length && nom === depart.choix && qte === depart.qte
         && Math.round(unitaire * 100) === Math.round(prix(depart.prix) * 100)
-        && Boolean(ligne.parPersonne) === Boolean(depart.parPersonne) && Boolean(ligne.offert) === Boolean(depart.offert));
+        && Boolean(ligne.parPersonne) === Boolean(depart.parPersonne) && Boolean(ligne.offert) === Boolean(depart.offert)
+        && aPayer === Boolean(depart.aPayer));
       if (intacte) {
         // Intacte, elle repart telle que le dossier la porte : le serveur la reconnait et la
         // garde entiere, son auteur compris. Une heure ou une note changee voyage avec elle.
@@ -37408,11 +37525,11 @@ function extrasDepuisLignes(e, pax, arcadesComprises = false) {
       lignes.push({
         id: (garde && garde.id) || `${nomGroupe}-${i + 1}`,
         name: `${(relie && relie.nom) || nom} × ${qte}`,
-        price: ligne.offert ? 0 : valeur,
+        price: ligne.offert || aPayer ? 0 : valeur,
         ...(relie ? { articleId: relie.id } : memeArticle && garde.articleId ? { articleId: garde.articleId } : {}),
         categorie: (relie && relie.categorie) || (memeArticle && garde.categorie) || nomGroupe,
         qte,
-        prixUnitaire: unitaire,
+        ...(aPayer ? { aPayer: true } : { prixUnitaire: unitaire }),
         ...(heure ? { heure } : {}),
         ...(note ? { note } : {}),
         ...(ligne.parPersonne ? { parPersonne: true } : {}),
@@ -37427,13 +37544,14 @@ function extrasDepuisLignes(e, pax, arcadesComprises = false) {
 function quickExtrasLignes() {
   const s = quickBookState;
   if (!s) return [];
+  // (une ligne sans prix est « à payer » : elle part sans prix et le dit, lib/droits-reservation.js)
   const lignes = rsPanier(s).map((l) => ({
     id: l.id,
     articleId: l.articleId,
     categorie: l.categorie,
     name: l.name,
     qte: rsQte(l),
-    prixUnitaire: l.prixUnitaire == null ? 0 : Number(l.prixUnitaire),
+    ...(l.prixUnitaire == null || l.prixUnitaire === '' ? { aPayer: true } : { prixUnitaire: Number(l.prixUnitaire) }),
     price: rsPrixLigne(l) || 0,
     heure: l.heure || '',
     note: l.note || '',
@@ -38742,7 +38860,9 @@ function photoDActiviteDuCentre(id) {
 // clair, bord bleu) ou retiree (photo grisee, « hors accès ») d un toucher ; le bowling et le laser pris
 // ont dessous « À volonté » et « 1 fois ». Sur un plan (`acces`), ce que l heure choisie garde vraiment
 // (« pistes 3 et 4 », « 1 h à 16:00 »). `gestes` : les fonctions de la page, { basculer, volonte }.
-function illimiteTuilesHtml(f, choix, { acces = null, gestes, prefixe = 'rsIl' } = {}) {
+// `reglage` faux : sans « À volonté | 1 fois » (l acces cree sur place, illNouvelHtml, les garde
+// toute la visite comme Tarifs le fait d office ; chaque dossier les change ensuite).
+function illimiteTuilesHtml(f, choix, { acces = null, gestes, prefixe = 'rsIl', reglage = true } = {}) {
   const ids = activitesDeLIllimite(f);
   if (!ids.length || !choix) return '';
   const lues = acces && acces.etiquettes ? acces.etiquettes : {};
@@ -38758,7 +38878,7 @@ function illimiteTuilesHtml(f, choix, { acces = null, gestes, prefixe = 'rsIl' }
     // (« hors accès » se dit pareil pour le bowling et pour les arcades, sans accord a deviner)
     const tag = !prise ? 'hors accès' : !aHeure ? 'à volonté' : lue ? (garde ? lue.precision || lue.etiquette : lue.etiquette) : garde ? (id === 'bowling' ? 'pistes gardées' : 'armes gardées') : 'à heure fixe';
     const dit = `${nom}, ${prise ? `dans l’accès${aHeure ? (garde ? ', à volonté' : ', 1 fois') : ''}` : 'hors accès'}`;
-    const seg = prise && aHeure ? `<span class="rs-ill-seg" role="radiogroup" aria-label="${escapeHtml(`${nom} : à volonté ou 1 fois`)}">${[[true, 'À volonté', 'oui'], [false, '1 fois', 'non']].map(([oui, mot, cle]) => `<button type="button" role="radio" id="${prefixe}V-${escapeHtml(id)}-${cle}" aria-checked="${garde === oui}" data-ill-volonte="${cle}" onclick="${gestes.volonte}(this.closest('[data-ill-activite]').dataset.illActivite, ${oui})">${mot}</button>`).join('')}</span>` : '';
+    const seg = reglage && prise && aHeure ? `<span class="rs-ill-seg" role="radiogroup" aria-label="${escapeHtml(`${nom} : à volonté ou 1 fois`)}">${[[true, 'À volonté', 'oui'], [false, '1 fois', 'non']].map(([oui, mot, cle]) => `<button type="button" role="radio" id="${prefixe}V-${escapeHtml(id)}-${cle}" aria-checked="${garde === oui}" data-ill-volonte="${cle}" onclick="${gestes.volonte}(this.closest('[data-ill-activite]').dataset.illActivite, ${oui})">${mot}</button>`).join('')}</span>` : '';
     return `<li class="rs-ill-act${prise ? ' is-on' : ' is-off'}${aHeure ? ' is-heure' : ''}${aHeure && prise && !garde ? ' is-fixe' : ''}" data-ill-activite="${escapeHtml(id)}"><button type="button" class="rs-ill-t" id="${prefixe}T-${escapeHtml(id)}" aria-pressed="${prise}" aria-label="${escapeHtml(dit)}" onclick="${gestes.basculer}(this.closest('[data-ill-activite]').dataset.illActivite)">${visuel}<b>${escapeHtml(nom)}</b><span class="rs-ill-tag">${escapeHtml(tag)}</span></button>${seg}</li>`;
   }).join('')}</ul>`;
 }
@@ -38773,6 +38893,200 @@ function accesIllimiteDuDossier(r) {
   const items = r.program && Array.isArray(r.program.items) && !illimiteDeSaCarte(r) ? r.program.items.map((item) => item && item.activityId).filter(Boolean) : choixIllimiteDuDossier(r, f).activites;
   const comprises = [...new Set(items)].map((id) => ({ id, nom: rvNomActivite(id) }));
   return window.PinlaneAVolonte.resume(r.opsPlan, { minutes: Number(f.illimite.minutes) || 0, comprises });
+}
+
+// ── L ACCES ILLIMITE CREE SUR PLACE (2026-11-21) ─────────────────────────────
+// Un gerant, en colere : « c'est où pour mettre une activité en illimité, je trouve pas ». La porte
+// « Accès illimité » de Reserver ne se montrait que si le catalogue du centre avait deja une formule
+// illimitee ; ni Gembloux ni Libramont n en avaient, et rien ne disait ou la creer. La porte est
+// maintenant toujours la (rsPorteIllimiteHtml). Sans offre, qui a le droit Tarifs la cree sur place :
+// un prix par joueur TAPE (jamais propose : un champ vide n est jamais 0), une duree, les activites du
+// centre prises d office et retirees en tuiles. Elle s enregistre par le chemin de Tarifs
+// (garderFormuleSurMesure, le corps de cevSaveIllimite dans assets/staff-pages-v2.js : au comptoir
+// seulement, le bowling et le laser gardes toute la visite), le catalogue se relit, puis l acces se
+// prend aussitot : ses tuiles dans Reserver, le dossier dans Modifier (renderEditIllimiteACreer). Sans
+// le droit, une phrase dit qui le cree et ou.
+const ILL_NOUVEL_DUREES = [120, 180, 240];
+// (« Autre » : de 1 h a 12 h, par demi-heure, les bornes du serveur, lib/formule-comptoir.js)
+const ILL_NOUVEL_AUTRES = Array.from({ length: 23 }, (_, rang) => 60 + rang * 30);
+const ILL_NOUVEL_OU = 'Un responsable le crée dans Tarifs & formules, avec le bouton « + Accès illimité » en haut de la page.';
+
+// Le droit de creer l acces : celui de Tarifs, comme le serveur (api/ops.js, pricing.manage) et le
+// bouton « + Accès illimité » de Tarifs (tfPeutTarifs).
+function illPeutCreer() {
+  return rsFmPeutGarder();
+}
+
+// « Aucune offre » ne se dit qu une fois les offres du centre lues (la liste servie et les formules
+// gardees au comptoir) : avant, on proposerait d en creer une seconde.
+function illOffresLues() {
+  const lu = catalogueSurMesureConsole;
+  return typeof window !== 'undefined' && Array.isArray(window.__pinlaneDisplayFormules) && lu.centre === getCurrentStaffCenterId() && Array.isArray(lu.articles);
+}
+
+// La creation en cours vit avec ce qu on reserve : la fenetre (`rs`) ou le dossier de Modifier (`ed`).
+function illNouvelPorteur(ou) {
+  return ou === 'ed' ? state.editState : quickBookState;
+}
+
+function illNouvel(ou) {
+  const porteur = illNouvelPorteur(ou);
+  if (!porteur) return null;
+  if (!porteur.illNouvel) porteur.illNouvel = { prix: '', minutes: 180, autre: false, retirees: [], ouvert: false, enCours: false, message: '', cree: '' };
+  return porteur.illNouvel;
+}
+
+// L acces tel qu il sera, lu comme un vrai par les tuiles et la phrase : toutes les activites du centre,
+// le bowling et le laser gardes toute la visite (le defaut de Tarifs), la duree choisie.
+function illNouvelFormule(n) {
+  const ids = getQuickBookActivityChoices().map((c) => String(c.id));
+  return { id: '', name: 'Accès illimité', minPax: 1, illimite: { activites: ids, aVolonte: ILL_A_HEURE.filter((id) => ids.includes(id)), minutes: n.minutes } };
+}
+
+function illNouvelChoix(n, f = illNouvelFormule(n)) {
+  const activites = f.illimite.activites.filter((id) => !n.retirees.includes(id));
+  return { formuleId: '', activites, aVolonte: ILL_A_HEURE.filter((id) => activites.includes(id)) };
+}
+
+// Le prix tape, sinon rien : Number('') vaut 0, et un champ vide enregistrait un acces gratuit.
+function illNouvelPrixLu(n) {
+  const brut = String(n.prix == null ? '' : n.prix).trim().replace(',', '.');
+  const prix = brut === '' ? NaN : Number(brut);
+  return Number.isFinite(prix) && prix >= 0 && prix <= 1000 ? Math.round(prix * 100) / 100 : NaN;
+}
+
+// Le corps de Tarifs pour le meme acces (cevSaveIllimite).
+function illNouvelCorps(n) {
+  const choix = illNouvelChoix(n);
+  return { nom: 'Accès illimité', prixParPersonne: illNouvelPrixLu(n), minPax: 1, clients: false, illimite: true, dureeMinutes: n.minutes, activites: choix.activites.slice(), aVolonte: { bowling: choix.aVolonte.includes('bowling'), laser_game: choix.aVolonte.includes('laser_game') } };
+}
+
+// Ce que lira le comptoir, la phrase commune : « Tout à volonté pendant 3 h, 32 € par joueur ».
+function illNouvelPhrase(n) {
+  const choix = illNouvelChoix(n);
+  const dit = phraseDeLIllimite({ illimite: { activites: choix.activites, aVolonte: choix.aVolonte, minutes: n.minutes }, minPax: 1 });
+  const prix = illNouvelPrixLu(n);
+  return [dit.court, Number.isFinite(prix) ? `${formatMoneyCentimes(prix)} par joueur` : ''].filter(Boolean).join(', ');
+}
+
+// Sans offre au catalogue : rien tant que les offres ne sont pas lues, la creation pour qui a le droit
+// Tarifs, la phrase pour les autres.
+function illSansOffreHtml(ou) {
+  const p = ou === 'ed' ? 'edIlN' : 'rsIlN';
+  if (!illOffresLues()) return `<p class="rs-ill-nv-mot" id="${p}Attente" role="status">L’offre du centre n’est pas encore lue. Un instant, ou rouvrez ${ou === 'ed' ? 'la fiche' : 'la réservation'}.</p>`;
+  if (!illPeutCreer()) return `<p class="rs-ill-nv-mot" id="${p}SansDroit">${escapeHtml(ILL_NOUVEL_OU)}</p>`;
+  return illNouvelHtml(ou);
+}
+
+// LA CARTE DE CREATION, la meme dans Reserver et dans Modifier : le nom et ce qu il faut faire, le prix
+// par joueur a droite, la duree, les activites en photos, et en bas ce que lira le comptoir avec le
+// bouton (encadre : le geste plein de la fenetre reste « Créer » la reservation, celui de Modifier
+// « Enregistrer »).
+function illNouvelHtml(ou) {
+  const n = illNouvel(ou);
+  if (!n) return '';
+  const p = ou === 'ed' ? 'edIlN' : 'rsIlN';
+  if (n.cree) return `<p class="rs-ill-nv-mot" id="${p}Cree" role="status">L’accès illimité est créé. Rouvrez ${ou === 'ed' ? 'la fiche pour le prendre' : 'la réservation pour le réserver'}.</p>`;
+  const f = illNouvelFormule(n);
+  const autre = n.autre || !ILL_NOUVEL_DUREES.includes(n.minutes);
+  const seg = (v, mot, on) => `<button type="button" role="radio" id="${p}D-${v}" aria-checked="${on}" class="${on ? 'is-on' : ''}" onclick="illNouvelDuree('${ou}','${v}')">${escapeHtml(mot)}</button>`;
+  const duree = [...ILL_NOUVEL_DUREES.map((m) => seg(String(m), rvHeuresLabel(m / 60), !autre && n.minutes === m)), seg('autre', 'Autre', autre)].join('');
+  const autreChamp = autre ? `<select id="${p}Autre" class="rs-ill-nv-autre" aria-label="Autre durée" onchange="illNouvelDuree('${ou}',this.value,true)">${ILL_NOUVEL_AUTRES.map((m) => `<option value="${m}"${n.minutes === m ? ' selected' : ''}>${escapeHtml(rvHeuresLabel(m / 60))}</option>`).join('')}</select>` : '';
+  const tuiles = illimiteTuilesHtml(f, illNouvelChoix(n, f), { gestes: { basculer: ou === 'ed' ? 'edIlNouvelBasculer' : 'rsIlNouvelBasculer', volonte: '' }, prefixe: p, reglage: false });
+  const suite = ou === 'ed' ? 'ce dossier le prend tout de suite' : 'il se réserve tout de suite';
+  return `<section class="rs-ill-nv" id="${p}" aria-labelledby="${p}Titre">
+    <div class="rs-ill-nv-t"><p class="rs-ill-nv-n"><b id="${p}Titre">Accès illimité</b><span>Ce centre n’en a pas encore. Tapez son prix par joueur et choisissez sa durée, ${suite}.</span></p>
+      <label class="rs-ill-nv-prix"><span>Prix par joueur</span><span class="rs-ill-nv-champ"><input id="${p}Prix" type="number" min="0" max="1000" step="0.5" inputmode="decimal" autocomplete="off" value="${escapeHtml(String(n.prix == null ? '' : n.prix))}" aria-label="Prix par joueur en ${nomsMonnaie()}" oninput="illNouvelPrix('${ou}',this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();illNouvelCreer('${ou}');}"><span aria-hidden="true">${signeMonnaie()}</span></span></label></div>
+    <div class="rs-ill-nv-l"><span class="rs-ill-nv-lbl" id="${p}DureeT">Durée</span><div class="rs-ill-nv-seg" role="radiogroup" aria-labelledby="${p}DureeT">${duree}</div>${autreChamp}</div>
+    <div class="rs-ill-nv-l is-acts"><span class="rs-ill-nv-lbl">Compris</span>${tuiles}</div>
+    ${n.message ? `<p class="rs-ill-nv-ko" id="${p}Erreur" role="alert">${escapeHtml(n.message)}</p>` : ''}
+    <div class="rs-ill-nv-pied"><p class="rs-ill-nv-dit"><b id="${p}Dit" role="status">${escapeHtml(illNouvelPhrase(n))}</b><small>Au comptoir seulement. Il se règle ensuite dans Tarifs &amp; formules.</small></p><button type="button" class="rs-ill-nv-creer" id="${p}Creer" ${n.enCours ? 'aria-busy="true" disabled' : ''} onclick="illNouvelCreer('${ou}')">${n.enCours ? 'Création…' : 'Créer l’accès illimité'}</button></div>
+  </section>`;
+}
+
+// Un toucher : la fenetre se repeint comme pour tout geste (rsGeste), Modifier se redessine.
+function illNouvelRepeindre(ou, faire) {
+  if (ou === 'ed') { faire(); renderPos(); return; }
+  rsGeste(faire);
+}
+
+// La frappe du prix : le champ garde son curseur, la phrase suit et l erreur s en va.
+function illNouvelPrix(ou, valeur) {
+  const n = illNouvel(ou);
+  if (!n) return;
+  n.prix = String(valeur == null ? '' : valeur);
+  n.message = '';
+  if (ou !== 'ed') {
+    if (quickBookState && rsEtat().q === 'illimite') rsPoser('rsCorps', rsCorpsHtml(), { memeSousLeChamp: true });
+    return;
+  }
+  const dit = document.getElementById('edIlNDit');
+  if (dit) dit.textContent = illNouvelPhrase(n);
+  const erreur = document.getElementById('edIlNErreur');
+  if (erreur) erreur.remove();
+}
+
+// 2 h, 3 h, 4 h ; « Autre » ouvre la liste de 1 h a 12 h (`depuisAutre` : le choix vient d elle).
+function illNouvelDuree(ou, valeur, depuisAutre = false) {
+  const n = illNouvel(ou);
+  if (!n || n.enCours) return;
+  if (valeur === 'autre') { illNouvelRepeindre(ou, () => { n.autre = true; }); return; }
+  const minutes = Math.trunc(Number(valeur));
+  if (!ILL_NOUVEL_AUTRES.includes(minutes)) return;
+  illNouvelRepeindre(ou, () => { n.minutes = minutes; n.autre = depuisAutre === true; });
+}
+
+// Une tuile : l activite se retire ou se reprend ; la derniere reste.
+function illNouvelBasculer(ou, id) {
+  const n = illNouvel(ou);
+  if (!n || n.enCours) return;
+  const f = illNouvelFormule(n);
+  const suite = choixIllimiteBascule(f, illNouvelChoix(n, f), String(id || ''));
+  if (!suite) { toast('Gardez au moins une activité.'); return; }
+  illNouvelRepeindre(ou, () => { n.retirees = f.illimite.activites.filter((x) => !suite.activites.includes(x)); });
+}
+
+function rsIlNouvelBasculer(id) {
+  illNouvelBasculer('rs', id);
+}
+
+function edIlNouvelBasculer(id) {
+  illNouvelBasculer('ed', id);
+}
+
+// CREER : le prix tape d abord (rien ne part sans lui), le chemin de Tarifs, le catalogue relu partout
+// (rsFmCatalogueChange : la porte, Modifier, la liste de Tarifs), puis l acces se prend.
+async function illNouvelCreer(ou) {
+  const porteur = illNouvelPorteur(ou);
+  const n = illNouvel(ou);
+  if (!n || n.enCours || n.cree || !illPeutCreer()) return;
+  if (!Number.isFinite(illNouvelPrixLu(n))) {
+    illNouvelRepeindre(ou, () => { n.message = `Tapez le prix par joueur, de 0 à 1000 ${signeMonnaie()}.`; });
+    const champ = document.getElementById(`${ou === 'ed' ? 'edIlN' : 'rsIlN'}Prix`);
+    if (champ) champ.focus();
+    return;
+  }
+  const corps = illNouvelCorps(n);
+  illNouvelRepeindre(ou, () => { n.enCours = true; n.message = ''; });
+  let id = '';
+  try {
+    const reponse = await apiRequest(API_ENDPOINTS.ops, { method: 'POST', body: JSON.stringify({ action: 'garderFormuleSurMesure', centerId: getCurrentStaffCenterId(), formule: corps }) });
+    id = String((reponse && reponse.id) || '');
+  } catch (error) {
+    n.enCours = false;
+    if (illNouvelPorteur(ou) === porteur) illNouvelRepeindre(ou, () => { n.message = (error && error.message) || 'L’accès illimité n’a pas pu être créé. Réessayez.'; });
+    return;
+  }
+  rsFmCatalogueChange();
+  await Promise.resolve(chargerCatalogueSurMesure()).catch(() => null);
+  n.enCours = false;
+  if (illNouvelPorteur(ou) !== porteur) return;
+  const cree = id ? resolveDisplayFormule(id) : null;
+  // (cree mais pas encore relu : rien a reprendre, et pas de second acces par un nouveau toucher)
+  if (!estFormuleIllimitee(cree)) { illNouvelRepeindre(ou, () => { n.cree = id || 'oui'; }); return; }
+  delete porteur.illNouvel;
+  if (ou === 'ed') passerEnIllimiteEdition(id);
+  else rsOuvrirIllimite(id);
 }
 
 // LE CRENEAU A VERIFIER : ce que la visite occupe vraiment, comme au serveur. Une formule a
@@ -39155,6 +39469,8 @@ function rvPiedHtml() {
   const sansPrix = !attente && !Number(total) && !complet;
   const montant = attente ? '' : sansPrix ? 'sur place' : rsEuros(total);
   const suite = attente ? '' : !complet && !sansPrix ? 'le reste sur place' : !lot && Number(total) > 0 ? `${formatMoneyCentimes(Math.round((total / joueurs) * 100) / 100)} par joueur${rsPrixInegal() ? ' en moyenne' : ''}` : '';
+  // (une ligne « à payer » n est pas dans ce total : il le dit, jamais un « 0 € » muet)
+  const enPlus = !attente && !lot && rsFmPrix() == null && quickExtrasLignes().some((l) => l.aPayer) ? '<small class="pl-a-payer" id="rsTotalAPayer">+ à payer</small>' : '';
   // Pris quand meme : le lien dit l heure qu il reprend (« Prendre 22:00 à la place »), et la
   // prend d un toucher. « Revenir à l’heure proche » ne disait pas laquelle, puis il fallait
   // encore toucher « Prendre 22:00 ».
@@ -39166,7 +39482,7 @@ function rvPiedHtml() {
   const resume = `${b.faits.combien ? rvPluriel(joueurs, 'joueur') : 'Joueurs à choisir'}, ${jour.charAt(0).toLowerCase()}${jour.slice(1)}`;
   const ditRefus = chevauche || (refuse && !s.forcer && !lot ? rsPhrase((rvRefusDuPlan() || {}).court || '') : '');
   return `<button type="button" class="rs-resume" id="rsResume" aria-expanded="${Boolean(b.ticket)}" aria-label="${escapeHtml(`${b.ticket ? 'Réduire' : 'Ouvrir'} le ticket, ${ditRefus || resume}, ${montant}`)}" onclick="rsBasculerTicket()"><span${ditRefus ? ' class="is-ko"' : ''}>${escapeHtml(ditRefus || resume)}</span><b>${escapeHtml(montant || 'Ticket')}</b></button>
-    <button type="button" class="rs-tk-tot${rsLigneIci() === 'total' ? ' is-ici' : ''}${sansPrix ? ' is-inconnu' : ''}" id="rsL-total" onclick="rsOuvrir('total')"><span>${lot ? 'Total du lot' : 'Total'}${suite ? `<small>${escapeHtml(suite)}</small>` : ''}</span><b id="rvTotalPied">${escapeHtml(montant)}</b></button>
+    <button type="button" class="rs-tk-tot${rsLigneIci() === 'total' ? ' is-ici' : ''}${sansPrix ? ' is-inconnu' : ''}" id="rsL-total" onclick="rsOuvrir('total')"><span>${lot ? 'Total du lot' : 'Total'}${suite ? `<small>${escapeHtml(suite)}</small>` : ''}${enPlus}</span><b id="rvTotalPied">${escapeHtml(montant)}</b></button>
     <div class="rs-tk-pay">${payer}</div>
     <button type="button" class="rs-tk-creer${bloque || attente ? ' is-bloque' : ''}" id="rvCreer" data-pret="${pret ? '1' : '0'}"${proche ? ` data-proche="${proche}"` : ''}${occupe} onclick="rsCreer()">${escapeHtml(libelle)}${entree ? '<kbd>Entrée</kbd>' : ''}</button>
     <div class="rs-tk-liens">${(plan && plan.fermeture) || chevauche ? '' : forcer}<button type="button" class="rs-lien" id="rvEncore" onclick="rsAutreResa()">+ Une autre réservation</button></div>`;
@@ -43973,8 +44289,11 @@ function rsRecuHtml() {
       lignes.push([id === 'bowling' ? `Bowling ${rvHeuresLabel(rvBowlingDuree())}` : id === 'laser_game' ? `Laser, ${rvPluriel(rvPartiesLaser(), 'partie')}` : rvNomActivite(id), rsCalculLigne(id, prix), prix]);
     });
   }
-  quickExtrasLignes().forEach((x) => lignes.push([x.name, x.qte > 1 ? `${x.qte} × ${formatMoneyCentimes(x.prixUnitaire)}` : '', x.offert ? 'offert' : rsEuros(x.price)]));
-  return `<ul class="rs-recu">${lignes.map(([nom, detail, prix]) => `<li><span>${escapeHtml(nom)}${detail ? ` <small>${escapeHtml(detail)}</small>` : ''}</span><b>${escapeHtml(prix)}</b></li>`).join('')}</ul>`;
+  // (une ligne sans prix se dit « À payer », jamais « 0 € »)
+  quickExtrasLignes().forEach((x) => lignes.push(x.aPayer
+    ? [x.name, x.qte > 1 ? `× ${x.qte}` : '', 'À payer', true]
+    : [x.name, x.qte > 1 ? `${x.qte} × ${formatMoneyCentimes(x.prixUnitaire)}` : '', x.offert ? 'offert' : rsEuros(x.price)]));
+  return `<ul class="rs-recu">${lignes.map(([nom, detail, prix, aPayer]) => `<li><span>${escapeHtml(nom)}${detail ? ` <small>${escapeHtml(detail)}</small>` : ''}</span><b${aPayer ? ' class="pl-a-payer"' : ''}>${escapeHtml(prix)}</b></li>`).join('')}</ul>`;
 }
 
 function rsTotalHtml() {
@@ -44027,12 +44346,12 @@ function rsLigneIci() {
 
 // Une ligne du ticket : elle ouvre sa page, sa croix la retire (`retirer`, l action). La
 // colonne de la croix reste la meme sans elle : les prix restent alignes.
-function rsLigne({ cle, action, icone = '', nom, detail = '', plus = '', apres = '', prix = '', data = '', aria = '', ko = false, retirer = '', bouge = '', lignes = [] }) {
+function rsLigne({ cle, action, icone = '', nom, detail = '', plus = '', apres = '', prix = '', aPayer = false, data = '', aria = '', ko = false, retirer = '', bouge = '', lignes = [] }) {
   const marquee = rsLigneIci() === cle;
   const croix = retirer ? `<button type="button" class="rs-tk-x" id="rsSuppr-${escapeHtml(cle)}" ${data} aria-label="${escapeHtml(`Retirer ${nom}`)}" onclick="${retirer}">×</button>` : '<span class="rs-tk-x" aria-hidden="true"></span>';
   // (`lignes` : ce qu un acces illimite comprend et garde, une phrase par ligne)
   const enPlus = (lignes || []).filter(Boolean).map((ligne) => `<small class="is-garde">${escapeHtml(ligne)}</small>`).join('');
-  return `<div class="rs-tk-ligne"><button type="button" class="rs-tk-a${marquee ? ' is-ici' : ''}${bouge ? ' is-deplacee' : ''}" id="rsL-${escapeHtml(cle)}" ${data} ${marquee ? 'aria-current="step"' : ''} ${aria ? `aria-label="${escapeHtml(aria)}"` : ''} onclick="${action}"><span class="rs-tk-i">${icone}</span><span class="rs-tk-n"><b>${escapeHtml(nom)}</b>${bouge ? `<small class="is-deplace" id="rsDeplace">${escapeHtml(bouge)}</small>` : ''}${detail ? `<small${ko ? ' class="is-ko" id="rvRefus"' : ''}>${escapeHtml(detail)}</small>` : ''}${enPlus}${plus ? `<small class="is-att">${escapeHtml(plus)}</small>` : ''}${apres ? `<small class="is-apres">${escapeHtml(apres)}</small>` : ''}</span><em>${escapeHtml(prix)}</em></button>${croix}</div>`;
+  return `<div class="rs-tk-ligne"><button type="button" class="rs-tk-a${marquee ? ' is-ici' : ''}${bouge ? ' is-deplacee' : ''}" id="rsL-${escapeHtml(cle)}" ${data} ${marquee ? 'aria-current="step"' : ''} ${aria ? `aria-label="${escapeHtml(aria)}"` : ''} onclick="${action}"><span class="rs-tk-i">${icone}</span><span class="rs-tk-n"><b>${escapeHtml(nom)}</b>${bouge ? `<small class="is-deplace" id="rsDeplace">${escapeHtml(bouge)}</small>` : ''}${detail ? `<small${ko ? ' class="is-ko" id="rvRefus"' : ''}>${escapeHtml(detail)}</small>` : ''}${enPlus}${plus ? `<small class="is-att">${escapeHtml(plus)}</small>` : ''}${apres ? `<small class="is-apres">${escapeHtml(apres)}</small>` : ''}</span><em${aPayer ? ' class="pl-a-payer"' : ''}>${escapeHtml(prix)}</em></button>${croix}</div>`;
 }
 
 function rsPrixDeLigne(id) {
@@ -44218,7 +44537,9 @@ function rsLignesExtras() {
   }
   rsPanier().forEach((l) => {
     const prix = rsPrixLigne(l);
-    lignes.push(rsLigne({ cle: `x-${l.id}`, action: 'rsOuvrirArticle(this.dataset.ligne)', data: `data-ligne="${escapeHtml(l.id)}"`, icone: `<b class="rs-tk-q">${rsQte(l)}</b>`, nom: l.name, detail: [l.suit ? '1 par joueur' : '', l.heure ? `à ${l.heure}` : '', l.note].filter(Boolean).join(', '), prix: l.offert && prix != null ? 'offert' : rsFmPrix() != null ? 'compris' : prix == null ? 'sur place' : rsEuros(prix), aria: `${l.name}, ${rsQte(l)}, changer`, retirer: 'rsRetirerExtra(this.dataset.ligne)' }));
+    // (sans prix, la ligne se regle au comptoir : « À payer », jamais « 0 € »)
+    const aPayer = prix == null && rsFmPrix() == null;
+    lignes.push(rsLigne({ cle: `x-${l.id}`, action: 'rsOuvrirArticle(this.dataset.ligne)', data: `data-ligne="${escapeHtml(l.id)}"`, icone: `<b class="rs-tk-q">${rsQte(l)}</b>`, nom: l.name, detail: [l.suit ? '1 par joueur' : '', l.heure ? `à ${l.heure}` : '', l.note].filter(Boolean).join(', '), prix: l.offert && prix != null ? 'offert' : rsFmPrix() != null ? 'compris' : aPayer ? 'À payer' : rsEuros(prix), aPayer, aria: `${l.name}, ${rsQte(l)}${aPayer ? ', à payer' : ''}, changer`, retirer: 'rsRetirerExtra(this.dataset.ligne)' }));
   });
   return lignes.join('');
 }
@@ -44229,10 +44550,14 @@ function rsLignesHtml() {
   const jour = rsJourMot(s.date);
   const quand = jour.charAt(0).toLowerCase() + jour.slice(1);
   const qui = b.faits.combien ? rvPluriel(Number(s.pax) || 1, 'joueur') : 'Joueurs à choisir';
+  // LE GESTE QUI AJOUTE UNE LIGNE AU TICKET, UN VRAI BOUTON (2026-11-21, un gerant : « le « + », là,
+  // parce que c'est pas assez visible ») : le second bouton de la console, encadre, son « + » en bleu.
+  // Un lien souligne se perdait sous les lignes du ticket.
+  const plus = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
   return `<p class="rs-tk-l">${escapeHtml(`${qui}, ${quand}`)}</p>
     <div class="rs-tk-sep"></div>
     ${rsLignesActivites()}${rsLignesExtras()}
-    ${rsNiveau('surmesure') === 'non' ? '' : '<button type="button" class="rs-lien is-fort" id="rsTkMesure" onclick="rsOuvrir(\'mesure\')">+ Ajouter une activité ou une boisson</button>'}
+    ${rsNiveau('surmesure') === 'non' ? '' : `<button type="button" class="rs-ajout-ligne" id="rsTkMesure" onclick="rsOuvrir('mesure')">${plus}<span>Ajouter une activité ou une boisson</span></button>`}
     <div class="rs-tk-sep"></div>`;
 }
 
@@ -44607,7 +44932,8 @@ function rsLibreAjouter() {
   const prix = Number(String(b.mesure.prix).replace(',', '.'));
   rsGeste(() => {
     rsCompteur += 1;
-    const ligne = { id: `libre-${rsCompteur}`, articleId: '', categorie: b.mesure.categorie || 'autre', name: nom, qte: 1, suit: false, prixUnitaire: Number.isFinite(prix) && String(b.mesure.prix).trim() !== '' ? Math.max(0, prix) : null, heure: '', note: '' };
+    // (sans prix tape, ou au niveau catalogue, la ligne est « à payer »)
+    const ligne = { id: `libre-${rsCompteur}`, articleId: '', categorie: b.mesure.categorie || 'autre', name: nom, qte: 1, suit: false, prixUnitaire: rsNiveau('surmesure') === 'libre' && Number.isFinite(prix) && String(b.mesure.prix).trim() !== '' ? Math.max(0, prix) : null, heure: '', note: '' };
     rsPanier().push(ligne);
     b.mesure.ligne = ligne.id;
     b.mesure.nom = '';
@@ -44637,10 +44963,11 @@ function rsBandeHtml() {
   const heures = rsHeuresService();
   const service = !a || a.heure !== false ? rsRang('Servir à', heures.map((h) => rsPetite(h, ligne.heure === h, `rsServir('${h}')`, `data-service="${h}"`)).join(''), Math.max(heures.length, 5)) : '';
   // Un prix « a saisir » se tape, au niveau catalogue comme au libre : le serveur garde
-  // le prix tape d un article du centre a 0. Une ligne libre n existe qu au libre.
+  // le prix tape d un article du centre a 0. Le prix d une ligne libre ne se tape qu au
+  // libre ; au catalogue elle est « à payer » (resoudreExtras, lib/droits-reservation.js).
   const prixChamp = (a ? a.prix == null : libre) ? `<input class="rs-x-prix" id="rsXPrix" type="number" min="0" step="0.5" inputmode="decimal" placeholder="Prix" value="${escapeHtml(String(ligne.prixUnitaire ?? ''))}" aria-label="Prix à l’unité en ${nomsMonnaie()}" oninput="rsArticleChamp('prix',this.value)">` : '';
   const parPersonne = Boolean(ligne.suit);
-  const calcul = valeur == null ? 'sur place'
+  const calcul = valeur == null ? 'à payer'
     : ligne.offert ? `offert, au lieu de ${rsEuros(valeur)}`
       : q > 1 ? `${q} × ${formatMoneyCentimes(ligne.prixUnitaire)} = ${rsEuros(valeur)}` : rsEuros(valeur);
   const mode = `<div class="rs-seg rs-unite" role="group" aria-label="Un nombre choisi ou un par joueur"><button type="button" class="${parPersonne ? '' : 'is-on'}" id="rsUnite" aria-pressed="${!parPersonne}" onclick="rsUniteLigne('unite')">Nombre</button><button type="button" class="${parPersonne ? 'is-on' : ''}" id="rsParPersonne" aria-pressed="${parPersonne}" onclick="rsUniteLigne('personne')">1 par joueur</button></div>`;
@@ -44879,9 +45206,16 @@ function rsMesureHtml() {
   const courante = onglets.some(([id]) => id === b.mesure.categorie) ? b.mesure.categorie : (onglets[0] || [''])[0];
   const lignes = quickExtrasLignes();
   const somme = lignes.reduce((t, l) => t + (Number(l.price) || 0), 0);
-  const droite = lignes.length ? `<span class="rs-note-e">${escapeHtml(`${rvPluriel(lignes.length, 'article')}, ${rsEuros(somme)}`)}</span>` : '';
+  const droite = lignes.length ? `<span class="rs-note-e">${escapeHtml(`${rvPluriel(lignes.length, 'article')}, ${rsEuros(somme)}${lignes.some((l) => l.aPayer) ? ' + à payer' : ''}`)}</span>` : '';
   const tabs = onglets.length ? `<div class="rs-seg rs-tabs" role="group" aria-label="Catégories">${onglets.map(([id, nom]) => `<button type="button" class="${id === courante ? 'is-on' : ''}" id="rsOnglet-${escapeHtml(id)}" data-onglet="${escapeHtml(id)}" aria-pressed="${id === courante}" onclick="rsOnglet(this.dataset.onglet)">${escapeHtml(nom)}</button>`).join('')}</div>` : '';
-  const libre = niveau === 'libre' ? `<div class="rs-libre"><label class="rs-champ"><span>Ajouter ce que vous voulez</span><input id="rsLibreNom" maxlength="80" autocomplete="off" value="${escapeHtml(b.mesure.nom || '')}" placeholder="Karaoké, open bar, gâteau…" aria-label="Nom de l’article libre" oninput="rsLibreChamp('nom',this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();rsLibreAjouter();}"></label><label class="rs-champ"><span>Prix</span><input id="rsLibrePrix" type="number" min="0" step="0.5" inputmode="decimal" value="${escapeHtml(String(b.mesure.prix ?? ''))}" aria-label="Prix de l’article libre en ${nomsMonnaie()}" oninput="rsLibreChamp('prix',this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();rsLibreAjouter();}"></label><button type="button" class="rs-p" id="rsLibreAjouter" onclick="rsLibreAjouter()"><b>Ajouter</b></button></div>` : '';
+  // UNE LIGNE LIBRE A CHAQUE NIVEAU QUI AJOUTE DU SUR MESURE (2026-11-21, un gerant : « avec le compte
+  // staff j'ai pas su écrire ce que je voulais »). Au libre, son nom et son prix, vide elle est « à
+  // payer » ; au catalogue, son nom seul, « à payer » : le seul geste hors de la carte de ce niveau
+  // (resoudreExtras, lib/droits-reservation.js). Sa quantite se regle sur sa ligne, comme un article.
+  const prixLibre = niveau === 'libre'
+    ? `<label class="rs-champ"><span>Prix</span><input id="rsLibrePrix" type="number" min="0" step="0.5" inputmode="decimal" placeholder="À payer" value="${escapeHtml(String(b.mesure.prix ?? ''))}" aria-label="Prix de l’article libre en ${nomsMonnaie()}, vide pour à payer" oninput="rsLibreChamp('prix',this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();rsLibreAjouter();}"></label>`
+    : '<span class="rs-champ rs-libre-apayer"><span>Prix</span><b class="pl-a-payer" id="rsLibreAPayer">À payer</b></span>';
+  const libre = niveau === 'libre' || niveau === 'catalogue' ? `<div class="rs-libre"><label class="rs-champ"><span>Ajouter ce que vous voulez</span><input id="rsLibreNom" maxlength="80" autocomplete="off" value="${escapeHtml(b.mesure.nom || '')}" placeholder="Karaoké, open bar, gâteau…" aria-label="Nom de l’article libre" oninput="rsLibreChamp('nom',this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();rsLibreAjouter();}"></label>${prixLibre}<button type="button" class="rs-p" id="rsLibreAjouter" onclick="rsLibreAjouter()"><b>Ajouter</b></button></div>` : '';
   if (courante === 'arcades') return `${rsRetourHtml(droite)}${tabs}${rsMesureArcadesHtml()}${libre}`;
   if (courante === 'formule') return `${rsRetourHtml(rsFmActive() ? '<button type="button" class="rs-discret is-retirer" id="rsFmRetirer" onclick="rsFmRetirer()">Retirer la formule</button>' : droite)}${tabs}${rsFormuleMesureHtml()}`;
   if (!articles.length) {
@@ -44934,7 +45268,11 @@ function rsPeindreActivites() {
   const portes = 1 + (rsNiveau('surmesure') === 'non' ? 0 : 1);
   // L acces illimite (2026-11-19) : sa propre porte, sur toute la largeur, au-dessus des autres.
   const acces = rsPorteIllimiteHtml();
-  rsPoser('rsZ-portes', `${acces ? `<div class="rs-portes is-seule is-acces">${acces}</div>` : ''}<div class="rs-portes${portes === 1 ? ' is-seule' : ''}">${rsPortesHtml('')}</div>`);
+  // (sans offre, 2026-11-21 : la porte de sa creation se range entre Formules et Sur mesure ; une rangee de
+  // plus faisait defiler la fenetre a 1366 x 768)
+  const aCreer = acces ? '' : rsPorteACreerHtml();
+  const rangee = portes + (aCreer ? 1 : 0);
+  rsPoser('rsZ-portes', `${acces ? `<div class="rs-portes is-seule is-acces">${acces}</div>` : ''}<div class="rs-portes${rangee === 1 ? ' is-seule' : rangee === 3 ? ' is-trois' : ''}">${rsPortesHtml(aCreer)}</div>`);
 }
 
 // Le prix d un acces illimite pour ce groupe : par joueur, et le total juste a cote (« 320 € pour
@@ -44965,22 +45303,46 @@ function rsPorteIllimiteHtml() {
   return `<button type="button" class="rs-porte rs-illimite${on ? ' is-on' : ''}" id="rsIllimite" aria-pressed="${on}" aria-label="${escapeHtml(['Accès illimité', seule ? dit.texte : detail, lu ? lu.parJoueur : '', lu ? lu.total : ''].filter(Boolean).join(' '))}" onclick="rsOuvrirIllimite()"><b>Accès illimité</b><span class="rs-porte-l">${escapeHtml(detail)}</span>${montant}<span class="rs-fl" aria-hidden="true">›</span></button>`;
 }
 
-// Toucher la porte : la page de l acces illimite ; une seule formule s y choisit d office.
-function rsOuvrirIllimite() {
+// LA PORTE SANS OFFRE (2026-11-21, illNouvelHtml) : toujours la, entre Formules et Sur mesure, son nom et
+// sa ligne l un sous l autre pour laisser Formules entier. Qui a le droit Tarifs y lit qu il se cree ici ;
+// les autres, qu un responsable le cree, la phrase entiere a l oreille, au survol et sur sa page.
+function rsPorteACreerHtml() {
+  const peut = illPeutCreer();
+  const dit = peut ? 'Accès illimité. Pas encore créé pour ce centre, il se crée ici.' : `Accès illimité. ${ILL_NOUVEL_OU}`;
+  return `<button type="button" class="rs-porte rs-illimite is-a-creer" id="rsIllimite" aria-pressed="false" aria-label="${escapeHtml(dit)}" title="${escapeHtml(dit)}" onclick="rsOuvrirIllimite()"><span class="rs-porte-2l"><b>Accès illimité</b><span class="rs-porte-l">${peut ? 'à créer ici' : 'par un responsable'}</span></span><span class="rs-fl" aria-hidden="true">›</span></button>`;
+}
+
+// Toucher la porte : la page de l acces illimite ; une seule formule s y choisit d office (`id` :
+// celle qui vient d etre creee sur place). Sans offre encore lue, la page lit celles du centre.
+function rsOuvrirIllimite(id = '') {
   const s = quickBookState;
   const b = rsEtat();
   if (!s || !b) return;
   const liste = rsIllimitees();
+  const voulue = id ? liste.find((f) => String(f.id) === String(id)) : liste.length === 1 ? liste[0] : null;
   rsGeste(() => {
     rsVersQuestion('illimite');
-    if (liste.length === 1 && !(s.type === 'formule' && s.formuleId === liste[0].id)) {
+    if (voulue && !(s.type === 'formule' && s.formuleId === voulue.id)) {
       s.error = '';
       s.formuleChoix = '';
       if (s.type !== 'formule') rvModeFormule();
-      rvChoisirFormule(liste[0].id);
+      rvChoisirFormule(voulue.id);
       rsDemanderLesJoueurs();
     }
   });
+  if (!liste.length) rsLireLesOffres();
+}
+
+// Les offres du centre pas encore lues (la console vient de s ouvrir) : la page les lit puis se
+// repeint ; une offre trouvee s ouvre comme a la porte.
+function rsLireLesOffres() {
+  if (illOffresLues()) return;
+  const s = quickBookState;
+  Promise.resolve(chargerCatalogueSurMesure()).then(() => {
+    if (!quickBookState || quickBookState !== s || rsEtat().q !== 'illimite') return;
+    if (rsIllimitees().length) rsOuvrirIllimite();
+    else rvRepeindre();
+  }).catch(() => {});
 }
 
 // La page des formules d ou vient la formule au ticket : celle de l acces illimite pour lui.
@@ -45024,6 +45386,8 @@ function rsIllimiteHtml() {
   const s = quickBookState;
   const liste = rsIllimitees();
   const f = rvFormuleIllimitee();
+  // (sans offre au catalogue : sa creation sur place, ou la phrase qui dit qui la cree)
+  if (!liste.length && !f) return `${rsRetourHtml()}${illSansOffreHtml('rs')}`;
   const tuiles = liste.length > 1 ? `<div class="rs-fs-g" role="group" aria-label="Accès illimité">${liste.map((x) => rsFormuleHtml(x, 0)).join('')}</div>` : '';
   const choisie = f || (liste.length === 1 ? liste[0] : null);
   const lu = choisie ? rsPrixDeLIllimite(choisie) : null;
@@ -45038,7 +45402,7 @@ function rsIllimiteHtml() {
       <div class="rs-acces-t"><p class="rs-acces-n"><b>${escapeHtml(rvNomFormule(choisie))}</b><span id="rsAccesDit">${escapeHtml(phraseDuChoixIllimite(choisie, choix, acces))}</span></p><p class="rs-acces-prix"><b>${escapeHtml(lu.parJoueur)}</b><small${tropPeu ? ' class="is-peu"' : ''}>${escapeHtml(prix)}</small></p></div>
       ${f && !s.adaptee ? illimiteTuilesHtml(f, choix, { acces, gestes: { basculer: 'rsBasculerIllimite', volonte: 'rsVolonteIllimite' }, prefixe: 'rsIl' }) : ''}
     </div>` : '';
-  const heures = f ? rsBlocFormuleHtml() : `<section class="rs-seance is-vide" aria-label="À quelle heure ?"><div class="rs-s-n"><b>À quelle heure ?</b><small>${liste.length ? 'Touchez un accès illimité, ses heures s’affichent ici.' : 'Ce centre n’a pas encore d’accès illimité. Il se crée dans Tarifs &amp; formules.'}</small></div></section>`;
+  const heures = f ? rsBlocFormuleHtml() : `<section class="rs-seance is-vide" aria-label="À quelle heure ?"><div class="rs-s-n"><b>À quelle heure ?</b><small>Touchez un accès illimité, ses heures s’affichent ici.</small></div></section>`;
   return `${rsRetourHtml()}${tuiles}${explication}${heures}`;
 }
 

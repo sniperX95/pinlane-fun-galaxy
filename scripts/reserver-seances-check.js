@@ -127,7 +127,7 @@ const MUTATIONS = [
   { nom: 'rendu-immediat', lettre: 'S8', cible: '[S8] la console ne se repeint pas dans le geste de Créer', fichier: APP, de: '    if (rvResas === lotSauve) { closeQuickBook(); rsApresLaFrame(renderStaff); } else renderStaff();', vers: '    if (rvResas === lotSauve) closeQuickBook();\n    renderStaff();' },
   // [S9] et la formule du role catalogue ([S6]) : chaque toucher ajoute, retire, deplace.
   { nom: 'formule-pour-tous', lettre: 'S6', bloc: 'catalogue', cible: '[S6] role catalogue : un toucher n adapte pas la formule', fichier: APP, de: "  if (s.type !== 'formule' || s.adaptee || rsNiveau('formule') === 'oui') return true;", vers: '  return true;' },
-  { nom: 'formule-jamais', lettre: 'S9', bloc: 'formule', cible: '[S9] direction : une activite touchee adapte la formule', fichier: APP, de: "  if (s.type !== 'formule' || s.adaptee || rsNiveau('formule') === 'oui') return true;", vers: "  if (s.type !== 'formule' || s.adaptee) return true;" },
+  { nom: 'formule-jamais', lettre: 'S9', bloc: 'formule', cible: '[S9] direction : une activite touchee s ajoute en plus de la formule', fichier: APP, de: "  if (s.type !== 'formule' || s.adaptee || rsNiveau('formule') === 'oui') return true;", vers: "  if (s.type !== 'formule' || s.adaptee) return true;" },
   { nom: 'tuile-remplace', lettre: 'S9', bloc: 'tuiles', cible: '[S9] trois touchers sur trois tuiles', fichier: APP, de: '    if (ids.includes(id)) rsEnlever(id);\n    else rsPrendre(id);', vers: '    if (ids.includes(id)) rsEnlever(id);\n    else rsRemplacer(id);' },
   { nom: 'tuile-reste', lettre: 'S9', bloc: 'tuiles', cible: '[S9] un deuxieme toucher retire la tuile', fichier: APP, de: '    if (ids.includes(id)) rsEnlever(id);\n', vers: '    if (ids.includes(id)) return;\n' },
   { nom: 'prix-invente', lettre: 'S9', bloc: 'tuiles', cible: '[S9] chaque tuile dit le prix du serveur', fichier: APP, de: "rsPrixTuilesMemo.prix.set(id, serveur === undefined ? rsPrixTouche(id) : serveur == null ? 'sur place' : rsEuros(serveur));", vers: 'rsPrixTuilesMemo.prix.set(id, rsPrixTouche(id));' },
@@ -1193,9 +1193,10 @@ async function scenarioS9(browser) {
     await m.finir('S9 seances');
   }
   if (joue('formule')) {
-    // Un role qui adapte les formules : un toucher ajoute l activite a la formule ; la formule
-    // garde son prix, l activite ajoutee dit le sien (2026-11-21, reserver-formule-ajout-check ;
-    // le role qui ne le peut pas : [S6]).
+    // Un role qui adapte les formules : un toucher ajoute l activite EN PLUS de la formule, qui reste
+    // telle quelle et garde son prix ; l activite en plus dit le sien, sur sa ligne (2026-11-22,
+    // reserver-formule-en-plus-check ; « Adapter à ce groupe » reste le geste qui adapte,
+    // reserver-formule-ajout-check ; le role qui ne le peut pas : [S6]).
     const m = await ouvrirConsole(browser);
     const { page } = m;
     await page.locator('.btn-new').click();
@@ -1205,21 +1206,22 @@ async function scenarioS9(browser) {
     await page.locator('#rsRetour').click();
     await page.waitForSelector('.is-q-activites #rsT-billards');
     await page.locator('#rsT-billards').click();
-    await page.waitForSelector('#rsL-a-billards', { state: 'attached', timeout: 4000 }).catch(() => {});
+    await page.waitForSelector('#rsL-p-billards', { state: 'attached', timeout: 4000 }).catch(() => {});
     await pret(page).catch(() => {});
     const adaptee = await page.evaluate(() => ({
       formule: ((document.querySelector('#rsL-a-formule .rs-tk-n b') || {}).textContent || '').trim(),
       prix: ((document.querySelector('#rsL-a-formule em') || {}).textContent || '').trim(),
-      ids: rvActivites(),
-      billard: Boolean(document.querySelector('#rsL-a-billards')),
-      prixBillard: ((document.querySelector('#rsL-a-billards em') || {}).textContent || '').trim(),
+      adaptee: Boolean(quickBookState.adaptee),
+      enPlus: (quickBookState.enPlus || []).map((x) => x.id),
+      billard: Boolean(document.querySelector('#rsL-p-billards')),
+      prixBillard: ((document.querySelector('#rsL-p-billards em') || {}).textContent || '').trim(),
     }));
-    ok(/adaptée/.test(adaptee.formule) && adaptee.billard && adaptee.ids.includes('billards') && Boolean(prixAvant) && adaptee.prix === prixAvant && /\d|sur place/.test(adaptee.prixBillard),
-      '[S9] direction : une activite touchee adapte la formule ; la formule garde son prix, le billard dit le sien', { prixAvant, ...adaptee });
+    ok(!/adaptée/.test(adaptee.formule) && !adaptee.adaptee && adaptee.billard && adaptee.enPlus.includes('billards') && Boolean(prixAvant) && adaptee.prix === prixAvant && /\d|sur place/.test(adaptee.prixBillard),
+      '[S9] direction : une activite touchee s ajoute en plus de la formule, qui reste telle quelle ; la formule garde son prix, le billard dit le sien', { prixAvant, ...adaptee });
     await avecTelephone(page);
     await page.locator('#rvCreer').click();
     const [r] = await nouveaux(page, m.avant);
-    ok(Boolean(r) && r.formule_id === 'f3' && a(r, 'billards') && r.pax === 10, '[S9] le dossier cree est la formule adaptee, billard compris', resume(r));
+    ok(Boolean(r) && r.formule_id === 'f3' && !/adaptée/.test(String(r.label || '')) && a(r, 'billards') && r.pax === 10, '[S9] le dossier cree est la formule telle quelle, le billard en plus', resume(r));
     await m.finir('S9 formule');
   }
 }

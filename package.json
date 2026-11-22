@@ -420,6 +420,7 @@
     "test:formule-adaptee": "node scripts/formule-adaptee-check.js && node scripts/formule-adaptee-check.js --contre-preuves",
     "test:reserver-formule-ajout": "node scripts/reserver-formule-ajout-check.js && node scripts/reserver-formule-ajout-check.js --contre-preuves",
     "test:reserver-formule-heures": "node scripts/reserver-formule-heures-check.js && node scripts/reserver-formule-heures-check.js --contre-preuves",
+    "test:reserver-formule-en-plus": "node scripts/reserver-formule-en-plus-check.js && node scripts/reserver-formule-en-plus-check.js --contre-preuves",
     "test:planning-liens": "node scripts/planning-liens-check.js && node scripts/planning-liens-check.js --contre-preuves",
     "test:planning-matrix:fast": "node scripts/planning-matrix-check.js --fast",
     "test:simulation-access": "node scripts/simulation-access-check.js",

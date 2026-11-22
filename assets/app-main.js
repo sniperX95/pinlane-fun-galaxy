@@ -33410,23 +33410,59 @@ function gardeAVolonteEdition(r) {
 }
 
 // Les formules gardees (dont l acces illimite) ne sont lues qu a l ouverture de Reserver : Modifier
-// ouvert d abord les lit une fois par centre, puis se repeint.
+// ouvert d abord les lit une fois par centre.
+// A LEUR ARRIVEE, LA FICHE NE SE REDESSINE PAS EN ENTIER (2026-11-22). renderPos recreait la fenetre :
+// son ouverture coupee, le champ touche (les joueurs) sans focus, le contenu sans son sens d arrivee,
+// et des qu un centre a son offre, a chaque Modifier ouvert avant la lecture. L entree « Accès
+// illimité » se pose ou se met a jour a sa place, le menu « Formule » reprend ses formules. Seule la
+// formule du dossier, gardee au comptoir et pas encore connue, change vraiment le contenu : son
+// programme et son prix se redessinent, dans la meme fenetre (repeindreFormuleDuDossierEdition).
 let formulesGardeesLuesPourModifier = '';
 function lireLesFormulesGardeesPourModifier() {
   const centre = getCurrentStaffCenterId();
   if (!centre || formulesGardeesLuesPourModifier === centre || (catalogueSurMesureConsole.centre === centre && catalogueSurMesureConsole.articles)) return;
   formulesGardeesLuesPourModifier = centre;
+  const e = state.editState;
+  const origine = e && departsEdition().get(e)?.origine;
+  const inconnues = [state.selectedRes && state.selectedRes.formuleId, e && e.formuleId, origine && origine.formuleId]
+    .filter(Boolean).map(String).filter((id) => !resolveDisplayFormule(id));
   Promise.resolve(chargerCatalogueSurMesure()).then(() => {
     if (!state.editState || state.activeTab !== 'modifier') return;
-    if (getEffectiveCatalogFormules().some(estFormuleIllimitee)) { renderPos(); return; }
-    // SANS OFFRE (2026-11-22) : l entree « Accès illimité » (renderEditIllimiteACreer) se pose en place,
-    // la ou la fiche la dessine. Redessiner toute la fiche coupait son ouverture, le champ touche
-    // perdait son focus, et une reponse sans catalogue la redessinait pour rien.
-    const titre = document.querySelector('#posOverlay .fm-programme #fmProgrammeTitre');
-    if (!titre || document.getElementById('editAcces') || !titre.parentElement.querySelector('.fm-replan')) return;
-    const entree = renderEditIllimiteChoix();
-    if (entree) titre.insertAdjacentHTML('afterend', entree);
+    if (inconnues.some((id) => resolveDisplayFormule(id))) { repeindreFormuleDuDossierEdition(); return; }
+    peindreAccesIllimiteEdition();
+    peindreFormuleEdition();
   }).catch(() => {});
+}
+
+// L entree « Accès illimité » sous « Programme », la ou la fiche la dessine : posee si elle manque,
+// sinon remplacee. Un programme en lecture seule (sans .fm-replan) n en a pas.
+function peindreAccesIllimiteEdition() {
+  const titre = document.querySelector('#posOverlay .fm-programme #fmProgrammeTitre');
+  if (!titre || !titre.parentElement.querySelector('.fm-replan')) return;
+  const entree = renderEditIllimiteChoix();
+  const la = document.getElementById('editAcces');
+  if (la) { if (entree) la.outerHTML = entree; return; }
+  if (entree) titre.insertAdjacentHTML('afterend', entree);
+}
+
+// Le programme et le prix du dossier, redessines a leur place : la fenetre, son ouverture et le reste
+// de la fiche (le jour, l arrivee, les joueurs, le client, ce qu on y touche) ne bougent pas.
+function repeindreFormuleDuDossierEdition() {
+  const r = state.selectedRes;
+  const corps = document.querySelector('#posOverlay .edit-modal-body');
+  if (!r || !corps) return;
+  const modele = document.createElement('div');
+  modele.innerHTML = renderPosEdit(r);
+  ['.fm-programme', '.fm-prix'].forEach((sel) => {
+    const avant = corps.querySelector(sel);
+    const apres = modele.querySelector(sel);
+    if (!avant || !apres) return;
+    const actif = avant.contains(document.activeElement) ? document.activeElement.id : '';
+    avant.replaceWith(apres);
+    const repose = actif ? document.getElementById(actif) : null;
+    if (repose) repose.focus({ preventScroll: true });
+  });
+  if (typeof eclairerPastillesEdition === 'function') eclairerPastillesEdition();
 }
 
 function passerEnIllimiteEdition(id) {

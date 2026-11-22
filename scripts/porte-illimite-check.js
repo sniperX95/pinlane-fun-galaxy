@@ -26,6 +26,12 @@
 //       creation ; Modifier propose l acces du catalogue.
 //   [H] AVEC UNE OFFRE, UN JOUR CHARGE (deux horaires retenus en ligne) : a 1366 x 768, la fenetre tient
 //       sans defiler, les deux rangees de portes entieres, comme sans offre en [P].
+//   [L] AVEC UNE OFFRE, MODIFIER OUVERT AVANT LA LECTURE DES OFFRES (la console vient de s ouvrir ; la
+//       lecture prend le temps du vrai reseau, elle arrive pendant l ouverture). Par son onglet : la meme
+//       fenetre continue de grandir apres leur arrivee, le titre « Programme » reste le meme, l entree de
+//       l offre se pose dessous. Sur les joueurs : leur champ garde le focus. Un dossier deja dans l acces,
+//       dont la formule n etait pas encore connue : son programme se redessine dans la meme fenetre, qui
+//       continue de grandir ; « Accès illimité » pris, ses tuiles, sans le menu « Formule ».
 //   [*] Zero erreur JavaScript.
 //
 // CONTRE-PREUVES : `--contre-preuves` sert le code casse expres, une mutation a la fois (en memoire, le
@@ -62,7 +68,13 @@ const MUTATIONS = [
   { nom: 'creation-sans-tuiles', lettre: 'R', cible: '[R] cree, les tuiles de l acces s ouvrent aussitot', fichier: APP, de: "  if (ou === 'ed') passerEnIllimiteEdition(id);\n  else rsOuvrirIllimite(id);", vers: "  if (ou === 'ed') passerEnIllimiteEdition(id);\n  else rvRepeindre();" },
   { nom: 'modifier-sans-entree', lettre: 'M', cible: '[M] Modifier sans offre : « À la carte | Accès illimité »', fichier: APP, de: '  if (!choix.length) { lireLesFormulesGardeesPourModifier(); return renderEditIllimiteACreer(deLOrigine); }', vers: "  if (!choix.length) { lireLesFormulesGardeesPourModifier(); return ''; }" },
   // (la fiche entiere redessinee a l arrivee des offres, comme le 21/11 : son ouverture coupee, le focus perdu)
-  { nom: 'modifier-redessine', lettre: 'M', cible: '[M] les offres lues apres l ouverture', fichier: APP, de: "    if (entree) titre.insertAdjacentHTML('afterend', entree);", vers: '    if (entree) renderPos();' },
+  { nom: 'modifier-redessine', lettre: 'M', cible: '[M] les offres lues apres l ouverture', fichier: APP, de: "  if (entree) titre.insertAdjacentHTML('afterend', entree);", vers: '  if (entree) renderPos();' },
+  // (avec une offre, la fiche entiere redessinee a leur arrivee, comme en 9d4de2c)
+  { nom: 'offre-redessine', lettre: 'L', cible: '[L] par son onglet, avant la lecture', fichier: APP, de: '    peindreAccesIllimiteEdition();\n    peindreFormuleEdition();', vers: '    if (getEffectiveCatalogFormules().some(estFormuleIllimitee)) { renderPos(); return; }\n    peindreAccesIllimiteEdition();\n    peindreFormuleEdition();' },
+  { nom: 'offre-sans-focus', lettre: 'L', cible: '[L] sur les joueurs, avant la lecture', fichier: APP, de: '    peindreAccesIllimiteEdition();\n    peindreFormuleEdition();', vers: '    if (getEffectiveCatalogFormules().some(estFormuleIllimitee)) { renderPos(); return; }\n    peindreAccesIllimiteEdition();\n    peindreFormuleEdition();' },
+  // (la formule du dossier enfin connue : la fenetre recreee, ou rien de redessine que l entree)
+  { nom: 'formule-du-dossier-recree-la-fenetre', lettre: 'L', cible: '[L] un dossier dans l acces, sa formule pas encore connue', fichier: APP, de: '    if (inconnues.some((id) => resolveDisplayFormule(id))) { repeindreFormuleDuDossierEdition(); return; }', vers: '    if (inconnues.some((id) => resolveDisplayFormule(id))) { renderPos(); return; }' },
+  { nom: 'formule-du-dossier-ignoree', lettre: 'L', cible: '[L] un dossier dans l acces : « Accès illimité » pris', fichier: APP, de: '    if (inconnues.some((id) => resolveDisplayFormule(id))) { repeindreFormuleDuDossierEdition(); return; }', vers: '' },
   { nom: 'fenetre-qui-defile', lettre: 'H', cible: '[H] avec une offre, un jour charge, la fenetre tient sans defiler', fichier: CSS, de: HAUTEUR, vers: '' },
   { nom: 'ecart-de-12', lettre: 'H', cible: '[H] avec une offre, un jour charge, la fenetre tient sans defiler', fichier: CSS, de: '@media (min-width: 1101px) { .qb-modal.rv.rs.is-q-activites .rs-col { gap: 4px; } }', vers: '' },
   { nom: 'offre-ignoree', lettre: 'O', cible: '[O] avec une offre, la porte dit l acces et son prix', fichier: APP, de: "  const liste = s ? rsIllimitees() : [];\n  if (!liste.length) return '';", vers: "  const liste = s ? rsIllimitees() : [];\n  if (liste.length) return '';" },
@@ -325,12 +337,18 @@ async function scenarioR(browser) {
 // la console n a pas encore lu les offres du centre (elle vient de s ouvrir), Modifier les lit lui-meme.
 // Le titre « Programme » est marque a l ouverture : apres leur arrivee, le meme titre dit que la fiche
 // ne s est pas redessinee (son ouverture et le champ touche restent).
-async function unDossier(page, nom, avantLesOffres = false) {
+async function poserDossier(page, nom) {
   const cree = await serveur.appeler('POST', '/api/staff-reservations', { centerId: CENTRE, date: JOUR, startTime: '16:00', duration: 1, totalDuration: 1, lanes: [], pax: JOUEURS, status: 'confirmed', type: 'visite', name: nom, phone: TEL, program: [{ activityId: 'bowling', pax: JOUEURS, participants: JOUEURS, duration: 1 }], preference: { activityOrder: ['bowling'], preferredTimes: { bowling: '16:00' } } });
   const id = Number(cree.json.reservation && cree.json.reservation.id);
   if (!id) return { id: 0, statut: cree.statut, message: cree.json.message };
   await page.evaluate((r) => { window.__FIXTURE__.jours[window.__FIXTURE__.jour].push(r); upsertReservationInState(r); renderStaff(); }, cree.json.reservation);
   await page.evaluate(() => { serveurSaitModifierABlanc = true; }); // eslint-disable-line no-undef
+  return { id };
+}
+async function unDossier(page, nom, avantLesOffres = false) {
+  const pose = await poserDossier(page, nom);
+  if (!pose.id) return pose;
+  const id = pose.id;
   const ouverture = await page.evaluate(({ i, avant }) => {
     if (avant) { catalogueSurMesureConsole = { centre: '', categories: [], articles: null }; formulesGardeesLuesPourModifier = ''; } // eslint-disable-line no-undef
     closePos(); openPos(i); setTab('modifier');
@@ -515,7 +533,149 @@ async function scenarioH(browser) {
 }
 
 // ---------------------------------------------------------------------------
-const SCENARIOS = { P: scenarioP, V: scenarioV, R: scenarioR, S: scenarioS, M: scenarioM, O: scenarioO, H: scenarioH };
+// [L] AVEC UNE OFFRE, MODIFIER OUVERT AVANT LA LECTURE DES OFFRES
+// ---------------------------------------------------------------------------
+// La porte invite a creer l offre ; des qu elle existe, un Modifier ouvert avant que la console ait lu
+// les offres les recoit pendant son ouverture. Le 22/11, sans offre, la fiche redessinee a leur arrivee
+// coupait l ouverture, le focus des joueurs et le sens d arrivee (fenetre-mouvement, fiche-simple,
+// mouvement-gestes) ; avec une offre, le meme redessin restait.
+// (la console vient de s ouvrir : les offres du centre ne sont pas encore lues)
+const oublierLesOffres = (page) => page.evaluate(() => { catalogueSurMesureConsole = { centre: '', categories: [], articles: null }; formulesGardeesLuesPourModifier = ''; }); // eslint-disable-line no-undef
+// La lecture prend le temps du vrai reseau (50 a 300 ms) : elle arrive pendant l ouverture.
+const retarderLaLecture = (page, ms) => page.evaluate((delai) => {
+  const avant = window.fetch;
+  window.fetch = async (input, init) => {
+    const u = new URL(typeof input === 'string' ? input : input.url, location.origin);
+    if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'surMesureCatalogue') await new Promise((r) => setTimeout(r, delai));
+    return avant(input, init);
+  };
+}, ms);
+// Chaque image depuis le toucher : la fenetre de Modifier et son contenu (les memes noeuds ?), son
+// transform, son ouverture en cours, le titre « Programme » (le meme ?), ce qui le suit, le focus, et
+// l entree « Accès illimité » arrivee ou non.
+const sonderModifier = (page) => page.evaluate(() => {
+  const S = window.__lecture = { images: [], fini: false };
+  let calme = 0;
+  const boucle = () => {
+    const fen = document.querySelector('#posOverlay:not(.hidden) .edit-modal.is-edition');
+    if (fen) {
+      const titre = document.getElementById('fmProgrammeTitre');
+      const coquille = fen.querySelector('.edit-modal-body > .edit-shell');
+      if (!S.fenetre) { S.fenetre = fen; S.coquille = coquille; S.titre = titre; }
+      const acces = Boolean(document.getElementById('editAcces'));
+      const court = fen.getAnimations().some((a) => a.playState === 'running');
+      S.images.push({ meme: fen === S.fenetre && Boolean(coquille) && coquille === S.coquille, t: getComputedStyle(fen).transform, court, acces, titre: Boolean(titre) && titre === S.titre, sous: titre && titre.nextElementSibling ? titre.nextElementSibling.id : '', focus: document.activeElement ? document.activeElement.id : '' });
+      calme = acces && !court ? calme + 1 : 0;
+    }
+    if (calme >= 5 || S.images.length >= 900) { S.fini = true; return; }
+    requestAnimationFrame(boucle);
+  };
+  requestAnimationFrame(boucle);
+});
+async function lireSonde(page) {
+  await page.waitForFunction(() => window.__lecture && window.__lecture.fini, null, { timeout: 20000 }).catch(() => {});
+  const images = await page.evaluate(() => (window.__lecture ? window.__lecture.images : []));
+  const i = images.findIndex((x) => x.acces);
+  let bouge = 0;
+  for (let k = i + 1; i >= 0 && k < images.length; k += 1) if (images[k].meme && images[k].t !== images[k - 1].t) bouge += 1;
+  const fin = images[images.length - 1] || {};
+  return {
+    images: images.length, arrivee: i, laMeme: images.length > 0 && images.every((x) => x.meme), enCours: i >= 0 && images[i].court, bougeApres: bouge,
+    titre: images.length > 0 && images.every((x) => x.titre), sous: fin.sous || '', focusArrivee: i >= 0 ? images[i].focus : '', focusFin: fin.focus || '',
+  };
+}
+async function ouvrirLaFiche(page, id) {
+  await page.evaluate((i) => { closePos(); openPos(i); }, id);
+  await page.waitForTimeout(800);
+}
+
+async function scenarioL(browser) {
+  console.log('\n[L] avec une offre, Modifier ouvert avant la lecture des offres');
+  viderLeCatalogue();
+  const garde = await garderParLeServeur(OFFRE);
+  const m = await ouvrir(browser, { role: 'manager' });
+  try {
+    const { page, ctx } = m;
+    ok(garde.statut === 200 && C.CATALOGUE_BANC.formules.has(ID_ACCES), '[L] l offre du centre est au catalogue', { statut: garde.statut });
+    await retarderLaLecture(page, 80);
+    // (au ralenti, l ouverture de 240 ms en dure 960 : la lecture, retardee de 80 ms, tombe dedans sur toute machine)
+    const cdp = await ctx.newCDPSession(page);
+    await cdp.send('Animation.enable');
+    const ralenti = (oui) => cdp.send('Animation.setPlaybackRate', { playbackRate: oui ? 0.25 : 1 });
+
+    // Par son onglet : la fenetre grandit depuis lui (pinlane-mouvement, grandirFenetre).
+    const { id } = await poserDossier(page, 'Groupe offre lue tard');
+    ok(Boolean(id), '[L] le dossier de depart (une visite bowling) est cree');
+    if (!id) return;
+    await ouvrirLaFiche(page, id);
+    await oublierLesOffres(page);
+    await ralenti(true);
+    await sonderModifier(page);
+    await page.locator('#posOverlay .dossier-tabs .tab:not(.active)').click();
+    const onglet = await lireSonde(page);
+    await ralenti(false);
+    const choix = await lireChoix(page);
+    ok(onglet.arrivee > 0 && onglet.laMeme && onglet.enCours && onglet.bougeApres >= 2 && onglet.titre && onglet.sous === 'editAcces'
+      && choix.segments.join() === 'À la carte=true,Accès illimité=false' && /32 € par joueur/.test(choix.dit),
+    '[L] par son onglet, avant la lecture : la meme fenetre continue de grandir apres l arrivee des offres, le titre « Programme » reste, l entree de l offre dessous', { ...onglet, ...choix });
+
+    // Sur les joueurs : Modifier s ouvre sur leur nombre (modifierDepuisFiche).
+    await page.evaluate(() => closePos());
+    await page.waitForTimeout(400);
+    await ouvrirLaFiche(page, id);
+    await oublierLesOffres(page);
+    await sonderModifier(page);
+    await page.locator('#posOverlay .fx-joueurs').click();
+    const joueurs = await lireSonde(page);
+    ok(joueurs.arrivee > 0 && joueurs.focusArrivee === 'editPaxInput' && joueurs.focusFin === 'editPaxInput' && joueurs.laMeme && joueurs.titre && joueurs.sous === 'editAcces',
+      '[L] sur les joueurs, avant la lecture : leur champ garde le focus a l arrivee des offres, le titre « Programme » reste', joueurs);
+
+    // Un dossier deja dans l acces, reserve par la porte : sa formule, gardee au comptoir, n est pas
+    // encore connue a l ouverture. Le vrai changement de contenu : son programme et son prix.
+    await page.evaluate(() => closePos());
+    await page.waitForTimeout(400);
+    await C.ouvrirFenetre(page, JOUEURS);
+    await page.waitForFunction((x) => getEffectiveCatalogFormules().some((f) => f.id === x), ID_ACCES, { timeout: 10000 }).catch(() => {});
+    await page.evaluate(() => rsPeindreActivites && rsPeindreActivites()).catch(() => {});
+    await page.locator('#rsIllimite').click();
+    await page.waitForSelector('#rsAcces .rs-ill-act', { timeout: 8000 }).catch(() => {});
+    await page.waitForSelector('.rs-s-l.is-formule .rs-h[data-heure="15:30"]', { timeout: 10000 }).catch(() => {});
+    await page.locator('.rs-s-l.is-formule .rs-h[data-heure="15:30"]').click();
+    await C.pret(page);
+    await page.waitForTimeout(400);
+    const debut = new Set([...B.base.reservations.keys()]);
+    await creer(page, 'Groupe dans l acces');
+    const [dansLAcces] = await neufs(page, debut);
+    ok(Boolean(dansLAcces) && dansLAcces.formule_id === ID_ACCES, '[L] le dossier de depart est dans l acces illimite', dansLAcces && { formule: dansLAcces.formule_id });
+    if (!dansLAcces) return;
+    const idAcces = Number(dansLAcces.id);
+    await page.evaluate((i) => {
+      if (typeof closeQuickBook === 'function') closeQuickBook();
+      const r = window.__FIXTURE__.jours[window.__FIXTURE__.jour].find((x) => Number(x.id) === i);
+      if (r && !state.reservations.some((x) => Number(x.id) === i)) upsertReservationInState(r);
+    }, idAcces);
+    await page.waitForTimeout(800);
+    await ouvrirLaFiche(page, idAcces);
+    await oublierLesOffres(page);
+    await ralenti(true);
+    await sonderModifier(page);
+    await page.locator('#posOverlay .dossier-tabs .tab:not(.active)').click();
+    const acces = await lireSonde(page);
+    await ralenti(false);
+    ok(acces.arrivee > 0 && acces.laMeme && acces.enCours && acces.bougeApres >= 2,
+      '[L] un dossier dans l acces, sa formule pas encore connue : son programme se redessine dans la meme fenetre, qui continue de grandir', acces);
+    const pris = await page.evaluate(() => ({
+      choix: Array.from(document.querySelectorAll('#editAcces .fm-choix-seg button')).map((b) => `${b.textContent.trim()}=${b.getAttribute('aria-checked')}`),
+      tuiles: document.querySelectorAll('#editAcces .rs-ill-act').length,
+      menu: Boolean(document.getElementById('editFormuleSelect')),
+    }));
+    ok(pris.choix.join() === 'À la carte=false,Accès illimité=true' && pris.tuiles === DU_CENTRE().length && !pris.menu,
+      '[L] un dossier dans l acces : « Accès illimité » pris, ses tuiles, sans le menu « Formule »', pris);
+  } finally { await finir(m, 'L'); }
+}
+
+// ---------------------------------------------------------------------------
+const SCENARIOS = { P: scenarioP, V: scenarioV, R: scenarioR, S: scenarioS, M: scenarioM, O: scenarioO, H: scenarioH, L: scenarioL };
 
 function verifierLesAncres() {
   let mortes = 0;

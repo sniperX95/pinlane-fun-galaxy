@@ -308,13 +308,14 @@ async function scenarioPop(browser) {
       const evenements = [];
       const recevoir = (e) => { evenements.push(...e.value); };
       cdp.on('Tracing.dataCollected', recevoir);
-      // (les deux categories de la chronologie, comme formulaire-fluide-check : sur les machines GitHub, le rendu
-      // force par le script de l etalon ne sortait pas dans devtools.timeline seule, alors qu il reecrivait bien la
-      // table, « ecrit » 1 sur trois essais ; 2026-11-22)
+      // (les deux categories de la chronologie, comme formulaire-fluide-check)
       await cdp.send('Tracing.start', { transferMode: 'ReportEvents', traceConfig: { includedCategories: ['devtools.timeline', 'disabled-by-default-devtools.timeline'] } });
-      // (la trace du renderer demarre apres la reponse de Tracing.start : deux images et 100 ms avant le geste,
-      // sinon un rendu joue aussitot tombe avant elle ; 2026-11-22, GitHub : « un rendu du tableau : 10 »)
-      await page.evaluate(() => new Promise((fin) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(fin, 100)))));
+      // (LA TRACE DU RENDERER PART EN RETARD (2026-11-22, la suite GitHub du lot) : elle demarre apres la
+      // reponse de Tracing.start, et sur une machine GitHub chargee bien apres deux images et 100 ms. Le rendu
+      // force de l etalon tombait avant elle : la trace ne voyait que l image suivante, une mise en page de
+      // 10 objets, trois essais sur trois et deux tours sur deux, avec une ou deux categories (3 422 objets
+      // sur le poste). Une seconde au repos avant le geste.)
+      await page.evaluate(() => new Promise((fin) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(fin, 1000)))));
       await geste();
       const fini = new Promise((resolu) => cdp.once('Tracing.tracingComplete', resolu));
       await cdp.send('Tracing.end');
@@ -325,13 +326,20 @@ async function scenarioPop(browser) {
       // (ou les recalculs et les mises en page sont sortis : leur categorie, pour lire un rouge)
       const categories = {};
       evenements.filter((e) => e.name === 'UpdateLayoutTree' || e.name === 'Layout').forEach((e) => { categories[e.cat] = (categories[e.cat] || 0) + 1; });
-      return { styleMax: styles.length ? Math.max(...styles) : 0, mises: pages.length, objetsMax: pages.length ? Math.max(...pages) : 0, categories };
+      // (grands : les mises en page de milliers d objets, celles de l etalon que la trace a vues)
+      return { styleMax: styles.length ? Math.max(...styles) : 0, mises: pages.length, objetsMax: pages.length ? Math.max(...pages) : 0, grands: pages.filter((n) => n >= 1000).length, categories };
     };
-    // (l etalon : un rendu entier du tableau, qui reecrit sa table (ecrit) ; une mesure qui ne voit pas ses
-    // milliers d objets se rejoue, deux fois au plus : c est l etalon qui se mesure, le budget de la pop-up reste)
+    // (l etalon : quatre rendus entiers du tableau, a 300 ms l un de l autre, chacun reecrit sa table (ecrit) :
+    // une trace partie en retard en voit au moins un. Une mesure qui ne voit pas ses milliers d objets se
+    // rejoue, deux fois au plus : c est l etalon qui se mesure, le budget de la pop-up reste)
     const etalon = async () => {
       const avant = await page.evaluate(() => window.__gfStats.ecritures);
-      const mesure = await tracer(() => page.evaluate(() => { const w = document.getElementById('globalPlanningGridWrap'); w._gfParties = null; renderGlobalPlanning(w); return document.body.offsetHeight; }));
+      const mesure = await tracer(async () => {
+        for (let rendu = 0; rendu < 4; rendu += 1) {
+          if (rendu) await page.waitForTimeout(300);
+          await page.evaluate(() => { const w = document.getElementById('globalPlanningGridWrap'); w._gfParties = null; renderGlobalPlanning(w); return document.body.offsetHeight; });
+        }
+      });
       return { ...mesure, ecrit: (await page.evaluate(() => window.__gfStats.ecritures)) - avant };
     };
     let tableau = await etalon();
@@ -378,8 +386,9 @@ async function scenarioPop(browser) {
       '[P2] Echap : elle rentre plus vite qu elle n est sortie, puis s en va ; le focus revient a la pastille', { sortie, restes });
     ok(stats1.ecritures === stats0.ecritures && stats1.rendus === stats0.rendus,
       '[P3] ouverte, remplie, fermee : le tableau ne s est ni rendu ni reecrit', { avant: stats0, apres: stats1 });
-    // (l etalon d abord : un rendu du tableau du jour charge reprend des milliers d objets)
-    ok(tableau.objetsMax >= 1000 && pop.objetsMax * 20 <= tableau.objetsMax && pop.styleMax <= 150 && pop.mises <= 14,
+    // (l etalon d abord : un rendu du tableau du jour charge reprend des milliers d objets ; et la trace a vu la
+    // pop-up, au moins une mise en page : une trace partie trop tard ne la dit plus legere sans l avoir vue)
+    ok(tableau.objetsMax >= 1000 && pop.mises >= 1 && pop.objetsMax * 20 <= tableau.objetsMax && pop.styleMax <= 150 && pop.mises <= 14,
       `[P3] jour charge : la pop-up reprend au plus ${pop.objetsMax} objets en page (un rendu du tableau : ${tableau.objetsMax}), recalcule au plus ${pop.styleMax} elements, ${pop.mises} mises en page de l ouverture a la fermeture`, { pop, tableau });
 
     const { v } = await attendues;

@@ -17,7 +17,8 @@
 //       seul « Servir a » d un extra donne une heure.
 //   [A] LES ARCADES EN ARGENT SE DISENT EN MONTANT. « Arcades sur mesure ou met prix, ca le montre pas sur le
 //       planning, 8 € en gros quand c argent ; pour les cartes avec argent tu dois juste mettre le montant. »
-//       La colonne Arcades du planning complet montre « 8 € » (le sur mesure, les 8 credits d une formule),
+//       La colonne Arcades du planning complet montre « 8 € » pour le sur mesure en argent et « 8 crédits »
+//       pour les 8 credits d une formule (des credits restent des credits, la decision du 2026-11-22), tous
 //       sans heure, libres comme la plaine ; les arcades au temps gardent leur heure ; Reserver ne demande
 //       aucune heure aux arcades en credits.
 //
@@ -71,7 +72,8 @@ const MUTATIONS = [
   { nom: 'arcades-argent-avec-heure-a-la-fiche', lettre: 'A', cible: '[A] la fiche', fichier: APP, de: "function arcadesEnArgentDuDossier(r, item) {\n  const id = item && item.activityId;\n  if (id === 'arcade_credit') return true;", vers: "function arcadesEnArgentDuDossier(r, item) {\n  const id = item && item.activityId;\n  if (id === 'arcade_credit') return false;" },
   { nom: 'arcades-argent-avec-heure-a-la-jumelle', lettre: 'A', cible: '[A] la jumelle', serveur: true, fichier: JUMELLE, de: "function arcadesEnArgent(r, activityId, reglages) {\n  if (activityId === 'arcade_credit') return true;", vers: "function arcadesEnArgent(r, activityId, reglages) {\n  if (activityId === 'arcade_credit') return false;" },
   { nom: 'arcades-sur-mesure-absentes-du-planning', lettre: 'A', cible: '[A] le planning montre « 8 €', fichier: PLAN, de: "      gpArcadesSurMesure(r).forEach(function (cs) {", vers: "      [].forEach(function (cs) {" },
-  { nom: 'arcades-en-credits-pas-en-montant', lettre: 'A', cible: '[A] le planning montre « 8 €', fichier: PLAN, de: "    var euros = e ? Number(e[1].replace(',', '.')) : null;", vers: '    var euros = null;' },
+  // (des credits pris pour de l argent : la F6 dit « 8 € » au lieu de « 8 crédits », le defaut du 2026-11-22)
+  { nom: 'credits-en-montant', lettre: 'A', cible: '[A] le planning montre « 8 crédits »', fichier: PLAN, de: "    var e = m ? null : new RegExp('(", vers: "    var e = new RegExp('(" },
   { nom: 'arcades-en-argent-heure-demandee', lettre: 'A', cible: '[A] Reserver', fichier: APP, de: "  if (id === 'arcade_time' && quickBookState && quickActiviteRetenue(id)) return getQuickVisitOptions(id).arcadeMode === 'credit';\n  return false;", vers: '  return false;' },
 ];
 const LES_MUTATIONS = new Map(MUTATIONS.map((m) => [m.nom, m]));
@@ -492,10 +494,14 @@ async function scenarioA(browser) {
     })), [['sm', cree.id], ['f6', f6.json.reservation.id], ['f8', f8.json.reservation.id]]);
     ok(cases.sm.montant === '8 €' && /par joueur/.test(cases.sm.credit || '') && !/\d\d:\d\d/.test(cases.sm.credit || '') && cases.sm.taille >= 14,
       '[A] le planning montre « 8 € » (par joueur) dans la colonne Arcades du sur mesure, en gros, sans heure', cases.sm);
-    ok(cases.f6.montant === '8 €' && /par enfant/.test(cases.f6.credit || '') && !/\d\d:\d\d/.test(cases.f6.credit || ''),
-      '[A] le planning montre « 8 € » (par enfant) pour les 8 credits d une formule, sans heure', cases.f6);
+    ok(!cases.f6.montant && /^8 crédits/.test(cases.f6.credit || '') && /par enfant/.test(cases.f6.credit || '') && !/\d\d:\d\d/.test(cases.f6.credit || ''),
+      '[A] le planning montre « 8 crédits » (par enfant) pour les 8 credits d une formule, sans heure : des credits restent des credits', cases.f6);
     ok(/\d\d:\d\d/.test(cases.f8.cellule || '') && !cases.f8.credit, '[A] les arcades au temps (la F8) gardent leur heure au planning', cases.f8);
-    await photo(page, 'planning-arcades-8-euros', '#globalPlanningGridWrap');
+    // (l image du planning a 1366 x 768 : la F6 en credits en haut du tableau, le sur mesure en argent dessous)
+    if (CAPTURES && !mutation) {
+      await page.evaluate((id) => { const tr = document.querySelector(`#globalPlanningGridWrap tr.gf-r[data-gf-id="${id}"]`); if (tr) tr.scrollIntoView({ block: 'start' }); }, f6.json.reservation.id);
+      await photo(page, 'planning-arcades-credits-et-argent');
+    }
     // LA FICHE : les arcades en argent sont « Libre », celles au temps ont leur heure.
     await ouvrirFiche(page, f6.json.reservation.id);
     const prog6 = await lireProgramme(page);

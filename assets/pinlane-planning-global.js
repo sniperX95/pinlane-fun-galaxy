@@ -168,13 +168,16 @@
   }
   // « 8 crédits d'arcade (8€) par enfant » : 8 par enfant.
   // DES ARCADES EN ARGENT SE DISENT EN MONTANT (2026-11-22, Ansar : « 8 € en gros quand arcades c argent,
-  // pour les cartes avec argent tu dois juste mettre le montant ») : « 8 crédits d'arcade (8 €) par enfant »
-  // devient « 8 € » et « par enfant » ; sans montant dans le texte, les crédits restent des crédits.
+  // pour les cartes avec argent tu dois juste mettre le montant ») : le sur mesure en argent (gpArcadesSurMesure),
+  // une carte chargee d un montant (gpCarteArgent), un texte qui dit un montant sans compter de credits. DES
+  // CREDITS RESTENT DES CREDITS (2026-11-22, la decision du lot) : « 8 crédits d'arcade (8€) par enfant », la F6
+  // et la F7, se dit « 8 crédits » et « par enfant », toujours sans heure ; le montant entre parentheses n est
+  // que leur valeur.
   function gpCredits(label, enfants) {
     var m = /(\d+)\s*cr[ée]dits?/i.exec(String(label || ''));
     var n = m ? Number(m[1]) : 0;
     var parEnfant = /par\s+enfant/i.test(String(label || ''));
-    var e = new RegExp('(\\d+(?:[.,]\\d+)?)\\s*(?:' + motifSignesMonnaie() + ')').exec(String(label || ''));
+    var e = m ? null : new RegExp('(\\d+(?:[.,]\\d+)?)\\s*(?:' + motifSignesMonnaie() + ')').exec(String(label || ''));
     var euros = e ? Number(e[1].replace(',', '.')) : null;
     var total = parEnfant ? n * Math.max(1, Number(enfants) || 1) : n;
     return { n: n, parEnfant: parEnfant, total: total, euros: euros, detail: euros != null && parEnfant ? 'par enfant' : '', eurosTotal: euros != null ? (parEnfant ? euros * Math.max(1, Number(enfants) || 1) : euros) : null };

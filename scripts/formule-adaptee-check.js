@@ -11,7 +11,8 @@
 // son calcul a blanc partent au VRAI handler, au vrai moteur et a la vraie lib/database.js, sur la base
 // en memoire de reserver-banc (aucun reseau, aucune base reelle, aucun mail ne part). Gembloux a une
 // seule piste. Les montants attendus se lisent au catalogue du banc, jamais ecrits ici.
-//   [A1] Modifier, un Bowling ajoute a 15:30 : le verdict ne dit pas « visite à la carte » ; le detail
+//   [A1] Modifier, « Adapter à ce groupe » puis un Bowling ajoute a 15:30 (sans ce geste, il serait en plus de la
+//        formule, scripts/reserver-formule-en-plus-check.js [H]) : le verdict ne dit pas « visite à la carte » ; le detail
 //        du prix dit la Formule 5 (« 26 € × 6 ») puis le Bowling a son prix du catalogue ; le champ
 //        Total est leur somme ;
 //   [A2] « Enregistrer » : en base, la Formule 5 (type, formule, nom adapte), le Bowling a 15:30 sur la
@@ -152,6 +153,10 @@ async function verdictPose(page) {
 }
 const verdictLu = (page) => page.evaluate(() => { const z = document.getElementById('editVerdict'); return z && z.getClientRects().length ? { ton: z.className, texte: z.textContent.replace(/\s+/g, ' ').trim() } : { ton: '', texte: '' }; });
 async function ajouterBowling(page, heure) {
+  // (depuis le 2026-11-22, « Ajouter » met une activite en plus d une formule prise telle quelle ; le Bowling entre
+  // dans la formule apres « Adapter à ce groupe », le geste que ce gate suit)
+  const adapter = page.locator('#posOverlay #editAdapter button[aria-pressed="false"]');
+  if (await adapter.count()) await adapter.click();
   await page.click('#posOverlay .fm-ajouts .fm-ajout[onclick*="\'bowling\'"]');
   await page.waitForSelector('#posOverlay [data-heure-nouvelle="bowling"]', { timeout: 5000 });
   await page.fill('#posOverlay [data-heure-nouvelle="bowling"]', heure);

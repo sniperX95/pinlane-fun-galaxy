@@ -20433,6 +20433,9 @@ body:is(.staff-mode, .admin-mode) .fx-modal .fm-ajout { display: inline-flex; al
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-ajout svg { flex: none; color: var(--muted); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-ajout:hover { background: var(--subtle); border-color: var(--control-border); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-ajout:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 2px; }
+/* « Adapter à ce groupe » (2026-11-22) : sous les ajouts, son effet en une ligne. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-adapter { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 10px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-adapter-aide { font-size: 12px; color: var(--muted); }
 
 /* NOURRITURE ET EXTRAS (2026-10-27, Movsar : « tout modifiable, ajoute le
    genre nourriture autre »). Les lignes de la creation (Sur mesure) : le

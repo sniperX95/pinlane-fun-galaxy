@@ -29297,7 +29297,7 @@ function getGroupeProgramme(r) {
     etapes.push({
       cle: `enplus-${step.activityId}-${index + 1}`,
       activityId: step.activityId,
-      nom: String(ligne.name || step.label || nomActiviteHeureEdition(step.activityId)),
+      nom: String(ligne.name || step.label || (typeof nomActiviteHeureEdition === 'function' ? nomActiviteHeureEdition(step.activityId) : step.activityId)),
       quoi: `${Number(ligne.participants) || Number(r.pax) || 0} joueurs · en plus`,
       ou: '',
       groupe: '',
@@ -29343,7 +29343,8 @@ function getGroupeProgramme(r) {
   // Une activite de formule sans heure au plan reste au programme, cochable.
   if (formuleSuivie) {
     getFormulaActivityProgressSummary(r).items
-      .filter(item => !item.startTime && item.activityId !== 'bowling' && item.activityId !== 'laser_game')
+      // (une petite activite en plus libre n en est pas une : une formule lue d apres son plan la comptait deux fois)
+      .filter(item => !item.startTime && item.activityId !== 'bowling' && item.activityId !== 'laser_game' && !pasEnPlus.some(step => step.flexible === true && step.activityId === item.activityId))
       .forEach(item => etapes.push({
         cle: item.key, activityId: item.activityId, nom: item.label, quoi: '', ou: '', groupe: '',
         start: null, end: null, libre: true, fait: Boolean(item.done), coche: item.key, exige: true,
@@ -30674,6 +30675,8 @@ function ficheEditionModifiee() {
   const es = state.editState;
   if (state.activeTab !== 'modifier' || !es || !state.selectedRes) return false;
   if (editProgramAChange()) return true;
+  // Une activite en plus ajoutee, reglee ou retiree, pas enregistree (2026-11-22).
+  if (enPlusEditionChange()) return true;
   // Une heure d activite changee et pas enregistree (2026-11-18).
   if (Object.keys(heuresChangeesEdition()).length) return true;
   const edition = departsEdition().get(es);
@@ -34270,6 +34273,104 @@ function rendreLibreEnPlusEdition(id) {
   renderPos();
 }
 
+// « AJOUTER » MET L ACTIVITE EN PLUS DE LA FORMULE (2026-11-22, le coordinateur : « dans Modifier, sur un dossier en
+// formule, Ajouter crée un ajout en plus (sa ligne, son heure, son prix catalogue), comme dans Réserver. Il n adapte
+// plus la formule. Seul Adapter à ce groupe adapte »). Une formule prise telle quelle reste entiere : l activite
+// ajoutee est sa rangee, a son heure et a son prix. « Adapter à ce groupe » (ou une formule deja adaptee, changee
+// ici, dont une activite a deja ete retiree ou reglee, ou un acces illimite qui redevient un programme normal) la
+// prend dans son programme, comme avant.
+function formuleTelleQuelleEdition(r = state.selectedRes) {
+  const e = state.editState;
+  if (!e || !r || !peutAdapterLeProgramme(r)) return false;
+  if (String(r.type || '') !== 'formule' || !r.formuleId || !resolveDisplayFormule(r.formuleId)) return false;
+  if (/\(adapt[ée]e\)/i.test(String(r.label || '')) && Array.isArray(r.program?.items) && r.program.items.length) return false;
+  return !formuleChangeeEdition() && !e.versProgrammeNormal && !editProgramAChange();
+}
+
+function enPlusPossibleEdition(r = state.selectedRes) {
+  return formuleTelleQuelleEdition(r) && !state.editState.adapterLaFormule;
+}
+
+// L heure proposee a une activite en plus ajoutee ici, comme Reserver (rvHeureEnPlusProposee) : la premiere
+// demi-heure apres ce que la formule fait a heure fixe (son bowling, chaque partie de son laser, ses etapes a heure),
+// sans la chevaucher, avant la fermeture ; un acces illimite se joue des l arrivee. Le verdict la juge.
+function heureEnPlusProposeeEdition(id, variante) {
+  const e = state.editState;
+  const r = state.selectedRes;
+  const ecrit = dossierEcritDuVerdict();
+  const plan = ((ecrit || r) && (ecrit || r).opsPlan) || {};
+  const min = (h) => minutesHeureEdition(String(h || '').slice(0, 5));
+  // (sans verdict a jour, le plan du dossier, decale de l arrivee changee ici)
+  const decalage = ecrit ? 0 : (min(e.startTime) - min(r.startTime)) || 0;
+  const plages = [];
+  (Array.isArray(plan.resourceBlocks) ? plan.resourceBlocks : []).forEach((b) => {
+    if (!b || b.enPlus || b.aVolonte || (b.resourceType !== 'bowling_lane' && b.resourceType !== 'laser_arena')) return;
+    const debut = min(b.startTime);
+    if (!Number.isFinite(debut)) return;
+    const fin = b.resourceType === 'laser_arena' ? debut + 25 : min(b.endTime);
+    plages.push({ debut: debut + decalage, fin: (Number.isFinite(fin) && fin > debut ? fin : debut + 60) + decalage });
+  });
+  const illimite = estFormuleIllimitee(resolveDisplayFormule(r.formuleId));
+  if (!illimite) {
+    (Array.isArray(plan.timeline) ? plan.timeline : []).forEach((s) => {
+      if (!s || s.type !== 'activity' || s.enPlus || s.flexible === true || RV_ANCRABLES.includes(s.activityId) || /^service/.test(String(s.activityId || '')) || ['party_table', 'arcade_credit', 'playground'].includes(s.activityId)) return;
+      const debut = min(s.startTime);
+      const fin = min(s.endTime);
+      if (Number.isFinite(debut) && Number.isFinite(fin) && fin > debut) plages.push({ debut: debut + decalage, fin: fin + decalage });
+    });
+  }
+  const arrivee = min(e.startTime || r.startTime);
+  const fin = plages.length ? Math.max(...plages.map((p) => p.fin)) : illimite ? arrivee : arrivee + Math.round((Number(e.totalDuration || r.totalDuration || e.duration || r.duration) || 0) * 60);
+  if (!Number.isFinite(fin)) return '';
+  const duree = id === 'laser_game' ? 30 * (Math.max(1, Number(variante) || 1) - 1) + 25 : Math.round((Number(variante) || 1) * 60);
+  const horaire = typeof getSchedule === 'function' ? getSchedule(e.date || r.date, state.isHolidayMode) : null;
+  const fermeture = horaire && Number.isFinite(Number(horaire.close)) ? Math.round(Number(horaire.close) * 60) : 24 * 60;
+  const enHeure = (t) => `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
+  const premiere = Math.ceil(fin / 30) * 30;
+  for (let t = premiere; t + duree <= fermeture; t += 30) {
+    if (!plages.some((p) => t < p.fin && p.debut < t + duree)) return enHeure(t);
+  }
+  return enHeure(premiere);
+}
+
+// Une activite en plus ajoutee ici : le bowling et le laser a l heure qui suit la formule (une heure, une partie),
+// une autre libre pendant la visite tant qu on ne lui en pose pas.
+function ajouterEnPlusEdition(id) {
+  const e = state.editState;
+  if (!e || !id || !enPlusPossibleEdition() || enPlusEditeDe(id)) return;
+  const ancre = RV_ANCRABLES.includes(id);
+  const variante = ancre ? 1 : null;
+  e.enPlusEdite = [...enPlusEdition(), { id, variante, heure: ancre ? heureEnPlusProposeeEdition(id, variante) : '', joueurs: null }];
+  heureEnPlusOuverteEdition = '';
+  if (state.editError) setEditError('');
+  renderPos();
+}
+
+// « Ajouter » d une activite : dans l acces illimite qui la comprend, en plus d une formule prise telle quelle, sinon
+// dans le programme (une visite, une formule adaptee).
+function ajouterActiviteEdition(id) {
+  const acces = typeof choixIllimiteEdition === 'function' && choixIllimiteEdition() ? resolveDisplayFormule(state.editState.formuleId) : null;
+  if (acces && activitesDeLIllimite(acces).includes(String(id))) { basculerIllimiteEdition(id); return; }
+  if (enPlusPossibleEdition()) { ajouterEnPlusEdition(id); return; }
+  toggleEditActivity(id);
+}
+
+// « Adapter à ce groupe » : ce qu on ajoute ensuite entre dans la formule, chacune a son prix ; un second toucher
+// la rend telle quelle, tant que rien n y est entre.
+function basculerAdapterEdition() {
+  const e = state.editState;
+  if (!e || !formuleTelleQuelleEdition()) return;
+  e.adapterLaFormule = !e.adapterLaFormule;
+  renderPos();
+}
+
+function adapterEditionHtml(r) {
+  const e = state.editState;
+  if (!e || !formuleTelleQuelleEdition(r) || estFormuleIllimitee(resolveDisplayFormule(r.formuleId))) return '';
+  const on = Boolean(e.adapterLaFormule);
+  return `<div class="fm-adapter" id="editAdapter"><button type="button" class="qb-dur-btn dossier-option${on ? ' active' : ''}" aria-pressed="${on}" aria-describedby="editAdapterAide" onclick="basculerAdapterEdition()">Adapter à ce groupe</button><span class="fm-adapter-aide" id="editAdapterAide">${on ? 'Les activités ajoutées entrent dans la formule, chacune à son prix.' : '« Ajouter » met l’activité en plus de la formule, à son prix.'}</span></div>`;
+}
+
 // L heure qu une activite en plus aura : celle du verdict a jour (le dossier que le serveur ecrirait), sinon la
 // sienne.
 function heureEnPlusAfficheeEdition(x) {
@@ -34448,9 +34549,11 @@ function renderEditFormuleBloc(r, formule, lignes, controls = {}) {
     const actif = estBowling ? !!programme.bowling.on : estLaser ? !!programme.laser_game.on : !!(programme.others || {})[choice.id];
     if (!actif) {
       // (une activite deja en plus de la formule a sa rangee : elle ne s ajoute pas une deuxieme fois)
-      if (!enPlusEditeDe(choice.id)) ajouts.push(`<button type="button" class="fm-ajout" onclick="toggleEditActivity('${escapeJsString(choice.id)}')">${plus}${escapeHtml(choice.label)}</button>`);
+      if (!enPlusEditeDe(choice.id)) ajouts.push(`<button type="button" class="fm-ajout" onclick="ajouterActiviteEdition('${escapeJsString(choice.id)}')">${plus}${escapeHtml(choice.label)}</button>`);
       return '';
     }
+    // (le bowling ou le laser que la formule a deja se reprend en plus, a l heure qui la suit, comme dans Reserver)
+    if (RV_ANCRABLES.includes(choice.id) && enPlusPossibleEdition(r) && !enPlusEditeDe(choice.id)) ajouts.push(`<button type="button" class="fm-ajout" data-ajout-en-plus="${escapeHtml(choice.id)}" onclick="ajouterEnPlusEdition('${escapeJsString(choice.id)}')">${plus}${escapeHtml(choice.label)} en plus</button>`);
     let options = '';
     if ((estBowling || estLaser) && volonte && volonte[choice.id]) {
       options = `<p class="fm-act-volonte" data-a-volonte="${escapeHtml(choice.id)}">${escapeHtml(volonte[choice.id])}</p>`;
@@ -34512,7 +34615,7 @@ function renderEditFormuleBloc(r, formule, lignes, controls = {}) {
   return `${choixAcces}${versNormal}${renderEditFormuleChoix() || (formule?.name && !versNormal && !estFormuleIllimitee(formule) ? `<p class="dossier-formula-origin">Formule <strong>${escapeHtml(formule.name)}</strong> · les changements ne valent que pour cette visite.</p>` : '')}
     <p class="fm-replan" role="status">Les heures seront recalculées à l’enregistrement.</p>
     <div class="fm-acts">${rangees || sansActivite}</div>
-    ${ajouts.length ? `<div class="fm-ajouts" role="group" aria-labelledby="fmAjoutsTitre"><span class="fm-ajouts-titre" id="fmAjoutsTitre">Ajouter</span>${ajouts.join('')}</div>` : ''}`;
+    ${ajouts.length ? `<div class="fm-ajouts" role="group" aria-labelledby="fmAjoutsTitre"><span class="fm-ajouts-titre" id="fmAjoutsTitre">Ajouter</span>${ajouts.join('')}</div>` : ''}${adapterEditionHtml(r)}`;
 }
 
 // D OU VIENT LE MONTANT, EN UNE PHRASE (2026-10-27). Les deux champs disent

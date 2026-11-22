@@ -818,6 +818,10 @@ const toucherHeure = async (page, cle, valeur) => {
   await verdictPose(page);
 };
 async function ajouterBowling(page, heure) {
+  // (depuis le 2026-11-22, « Ajouter » met une activite en plus d une formule prise telle quelle ; le Bowling entre
+  // dans la formule apres « Adapter à ce groupe », le geste que ce gate suit)
+  const adapter = page.locator('#posOverlay #editAdapter button[aria-pressed="false"]');
+  if (await adapter.count()) await adapter.click();
   await page.click('#posOverlay .fm-ajouts .fm-ajout[onclick*="\'bowling\'"]');
   await page.waitForSelector('#posOverlay [data-heure-nouvelle="bowling"]', { timeout: 5000 });
   if (heure) await page.fill('#posOverlay [data-heure-nouvelle="bowling"]', heure);

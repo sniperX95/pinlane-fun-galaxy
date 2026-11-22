@@ -29315,8 +29315,16 @@ function renderGroupeEtapes(r, moment, options = {}) {
     if (enLigne && etape.libre) return etape === libres[0] ? ligneLibres() : '';
     const phase = phases[index];
     // (un service, « 2 cruches boissons », n a pas de duree : son heure se dit une fois, 2026-11-20)
+    // L HEURE SE TOUCHE DANS LA FICHE (2026-11-22, assets/pinlane-planning-global.js, pgOuvrirHeureFiche) :
+    // la pop-up de la pastille du planning complet, posee contre elle, avec les heures libres de cette
+    // activite ; un toucher enregistre. Un role qui ne deplace pas cette activite lit l heure, sans plus.
+    const cleHeure = options.coches && typeof window.pgCleHeure === 'function' ? window.pgCleHeure(r, etape) : '';
+    const debut = etape.start !== null && etape.start !== undefined ? formatClockDisplay(etape.start) : '';
+    const heureDebut = cleHeure
+      ? `<button type="button" class="gc-step-heure" data-pg-heure="${escapeHtml(cleHeure)}" data-pg-res="${Number(r.id)}" aria-haspopup="dialog" aria-label="Changer l’heure : ${escapeHtml(etape.nom)}, ${debut}" onclick="pgOuvrirHeureFiche(this, event)">${debut}</button>`
+      : debut;
     const quand = etape.start !== null && etape.start !== undefined
-      ? `<span class="gc-step-time">${formatClockDisplay(etape.start)}${etape.end !== null && etape.end !== undefined && formatClockDisplay(etape.end) !== formatClockDisplay(etape.start) ? `<small>${formatClockDisplay(etape.end)}</small>` : ''}</span>`
+      ? `<span class="gc-step-time">${heureDebut}${etape.end !== null && etape.end !== undefined && formatClockDisplay(etape.end) !== formatClockDisplay(etape.start) ? `<small>${formatClockDisplay(etape.end)}</small>` : ''}</span>`
       : `<span class="gc-step-time is-free">${etape.aPlacer ? '--:--' : 'Libre'}</span>`;
     const details = [etape.quoi, etape.ou, etape.groupe].filter(Boolean).join(' · ');
     // (une ligne ajoutee dont le prix se regle au comptoir le dit, jamais « 0 € »)

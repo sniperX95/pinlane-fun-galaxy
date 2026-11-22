@@ -815,3 +815,107 @@ button.gf-bloc__in:focus-visible { outline: 2px solid var(--console-focus); outl
    sur la case de la demi-heure et ses lignes vides ; un groupe deja la garde sa ligne lisible. */
 .gf-t td.gf-bloc.is-prive, .gf-t tr.gf-libre.is-prive > td.gf-libre__l { background: repeating-linear-gradient(45deg, var(--subtle), var(--subtle) 7px, var(--surface) 7px, var(--surface) 14px); }
 .gf-t .gf-bloc__in .gf-bloc__prive { font-weight: 600; color: var(--muted); white-space: normal; }
+/* ---- L HEURE AU TOUCHER ET LE GLISSER (2026-11-22) ---------------------------------------
+   Ansar : « cliquer sur l'heure d'une activité [...] modifier l'heure dessus d'une traite avec une
+   petite pop up avec une jolie animation un peu comme un slime qui se transforme en bouton [...]
+   léger », et « possibilité de drag and drop dans planning complet ». La pastille d une heure se
+   touche (assets/pinlane-planning-global.js, gfOuvrirHeure) et se prend (gfLancer). */
+.gf-x__t[data-gf-act] { cursor: pointer; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+@media (hover: hover) {
+  .gf-x__t[data-gf-act]:hover { box-shadow: inset 0 0 0 1px var(--bk-barre); }
+}
+.gf-x__t[data-gf-act]:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 1px; }
+.gf-t .gf-r { -webkit-touch-callout: none; }
+/* (ce qui est pris s efface a moitie a sa place : l apercu le porte) */
+.gf-x__t[data-gf-act].is-glisse { opacity: .4; }
+.gf-t .gf-r.is-glisse > td:not(.gf-bloc) { opacity: .45; }
+/* (le temps du geste, plus de surbrillance des lignes survolees, pinlane-mouvement.js : seule la cible
+   dit ou l heure se pose) */
+body.gf-en-glisse .pl-surbrillance { visibility: hidden; }
+@media (pointer: coarse) {
+  /* (au doigt, la pastille se touche un peu plus large qu elle ne se voit, sans mordre sur ses voisines :
+     les heures d un laser en deux parties sont l une sous l autre) */
+  .gf-x__t[data-gf-act] { position: relative; }
+  .gf-x__t[data-gf-act]::before { content: ''; position: absolute; left: -8px; right: -8px; top: -2px; bottom: -2px; }
+}
+
+/* LA POP-UP DE L HEURE, posee contre la pastille. Aucun bouton plein : les heures sont des boutons
+   encadres de bleu (le second geste de la console), toutes egales. */
+.gf-hp { position: fixed; z-index: 700; left: 0; top: 0; box-sizing: border-box; width: min(328px, calc(100vw - 16px)); padding: 10px 10px 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--raised); color: var(--text); box-shadow: var(--shadow-overlay); font-family: var(--font-ui); font-size: 13px; line-height: 1.35; font-variant-numeric: tabular-nums; transform-origin: var(--gf-hp-ox, 24px) var(--gf-hp-oy, 0px); }
+.gf-hp:focus { outline: none; }
+.gf-hp__tete { display: flex; align-items: flex-start; gap: 6px; }
+.gf-hp__titre { flex: 1 1 auto; min-width: 0; margin: 4px 0 0 4px; font-size: 14px; overflow-wrap: anywhere; }
+.gf-hp__titre b { font-weight: 700; }
+.gf-hp__titre span { color: var(--muted); font-weight: 500; }
+.gf-hp__fermer { appearance: none; flex: none; width: 32px; height: 32px; margin: -2px -2px 0 0; padding: 0; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font: inherit; font-size: 20px; line-height: 1; cursor: pointer; }
+.gf-hp__dit { margin: 2px 4px 10px; color: var(--muted); }
+.gf-hp__dit b { color: var(--text); font-weight: 650; }
+/* (la hauteur de trois rangees d heures, reservee pendant le calcul : la goutte ne change pas de forme
+   quand elles arrivent) */
+.gf-hp__corps { min-height: 132px; }
+.gf-hp.is-rempli .gf-hp__corps { min-height: 0; }
+.gf-hp__heures { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.gf-hp__h { appearance: none; display: inline-flex; flex-direction: column; align-items: center; justify-content: center; min-width: 0; height: 40px; padding: 0 2px; border: 1px solid var(--accent); border-radius: 10px; background: var(--surface); color: var(--accent-strong); font: inherit; font-size: 15px; font-weight: 650; line-height: 1.1; cursor: pointer; transition: background-color 120ms ease; }
+.gf-hp__h small { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; font-weight: 500; color: var(--muted); }
+.gf-hp__second { appearance: none; height: 36px; padding: 0 14px; border: 1px solid var(--accent); border-radius: 10px; background: var(--surface); color: var(--accent-strong); font: inherit; font-weight: 650; cursor: pointer; transition: background-color 120ms ease; }
+@media (hover: hover) {
+  .gf-hp__fermer:hover { background: var(--subtle); color: var(--text); }
+  .gf-hp__h:hover, .gf-hp__second:hover { background: var(--accent-soft); }
+}
+.gf-hp button:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 2px; }
+.gf-hp__attente, .gf-hp__rien, .gf-hp__gele { margin: 0 4px; }
+.gf-hp__attente { color: var(--muted); }
+.gf-hp__gele { font-weight: 600; }
+.gf-hp__pied { display: flex; justify-content: flex-end; margin-top: 12px; }
+@media (pointer: coarse) {
+  .gf-hp__fermer { width: 44px; height: 44px; margin: -8px -8px 0 0; }
+  .gf-hp__h { height: 44px; }
+  .gf-hp__second { height: 44px; }
+}
+/* LA GOUTTE : la pop-up nait de la pastille touchee, a sa taille, sa teinte et son arrondi de pastille,
+   s etire un peu et se pose en panneau. Transform et opacity, l arrondi et la teinte d un panneau seul :
+   rien dans le tableau ne se recalcule. Elle rentre plus vite qu elle n est sortie. */
+@media (prefers-reduced-motion: no-preference) {
+  .gf-hp.is-nait { animation: gfHpGoutte 260ms cubic-bezier(0.23, 1, 0.32, 1) both; }
+  .gf-hp.is-nait > * { animation: gfHpContenu 200ms cubic-bezier(0.23, 1, 0.32, 1) 70ms both; }
+  .gf-hp.is-part { animation: gfHpRentre 150ms cubic-bezier(0.23, 1, 0.32, 1) both; }
+  .gf-hp.is-part > * { opacity: 0; }
+}
+@keyframes gfHpGoutte { /* mouvement-permis : l arrondi de pastille devient celui du panneau, sur la pop-up seule, 260 ms une fois */
+  from { opacity: .7; transform: scale(var(--gf-hp-sx, .2), var(--gf-hp-sy, .2)); border-radius: var(--gf-hp-r0, 999px); background-color: var(--gf-hp-fond0, var(--raised)); }
+  55% { opacity: 1; transform: scale(1.025, .97); border-radius: 15px; background-color: var(--raised); }
+  to { opacity: 1; transform: none; border-radius: 14px; background-color: var(--raised); }
+}
+@keyframes gfHpContenu { from { opacity: 0; } to { opacity: 1; } }
+@keyframes gfHpRentre { /* mouvement-permis : la pop-up rentre dans sa pastille, 150 ms une fois */
+  to { opacity: 0; transform: scale(var(--gf-hp-sx, .2), var(--gf-hp-sy, .2)); border-radius: var(--gf-hp-r0, 999px); }
+}
+
+/* LE GLISSER : l apercu suit le pointeur ; la demi-heure visee se couvre d une bande qui dit si ca
+   passe (vert), pourquoi non (rouge), ou que le calcul arrive (gris) ; un trait le long de chaque
+   demi-heure deja jugee. Rien ne recoit le pointeur : le geste lit les demi-heures sous lui. (sous la tete
+   collee du tableau, jamais dessus : son mot se colle juste sous elle) */
+.gf-apercu { position: fixed; left: 0; top: 0; z-index: 710; max-width: 320px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--raised); color: var(--text); box-shadow: var(--shadow-overlay); font-family: var(--font-ui); font-size: 13px; font-weight: 650; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; will-change: transform; }
+.gf-apercu.is-ok { border-color: var(--success); }
+.gf-apercu.is-non { border-color: var(--danger); }
+.gf-cible { position: absolute; z-index: 2; box-sizing: border-box; display: flex; align-items: flex-start; justify-content: flex-start; padding-top: 4px; border: 2px solid var(--line-strong); border-radius: 8px; background: color-mix(in srgb, var(--text) 5%, transparent); pointer-events: none; }
+.gf-cible[hidden] { display: none; }
+.gf-cible.is-ok { border-color: var(--success); background: color-mix(in srgb, var(--success) 9%, transparent); }
+.gf-cible.is-non { border-color: var(--danger); background: color-mix(in srgb, var(--danger) 8%, transparent); }
+.gf-cible.is-meme { border-style: dashed; }
+.gf-cible__mot { position: sticky; top: 4px; max-width: calc(100% - 16px); padding: 3px 10px; border-radius: 8px; background: var(--raised); color: var(--text); box-shadow: 0 1px 4px rgb(0 0 0 / .12); font-family: var(--font-ui); font-size: 13px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gf-cible.is-ok .gf-cible__mot { color: var(--success); }
+.gf-cible.is-non .gf-cible__mot { color: var(--danger); }
+.gf-reperes { position: absolute; top: 0; z-index: 2; width: 0; height: 0; pointer-events: none; }
+.gf-repere { position: absolute; left: 2px; width: 4px; border-radius: 2px; background: var(--danger); }
+.gf-repere.is-ok { background: var(--success); }
+/* DANS LA FICHE, L HEURE DU PROGRAMME SE TOUCHE AUSSI (renderGroupeEtapes) : la meme heure, a la meme
+   place et a la meme taille, encadree de bleu ; elle ouvre la meme pop-up. */
+.gc-step-heure { appearance: none; position: relative; margin: -2px -6px; padding: 1px 5px; border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent); border-radius: 8px; background: transparent; color: inherit; font: inherit; letter-spacing: inherit; line-height: inherit; text-align: inherit; cursor: pointer; transition: background-color 120ms ease; }
+@media (hover: hover) {
+  .gc-step-heure:hover { background: var(--accent-soft); }
+}
+.gc-step-heure:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 2px; }
+@media (pointer: coarse) {
+  .gc-step-heure::before { content: ''; position: absolute; left: -4px; right: -4px; top: 50%; height: 44px; margin-top: -22px; }
+}

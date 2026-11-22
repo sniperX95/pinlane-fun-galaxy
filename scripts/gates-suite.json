@@ -270,6 +270,7 @@
     "test:fiche-modifier",
     "test:extras-libres",
     "test:heure-activite-dossier",
+    "test:planning-heure-glisser",
     "test:programme-complet",
     "test:reserver-heure-activite",
     "test:resa-lisible",

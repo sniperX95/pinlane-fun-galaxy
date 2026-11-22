@@ -523,8 +523,13 @@ async function deplacerABlanc(req, res, corps) {
   const session = await requireStaffPermission(req, res, ['planning.drag', 'reservations.edit'], { centerId: centre });
   if (!session) return null;
   try {
-    const deplacements = Array.isArray(corps.activityMoves) ? corps.activityMoves : [];
-    if (!deplacements.length || deplacements.length > DEPLACEMENTS_A_BLANC_MAX) throw createHttpError('Déplacement d’activité invalide.', 400);
+    // LES HEURES QUE LE PLANNING COMPLET PROPOSE (2026-11-22, heuresDesEssais) : des essais, chacun un
+    // deplacement entier, juges chacun sur le dossier relu ; sans eux, les deplacements de « Modifier »,
+    // l un apres l autre.
+    const essais = Array.isArray(corps.essais) ? corps.essais : null;
+    if (essais && (!essais.length || essais.length > ESSAIS_A_BLANC_MAX || essais.some((essai) => !Array.isArray(essai) || !essai.length || essai.length > ETAPES_PAR_ESSAI_MAX))) throw createHttpError('Déplacement d’activité invalide.', 400);
+    const deplacements = essais ? essais.flat() : Array.isArray(corps.activityMoves) ? corps.activityMoves : [];
+    if (!essais && (!deplacements.length || deplacements.length > DEPLACEMENTS_A_BLANC_MAX)) throw createHttpError('Déplacement d’activité invalide.', 400);
     if ((corps.centerId || corps.center_id || centre) !== centre) throw createHttpError('Une réservation reste dans son centre : annulez-la et recréez-la dans l autre.', 422);
     for (const deplacement of deplacements) {
       const activite = String((deplacement && deplacement.activityId) || '');
@@ -557,6 +562,7 @@ async function deplacerABlanc(req, res, corps) {
       } catch (error) { if (!error.statusCode) error.statusCode = 409; throw error; }
       return essai;
     };
+    if (essais) return heuresDesEssais({ current, essais, autres, auPlusTot, essayer });
     let candidat = current;
     for (let rang = 0; rang < deplacements.length; rang += 1) {
       const deplacement = deplacements[rang];
@@ -582,6 +588,41 @@ async function deplacerABlanc(req, res, corps) {
     if (!error || !error.statusCode || error.statusCode >= 500 || estErreurInfra(error)) throw error;
     return { ok: true, dryRun: true, deplacement: true, refus: { message: String(error.message), statut: error.statusCode, ...(error.code ? { code: error.code } : {}), ...(Number.isInteger(error.rang) ? { rang: error.rang, suggestions: error.suggestions || [] } : {}), ...(error.plancher ? { plancher: true } : {}) } };
   }
+}
+
+// LES HEURES LIBRES D UNE ACTIVITE, POUR LE PLANNING COMPLET (2026-11-22, Ansar : « cliquer sur l'heure
+// d'une activité [...] et modifier l'heure dessus d'une traite [...] ça doit bien tout calculer hein
+// pour voir possibilité et tout »). La pop-up de l heure et le glisser du planning complet ne proposent
+// que les heures que CE controle laisse passer, celui du verdict de « Modifier » et du PATCH
+// activityMove : buildActivityMove (les horaires du jour, ceux de la formule, le chevauchement avec les
+// autres activites du groupe), puis validateActivityMoveResources contre la journee relue (pistes,
+// armes, fermetures, blocages). Chaque essai part du dossier relu, aucun ne s appuie sur un autre ; ses
+// etapes (les parties d un meme laser) s enchainent. Une heure sur la place d un groupe qui joue le dit
+// (sansLesGroupesQuiJouent) ; un groupe qui joue deja ne bouge pas du tout (groupeEnJeu, la regle du
+// retard). Rien ne s ecrit.
+const ESSAIS_A_BLANC_MAX = 64;
+const ETAPES_PAR_ESSAI_MAX = 4;
+function heuresDesEssais({ current, essais, autres, auPlusTot, essayer }) {
+  const { groupeEnJeu, maintenantDuJour, sansLesGroupesQuiJouent, phraseDuRefus } = require('../lib/retard-arrivee');
+  const maintenant = maintenantDuJour(current.date);
+  const enJeu = groupeEnJeu(current, maintenant);
+  if (enJeu) return { ok: true, dryRun: true, deplacement: true, gele: enJeu.phrase, essais: [] };
+  const juger = (essai) => {
+    let dossier = current;
+    try {
+      for (const move of essai) {
+        const voulue = minuteDeLaFenetre(move && move.startTime);
+        if (auPlusTot !== null && Number.isFinite(voulue) && voulue < auPlusTot) return { passe: false, plancher: true, raison: 'Trop tôt : le groupe n’est pas encore là à cette heure.' };
+        const base = dossier;
+        dossier = sansLesGroupesQuiJouent(base, move, autres, maintenant, () => essayer(base, move));
+      }
+      return { passe: true };
+    } catch (error) {
+      if (!error || !error.statusCode || error.statusCode >= 500 || estErreurInfra(error) || error.code === 'reservation_modifiee') throw error;
+      return { passe: false, raison: phraseDuRefus(error.message) };
+    }
+  };
+  return { ok: true, dryRun: true, deplacement: true, essais: essais.map(juger) };
 }
 
 // LE RETARD D UN GROUPE, A BLANC (2026-11-21, lib/retard-arrivee.js). La fenetre du retard

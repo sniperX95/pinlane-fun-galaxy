@@ -52,6 +52,28 @@ const APPAREILS = {
   'tablette-portrait': { viewport: { width: 768, height: 1024 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true, locale: 'fr-BE' },
   telephone: { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, locale: 'fr-BE' },
 };
+// LE NAVIGATEUR DES GATES PARLE FRANCAIS (2026-11-22, la suite GitHub du lot du 22/11). Un champ
+// <input type="time"> suit la langue du navigateur, jamais la locale du contexte (que les appareils
+// ci-dessus posent deja) : l Edge des machines GitHub est en anglais, le champ y est en 12 h avec AM/PM,
+// et « 1030 » tape sur 15:00 donnait 22:30 (saisie-nombres-heures [R3], grands-groupes [H] : 16:10 restait
+// 16:00). Sonde du 22/11 sur le poste : --lang=en-US et un contexte fr-BE, 22:30 ; --lang=fr-BE, 10:30.
+// Tout Chromium lance par un gate qui charge cette fixture (directement, ou par comptoir-banc.js et
+// reserver-banc.js) part donc en francais de Belgique, comme les postes des centres, sauf s il dit sa
+// propre langue.
+const LANGUE_NAVIGATEUR = '--lang=fr-BE';
+function avecLangue(options) {
+  const o = options || {};
+  const args = Array.isArray(o.args) ? o.args : [];
+  return args.some((a) => /^--lang=/.test(String(a))) ? o : { ...o, args: [...args, LANGUE_NAVIGATEUR] };
+}
+try {
+  const { chromium } = require('playwright-core');
+  if (chromium && typeof chromium.launch === 'function' && !chromium.launch.avecLangue) {
+    const lancer = chromium.launch.bind(chromium);
+    chromium.launch = (options) => lancer(avecLangue(options));
+    chromium.launch.avecLangue = true;
+  }
+} catch (error) { /* sans playwright-core, la fixture ne sert que ses donnees */ }
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.webp': 'image/webp' };
 
 function lireJson(fichier) { return JSON.parse(fs.readFileSync(path.join(DOSSIER, fichier), 'utf8')); }

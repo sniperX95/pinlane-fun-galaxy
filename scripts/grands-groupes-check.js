@@ -47,6 +47,11 @@
 //       que le planning demande au serveur (deplacerABlanc, essais) ne proposent pas le bowling a 16:00 ni a
 //       16:30 (« chevauche le Laser Game du groupe 1, de 16:30 à 16:55 »), ni le laser du groupe 1 a 16:00 ;
 //       le PATCH du toucher refuse avec la meme phrase et le dossier ne bouge pas ; 17:00 s enregistre.
+//   [H] UN GRAND GROUPE A LA MINUTE (le lot du 2026-11-22 : l heure tapee a la minute au comptoir). 60 au
+//       bowling seul a 15:10 : 15:10 puis 16:10, 390 € comme a 15:30 ; 60 qui tournent a 15:10 : fin 17:10,
+//       990 € ; a 19:40 (laser tape a 21:40), les groupes tournent d office des 19:40, fin 21:40 ; le dossier
+//       nait a 15:10 en base, chaque groupe a un seul endroit. Au comptoir, en vrais clics : « Autre heure »
+//       16:10 sur 60 au bowling, le ticket dit groupe 1 a 16:10 et groupe 2 a 17:10, et le dossier nait ainsi.
 //   [*] Zero erreur JavaScript.
 //
 // CONTRE-PREUVES : `--contre-preuves` rejoue le gate sur du code casse expres, une mutation a la fois, en
@@ -87,6 +92,7 @@ const MOTEUR = 'lib/ops-engine.js';
 const GG = 'lib/grand-groupe.js';
 const OPS = 'lib/reservation-ops.js';
 const MOUVEMENT = 'lib/reservation-activity-move.js';
+const FENETRE = 'lib/reserver-fenetre.js';
 
 // LES MUTATIONS : une regle retiree a la fois. `lettre` : le scenario qui doit rougir. `serveur` : le
 // code passe par le crochet de compilation du banc, sinon la console le recoit du serveur de fichiers.
@@ -130,6 +136,11 @@ const MUTATIONS = [
   // [G] une heure deplacee (la pop-up du planning complet, son glisser, Modifier) ne regarde plus le
   // sous-groupe : le compte des joueurs du groupe tient, le groupe 1 joue au bowling pendant son laser.
   { nom: 'sous-groupe-deplace-a-deux-endroits', lettre: 'G', serveur: true, fichier: MOUVEMENT, de: '    const groupe = Number(movedBlock && movedBlock.sousGroupe) || 0;', vers: '    const groupe = 0;' },
+  // [H] un grand groupe a la minute : la rotation refuse la minute, se cale sur la grille du centre, ou
+  // ses heures posees se rejouent par-dessus les groupes.
+  { nom: 'rotation-refuse-la-minute', lettre: 'H', serveur: true, fichier: MOTEUR, de: "  if (!aLaMinute && debut % PROGRAM_GRID_MINUTES !== 0) return { ok: false, code: 'off_grid'", vers: "  if (debut % PROGRAM_GRID_MINUTES !== 0) return { ok: false, code: 'off_grid'" },
+  { nom: 'rotation-sur-la-grille-du-centre', lettre: 'H', serveur: true, fichier: GG, de: '  const origine = ((Number(debut) % grille) + grille) % grille;', vers: '  const origine = 0;' },
+  { nom: 'heures-posees-rejouees-sur-les-groupes', lettre: 'H', serveur: true, fichier: FENETRE, de: "  const aPoser = enSousGroupes ? heuresPosees.filter((posee) => posee.activityId !== 'bowling' && posee.activityId !== 'laser_game') : heuresPosees;", vers: '  const aPoser = heuresPosees;' },
 ];
 
 // ---------------------------------------------------------------------------
@@ -379,7 +390,7 @@ async function principal() {
     return { col: col ? col.scrollHeight - col.clientHeight : 99, dehors: r.top < 0 || r.bottom > window.innerHeight ? 1 : 0 };
   });
 
-  const navigateur = ['A', 'B', 'C', 'E', 'F'].some(joue);
+  const navigateur = ['A', 'B', 'C', 'E', 'F', 'H'].some(joue);
   if (navigateur) {
     const { chromium } = require('playwright-core');
     browser = await chromium.launch({ executablePath: BROWSER_PATH, headless: true });
@@ -809,6 +820,71 @@ async function principal() {
         ok(pris.statut === 200 && sansPistes(resume(deplace)) === 'B1@17:00x30 B2@18:00x30 L1@16:30x30 L2@15:30x30' && sansChevauchement(deplace),
           '[G] le bowling a 17:00 s enregistre : chaque sous-groupe reste a un seul endroit', `${pris.statut} ${pris.json.message || ''} ${sansPistes(resume(deplace))}`);
       }
+    }
+
+    // =======================================================================
+    if (joue('H')) {
+      section('[H] UN GRAND GROUPE A LA MINUTE : SES GROUPES PARTENT A L HEURE TAPEE');
+      const fx = semer('vide');
+      const jour = fx.staffState.date;
+      // (le matin : les heures tapees sont devant, jamais l heure qu il est)
+      globalThis.__comptoirMaintenant = FX.instant(jour, '10:00').getTime();
+      // Ce que la fenetre envoie pour une heure tapee a la minute (rvALaMinute) : l heure au moteur, et
+      // posee (heuresPosees), qui dit au serveur de la juger a sa minute. `impose` : les sous-groupes
+      // voulus (un bowling seul trop grand, ou « Faire tourner » touche) ; sans lui, le plan d avant.
+      const demande = ({ pax, heure, laserA = '', bowlingSeul = false, impose = true, posees = true }) => ({
+        name: 'Groupe Minute', phone: '0470111222', email: '', notes: '', occasion: '', date: jour, startTime: heure, duration: 1, totalDuration: 3, lanes: [], pax, status: 'pending', type: 'visite', formuleId: '',
+        program: bowlingSeul ? [{ activityId: 'bowling', pax, participants: pax, duration: 1 }] : [{ activityId: 'bowling', pax, participants: pax, duration: 1 }, { activityId: 'laser_game', pax, participants: pax, games: 1 }],
+        laserGames: 0, extras: [], channel: 'staff', requiresLanes: true, centerId: 'libramont',
+        preference: bowlingSeul
+          ? { activityOrder: ['bowling'], preferredTimes: { bowling: heure }, grandGroupe: { impose: true } }
+          : { activityOrder: ['bowling', 'laser_game'], preferredTimes: { bowling: heure, laser_game: laserA || heure }, ...(impose ? { grandGroupe: { impose: true } } : { laserGameTimes: [laserA || heure], laserPlacement: 'scheduled', grandGroupe: {} }) },
+        ...(posees ? { heuresPosees: bowlingSeul ? { bowling: heure } : { bowling: heure, laser_game: laserA || heure } } : {}),
+      });
+      const simuler = async (c) => (await serveur.appeler('POST', '/api/staff-reservations', { ...c, dryRun: true })).json.plan || {};
+      const horaire = (plan) => (plan.blocs || []).map((b) => `${b.activite === 'bowling' ? 'B' : 'L'}${b.sousGroupe || 0}@${b.debut}`).sort().join(' ');
+      const seul = await simuler(demande({ pax: 60, heure: '15:10', bowlingSeul: true }));
+      const seulGrille = await simuler(demande({ pax: 60, heure: '15:30', bowlingSeul: true, posees: false }));
+      ok(seul.disponible === true && horaire(seul) === 'B1@15:10 B2@16:10' && Number(seul.prix) === 390 && Number(seulGrille.prix) === 390,
+        '[H] 60 au bowling seul a 15:10 : deux groupes l un apres l autre, 15:10 puis 16:10, 390 € comme a 15:30', { horaire: horaire(seul), prix: seul.prix, grille: seulGrille.prix, refus: seul.refus });
+      const tourne = await simuler(demande({ pax: 60, heure: '15:10' }));
+      ok(tourne.disponible === true && horaire(tourne) === 'B1@15:10 B2@16:10 L1@16:10 L2@15:10' && Number(tourne.prix) === 990 && tourne.fin === '17:10',
+        '[H] 60 qui tournent a 15:10 : groupe 1 bowling 15:10 puis laser 16:10, groupe 2 l inverse, fin 17:10, 990 €', { horaire: horaire(tourne), prix: tourne.prix, fin: tourne.fin, refus: tourne.refus });
+      const soir = await simuler(demande({ pax: 60, heure: '19:40', laserA: '21:40', impose: false }));
+      ok(soir.disponible === true && Boolean(soir.grandGroupe && soir.grandGroupe.tourne) && horaire(soir) === 'B1@19:40 B2@20:40 L1@20:40 L2@19:40' && soir.fin === '21:40',
+        '[H] 60 a 19:40, laser tape a 21:40 : le plan d avant finirait apres la fermeture, les groupes tournent d office des 19:40, fin 21:40', { horaire: horaire(soir), fin: soir.fin, gg: soir.grandGroupe, refus: soir.refus });
+      // Jusqu en base : la creation, telle que « Créer » l envoie.
+      const cree = await serveur.appeler('POST', '/api/staff-reservations', demande({ pax: 60, heure: '15:10' }));
+      const r = cree.json.reservation && (B.base.reservations.get(Number(cree.json.reservation.id)) || B.base.reservations.get(cree.json.reservation.id));
+      ok(cree.statut < 300 && Boolean(r) && String(r.start_time).slice(0, 5) === '15:10' && sansPistes(resume(blocsDe(r))) === 'B1@15:10x30 B2@16:10x30 L1@16:10x30 L2@15:10x30' && sansChevauchement(blocsDe(r)) && Number(r.price) === 990,
+        '[H] le dossier nait a 15:10, ses groupes a la minute, chacun a un seul endroit, 990 €', r ? `${r.start_time} ${r.price} ${resume(blocsDe(r))}` : `${cree.statut} ${cree.json.message || ''}`);
+      // Au comptoir, en vrais clics : 60 tapes dans « Autre », le bowling, puis « Autre heure » 16:10 (il
+      // est 15:10). La fenetre juge la minute a blanc, le ticket dit chaque groupe a la minute, et
+      // « Créer » ecrit ce que le ticket montre.
+      const { ctx, page, erreurs, avant } = await ouvrir('vide');
+      try {
+        await soixante(page);
+        await toucher(page, '.rs-seance [data-activite="bowling"][data-heure="16:00"]');
+        await pret(page).catch(() => {});
+        await toucher(page, '.rs-h-autres[data-activite="bowling"]');
+        await page.waitForSelector('#rsMin-bowling', { timeout: 12000 });
+        await page.locator('#rsMin-bowling').click();
+        await page.keyboard.type('1610');
+        await page.keyboard.press('Enter');
+        await page.waitForFunction(() => { const b = typeof rsEtat === 'function' ? rsEtat() : null; return Boolean(b) && !(b.minute && b.minute.etat === 'calcul'); }, null, { timeout: 15000 }).catch(() => {});
+        await page.waitForFunction(() => /16:10/.test((document.querySelector('#rsL-a-bowling') || {}).textContent || ''), null, { timeout: 15000 }).catch(() => {});
+        await pret(page).catch(() => {});
+        const bowlingDit = await texte(page, '#rsL-a-bowling');
+        const creerDit = await texte(page, '#rvCreer');
+        ok(/Groupe 1 à 16:10, groupe 2 à 17:10/.test(bowlingDit) && /Créer à 16:10/.test(creerDit),
+          '[H] « Autre heure » 16:10 sur 60 au bowling : le ticket dit groupe 1 a 16:10, groupe 2 a 17:10, « Créer à 16:10 »', { bowlingDit, creerDit });
+        await capture(page, '60-bowling-a-la-minute');
+        const rc = await creer(page, avant);
+        const services = blocsDe(rc).filter((b) => b.resourceType === 'bowling_lane').map((b) => `${b.sousGroupe}@${b.startTime}-${b.endTime}x${b.players}`).sort().join(' ');
+        ok(Boolean(rc) && String(rc.start_time).slice(0, 5) === '16:10' && services === '1@16:10-17:10x30 2@17:10-18:10x30',
+          '[H] le dossier nait a 16:10 : groupe 1 de 16:10 a 17:10, groupe 2 de 17:10 a 18:10', rc ? `${rc.start_time} ${services}` : 'aucun dossier');
+        ok(erreurs.length === 0, '[*] zero erreur JavaScript (H)', erreurs.slice(0, 3).join(' | '));
+      } finally { await ctx.close(); }
     }
   } catch (error) {
     ok(false, `exception : ${error.message}`, String(error.stack || '').split('\n').slice(0, 4).join(' | '));

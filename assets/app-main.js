@@ -26539,6 +26539,13 @@ function nomsDuRetard(r) {
   getGroupeProgramme(r).forEach((etape) => { const cle = cleHeureEtape(etape); if (cle && !noms.has(cle) && etape.nom) noms.set(cle, etape.nom); });
   return noms;
 }
+// LA FENETRE COMPLETE (2026-11-22, le gerant devant elle : « faut que ça mette genre mtn le retard pas
+// a 30 [...] fait un truc complet ou on peut modifier tout genre quand les mettre et ça nous montre
+// joliment les places dispo »). Chaque activite a son heure a la minute dans un champ, des pas de 5 min
+// a cote ; ses places a cette heure (les pistes du bowling, les armes du laser) ; et, quand elle ne passe
+// pas, la raison et les heures libres les plus proches, d un toucher. Chaque heure touchee se rejuge au
+// serveur sans rien ecrire (jugerFenetreRetard) ; le choix envoie les heures posees a la main et celles
+// affichees, et le serveur n ecrit que si son calcul retombe sur elles.
 async function ouvrirFenetreRetard(r, reglage) {
   const minutes = Math.max(1, Math.min(240, Math.round(Number(reglage.minutes) || 0)));
   const prevu = premiereHeureDuGroupe(r);
@@ -26548,21 +26555,106 @@ async function ouvrirFenetreRetard(r, reglage) {
     faites: [...new Set(getGroupeProgramme(r).filter(etape => etape.fait).map(cleHeureEtape).filter(Boolean))],
     noms: nomsDuRetard(r), etapes: null, erreur: '', envoi: false, retour: document.activeElement,
     feuille: Boolean(document.activeElement && document.activeElement.closest && document.activeElement.closest('#globalPlanningGridWrap')),
+    version: r.updatedAt, centre: r.centerId || getCurrentStaffCenterId(), heures: {}, enCours: false, seq: 0, attente: null,
   };
   fenetreRetard = etat;
   rendreFenetreRetard(true);
   toastAnnulableEnAttente(true);
-  try {
-    const payload = await apiRequest(API_ENDPOINTS.staffReservations, { method: 'POST', body: JSON.stringify({ dryRun: true, centerId: r.centerId || getCurrentStaffCenterId(), retard: { id: r.id, baseUpdatedAt: r.updatedAt, minutes, de: etat.de, faites: etat.faites } }) });
-    if (fenetreRetard !== etat) return;
-    if (payload && payload.refus) etat.erreur = payload.refus.message || 'Le planning ne répond pas.';
-    else if (payload && payload.retard && Array.isArray(payload.etapes)) etat.etapes = payload.etapes;
-    else etat.erreur = 'Le planning ne répond pas : les heures restent telles quelles.';
-  } catch (error) {
-    if (fenetreRetard !== etat) return;
-    etat.erreur = error.message || 'Le planning ne répond pas.';
-  }
+  await jugerFenetreRetard(etat);
+}
+// Le verdict du serveur, sans rien ecrire (simulerRetard) : les minutes, ce qui est coche, les heures
+// posees a la main. Seule la derniere demande compte ; pendant qu elle se juge, aucun choix ne part.
+async function jugerFenetreRetard(etat) {
+  if (fenetreRetard !== etat) return;
+  clearTimeout(etat.attente);
+  const r = state.reservations.find(x => Number(x.id) === etat.id);
+  const version = r && Date.parse(r.updatedAt) > Date.parse(etat.version) ? r.updatedAt : etat.version;
+  const seq = ++etat.seq;
+  etat.enCours = true;
   rendreFenetreRetard();
+  let etapes = null;
+  let erreur = '';
+  try {
+    const payload = await apiRequest(API_ENDPOINTS.staffReservations, { method: 'POST', body: JSON.stringify({ dryRun: true, centerId: etat.centre, retard: { id: etat.id, baseUpdatedAt: version, minutes: etat.minutes, de: etat.de, faites: etat.faites, heures: etat.heures } }) });
+    if (payload && payload.refus) erreur = payload.refus.message || 'Le planning ne répond pas.';
+    else if (payload && payload.retard && Array.isArray(payload.etapes)) etapes = payload.etapes;
+    else erreur = 'Le planning ne répond pas : les heures restent telles quelles.';
+  } catch (error) {
+    erreur = error.message || 'Le planning ne répond pas.';
+  }
+  if (fenetreRetard !== etat || seq !== etat.seq) return;
+  Object.assign(etat, { enCours: false, erreur, etapes });
+  rendreFenetreRetard();
+}
+// « Pistes 1 et 2 », « 1, 2 et 3 ».
+function listeDuRetard(nombres) {
+  return nombres.length > 1 ? `${nombres.slice(0, -1).join(', ')} et ${nombres[nombres.length - 1]}` : String(nombres[0] || '');
+}
+// LES PLACES A LA NOUVELLE HEURE (lib/database.js, placesDuDeplacement) : chaque piste du centre (celles
+// du groupe en bleu, les libres encadrees, les prises grisees) et sa phrase ; les armes de l arene en une
+// barre (celles des autres groupes, celles du groupe) et leur phrase. La phrase dit tout, la rangee se voit.
+function placesDuRetardHtml(e) {
+  const p = e && e.places;
+  if (!p) return '';
+  const pl = (n, un, plusieurs) => (n > 1 ? plusieurs : un);
+  if (Array.isArray(p.pistes) && p.pistes.length) {
+    const groupe = p.pistes.filter(x => x.groupe);
+    const prises = groupe.filter(x => x.etat !== 'libre');
+    const autres = p.pistes.filter(x => !x.groupe && x.etat === 'libre').length;
+    const etat = !prises.length ? pl(groupe.length, 'libre', 'libres')
+      : prises.length === groupe.length ? pl(groupe.length, 'prise', 'prises') : `(${listeDuRetard(prises.map(x => x.n))} ${pl(prises.length, 'prise', 'prises')})`;
+    const dit = `${pl(groupe.length, 'Piste', 'Pistes')} ${listeDuRetard(groupe.map(x => x.n))} ${etat} · ${autres ? `${autres} ${pl(autres, 'autre libre', 'autres libres')}` : 'aucune autre libre'}`;
+    const mot = { libre: 'libre', prise: 'prise', hors: 'hors service' };
+    const puces = p.pistes.map(x => `<span class="rt-piste is-${escapeHtml(x.etat)}${x.groupe ? ' is-groupe' : ''}" title="Piste ${Number(x.n)} : ${x.groupe ? 'ce groupe, ' : ''}${mot[x.etat] || ''}">${Number(x.n)}</span>`).join('');
+    return `<span class="rt-places__dit">${escapeHtml(dit)}</span><span class="rt-pistes" aria-hidden="true">${puces}</span>`;
+  }
+  if (p.armes && Number(p.armes.total) > 0) {
+    const a = p.armes;
+    const avec = Array.isArray(a.avec) && a.avec.length ? `Partie avec ${a.avec.join(' et ')} · ` : '';
+    const dit = `${avec}${a.libres} ${pl(a.libres, 'arme libre', 'armes libres')} sur ${a.total}, il en faut ${a.besoin}`;
+    const part = (n) => Math.max(0, Math.min(100, Math.round((Number(n) / Number(a.total)) * 1000) / 10));
+    return `<span class="rt-places__dit">${escapeHtml(dit)}</span><span class="rt-armes${a.besoin > a.libres ? ' is-court' : ''}" aria-hidden="true"><span class="rt-armes__prises" style="width:${part(a.prises)}%"></span><span class="rt-armes__groupe" style="width:${part(Math.min(a.besoin, a.libres))}%"></span></span>`;
+  }
+  return '';
+}
+// Une activite de la fenetre : son nom et son verdict, son heure (un champ a la minute et ses pas),
+// ses places, puis, si elle ne passe pas, la raison et les heures libres proches.
+function ligneDuRetardHtml(etat, e, modifiable) {
+  const nom = etat.noms.get(e.cle) || e.cle;
+  const cle = escapeHtml(e.cle);
+  const valeur = etat.heures[e.cle] || e.apres;
+  const champ = !e.libre && modifiable && Number.isFinite(minutesHeureEdition(valeur));
+  // (des arcades en argent n ont pas d heure : elles passent « libre », hors de l enchainement)
+  const heure = e.libre ? '<b>libre</b>'
+    : champ ? `<input class="rt-heure" type="time" step="60" value="${escapeHtml(valeur)}" aria-label="Nouvelle heure, ${escapeHtml(nom)}"${e.passe ? '' : ' aria-invalid="true"'} data-rt-heure="${cle}" data-rt-focus="heure:${cle}" oninput="poserHeureRetard(this.dataset.rtHeure, this.value)" onkeydown="toucheHeureRetard(event, this.dataset.rtHeure)">`
+      : `<b>${escapeHtml(valeur)}</b>`;
+  const pas = champ ? `<span class="rt-pas-groupe"><button type="button" class="rt-pas" aria-label="5 minutes plus tôt, ${escapeHtml(nom)}" data-rt-focus="pas:${cle}:-5" data-rt-pour="${cle}" onclick="pasHeureRetard(this.dataset.rtPour, -5)">−5</button><button type="button" class="rt-pas" aria-label="5 minutes plus tard, ${escapeHtml(nom)}" data-rt-focus="pas:${cle}:5" data-rt-pour="${cle}" onclick="pasHeureRetard(this.dataset.rtPour, 5)">+5</button></span>` : '';
+  const raison = e.libre && e.passe ? '<p class="rt-etape__raison">Vendues en crédits : sans heure, à leur rythme.</p>'
+    : !e.passe ? `<p class="rt-etape__raison">${escapeHtml(e.raison || 'Le planning refuse cette heure.')} Reste à ${escapeHtml(e.avant)}.</p>` : '';
+  const libres = (!e.passe && modifiable && Array.isArray(e.libres) ? e.libres : []).filter(h => /^\d{2}:\d{2}$/.test(h));
+  const proposees = libres.length ? `<div class="rt-libres" role="group" aria-label="Heures libres les plus proches, ${escapeHtml(nom)}"><span class="rt-libres__titre">Libre à</span>${libres.map(h => `<button type="button" class="rt-libre" data-rt-libre="${h}" data-rt-pour="${cle}" data-rt-focus="libre:${cle}:${h}" onclick="choisirHeureRetard(this.dataset.rtPour, this.dataset.rtLibre)">${h}</button>`).join('')}</div>` : '';
+  return `<li class="rt-etape ${e.passe ? 'is-passe' : 'is-bloque'}${etat.heures[e.cle] ? ' is-posee' : ''}" data-rt-cle="${cle}">`
+    + `<span class="rt-etape__nom">${escapeHtml(nom)}</span><span class="rt-etape__mot">${e.passe ? 'Passe' : 'Ne passe pas'}</span>`
+    + `<div class="rt-etape__reglage"><span class="rt-etape__heures"><s>${escapeHtml(e.avant)}</s> → ${heure}</span>${pas}</div>`
+    + `<div class="rt-etape__places">${placesDuRetardHtml(e)}</div><div class="rt-etape__suite">${raison}${proposees}</div></li>`;
+}
+// UN VERDICT SE PEINT EN PLACE : le champ qu on tape garde le focus et sa saisie, le reste de la ligne
+// se repeint. Un autre programme (des activites en plus ou en moins) redessine la fenetre.
+function peindreLigneRetard(li, etat, e, modifiable) {
+  const modele = document.createElement('template');
+  modele.innerHTML = ligneDuRetardHtml(etat, e, modifiable);
+  const neuve = modele.content.firstElementChild;
+  li.className = neuve.className;
+  ['.rt-etape__mot', '.rt-etape__places', '.rt-etape__suite'].forEach((sel) => {
+    const avant = li.querySelector(sel);
+    const apres = neuve.querySelector(sel);
+    if (avant && apres && avant.innerHTML !== apres.innerHTML) avant.innerHTML = apres.innerHTML;
+  });
+  const champ = li.querySelector('.rt-heure');
+  const lu = neuve.querySelector('.rt-heure');
+  if (!champ || !lu) return;
+  if (champ !== document.activeElement && champ.value !== lu.value) champ.value = lu.value;
+  if (e.passe) champ.removeAttribute('aria-invalid'); else champ.setAttribute('aria-invalid', 'true');
 }
 function rendreFenetreRetard(ouverture = false) {
   let hote = document.getElementById('retardFenetre');
@@ -26579,44 +26671,107 @@ function rendreFenetreRetard(ouverture = false) {
   }
   const etapes = etat.erreur ? [] : etat.etapes;
   const toutPasse = Boolean(etapes && etapes.length && etapes.every(e => e.passe));
-  const lignes = (etapes || []).map((e) => {
-    const nom = etat.noms.get(e.cle) || e.cle;
-    // (des arcades en argent n ont pas d heure : elles passent « libre », hors de l enchainement)
-    const heures = e.libre ? `<s>${escapeHtml(e.avant)}</s> → <b>libre</b>` : `<s>${escapeHtml(e.avant)}</s> → <b>${escapeHtml(e.apres)}</b>`;
-    return `<li class="rt-etape ${e.passe ? 'is-passe' : 'is-bloque'}" data-rt-cle="${escapeHtml(e.cle)}"><span class="rt-etape__nom">${escapeHtml(nom)}</span><span class="rt-etape__heures">${heures}</span><span class="rt-etape__mot">${e.passe ? 'Passe' : 'Ne passe pas'}</span>`
-      + (e.libre && e.passe ? '<p class="rt-etape__raison">Vendues en crédits : sans heure, à leur rythme.</p>' : '')
-      + (!e.passe ? `<p class="rt-etape__raison">${escapeHtml(e.raison || 'Le planning refuse cette heure.')} Reste à ${escapeHtml(e.avant)}.</p>` : '') + '</li>';
-  }).join('');
   const passent = etapes ? etapes.filter(e => e.passe).length : 0;
   // (decaler une heure est le geste du glisser du planning : sans lui, le retard se note seulement)
   const peutDecaler = typeof canUseStaffPermission !== 'function' || canUseStaffPermission(['planning.drag', 'reservations.edit']);
+  // (une heure touchee pas encore rejugee : decaler attend le verdict)
+  const occupe = etat.envoi || etat.enCours;
   const decaler = !etapes || !passent || !peutDecaler ? ''
-    : toutPasse ? `<button type="button" class="rt-bouton est-plein" data-rt-choix="tout" onclick="choisirRetard('tout')"${etat.envoi ? ' disabled' : ''}>Tout décaler</button>`
-      : `<button type="button" class="rt-bouton est-plein" data-rt-choix="passe" onclick="choisirRetard('passe')"${etat.envoi ? ' disabled' : ''}>Décaler ce qui passe</button>`;
-  const garder = `<button type="button" class="rt-bouton${decaler ? '' : ' est-plein'}" data-rt-choix="garder" onclick="choisirRetard('garder')"${etat.envoi ? ' disabled' : ''}>Garder les heures</button>`;
+    : toutPasse ? `<button type="button" class="rt-bouton est-plein" data-rt-choix="tout" data-rt-focus="choix:tout" onclick="choisirRetard('tout')"${occupe ? ' disabled' : ''}>Tout décaler</button>`
+      : `<button type="button" class="rt-bouton est-plein" data-rt-choix="passe" data-rt-focus="choix:passe" onclick="choisirRetard('passe')"${occupe ? ' disabled' : ''}>Décaler ce qui passe</button>`;
+  const garder = `<button type="button" class="rt-bouton${decaler ? '' : ' est-plein'}" data-rt-choix="garder" data-rt-focus="choix:garder" onclick="choisirRetard('garder')"${etat.envoi ? ' disabled' : ''}>Garder les heures</button>`;
   // (apres « Arrivé » ou « Payé », le statut et le retard sont deja ecrits : fermer garde les heures)
   const arrivee = etat.mode === 'arrivee';
   const titre = arrivee ? `Arrivé avec ${dureeDuRetard(etat.minutes)} de retard` : `Retard de ${dureeDuRetard(etat.minutes)}`;
   const quand = arrivee ? `prévu à ${etat.de}, il est ${formatClockDisplay(currentTimeDecimal())}` : `prévu à ${etat.de}`;
   const sous = arrivee ? 'L’arrivée et le retard sont notés sur le dossier. Fermer garde les heures.' : 'Le retard est noté sur le dossier, quel que soit le choix.';
   const note = arrivee ? 'le retard est noté' : 'le retard se note';
-  const etatTexte = etat.erreur ? `${etat.erreur} ${arrivee ? 'Le retard est noté' : 'Le retard se note'}, les heures restent.`
-    : !etapes ? 'Vérification au planning…'
-      : !etapes.length ? `Plus aucune activité à venir : ${note}, rien ne bouge.`
-        : toutPasse ? 'Toutes les activités passent à leur nouvelle heure, chacune après la fin de la précédente.'
-          : passent ? 'Ce qui ne passe pas garde son heure.' : 'Aucune activité ne passe à sa nouvelle heure : elles gardent leur heure.';
+  const etatTexte = etat.enCours ? 'Vérification au planning…'
+    : etat.erreur ? `${etat.erreur} ${arrivee ? 'Le retard est noté' : 'Le retard se note'}, les heures restent.`
+      : !etapes ? 'Vérification au planning…'
+        : !etapes.length ? `Plus aucune activité à venir : ${note}, rien ne bouge.`
+          : toutPasse ? 'Toutes les activités passent à leur nouvelle heure, chacune après la fin de la précédente.'
+            : passent ? 'Ce qui ne passe pas garde son heure.' : 'Aucune activité ne passe à sa nouvelle heure : elles gardent leur heure.';
+  const pied = `${garder}${decaler}`;
+  const forme = `${(etapes || []).map(e => `${e.cle}:${e.libre ? 1 : 0}`).join(',')}|${peutDecaler}`;
+  const fenetre = hote.querySelector('.rt-fenetre');
+  if (!ouverture && fenetre && hote.dataset.rtForme === forme && (etapes || []).length) {
+    (etapes || []).forEach((e) => {
+      const li = [...hote.querySelectorAll('.rt-etape')].find(x => x.getAttribute('data-rt-cle') === e.cle);
+      if (li) peindreLigneRetard(li, etat, e, peutDecaler);
+    });
+    const texte = hote.querySelector('.rt-etat');
+    if (texte.textContent !== etatTexte) texte.textContent = etatTexte;
+    const bas = hote.querySelector('.rt-pied');
+    if (bas.dataset.rtPied !== pied) {
+      const garde = document.activeElement && bas.contains(document.activeElement) ? document.activeElement.getAttribute('data-rt-focus') : '';
+      bas.innerHTML = pied;
+      bas.dataset.rtPied = pied;
+      const revient = garde ? bas.querySelector(`[data-rt-focus="${garde}"]`) : null;
+      if (revient && !revient.disabled) revient.focus(); else if (garde) fenetre.focus();
+    }
+    return;
+  }
+  // (redessinee, la fenetre rend le focus a l element qui l avait, sinon a elle-meme)
+  const garde = !ouverture && document.activeElement && hote.contains(document.activeElement) ? document.activeElement.getAttribute('data-rt-focus') || 'fenetre' : '';
+  const lignes = (etapes || []).map(e => ligneDuRetardHtml(etat, e, peutDecaler)).join('');
+  hote.dataset.rtForme = forme;
   hote.innerHTML = `<div class="rt-fenetre" role="dialog" aria-modal="true" aria-labelledby="rtTitre" aria-describedby="rtSous" tabindex="-1">
       <div class="rt-tete"><h3 class="rt-titre" id="rtTitre">${escapeHtml(titre)}</h3>
-        <button type="button" class="close-btn rt-fermer" aria-label="${arrivee ? 'Fermer, les heures restent' : 'Fermer sans rien enregistrer'}" onclick="fermerFenetreRetard()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+        <button type="button" class="close-btn rt-fermer" data-rt-focus="fermer" aria-label="${arrivee ? 'Fermer, les heures restent' : 'Fermer sans rien enregistrer'}" onclick="fermerFenetreRetard()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
       <p class="rt-sous" id="rtSous">${escapeHtml(r.name || 'Groupe')} · ${escapeHtml(quand)}. ${escapeHtml(sous)}</p>
       ${lignes ? `<ol class="rt-etapes">${lignes}</ol>` : ''}
       <p class="rt-etat" role="status">${escapeHtml(etatTexte)}</p>
-      <div class="rt-pied">${garder}${decaler}</div>
+      <div class="rt-pied" data-rt-pied="${escapeHtml(pied)}">${pied}</div>
     </div>`;
   if (ouverture) hote.querySelector('.rt-fenetre').focus();
+  else if (garde) {
+    const revient = hote.querySelector(`[data-rt-focus="${garde}"]`);
+    (revient && !revient.disabled ? revient : hote.querySelector('.rt-fenetre')).focus();
+  }
+}
+// LA FRAPPE : l heure tapee se rejuge apres une courte pause (le champ garde sa saisie) ; Entree, un
+// pas ou une heure proposee, tout de suite. Une heure pas encore complete n est pas envoyee.
+function poserHeureRetard(cle, valeur, toutDeSuite = false) {
+  const etat = fenetreRetard;
+  if (!etat || etat.envoi || !Number.isFinite(minutesHeureEdition(valeur))) return;
+  const e = (etat.etapes || []).find(x => x.cle === cle);
+  if (!e || e.libre || (!etat.heures[cle] && e.apres === valeur && !toutDeSuite)) return;
+  etat.heures = { ...etat.heures, [cle]: String(valeur) };
+  etat.enCours = true;
+  etat.seq += 1;
+  rendreFenetreRetard();
+  clearTimeout(etat.attente);
+  etat.attente = setTimeout(() => jugerFenetreRetard(etat), toutDeSuite ? 0 : 450);
+}
+function champHeureRetard(cle) {
+  return [...document.querySelectorAll('#retardFenetre .rt-heure')].find(x => x.getAttribute('data-rt-heure') === cle) || null;
+}
+function toucheHeureRetard(event, cle) {
+  if (event.key !== 'Enter') return;
+  event.preventDefault();
+  poserHeureRetard(cle, event.target.value, true);
+}
+// Les pas rapides : 5 min plus tot ou plus tard que l heure du champ.
+function pasHeureRetard(cle, pas) {
+  const etat = fenetreRetard;
+  const champ = champHeureRetard(cle);
+  const depart = minutesHeureEdition(champ ? champ.value : '');
+  if (!etat || !champ || !Number.isFinite(depart)) return;
+  const heure = hhmmDuRetard(Math.max(0, Math.min(23 * 60 + 59, depart + Number(pas))));
+  champ.value = heure;
+  poserHeureRetard(cle, heure, true);
+}
+// Une heure libre proposee : un toucher la pose dans le champ, et le serveur la rejuge.
+function choisirHeureRetard(cle, heure) {
+  const champ = champHeureRetard(cle);
+  if (champ) champ.value = heure;
+  poserHeureRetard(cle, heure, true);
+  if (champ) champ.focus();
 }
 function fermerFenetreRetard() {
   const etat = fenetreRetard;
+  if (etat) clearTimeout(etat.attente);
   fenetreRetard = null;
   rendreFenetreRetard();
   rendreLeFocusDuRetard(etat);
@@ -26638,15 +26793,22 @@ async function choisirRetard(choix) {
   if (!r) { fermerFenetreRetard(); return; }
   const dejaNote = etat.mode === 'arrivee';
   if (dejaNote && choix === 'garder') { fermerFenetreRetard(); return; }
+  // (une heure touchee que le serveur n a pas encore rejugee : rien ne part sur l ancien verdict)
+  if (choix !== 'garder' && etat.enCours) return;
   const etapes = etat.erreur ? null : etat.etapes;
   if (choix === 'tout' && !(etapes && etapes.length && etapes.every(e => e.passe))) return;
   // (les activites que la fenetre a montrees : le serveur refait leurs heures et les rejuge)
   const cles = choix === 'garder' || !etapes ? [] : etapes.filter(e => choix === 'tout' || e.passe).map(e => e.cle);
   if (choix !== 'garder' && !cles.length) return;
+  // LES HEURES DE L ECRAN partent avec le choix : celles posees a la main, que le serveur rejuge, et
+  // celles affichees, qu il doit retrouver a l identique pour ecrire (sinon rien ne s ecrit).
+  const attendues = {};
+  (etapes || []).forEach((e) => { if (cles.includes(e.cle) && !e.libre && e.apres) attendues[e.cle] = e.apres; });
+  const heures = choix === 'garder' ? {} : { heures: { ...etat.heures }, attendues };
   etat.envoi = true;
   rendreFenetreRetard();
   try {
-    const payload = await apiRequest(API_ENDPOINTS.staffReservations, { method: 'PATCH', body: JSON.stringify({ id: r.id, centerId: r.centerId || getCurrentStaffCenterId(), baseUpdatedAt: r.updatedAt, retard: { minutes: etat.minutes, de: etat.de, faites: etat.faites, choix, cles, ...(dejaNote ? { dejaNote: true } : {}) } }) });
+    const payload = await apiRequest(API_ENDPOINTS.staffReservations, { method: 'PATCH', body: JSON.stringify({ id: r.id, centerId: r.centerId || getCurrentStaffCenterId(), baseUpdatedAt: r.updatedAt, retard: { minutes: etat.minutes, de: etat.de, faites: etat.faites, choix, cles, ...heures, ...(dejaNote ? { dejaNote: true } : {}) } }) });
     if (!payload || !payload.ok || !payload.reservation || Number(payload.reservation.id) !== etat.id) throw new Error('Le serveur n’a pas confirmé le retard. Actualisez le dossier.');
     if (fenetreRetard === etat) fenetreRetard = null;
     rendreFenetreRetard();

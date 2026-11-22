@@ -408,6 +408,7 @@
     "test:resa-lisible": "node scripts/resa-lisible-check.js && node scripts/resa-lisible-check.js --contre-preuves",
     "test:modifier-verdict": "node scripts/modifier-verdict-check.js && node scripts/modifier-verdict-check.js --contre-preuves",
     "test:heure-activite-dossier": "node scripts/heure-activite-dossier-check.js && node scripts/heure-activite-dossier-check.js --contre-preuves",
+    "test:planning-heure-glisser": "node scripts/planning-heure-glisser-check.js && node scripts/planning-heure-glisser-check.js --contre-preuves",
     "test:programme-complet": "node scripts/programme-complet-check.js && node scripts/programme-complet-check.js --contre-preuves",
     "test:reserver-heure-activite": "node scripts/reserver-heure-activite-check.js && node scripts/reserver-heure-activite-check.js --contre-preuves",
     "test:saisie-nombres-heures": "node scripts/saisie-nombres-heures-check.js && node scripts/saisie-nombres-heures-check.js --contre-preuves",

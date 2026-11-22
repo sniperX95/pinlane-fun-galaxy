@@ -495,8 +495,9 @@
         var k = Math.round(w.start * 60);
         var j = Math.max(1, Number(w.joueursReels != null ? w.joueursReels : w.players) || Number(r.pax) || 1);
         var deja = parties.get(k);
-        if (deja) { deja.joueurs += j; deja.end = Math.max(deja.end, w.end); if (deja.groupe !== (Number(w.sousGroupe) || 0)) deja.groupe = 0; return; }
-        var e = { start: w.start, end: w.end, joueurs: j, aVolonte: Boolean(w.aVolonte), groupe: Number(w.sousGroupe) || 0, rang: Number(w.countIndex) || 1 };
+        // (chaque vague garde sa cle, celle que le glisser deplace : l heure qui se touche les emporte)
+        if (deja) { deja.joueurs += j; deja.end = Math.max(deja.end, w.end); if (deja.groupe !== (Number(w.sousGroupe) || 0)) deja.groupe = 0; deja.unites.push(laserBlockUnitKey(w)); return; }
+        var e = { start: w.start, end: w.end, joueurs: j, aVolonte: Boolean(w.aVolonte), groupe: Number(w.sousGroupe) || 0, rang: Number(w.countIndex) || 1, unites: [laserBlockUnitKey(w)] };
         parties.set(k, e);
         poser('laser_game', e);
       });
@@ -841,7 +842,21 @@
       }
     }
     var classes = 'gf-x is-' + etat + (etat === 'fini' && gfVientDeFinir(g, e, col, m.jour) ? ' vient-de-finir' : '') + (e.libre && !e.journee ? ' is-libre' : '') + (e.credit ? ' is-credit' : '') + (gfBientot(g, e, etat, m) ? ' is-bientot' : '') + (panne ? ' is-panne' : '');
-    return '<span class="' + classes + '" title="' + gpEsc(bulle + ' · ' + GF_ETATS[etat]) + '"' + (panne ? ' data-gf-voir="bowling"' : '') + '>' + (montant ? '<b class="gf-x__t is-nu gf-x__montant">' + gpEsc(t) + '</b>' : gfHeureHtml(t, etat === 'fini' && gfPresent(g), etat)) + (d ? '<span class="gf-x__d">' + gfNumerosEntiers(d) + '</span>' : '') + gfHorsHtml(d2, d3) + '</span>';
+    return '<span class="' + classes + '" title="' + gpEsc(bulle + ' · ' + GF_ETATS[etat]) + '"' + (panne ? ' data-gf-voir="bowling"' : '') + '>' + (montant ? '<b class="gf-x__t is-nu gf-x__montant">' + gpEsc(t) + '</b>' : gfHeureHtml(t, etat === 'fini' && gfPresent(g), etat, gfActDe(g, e, m, t, panne))) + (d ? '<span class="gf-x__d">' + gfNumerosEntiers(d) + '</span>' : '') + gfHorsHtml(d2, d3) + '</span>';
+  }
+  // L HEURE SE TOUCHE (2026-11-22, gfOuvrirHeure plus bas) : une heure fixe, d une activite que ce role
+  // deplace, se touche et se prend. Aucun element de plus : la pastille porte son geste. (une piste en
+  // panne garde son toucher, il mene a son bloc du planning bowling ; ce qui n a pas d heure fixe, un
+  // acces illimite, une plaine ou des credits n en ont pas)
+  function gfActDe(g, e, m, t, panne) {
+    var droits = m.droitsHeure;
+    if (!droits || !droits.deplacer || panne || g.retenue || g.illimite || !/^\d{1,2}:\d{2}$/.test(t)) return '';
+    if (e.libre || e.aPlacer || e.credit || e.journee || e.aVolonte || e.illimite || e.volonte) return '';
+    var id = e.activityId;
+    if (!id || GF_SANS_HEURE[id] || /^service_/.test(id) || (id === 'bowling' && !droits.bowling) || (id === 'laser_game' && !droits.laser)) return '';
+    var cle = id === 'laser_game' ? (e.unites && e.unites.length ? 'laser_game:' + e.unites.join('+') : '') : id;
+    if (!cle || (id !== 'bowling' && id !== 'laser_game' && !gfPointDe(g.r, cle))) return '';
+    return ' data-gf-act="' + gpEsc(cle) + '" role="button" tabindex="0" aria-haspopup="dialog" aria-label="' + gpEsc('Changer l’heure : ' + gpTitreActivite(id) + ', ' + t) + '"';
   }
   // L HEURE SE REPERE DE LOIN (2026-11-03, Movsar : « les heures et tout on voit pas bien
   // [...] c trop monochrome ») : l heure fixe, une pastille de la teinte du statut de la
@@ -857,14 +872,14 @@
   // heures libre faut quils soient surligne et quand c fait dcp c plus surligne et quand c fait
   // montre plus visible avec une barre [...] super clean et pro »). « Libre » prend la pastille
   // des heures fixes ; une activite finie perd la sienne et son mot est barre d un trait (CSS).
-  function gfHeureHtml(t, fait, etat) {
+  function gfHeureHtml(t, fait, etat, act) {
     var fixe = /^\d{1,2}:\d{2}$/.test(t);
     var signe = t !== '' && (etat === 'retard' || etat === 'encours' || etat === 'lancer');
     var libre = t === 'Libre';
     var fini = etat === 'fini' && t !== '';
     if (t === GF_ILLIMITE || t === GF_VOLONTE) return '<b class="gf-x__t is-illimite">' + (fait ? GF_FAIT : '') + gpEsc(t) + '</b>';
     if (!fixe && !signe && !fait && !fini && !libre) return gpEsc(t);
-    return '<b class="gf-x__t' + (fixe || signe || libre && !fini ? '' : ' is-nu') + (libre ? ' is-libre' : '') + '">' + (fait ? GF_FAIT : '') + gpEsc(t) + '</b>';
+    return '<b class="gf-x__t' + (fixe || signe || libre && !fini ? '' : ' is-nu') + (libre ? ' is-libre' : '') + '"' + (fixe && act ? act : '') + '>' + (fait ? GF_FAIT : '') + gpEsc(t) + '</b>';
   }
   // LE TRAIT SE DESSINE QUAND L ACTIVITE VIENT DE FINIR, une fois : jamais au premier rendu
   // d un jour, jamais au rendu suivant (la ligne inchangee n est pas redessinee).
@@ -1560,6 +1575,8 @@
   function gfParties(m, q, cartes) {
     gfFinisCourant = new Set();
     gfFenetreOuverte = gfUneFenetreCouvre();
+    // (les droits du geste de l heure, lus une fois par rendu : chaque pastille les relit)
+    m.droitsHeure = gfDroitsHeure(m.jour);
     var nbCol = 7 + m.colonnes.length;
     var lignes = gfRecherche(m, q).filter(function (g) { return !m.visibles || m.visibles.has(g.id); });
     // (au telephone, la page defile : les groupes finis se replient, une ligne les
@@ -2048,10 +2065,992 @@
     gfViderRecherche();
   }
 
+  // ---- L HEURE AU TOUCHER ET LE GLISSER (2026-11-22) -------------------------------------
+  // Ansar, ses notes du comptoir : « possibilité de drag and drop dans planning complet », puis
+  // « cliquer sur l'heure d'une activité genre pile l'heure et modifier l'heure dessus d'une traite
+  // avec une petite pop up avec une jolie animation un peu comme un slime qui se transforme en bouton
+  // [...] léger [...] et aussi pouvoir modifier facilement d'une traite dans la pop up quand on clique
+  // sur une resa en appuyant sur l'heure de l'activité et ça doit bien tout calculer hein pour voir
+  // possibilité et tout ».
+  //   - L HEURE AU TOUCHER : la pastille d une heure (« 16:30 ») ouvre, posee contre elle, les heures
+  //     libres de cette activite. Elles viennent du serveur, du controle du verdict de « Modifier »
+  //     (deplacerABlanc, ses `essais`) : pistes et armes de la journee, la vraie duree, aucun
+  //     chevauchement avec les autres activites du groupe, les horaires du jour et de la formule.
+  //     Jamais de calcul a part. Un choix s enregistre tout de suite par le chemin du glisser des
+  //     plannings (envoyerDeplacementActivite, PATCH activityMove) ; le toast « Annuler » le defait.
+  //     La fiche fait le meme geste sur les heures de son Programme (pgOuvrirHeureFiche).
+  //   - LA GOUTTE : la pop-up nait de la pastille touchee, une goutte qui s etire et devient un
+  //     panneau (la feuille de style, .gf-hp) : transform et opacity, son arrondi passe de la pastille
+  //     au panneau, 260 ms ; elle rentre en 150 ms ; rien en mouvement reduit. Aucune boucle JS, rien
+  //     dans le tableau ne bouge ni ne se reecrit.
+  //   - LE GLISSER : l heure d une activite, ou la ligne entiere d un groupe, se prend et se pose sur
+  //     une autre demi-heure du tableau. A la souris des 6 px, au doigt apres un appui long (un doigt
+  //     qui part tout de suite fait defiler, assets/pinlane-touch-drag.js). Un apercu suit, la
+  //     demi-heure visee dit si ca passe, et sinon pourquoi. La ligne entiere change l heure du
+  //     dossier par le chemin de « Modifier » (son calcul a blanc, puis son enregistrement) : toutes
+  //     ses activites suivent, le planning les replace.
+  //   - UN GROUPE QUI JOUE DEJA NE BOUGE PAS : la regle du retard (lib/retard-arrivee.js,
+  //     groupeEnJeu), lue ici sur le meme dossier (gfEnJeuDuDossier), redite par le serveur.
+  // Le tableau (au moins 640 px) seulement pour le glisser : au telephone, chaque ligne est une carte
+  // et les demi-heures vides n y sont pas ; la pastille, elle, s y touche aussi.
+  var GF_SANS_HEURE = { party_table: true, arcade_credit: true, playground: true };
+  // (la demi-heure du bowling et des departs laser, le quart d heure pour le reste)
+  var GF_PAS_HEURE = { bowling: 30, laser_game: 30 };
+  var GF_PAS_AUTRE = 15;
+  var GF_HEURES_MONTREES = 12;
+  var GF_SEUIL_SOURIS = 6;
+  var GF_MAINTIEN_DOIGT = 320;
+
+  function gfDroitsHeure(jour) {
+    var peut = function (p) { return typeof canUseStaffPermission !== 'function' || canUseStaffPermission(p); };
+    return {
+      deplacer: typeof peutGeste !== 'function' || peutGeste('deplacer', jour),
+      modifier: typeof peutGeste !== 'function' || peutGeste('modifier', jour),
+      bowling: peut('planning.bowling'),
+      laser: peut('planning.laser'),
+    };
+  }
+  function gfDossier(id) {
+    var n = Number(id);
+    var r = (state.reservations || []).find(function (x) { return Number(x.id) === n; });
+    return r || (typeof findStaffReservationById === 'function' ? findStaffReservationById(n) : null);
+  }
+  function gfEchappe(v) { return typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(String(v)) : String(v).replace(/[^\w:+.-]/g, ''); }
+  // L ecart entre l heure touchee et le debut de l activite (son second bowling) ; apres minuit, l heure
+  // touchee continue la journee (00:30 se lit 24:30).
+  function gfOffset(point, heure) {
+    var h = heure != null && heure + 12 < point.debut ? heure + 24 : heure;
+    return h == null ? 0 : Math.max(0, h - point.debut);
+  }
+  function gfMinute(h) { return Math.round(Number(h) * 60); }
+  function gfPartieDit(r, unite) {
+    var partie = Number(String(unite || '1.1').split('.')[0]) || 1;
+    var toutes = new Set(getLaserWindowsFromReservation(r).map(function (w) { return Number(w.countIndex) || 1; }));
+    return toutes.size > 1 ? 'Laser, ' + (partie === 1 ? '1re' : partie + 'e') + ' partie' : 'Laser';
+  }
+
+  // CE QUE LA CLE D UNE HEURE DESIGNE DANS LE DOSSIER, tel que le serveur le deplacera
+  // (buildActivityMove) : tout le bowling et ses pistes, une partie de laser (ses vagues de la meme
+  // minute), ou les etapes a heure d une autre activite, du meme ecart.
+  function gfPointDe(r, cle) {
+    if (!r || !cle) return null;
+    var debut, fin;
+    if (cle === 'bowling') {
+      var fb = getBowlingWindowsFromReservation(r);
+      if (!fb.length || fb.some(function (w) { return w.aVolonte; })) return null;
+      debut = Math.min.apply(null, fb.map(function (w) { return Number(w.start); }));
+      fin = Math.max.apply(null, fb.map(function (w) { return Number(w.end); }));
+      var pistes = Array.from(new Set(fb.reduce(function (t, w) { return t.concat(w.lanes || []); }, []).map(Number))).sort(function (a, b) { return a - b; });
+      return { cle: cle, activityId: 'bowling', nom: 'Bowling', debut: debut, fin: fin, pistes: pistes };
+    }
+    if (cle.indexOf('laser_game:') === 0) {
+      var unites = cle.slice(11).split('+');
+      var fl = getLaserWindowsFromReservation(r).filter(function (w) { return unites.indexOf(laserBlockUnitKey(w)) >= 0; });
+      if (!unites[0] || fl.length !== unites.length || fl.some(function (w) { return w.aVolonte; })) return null;
+      var departs = {};
+      fl.forEach(function (w) { departs[laserBlockUnitKey(w)] = Number(w.start); });
+      debut = Math.min.apply(null, fl.map(function (w) { return Number(w.start); }));
+      fin = Math.max.apply(null, fl.map(function (w) { return Number(w.end); }));
+      return { cle: cle, activityId: 'laser_game', nom: gfPartieDit(r, unites[0]), debut: debut, fin: fin, unites: unites, departs: departs };
+    }
+    if (GF_SANS_HEURE[cle] || /^service_/.test(cle)) return null;
+    var etapes = ((r.opsPlan && r.opsPlan.timeline) || []).filter(function (s) { return s && s.activityId === cle && s.type === 'activity' && s.flexible !== true && s.startTime && s.endTime; });
+    if (!etapes.length) return null;
+    debut = Math.min.apply(null, etapes.map(function (s) { return timeToNum(s.startTime); }));
+    fin = Math.max.apply(null, etapes.map(function (s) { var a = timeToNum(s.startTime), b = timeToNum(s.endTime); return b < a ? b + 24 : b; }));
+    return { cle: cle, activityId: cle, nom: gpTitreActivite(cle), debut: debut, fin: fin };
+  }
+  function gfPeutDeplacerHeure(r, activityId) {
+    if (!r || !activityId || r.status === 'cancelled' || (r.absentAt && r.status !== 'arrived' && r.status !== 'paid')) return false;
+    var d = gfDroitsHeure(r.date);
+    return d.deplacer && (activityId !== 'bowling' || d.bowling) && (activityId !== 'laser_game' || d.laser);
+  }
+
+  // UN GROUPE QUI JOUE DEJA, la regle du serveur (groupeEnJeu, lib/retard-arrivee.js) : une activite a
+  // heure cochee « fait », ou commencee quand le groupe est sur place, et l etait deja a cette heure-la
+  // (un groupe arrive en retard n a pas commence ce qui devait se jouer avant son arrivee).
+  function gfMaintenantDuJour(jour) {
+    var auj = todayStr();
+    if (jour === auj) return currentTimeDecimal();
+    if (gpNuit(jour, auj)) return 24 + currentTimeDecimal();
+    return jour < auj ? Infinity : -Infinity;
+  }
+  function gfArriveeEnRetard(r) {
+    var f = (r.status === 'arrived' || r.status === 'paid') && r.opsPlan ? r.opsPlan.delayFlag : null;
+    if (!f || f.cleared || (Number(f.sourceId) > 0 && Number(f.sourceId) !== Number(r.id))) return -Infinity;
+    var de = gpMinutesDe(f.from);
+    return de != null && Number(f.minutes) > 0 ? de + Number(f.minutes) / 60 : -Infinity;
+  }
+  function gfEnJeuDuDossier(r) {
+    if (!r || r.status === 'cancelled') return null;
+    var maintenant = gfMaintenantDuJour(r.date);
+    var surPlace = r.status === 'arrived' || r.status === 'paid';
+    var arrivee = gfArriveeEnRetard(r);
+    var debuts = [];
+    getGroupeProgramme(r).forEach(function (e) {
+      if (e.start == null || e.libre || e.aPlacer || e.extra || !e.activityId || e.activityId === 'party_table' || e.activityId === 'playground' || /^service_/.test(e.activityId)) return;
+      if (e.fait || (surPlace && e.start <= maintenant + 1e-6 && e.start >= arrivee - 1e-6)) debuts.push(e.start);
+    });
+    if (!debuts.length) return null;
+    var depuis = gpHeure(Math.min.apply(null, debuts));
+    return { depuis: depuis, phrase: (r.name || 'Ce groupe') + ' joue depuis ' + depuis + ' : ses heures ne bougent plus.' };
+  }
+
+  // LE PLUS TOT, la regle de Modifier (preparerDeplacementsEdition) : ni avant l arrivee du groupe (son
+  // heure, ou sa premiere activite a heure quand elle commence plus tot), ni une heure deja passee le
+  // jour meme. La ligne entiere deplace l arrivee avec elle : seule l heure qu il est compte.
+  function gfAuPlusTot(r, ligne) {
+    var maintenant = r.date === todayStr() ? Math.ceil(currentTimeDecimal() * 60 - 1e-6) / 60 : null;
+    var arrivee = ligne ? null : Math.min.apply(null, [gpMinutesDe(r.startTime) == null ? Infinity : gpMinutesDe(r.startTime)].concat(getGroupeProgramme(r).filter(function (e) { return e.start != null && !e.libre && !e.aPlacer && e.activityId; }).map(function (e) { return e.start; })));
+    if (!Number.isFinite(arrivee)) arrivee = null;
+    return { h: Math.max(arrivee == null ? -Infinity : arrivee, maintenant == null ? -Infinity : maintenant), arrivee: arrivee, maintenant: maintenant };
+  }
+  function gfPhrasePlancher(plancher, h) {
+    if (plancher.maintenant != null && h < plancher.maintenant - 1e-6) return gpHeure(h) + ' est déjà passé : il est ' + gpHeure(currentTimeDecimal()) + '.';
+    if (plancher.arrivee != null && h < plancher.arrivee - 1e-6) return 'Avant l’arrivée du groupe à ' + gpHeure(plancher.arrivee) + '.';
+    return '';
+  }
+
+  // LES PISTES A UNE AUTRE HEURE : les siennes si elles y sont libres, sinon celles que prend le glisser
+  // du planning bowling (getTargetBowlingLanes, autant qu il en a). Posees a la main, elles restent.
+  function gfPistesA(r, point, d) {
+    var pistes = point.pistes.slice();
+    if (!pistes.length || (typeof pistesALaMainDuDossier === 'function' && pistesALaMainDuDossier(r))) return pistes;
+    var duree = point.fin - point.debut;
+    var prises = typeof lanesConflict === 'function' && (lanesConflict(r.date, numToTime(d), duree, pistes, r.id).length > 0 || pistes.some(function (p) { return state.laneStatuses && state.laneStatuses[p] === 'maintenance'; }));
+    if (!prises || typeof getTargetBowlingLanes !== 'function') return pistes;
+    var autres = getTargetBowlingLanes(pistes.length, pistes[0], r.date, numToTime(d), duree, r.id, pistes, pistes[0]);
+    return autres && autres.length === pistes.length ? autres.slice().sort(function (a, b) { return a - b; }) : pistes;
+  }
+  // Ce que le serveur recoit pour un debut `d` : le deplacement du glisser des plannings, tel quel.
+  function gfMoves(r, point, d) {
+    if (point.activityId === 'bowling') return [{ activityId: 'bowling', startTime: numToTime(d), lanes: gfPistesA(r, point, d) }];
+    if (point.activityId === 'laser_game') return point.unites.map(function (u) { return { activityId: 'laser_game', unitKey: u, startTime: numToTime(d + point.departs[u] - point.debut) }; });
+    return [{ activityId: point.activityId, startTime: numToTime(d) }];
+  }
+  function gfMovesRetour(point) {
+    if (point.activityId === 'bowling') return [{ activityId: 'bowling', startTime: numToTime(point.debut), lanes: point.pistes.slice() }];
+    if (point.activityId === 'laser_game') return point.unites.map(function (u) { return { activityId: 'laser_game', unitKey: u, startTime: numToTime(point.departs[u]) }; });
+    return [{ activityId: point.activityId, startTime: numToTime(point.debut) }];
+  }
+  // Les debuts a essayer : la grille de l activite, de l ouverture a la fermeture, sauf le sien.
+  function gfGrille(r, point) {
+    var fen = typeof getPlanningWindow === 'function' ? getPlanningWindow(r.date) : null;
+    if (!fen || fen.closed || !(fen.close > fen.open)) return [];
+    var pas = (GF_PAS_HEURE[point.activityId] || GF_PAS_AUTRE) / 60;
+    var duree = point.fin - point.debut;
+    var liste = [];
+    for (var h = Math.ceil(Number(fen.open) / pas - 1e-6) * pas; h + duree <= Number(fen.close) + 1e-6; h += pas) {
+      var d = Math.round(h * 60) / 60;
+      if (Math.abs(d - point.debut) > 1e-6) liste.push(d);
+    }
+    return liste;
+  }
+
+  // LE VERDICT DU SERVEUR pour une activite et des debuts : une requete (deplacerABlanc, `essais`), gardee
+  // tant que le dossier ne change pas. Rend { verdicts: Map(minute -> { passe, raison, moves }), gele }.
+  var gfMemoire = new Map();
+  function gfJuger(r, point, debuts, plancher) {
+    var cle = [r.id, r.updatedAt, point.cle].join('|');
+    var memo = gfMemoire.get(cle);
+    if (!memo) { memo = { verdicts: new Map(), gele: null }; gfMemoire.set(cle, memo); if (gfMemoire.size > 40) gfMemoire.delete(gfMemoire.keys().next().value); }
+    var manque = debuts.filter(function (d) { return !memo.verdicts.has(gfMinute(d)); });
+    if (memo.gele || !manque.length) return Promise.resolve(memo);
+    var essais = manque.map(function (d) { return gfMoves(r, point, d); });
+    var centre = r.centerId || r.center_id || (typeof getCurrentStaffCenterId === 'function' ? getCurrentStaffCenterId() : '');
+    var paquets = [];
+    for (var i = 0; i < essais.length; i += 60) paquets.push(i);
+    return Promise.all(paquets.map(function (i) {
+      var corps = { id: r.id, centerId: centre, baseUpdatedAt: r.updatedAt, essais: essais.slice(i, i + 60) };
+      if (plancher && Number.isFinite(plancher.h)) corps.auPlusTot = gfMinute(plancher.h);
+      return apiRequest(API_ENDPOINTS.staffReservations, { method: 'POST', body: JSON.stringify({ dryRun: true, centerId: centre, deplacement: corps }) }).then(function (rep) {
+        if (rep && rep.gele) { memo.gele = String(rep.gele); return; }
+        if (!rep || rep.deplacement !== true || !Array.isArray(rep.essais)) throw new Error((rep && rep.refus && rep.refus.message) || 'Le serveur ne propose pas encore d’heures libres.');
+        rep.essais.forEach(function (v, k) {
+          var d = manque[i + k];
+          memo.verdicts.set(gfMinute(d), { passe: Boolean(v && v.passe), raison: String((v && v.raison) || ''), moves: essais[i + k] });
+        });
+      });
+    })).then(function () { return memo; });
+  }
+
+  // ---- LA POP-UP DE L HEURE ----
+  var gfPop = null;
+  var gfJetonPop = 0;
+  function gfAncreDuPop(p) {
+    if (p.ancre && p.ancre.isConnected) return p.ancre;
+    var trouvee = p.depuisFiche
+      ? document.querySelector('#posOverlay [data-pg-res="' + gfEchappe(p.id) + '"][data-pg-heure="' + gfEchappe(p.cle) + '"]')
+      : document.querySelector('#globalPlanningGridWrap tr[data-gf-id="' + gfEchappe(p.id) + '"] [data-gf-act="' + gfEchappe(p.cle) + '"]');
+    if (trouvee) p.ancre = trouvee;
+    return trouvee;
+  }
+  // La pop-up se pose contre la pastille, dessous (au-dessus s il n y a pas la place), dans l ecran.
+  // Sa goutte part de la pastille : son echelle et son arrondi de pastille (--gf-hp-sx, -sy, -r0), sa
+  // teinte (--gf-hp-fond0), son origine au centre de la pastille (--gf-hp-ox, -oy). Ce qui arrive ensuite
+  // (les heures) ne la reforme pas : la goutte se joue une fois, avec la hauteur reservee aux heures.
+  function gfPoserPop(seulementLaPlace) {
+    var p = gfPop;
+    var ancre = p && gfAncreDuPop(p);
+    if (!p || !ancre) return;
+    var a = ancre.getBoundingClientRect();
+    var el = p.el;
+    var l = el.offsetWidth, h = el.offsetHeight;
+    var vw = document.documentElement.clientWidth, vh = window.innerHeight, marge = 8;
+    var dessous = a.bottom + 6 + h <= vh - marge || a.top - 6 - h < marge;
+    var top = Math.max(marge, dessous ? a.bottom + 6 : a.top - 6 - h);
+    var left = Math.max(marge, Math.min(a.left - 10, vw - marge - l));
+    el.style.left = Math.round(left) + 'px';
+    el.style.top = Math.round(top) + 'px';
+    el.classList.toggle('is-dessus', !dessous);
+    p.haut = a.top;
+    if (seulementLaPlace) return;
+    var sx = Math.min(1, Math.max(0.05, a.width / Math.max(1, l)));
+    var sy = Math.min(1, Math.max(0.05, a.height / Math.max(1, h)));
+    el.style.setProperty('--gf-hp-ox', Math.round(a.left + a.width / 2 - left) + 'px');
+    el.style.setProperty('--gf-hp-oy', Math.round(a.top + a.height / 2 - top) + 'px');
+    el.style.setProperty('--gf-hp-sx', sx.toFixed(3));
+    el.style.setProperty('--gf-hp-sy', sy.toFixed(3));
+    // (une pastille a l ecran, une fois mise a l echelle : un rayon de la moitie de sa hauteur)
+    el.style.setProperty('--gf-hp-r0', Math.round(a.height / 2 / sx) + 'px / ' + Math.round(a.height / 2 / sy) + 'px');
+    var fond = getComputedStyle(ancre).backgroundColor;
+    if (fond && fond !== 'transparent' && !/rgba\([^)]*,\s*0\)$/.test(fond)) el.style.setProperty('--gf-hp-fond0', fond);
+  }
+  function gfPopHtml(r, point, offset, corps) {
+    return '<div class="gf-hp__tete"><p class="gf-hp__titre" id="gfHeurePopTitre"><b>' + gpEsc(point.nom) + '</b> <span>' + gpEsc(r.name || 'Client') + '</span></p>'
+      + '<button type="button" class="gf-hp__fermer" data-gf-hp-fermer aria-label="Fermer">×</button></div>'
+      + '<p class="gf-hp__dit">Prévu à <b>' + gpEsc(gpHeure(point.debut + offset)) + '</b>' + (point.pistes && point.pistes.length ? ', ' + gpEsc(gfPistesEnMots(point.pistes).toLowerCase()) : '') + '</p>'
+      + '<div class="gf-hp__corps" data-gf-hp-corps>' + corps + '</div>';
+  }
+  function gfOuvrirHeure(ancre, r, cle, heure, depuisFiche, parClavier) {
+    if (!ancre || !r) return false;
+    // (la meme heure touchee une seconde fois referme, meme si sa pastille a ete reecrite entre-temps)
+    if (gfPop && gfPop.id === Number(r.id) && gfPop.cle === cle && gfPop.depuisFiche === Boolean(depuisFiche) && (gfPop.ancre === ancre || !gfPop.ancre.isConnected)) { gfFermerHeure(true); return true; }
+    gfFermerHeure(false, true);
+    var point = gfPointDe(r, cle);
+    if (!point || !gfPeutDeplacerHeure(r, point.activityId)) return false;
+    var offset = gfOffset(point, heure);
+    var gele = gfEnJeuDuDossier(r);
+    var el = document.createElement('div');
+    // (un groupe qui joue n attend aucune heure : la pop-up ne leur garde pas de place)
+    el.className = gele ? 'gf-hp is-rempli' : 'gf-hp';
+    el.id = 'gfHeurePop';
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('tabindex', '-1');
+    el.setAttribute('aria-labelledby', 'gfHeurePopTitre');
+    el.setAttribute('data-gf-hp-res', String(r.id));
+    el.setAttribute('data-gf-hp-cle', cle);
+    el.innerHTML = gfPopHtml(r, point, offset, gele ? gfPopGeleHtml(gele.phrase, depuisFiche) : '<p class="gf-hp__attente" role="status">Calcul des heures libres…</p>');
+    document.body.appendChild(el);
+    gfJetonPop += 1;
+    gfPop = { el: el, ancre: ancre, id: Number(r.id), cle: cle, point: point, offset: offset, depuisFiche: Boolean(depuisFiche), clavier: Boolean(parClavier), jeton: gfJetonPop, verdicts: null };
+    gfPoserPop();
+    // (la goutte se joue une fois : un repositionnement ne la rejoue pas)
+    el.classList.add('is-nait');
+    el.addEventListener('animationend', function fin(ev) { if (ev.target === el) { el.classList.remove('is-nait'); el.removeEventListener('animationend', fin); } });
+    el.addEventListener('click', gfClicDansPop);
+    document.addEventListener('pointerdown', gfPopDehors, true);
+    document.addEventListener('keydown', gfPopClavier, true);
+    document.addEventListener('scroll', gfPopDefile, true);
+    window.addEventListener('resize', gfPopFermerSansFocus);
+    // (le focus entre dans la pop-up : Echap et Tab y vivent ; au clavier, il va a la premiere heure)
+    var premier = parClavier ? el.querySelector('[data-gf-hp-choix], [data-gf-hp-fiche]') : null;
+    (premier || el).focus({ preventScroll: true });
+    if (!gele) gfRemplirPop(r, point, offset);
+    return true;
+  }
+  function gfPopGeleHtml(phrase, depuisFiche) {
+    return '<p class="gf-hp__gele" role="status">' + gpEsc(phrase) + '</p>' + (depuisFiche ? '' : '<div class="gf-hp__pied"><button type="button" class="gf-hp__second" data-gf-hp-fiche>Ouvrir la fiche</button></div>');
+  }
+  function gfRemplirPop(r, point, offset) {
+    var p = gfPop;
+    var jeton = p.jeton;
+    var plancher = gfAuPlusTot(r, false);
+    var debuts = gfGrille(r, point).filter(function (d) { return d >= plancher.h - 1e-6; });
+    gfJuger(r, point, debuts, plancher).then(function (memo) {
+      if (!gfPop || gfPop.jeton !== jeton) return;
+      gfPop.verdicts = memo.verdicts;
+      if (memo.gele) { gfCorpsPop(gfPopGeleHtml(memo.gele, gfPop.depuisFiche)); return; }
+      var libres = debuts.filter(function (d) { var v = memo.verdicts.get(gfMinute(d)); return v && v.passe; });
+      // (les plus proches de l heure prevue, dans l ordre de la journee)
+      var montres = libres.slice().sort(function (a, b) { return Math.abs(a - point.debut) - Math.abs(b - point.debut) || a - b; }).slice(0, GF_HEURES_MONTREES).sort(function (a, b) { return a - b; });
+      if (!montres.length) { gfCorpsPop('<p class="gf-hp__rien" role="status">Aucune autre heure libre ce jour-là.</p>'); return; }
+      gfCorpsPop('<div class="gf-hp__heures" role="group" aria-label="Heures libres">' + montres.map(function (d) {
+        var v = memo.verdicts.get(gfMinute(d));
+        var pistes = gfPistesChangees(point, v.moves);
+        var heure = gpHeure(d + offset);
+        return '<button type="button" class="gf-hp__h" data-gf-hp-choix="' + gfMinute(d) + '" aria-label="' + gpEsc(point.nom + ' à ' + heure + (pistes ? ', ' + gfPistesEnMots(pistes).toLowerCase() : '')) + '">' + gpEsc(heure) + (pistes ? '<small>' + gpEsc(gfPistesEnMots(pistes)) + '</small>' : '') + '</button>';
+      }).join('') + '</div>');
+    }, function (erreur) {
+      if (!gfPop || gfPop.jeton !== jeton) return;
+      gfCorpsPop('<p class="gf-hp__rien" role="status">Les heures libres ne se lisent pas : ' + gpEsc(String((erreur && erreur.message) || 'le serveur ne répond pas.').replace(/\.$/, '')) + '.</p>');
+    });
+  }
+  function gfCorpsPop(html) {
+    var p = gfPop;
+    var corps = p && p.el.querySelector('[data-gf-hp-corps]');
+    if (!corps) return;
+    var avaitFocus = p.el.contains(document.activeElement);
+    corps.innerHTML = html;
+    p.el.classList.add('is-rempli');
+    gfPoserPop(true);
+    var premier = p.el.querySelector('[data-gf-hp-choix], [data-gf-hp-fiche]');
+    if (premier && p.clavier && (avaitFocus || document.activeElement === document.body)) premier.focus({ preventScroll: true });
+    else if (!avaitFocus && document.activeElement === document.body) p.el.focus({ preventScroll: true });
+  }
+  function gfFermerHeure(rendreFocus, sansSortie) {
+    var p = gfPop;
+    if (!p) return;
+    gfPop = null;
+    document.removeEventListener('pointerdown', gfPopDehors, true);
+    document.removeEventListener('keydown', gfPopClavier, true);
+    document.removeEventListener('scroll', gfPopDefile, true);
+    window.removeEventListener('resize', gfPopFermerSansFocus);
+    var el = p.el;
+    // (le focus sort d abord : vers la pastille, ou nulle part, jamais dans une pop-up qui s en va)
+    var ancre = rendreFocus ? gfAncreDuPop(p) : null;
+    if (ancre) ancre.focus({ preventScroll: true });
+    else if (el.contains(document.activeElement) && document.activeElement.blur) document.activeElement.blur();
+    el.removeAttribute('id');
+    el.inert = true;
+    el.style.pointerEvents = 'none';
+    var reduit = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    // (la goutte rentre dans sa pastille ; rien n attend sa sortie)
+    if (sansSortie || reduit || !el.isConnected) el.remove();
+    else {
+      gfPoserPopSortie(p);
+      el.classList.remove('is-nait');
+      el.classList.add('is-part');
+      var retirer = function () { if (el.isConnected) el.remove(); };
+      el.addEventListener('animationend', retirer);
+      setTimeout(retirer, 400);
+    }
+  }
+  // (rentree vers la pastille la ou elle est maintenant)
+  function gfPoserPopSortie(p) {
+    var a = gfAncreDuPop(p);
+    if (!a) return;
+    var b = a.getBoundingClientRect();
+    var r = p.el.getBoundingClientRect();
+    p.el.style.setProperty('--gf-hp-ox', Math.round(b.left + b.width / 2 - r.left) + 'px');
+    p.el.style.setProperty('--gf-hp-oy', Math.round(b.top + b.height / 2 - r.top) + 'px');
+    // (la taille du panneau a pu changer depuis l ouverture : les heures sont arrivees)
+    var sx = Math.min(1, Math.max(0.05, b.width / Math.max(1, r.width)));
+    var sy = Math.min(1, Math.max(0.05, b.height / Math.max(1, r.height)));
+    p.el.style.setProperty('--gf-hp-sx', sx.toFixed(3));
+    p.el.style.setProperty('--gf-hp-sy', sy.toFixed(3));
+    p.el.style.setProperty('--gf-hp-r0', Math.round(b.height / 2 / sx) + 'px / ' + Math.round(b.height / 2 / sy) + 'px');
+  }
+  function gfPopFermerSansFocus() { gfFermerHeure(false); }
+  function gfPopDehors(ev) {
+    var p = gfPop;
+    if (!p || p.el.contains(ev.target)) return;
+    // (la pastille elle-meme referme, son clic suit)
+    var a = gfAncreDuPop(p);
+    if (a && (a === ev.target || a.contains(ev.target))) return;
+    gfFermerHeure(false);
+  }
+  function gfPopClavier(ev) {
+    if (!gfPop) return;
+    if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); gfFermerHeure(true); return; }
+    if (ev.key !== 'Tab') return;
+    // (le focus reste dans la pop-up tant qu elle est ouverte)
+    var touchables = Array.prototype.slice.call(gfPop.el.querySelectorAll('button'));
+    if (!touchables.length) return;
+    var i = touchables.indexOf(document.activeElement);
+    var suivant = ev.shiftKey ? (i <= 0 ? touchables.length - 1 : i - 1) : (i < 0 || i === touchables.length - 1 ? 0 : i + 1);
+    ev.preventDefault();
+    touchables[suivant].focus();
+  }
+  // Ce qui defile emporte la pastille : la pop-up se ferme plutot que de rester en l air.
+  function gfPopDefile() {
+    var p = gfPop;
+    var a = p && gfAncreDuPop(p);
+    if (!p || (a && Math.abs(a.getBoundingClientRect().top - p.haut) < 8)) return;
+    gfFermerHeure(false);
+  }
+  function gfClicDansPop(ev) {
+    var p = gfPop;
+    if (!p || !ev.target.closest) return;
+    if (ev.target.closest('[data-gf-hp-fermer]')) { gfFermerHeure(true); return; }
+    if (ev.target.closest('[data-gf-hp-fiche]')) { var id = p.id; gfFermerHeure(false); if (typeof openPos === 'function') openPos(id); return; }
+    var choix = ev.target.closest('[data-gf-hp-choix]');
+    if (!choix) return;
+    var minute = Number(choix.getAttribute('data-gf-hp-choix'));
+    var v = p.verdicts && p.verdicts.get(minute);
+    var r = gfDossier(p.id);
+    var point = p.point;
+    var offset = p.offset;
+    gfFermerHeure(false);
+    if (r && v && v.passe) gfEnregistrerHeure(r, point, minute / 60, offset, v.moves);
+  }
+
+  // ---- L ENREGISTREMENT ----
+  // Une heure : le chemin du glisser des plannings, une etape apres l autre (envoyerDeplacementActivite,
+  // PATCH activityMove), puis le toast « Annuler », qui la remet ou elle etait par le meme chemin.
+  var gfEcritures = new Set();
+  // La phrase du moteur, sans ce qui ne vaut que pour un autre ecran. (« Ce créneau vient de changer.
+  // Merci de relancer la recherche » est celle du formulaire en ligne : le moteur la rend aussi quand
+  // les pistes d un groupe deplace ne tiennent pas a la nouvelle heure, lib/database.js
+  // ensureAssignableLanes ; au comptoir, elle se dit avec les pistes.)
+  function gfPhraseErreur(erreur) {
+    var phrase = String((erreur && erreur.message) || 'Le serveur n’a pas donné de motif.').replace(/\s*(Cet horaire reste inchangé|Les autres horaires restent inchangés)\.\s*$/, '').trim();
+    return /^Ce créneau vient de changer\./.test(phrase) ? 'Pas de piste libre pour ce groupe à cette heure.' : phrase;
+  }
+  // Ce que le serveur a ecrit devient le dossier de l ecran, garde le temps que la relecture le rattrape.
+  function gfAdopter(dossier, champs) {
+    if (!dossier) return;
+    if (typeof markReservationMutation === 'function') markReservationMutation(dossier.id, dossier, champs);
+    var peint = typeof applyOptimisticReservation === 'function' ? applyOptimisticReservation(dossier) : null;
+    // (la fiche ouverte sur ce dossier montre son Programme : une heure deplacee seule n en change pas
+    // l empreinte, elle s y redessine ici)
+    var fiche = document.getElementById('posOverlay');
+    if (peint && !peint.fiche && fiche && !fiche.classList.contains('hidden') && state.selectedRes && Number(state.selectedRes.id) === Number(dossier.id) && typeof renderPos === 'function') renderPos();
+  }
+  // Un refus : rien n est ecrit (ou seulement les etapes deja passees, celles d un laser en deux vagues) ;
+  // un collegue a change le dossier, sa version devient celle de l ecran.
+  function gfApresRefus(erreur, champs) {
+    if (erreur && erreur.derniere) gfAdopter(erreur.derniere, champs);
+    else if (erreur && erreur.reservation && typeof applyOptimisticReservation === 'function') applyOptimisticReservation(erreur.reservation);
+  }
+  function gfDeplacerEtapes(r, moves) {
+    var derniere = null;
+    return moves.reduce(function (suite, move) {
+      return suite.then(function () {
+        return envoyerDeplacementActivite(derniere || r, move).then(function (payload) { derniere = payload && payload.reservation; });
+      });
+    }, Promise.resolve()).then(function () { return derniere; }, function (erreur) { if (erreur && typeof erreur === 'object') erreur.derniere = derniere; throw erreur; });
+  }
+  // (un groupe qui s est mis a jouer depuis l ouverture de la pop-up, ou pendant le glisser, ne bouge plus)
+  function gfGeleAvantEcriture(r) {
+    var gele = gfEnJeuDuDossier(r);
+    if (gele && typeof showPlanningMoveNotice === 'function') showPlanningMoveNotice('Ne bouge pas', gele.phrase, 'warning');
+    return Boolean(gele);
+  }
+  function gfEnregistrerHeure(r, point, d, offset, moves) {
+    if (gfEcritures.has(Number(r.id)) || gfGeleAvantEcriture(r)) return Promise.resolve(null);
+    gfEcritures.add(Number(r.id));
+    var nom = r.name || 'Le groupe';
+    var lanes = gfPistesChangees(point, moves);
+    var dit = nom + ' : ' + point.nom + ' passe à ' + gpHeure(d + offset) + (lanes ? ', ' + gfPistesEnMots(lanes).toLowerCase() : '') + '.';
+    var retour = gfMovesRetour(point);
+    return gfDeplacerEtapes(r, moves).then(function (ecrit) {
+      gfAdopter(ecrit, ['lanes', 'opsPlan']);
+      if (typeof toastAnnulable === 'function') toastAnnulable(dit, function () { gfDefaireHeure(ecrit.id, point, offset, retour); });
+      return ecrit;
+    }, function (erreur) {
+      gfApresRefus(erreur, ['lanes', 'opsPlan']);
+      if (typeof showPlanningMoveNotice === 'function') showPlanningMoveNotice('Pas déplacé', point.nom + ' à ' + gpHeure(d + offset) + ' : ' + gfPhraseErreur(erreur), 'warning');
+      return null;
+    }).then(function (x) { gfEcritures.delete(Number(r.id)); return x; });
+  }
+  function gfDefaireHeure(id, point, offset, retour) {
+    var r = gfDossier(id);
+    if (!r || gfEcritures.has(Number(id))) return;
+    gfEcritures.add(Number(id));
+    gfDeplacerEtapes(r, retour).then(function (ecrit) {
+      gfAdopter(ecrit, ['lanes', 'opsPlan']);
+      if (typeof toast === 'function') toast((r.name || 'Le groupe') + ' : ' + point.nom + ' revient à ' + gpHeure(point.debut + offset) + '.');
+    }, function (erreur) {
+      gfApresRefus(erreur, ['lanes', 'opsPlan']);
+      if (typeof showPlanningMoveNotice === 'function') showPlanningMoveNotice('Pas remis', point.nom + ' : ' + gfPhraseErreur(erreur), 'warning');
+    }).then(function () { gfEcritures.delete(Number(id)); });
+  }
+  // LA LIGNE ENTIERE : l heure du dossier change par le chemin de « Modifier » (son enregistrement,
+  // envoyerModificationReservation, et son calcul a blanc pour la cible) ; le planning replace chaque
+  // activite du meme ecart. Le toast « Annuler » rend l heure d avant, et les pistes d avant, par le
+  // meme chemin.
+  function gfCorpsGroupe(r, heure, pistes) {
+    var options = { requiresLanes: typeof reservationNeedsLanes === 'function' ? reservationNeedsLanes(r.type, r.formuleId) : undefined, allowPastStart: true };
+    return {
+      appliquer: function (b) { var x = Object.assign({}, b, { startTime: heure }); if (pistes) x.lanes = pistes.slice(); return x; },
+      options: options,
+    };
+  }
+  function gfDeplacerLeDossier(r, heure, pistes) {
+    var c = gfCorpsGroupe(r, heure, pistes);
+    return envoyerModificationReservation(r, c.appliquer, c.options);
+  }
+  function gfDeplacerGroupe(r, h) {
+    if (gfEcritures.has(Number(r.id)) || gfGeleAvantEcriture(r)) return Promise.resolve(null);
+    gfEcritures.add(Number(r.id));
+    var avant = String(r.startTime || '').slice(0, 5);
+    var pistesAvant = (r.lanes || []).map(Number);
+    var heure = numToTime(h);
+    var nom = r.name || 'Le groupe';
+    var champs = ['startTime', 'lanes', 'opsPlan'];
+    return gfDeplacerLeDossier(r, heure).then(function (payload) {
+      var ecrit = payload && payload.reservation;
+      gfAdopter(ecrit, champs);
+      var pistes = ((ecrit && ecrit.lanes) || []).map(Number);
+      var autres = pistes.length && pistes.join(',') !== pistesAvant.join(',');
+      var suivi = payload && payload.planNonRefait ? ' Le planning n’a pas suivi : ' + String(payload.planNonRefait).replace(/\.$/, '') + '.'
+        : ecrit && ecrit.validationStatus === 'staff_review' && r.validationStatus !== 'staff_review' ? ' Le planning n’a pas su la placer : elle passe en « à surveiller ».' : '';
+      if (typeof toastAnnulable === 'function') toastAnnulable(nom + ' : réservation déplacée à ' + heure + (autres ? ', ' + gfPistesEnMots(pistes).toLowerCase() : '') + ', ses activités suivent.' + suivi, function () {
+        var courant = gfDossier(ecrit.id) || ecrit;
+        if (gfEcritures.has(Number(courant.id))) return;
+        gfEcritures.add(Number(courant.id));
+        gfDeplacerLeDossier(courant, avant, autres && pistesAvant.length ? pistesAvant : null).then(function (rendu) {
+          gfAdopter(rendu && rendu.reservation, champs);
+          if (typeof toast === 'function') toast(nom + ' : réservation remise à ' + avant + '.');
+        }, function (erreur) {
+          gfApresRefus(erreur, champs);
+          if (typeof showPlanningMoveNotice === 'function') showPlanningMoveNotice('Pas remis', nom + ' : ' + gfPhraseErreur(erreur), 'warning');
+        }).then(function () { gfEcritures.delete(Number(courant.id)); });
+      });
+      return ecrit;
+    }, function (erreur) {
+      gfApresRefus(erreur, champs);
+      if (typeof showPlanningMoveNotice === 'function') showPlanningMoveNotice('Pas déplacé', nom + ' à ' + heure + ' : ' + gfPhraseErreur(erreur), 'warning');
+      return null;
+    }).then(function (x) { gfEcritures.delete(Number(r.id)); return x; });
+  }
+  // Le calcul a blanc de « Modifier » pour la ligne entiere a une heure (modifierABlanc) : ce qui serait
+  // ecrit, ou le refus. Un plan que le moteur ne refait pas, ou qu il ne sait pas placer, ne passe pas :
+  // le glisser ne pose jamais un groupe en « à surveiller ».
+  var gfMemoireGroupe = new Map();
+  function gfJugerGroupe(r, h) {
+    var cle = [r.id, r.updatedAt, gfMinute(h)].join('|');
+    if (gfMemoireGroupe.has(cle)) return gfMemoireGroupe.get(cle);
+    if (typeof serveurSaitModifierABlanc === 'undefined' || !serveurSaitModifierABlanc) return Promise.resolve(null);
+    var heure = numToTime(h);
+    var c = gfCorpsGroupe(r, heure);
+    var corps = Object.assign(buildReservationApiPayload(c.appliquer(r), c.options), { prixRaison: typeof RAISON_PRIX_PAR_DEFAUT === 'string' ? RAISON_PRIX_PAR_DEFAUT : '' }, r.updatedAt ? { baseUpdatedAt: r.updatedAt } : {});
+    var promesse = apiRequest(API_ENDPOINTS.staffReservations, { method: 'POST', body: JSON.stringify({ dryRun: true, centerId: corps.centerId, modification: corps }) }).then(function (rep) {
+      if (!rep || rep.modification !== true) return null;
+      if (rep.refus) return rep.refus.code === 'reservation_modifiee' ? null : { passe: false, raison: gfPhraseErreur(rep.refus) };
+      if (rep.planNonRefait) return { passe: false, raison: 'Le planning ne suit pas : ' + String(rep.planNonRefait).replace(/\.$/, '') + '.' };
+      var ecrit = rep.reservation;
+      if (!ecrit) return null;
+      if (ecrit.validationStatus === 'staff_review' && r.validationStatus !== 'staff_review') return { passe: false, raison: 'Le planning ne sait pas placer ce créneau.' };
+      var avant = (r.lanes || []).map(Number).join(',');
+      var apres = (ecrit.lanes || []).map(Number).join(',');
+      return { passe: true, raison: '', pistes: avant && apres && avant !== apres ? (ecrit.lanes || []).map(Number) : null };
+    }, function () { return null; });
+    gfMemoireGroupe.set(cle, promesse);
+    if (gfMemoireGroupe.size > 60) gfMemoireGroupe.delete(gfMemoireGroupe.keys().next().value);
+    return promesse;
+  }
+
+  // ---- LE GLISSER ----
+  var gfGlisse = null;
+  var gfClicMuetJusqua = 0;
+  // (le temps qui passe, pas l heure du centre : une horloge reglee ou figee ne retient pas les clics)
+  function gfInstant() { return typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now(); }
+  // Ce que le geste prend : la pastille d une heure, sinon la ligne (hors de ce qui se touche deja).
+  function gfSourceDuGeste(cible, wrap) {
+    if (!cible || !cible.closest || !wrap._gfRacine || wrap._gfRacine.getBoundingClientRect().width < 640) return null;
+    var tr = cible.closest('tr.gf-r[data-gf-id]');
+    if (!tr || !wrap.contains(tr)) return null;
+    var act = cible.closest('[data-gf-act]');
+    if (act) return { type: 'act', el: act, id: Number(tr.getAttribute('data-gf-id')), cle: act.getAttribute('data-gf-act'), heure: gpMinutesDe(act.textContent) };
+    if (cible.closest('a, button, input, select, textarea, label, td.gf-bloc, [data-gf-voir], [role="button"]')) return null;
+    return { type: 'ligne', el: tr, id: Number(tr.getAttribute('data-gf-id')) };
+  }
+  // Le haut du contenu du tableau qui defile, a l ecran : les demi-heures s y reperent.
+  function gfOrigine(defile) { return defile.getBoundingClientRect().top + defile.clientTop - defile.scrollTop; }
+  // Les demi-heures du tableau, dans le repere de son contenu : chacune de sa premiere a sa derniere
+  // ligne (apres minuit, l heure continue : 00:30 se lit 24:30).
+  function gfBlocsDuTableau(defile) {
+    var blocs = [];
+    var origine = gfOrigine(defile);
+    var courant = null, avant = -Infinity;
+    Array.prototype.forEach.call(defile.querySelectorAll('tbody > tr'), function (tr) {
+      var td = tr.firstElementChild;
+      if (td && td.classList.contains('gf-bloc') && td.hasAttribute('data-gf-bloc')) {
+        var h = gpMinutesDe(td.getAttribute('data-gf-bloc'));
+        if (h != null && h + 12 < avant) h += 24;
+        if (h != null) avant = h;
+        courant = { h: h, haut: Infinity, bas: -Infinity };
+        blocs.push(courant);
+      }
+      if (!courant || tr.classList.contains('gf-now')) return;
+      var b = tr.getBoundingClientRect();
+      courant.haut = Math.min(courant.haut, b.top - origine);
+      courant.bas = Math.max(courant.bas, b.bottom - origine);
+    });
+    return blocs.filter(function (b) { return b.h != null && b.bas > b.haut; });
+  }
+  // (l element du geste, retrouve si le tableau l a reecrit entre l appui et la levee)
+  function gfElementDuGeste(g) {
+    if (g.el && g.el.isConnected) return g.el;
+    var tr = g.wrap.querySelector('tr.gf-r[data-gf-id="' + gfEchappe(g.id) + '"]');
+    var el = tr && g.type === 'act' ? tr.querySelector('[data-gf-act="' + gfEchappe(g.cle) + '"]') : tr;
+    g.el = el || null;
+    return g.el;
+  }
+  function gfLancer(g, x, y) {
+    var wrap = g.wrap;
+    var defile = wrap._gfRacine && wrap._gfRacine.querySelector('.gf-defile');
+    var r = gfDossier(g.id);
+    if (!defile || !r) return false;
+    if (g.type === 'ligne' && (!gfDroitsHeure(r.date).modifier || r.status === 'cancelled' || r.absentAt)) return false;
+    if (g.type === 'act') {
+      g.point = gfPointDe(r, g.cle);
+      if (!g.point || !gfPeutDeplacerHeure(r, g.point.activityId)) return false;
+      g.offset = gfOffset(g.point, g.heure);
+    }
+    gfFermerHeure(false, true);
+    var gele = gfEnJeuDuDossier(r);
+    if (gele) {
+      if (typeof showPlanningMoveNotice === 'function') showPlanningMoveNotice('Ne bouge pas', g.type === 'ligne' ? (r.name || 'Ce groupe') + ' joue depuis ' + gele.depuis + ' : sa ligne ne bouge pas.' : gele.phrase, 'warning');
+      return false;
+    }
+    g.r = r;
+    g.defile = defile;
+    g.blocs = gfBlocsDuTableau(defile);
+    g.source = g.type === 'act' ? g.point.debut + g.offset : gpHeureReservee(r, getStaffTerrainSpan(r));
+    // (le geste avance d une demi-heure a l autre et garde ses minutes : 14:10 posee sur 15:00 donne 15:10)
+    g.decalage = Math.max(0, g.source - gfBloc(g.source));
+    g.plancher = gfAuPlusTot(r, g.type === 'ligne');
+    g.nom = g.type === 'act' ? g.point.nom : (r.name || 'Le groupe');
+    g.verdicts = null;
+    g.groupe = {};
+    g.yLeve = y;
+    g.armeHaut = false;
+    g.armeBas = false;
+    g.lance = true;
+    // (le tableau ne se reecrit pas sous le geste : ses demi-heures restent ou le doigt les voit)
+    wrap._gfGeste = true;
+    var el = gfElementDuGeste(g);
+    if (el) el.classList.add('is-glisse');
+    // (le temps du geste, la surbrillance des lignes survolees s efface : seule la cible dit ou l heure
+    // se pose)
+    document.body.classList.add('gf-en-glisse');
+    // L APERCU suit le pointeur ; LA CIBLE, une bande sur les lignes de la demi-heure visee, et LES
+    // REPERES, un trait par demi-heure jugee, vivent dans le tableau qui defile.
+    g.apercu = document.createElement('div');
+    g.apercu.className = 'gf-apercu';
+    g.apercu.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(g.apercu);
+    g.reperes = document.createElement('div');
+    g.reperes.className = 'gf-reperes';
+    g.reperes.setAttribute('aria-hidden', 'true');
+    defile.appendChild(g.reperes);
+    g.cible = document.createElement('div');
+    g.cible.className = 'gf-cible';
+    g.cible.setAttribute('role', 'status');
+    g.cible.innerHTML = '<span class="gf-cible__mot"></span>';
+    g.cible.hidden = true;
+    // (le mot de la cible se lit juste apres la colonne des heures, la ou l oeil suit le tableau)
+    var colonne = defile.querySelector('td.gf-bloc');
+    g.cible.style.paddingLeft = Math.round((colonne ? colonne.getBoundingClientRect().width : 0) + 8) + 'px';
+    var tete = defile.querySelector('thead');
+    g.cible.firstChild.style.top = Math.round((tete ? tete.getBoundingClientRect().height : 0) + 4) + 'px';
+    defile.appendChild(g.cible);
+    if (g.type === 'act') {
+      var debuts = g.blocs.map(function (b) { return b.h + g.decalage - g.offset; }).filter(function (d) { return Math.abs(d - g.point.debut) > 1e-6 && d >= g.plancher.h - 1e-6; });
+      g.attente = gfJuger(r, g.point, debuts, g.plancher).then(function (memo) {
+        if (gfGlisse === g && g.lance) { g.verdicts = memo.verdicts; g.gele = memo.gele; gfPoserReperes(g); gfPeindreCible(g); }
+        return memo;
+      }, function () {
+        if (gfGlisse === g && g.lance) { g.echec = true; gfPeindreCible(g); }
+        return null;
+      });
+    }
+    document.addEventListener('keydown', gfGlisseClavier, true);
+    gfBouger(g, x, y);
+    return true;
+  }
+  function gfGlisseClavier(ev) {
+    if (ev.key !== 'Escape' || !gfGlisse || !gfGlisse.lance) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    gfAnnulerGlisse();
+  }
+  // La demi-heure sous le pointeur, dans la partie visible du tableau seulement (sous sa tete collee) :
+  // hors du tableau, rien n est vise et rien ne se pose.
+  function gfBlocA(g, x, y) {
+    var d = g.defile.getBoundingClientRect();
+    var tete = g.defile.querySelector('thead');
+    var haut = d.top + (tete ? tete.getBoundingClientRect().height : 0);
+    if (x < d.left || x > d.right || y < haut || y >= d.bottom) return null;
+    var yc = y - gfOrigine(g.defile);
+    return g.blocs.find(function (b) { return yc >= b.haut && yc < b.bas; }) || null;
+  }
+  function gfPistesChangees(point, moves) {
+    var lanes = point.activityId === 'bowling' && moves && moves[0] && moves[0].lanes;
+    return lanes && lanes.join(',') !== point.pistes.join(',') ? lanes : null;
+  }
+  // Ce que dit une demi-heure : la sienne, trop tot, le verdict qui se calcule, celui du serveur.
+  function gfVerdictCible(g, bloc) {
+    if (!bloc) return null;
+    var h = bloc.h + g.decalage;
+    if (Math.abs(bloc.h - gfBloc(g.source)) < 1e-6) return { ton: 'meme', texte: gpHeure(g.source) + ' : son heure' };
+    var debut = g.type === 'act' ? h - g.offset : h;
+    var tot = gfPhrasePlancher(g.plancher, debut);
+    if (tot) return { ton: 'non', texte: gpHeure(h) + ' : ' + tot };
+    if (g.type === 'act') {
+      if (g.gele) return { ton: 'non', texte: g.gele };
+      if (g.echec) return { ton: 'calcul', texte: gpHeure(h) + ' : le serveur jugera au dépôt' };
+      var v = g.verdicts && g.verdicts.get(gfMinute(debut));
+      if (!v) return { ton: 'calcul', texte: gpHeure(h) + ' : vérification…' };
+      var lanes = v.passe ? gfPistesChangees(g.point, v.moves) : null;
+      return v.passe ? { ton: 'ok', texte: gpHeure(h) + ' : libre' + (lanes ? ', ' + gfPistesEnMots(lanes).toLowerCase() : '') } : { ton: 'non', texte: gpHeure(h) + ' : ' + v.raison };
+    }
+    var vg = g.groupe[gfMinute(h)];
+    if (!vg || vg.attente) return { ton: 'calcul', texte: gpHeure(h) + ' : vérification…' };
+    // (sans le calcul de « Modifier », la ligne ne se pose pas : le planning pourrait ne pas suivre)
+    if (!vg.resultat) return { ton: 'non', texte: gpHeure(h) + ' : le calcul ne répond pas, passez par Modifier' };
+    return vg.resultat.passe ? { ton: 'ok', texte: gpHeure(h) + ' : tout le groupe passe' + (vg.resultat.pistes ? ', ' + gfPistesEnMots(vg.resultat.pistes).toLowerCase() : '') } : { ton: 'non', texte: gpHeure(h) + ' : ' + vg.resultat.raison };
+  }
+  function gfDemanderGroupe(g, bloc) {
+    if (!bloc || g.type !== 'ligne') return;
+    var h = bloc.h + g.decalage;
+    if (Math.abs(bloc.h - gfBloc(g.source)) < 1e-6 || gfPhrasePlancher(g.plancher, h)) return;
+    var k = gfMinute(h);
+    if (g.groupe[k]) return;
+    var suivi = { attente: true, resultat: null };
+    g.groupe[k] = suivi;
+    suivi.promesse = gfJugerGroupe(g.r, h).then(function (res) {
+      suivi.attente = false;
+      suivi.resultat = res;
+      if (gfGlisse === g && g.lance) { gfPoserReperes(g); gfPeindreCible(g); }
+      return res;
+    });
+  }
+  // OU CA PASSE, OU CA NE PASSE PAS : un trait vert ou rouge le long de chaque demi-heure jugee. Le
+  // glisser d une heure les a toutes d un coup ; celui d une ligne, a mesure qu il les survole.
+  function gfPoserReperes(g) {
+    var html = '';
+    g.blocs.forEach(function (b) {
+      var v = gfVerdictCible(g, b);
+      if (!v || (v.ton !== 'ok' && v.ton !== 'non')) return;
+      html += '<i class="gf-repere is-' + v.ton + '" style="top:' + Math.round(b.haut) + 'px;height:' + Math.round(b.bas - b.haut) + 'px"></i>';
+    });
+    g.reperes.style.left = g.defile.scrollLeft + 'px';
+    if (g.reperesHtml !== html) { g.reperesHtml = html; g.reperes.innerHTML = html; }
+  }
+  function gfPeindreCible(g) {
+    var bloc = g.bloc;
+    var v = gfVerdictCible(g, bloc);
+    var dit = !bloc || !v ? g.nom + ' · ' + gpHeure(g.source) : g.nom + ' · ' + gpHeure(g.source) + ' → ' + gpHeure(bloc.h + g.decalage);
+    if (g.apercu.textContent !== dit) { g.apercu.textContent = dit; g.taille = null; }
+    var ton = 'gf-apercu' + (v ? ' is-' + v.ton : '');
+    if (g.apercu.className !== ton) g.apercu.className = ton;
+    g.verdict = v;
+    if (!bloc || !v) { g.cible.hidden = true; return; }
+    var d = g.defile;
+    // (rien ne s ecrit quand rien ne change : le pointeur bouge a chaque image)
+    var cle = [bloc.h, v.ton, v.texte, d.scrollLeft, d.clientWidth].join('|');
+    g.cible.hidden = false;
+    if (g.cibleCle === cle) return;
+    g.cibleCle = cle;
+    g.cible.className = 'gf-cible is-' + v.ton;
+    g.cible.style.top = Math.round(bloc.haut) + 'px';
+    g.cible.style.height = Math.round(bloc.bas - bloc.haut) + 'px';
+    g.cible.style.left = d.scrollLeft + 'px';
+    g.cible.style.width = d.clientWidth + 'px';
+    g.cible.firstChild.textContent = v.texte;
+  }
+  function gfBouger(g, x, y) {
+    g.x = x;
+    g.y = y;
+    // (au doigt, l apercu passe au-dessus : la main le cacherait ; sa taille se relit quand son texte change,
+    // pas a chaque image)
+    if (!g.taille) g.taille = [g.apercu.offsetWidth || 160, g.apercu.offsetHeight || 32];
+    var l = g.taille[0], h = g.taille[1];
+    var ax = g.tactile ? x - l / 2 : x + 16;
+    var ay = g.tactile ? Math.max(4, y - h - 28) : y + 14;
+    g.apercu.style.transform = 'translate3d(' + Math.round(ax) + 'px, ' + Math.round(ay) + 'px, 0)';
+    var bloc = gfBlocA(g, x, y);
+    gfArmerLesBords(g);
+    if (bloc !== g.bloc) { g.bloc = bloc; gfDemanderGroupe(g, bloc); }
+    gfPeindreCible(g);
+    gfDefilerAuBord(g);
+  }
+  // LE BORD DU TABLEAU FAIT DEFILER : pres du haut ou du bas, la feuille avance sous l apercu.
+  // Un bord ne s arme que si le pointeur va vers lui : sorti de sa bande de 44 px, ou 8 px plus pres de
+  // ce bord que la ou l heure s est levee. Une heure levee pres du bord ne fait pas partir le tableau
+  // sous un doigt immobile.
+  function gfArmerLesBords(g) {
+    var d = g.defile.getBoundingClientRect();
+    var tete = g.defile.querySelector('thead');
+    var b = { haut: d.top + (tete ? tete.getBoundingClientRect().height : 0) + 44, bas: d.bottom - 44 };
+    if (g.y >= b.haut || g.y <= g.yLeve - 8) g.armeHaut = true;
+    if (g.y <= b.bas || g.y >= g.yLeve + 8) g.armeBas = true;
+    return b;
+  }
+  function gfDefilerAuBord(g) {
+    if (g.bord) return;
+    var tour = function () {
+      g.bord = 0;
+      if (gfGlisse !== g || !g.lance) return;
+      var b = gfArmerLesBords(g);
+      var pas = g.y < b.haut && g.armeHaut ? -Math.ceil((b.haut - g.y) / 3) : g.y > b.bas && g.armeBas ? Math.ceil((g.y - b.bas) / 3) : 0;
+      if (!pas) return;
+      var avant = g.defile.scrollTop;
+      g.defile.scrollTop = avant + Math.max(-18, Math.min(18, pas));
+      if (g.defile.scrollTop === avant) return;
+      var bloc = gfBlocA(g, g.x, g.y);
+      if (bloc !== g.bloc) { g.bloc = bloc; gfDemanderGroupe(g, bloc); }
+      gfPeindreCible(g);
+      g.bord = requestAnimationFrame(tour);
+    };
+    g.bord = requestAnimationFrame(tour);
+  }
+  function gfNettoyerGlisse(g) {
+    if (g.bord) cancelAnimationFrame(g.bord);
+    g.bord = 0;
+    document.removeEventListener('keydown', gfGlisseClavier, true);
+    // (Echap pendant un glisser a la souris : le bouton est encore tenu, ses ecouteurs s en vont aussi)
+    if (!g.tactile) gfSourisFin();
+    if (g.el) g.el.classList.remove('is-glisse');
+    if (g.apercu) g.apercu.remove();
+    if (g.reperes) g.reperes.remove();
+    if (g.cible) g.cible.remove();
+    document.body.classList.remove('gf-en-glisse');
+    g.lance = false;
+    if (gfGlisse === g) gfGlisse = null;
+    gfGesteFini(g.wrap);
+  }
+  // (ce qui a change pendant le geste s ecrit maintenant)
+  function gfGesteFini(wrap) {
+    if (!wrap) return;
+    wrap._gfGeste = false;
+    if (wrap._gfARefaire) { wrap._gfARefaire = false; renderGlobalPlanning(wrap); }
+  }
+  function gfAnnulerGlisse() {
+    var g = gfGlisse;
+    if (!g) return;
+    gfClicMuetJusqua = gfInstant() + 400;
+    if (g.lance) gfNettoyerGlisse(g); else gfGlisse = null;
+  }
+  function gfDeposer(g, x, y) {
+    var bloc = gfBlocA(g, x, y);
+    var v = gfVerdictCible(g, bloc);
+    var r = gfDossier(g.id) || g.r;
+    gfNettoyerGlisse(g);
+    if (!bloc || !v || v.ton === 'meme') return;
+    var h = bloc.h + g.decalage;
+    var refuser = function (texte) { if (typeof showPlanningMoveNotice === 'function') showPlanningMoveNotice('Pas déplacé', g.nom + ' · ' + texte, 'warning'); };
+    if (v.ton === 'non') { refuser(v.texte); return; }
+    if (g.type === 'act') {
+      var debut = h - g.offset;
+      // (le verdict pas encore la : il arrive, puis il decide ; sans lui, le serveur juge a l ecriture)
+      Promise.resolve(g.attente).then(function (memo) {
+        if (memo && memo.gele) { refuser(memo.gele); return; }
+        var vv = memo && memo.verdicts.get(gfMinute(debut));
+        if (vv && !vv.passe) { refuser(gpHeure(h) + ' : ' + vv.raison); return; }
+        var dossier = gfDossier(g.id) || r;
+        gfEnregistrerHeure(dossier, g.point, debut, g.offset, vv ? vv.moves : gfMoves(dossier, g.point, debut));
+      });
+      return;
+    }
+    var suivi = g.groupe[gfMinute(h)];
+    Promise.resolve(suivi && suivi.promesse).then(function (res) {
+      if (!res) { refuser(gpHeure(h) + ' : le calcul ne répond pas, passez par Modifier'); return; }
+      if (!res.passe) { refuser(gpHeure(h) + ' : ' + res.raison); return; }
+      gfDeplacerGroupe(gfDossier(g.id) || r, h);
+    });
+  }
+
+  // LA SOURIS : la pastille ou la ligne se prend des qu elle a bouge de 6 px, bouton tenu.
+  function gfSourisBas(wrap, e) {
+    if (e.pointerType === 'touch' || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || gfGlisse) return;
+    var src = gfSourceDuGeste(e.target, wrap);
+    if (!src) return;
+    // (une pastille ne se selectionne pas comme du texte : son clic, lui, suit)
+    if (src.type === 'act') e.preventDefault();
+    gfGlisse = Object.assign(src, { wrap: wrap, x0: e.clientX, y0: e.clientY, pointeur: e.pointerId, lance: false, tactile: false });
+    document.addEventListener('pointermove', gfSourisBouge, true);
+    document.addEventListener('pointerup', gfSourisHaut, true);
+    document.addEventListener('pointercancel', gfSourisAnnule, true);
+  }
+  function gfSourisFin() {
+    document.removeEventListener('pointermove', gfSourisBouge, true);
+    document.removeEventListener('pointerup', gfSourisHaut, true);
+    document.removeEventListener('pointercancel', gfSourisAnnule, true);
+  }
+  function gfSansSelection() {
+    var selection = window.getSelection && window.getSelection();
+    if (selection && !selection.isCollapsed && selection.removeAllRanges) selection.removeAllRanges();
+  }
+  function gfSourisBouge(e) {
+    var g = gfGlisse;
+    if (!g || g.tactile || e.pointerId !== g.pointeur) return;
+    if (!g.lance) {
+      if (Math.hypot(e.clientX - g.x0, e.clientY - g.y0) < GF_SEUIL_SOURIS) return;
+      if (!gfLancer(g, e.clientX, e.clientY)) { gfSourisFin(); gfGlisse = null; gfClicMuetJusqua = gfInstant() + 400; return; }
+    }
+    e.preventDefault();
+    gfSansSelection();
+    gfBouger(g, e.clientX, e.clientY);
+  }
+  function gfSourisHaut(e) {
+    var g = gfGlisse;
+    if (!g || g.tactile || e.pointerId !== g.pointeur) return;
+    gfSourisFin();
+    if (!g.lance) { gfGlisse = null; return; }
+    gfClicMuetJusqua = gfInstant() + 400;
+    e.preventDefault();
+    gfSansSelection();
+    gfDeposer(g, e.clientX, e.clientY);
+  }
+  function gfSourisAnnule(e) {
+    var g = gfGlisse;
+    if (!g || g.tactile || e.pointerId !== g.pointeur) return;
+    gfSourisFin();
+    gfAnnulerGlisse();
+  }
+  // AU DOIGT : un appui long leve la pastille ou la ligne (assets/pinlane-touch-drag.js), le doigt la
+  // promene, le relacher la pose. Un doigt qui part tout de suite fait defiler le tableau, un tap reste
+  // un toucher. Le temps de l appui, le tableau ne se reecrit pas : le geste reste a son element.
+  function gfDoigtDebut(wrap, e) {
+    if (!window.PinlaneTouchDrag || (gfGlisse && gfGlisse.lance) || !e.touches || e.touches.length !== 1) return;
+    var src = gfSourceDuGeste(e.target, wrap);
+    if (!src) return;
+    window.PinlaneTouchDrag.demarrer(e, {
+      lever: function (p) {
+        var g = Object.assign({}, src, { wrap: wrap, tactile: true, lance: false });
+        gfGlisse = g;
+        if (!gfLancer(g, p.clientX, p.clientY)) { gfGlisse = null; gfClicMuetJusqua = gfInstant() + 600; }
+      },
+      bouger: function (p) { var g = gfGlisse; if (g && g.tactile && g.lance) gfBouger(g, p.clientX, p.clientY); },
+      deposer: function (p) {
+        var g = gfGlisse;
+        gfClicMuetJusqua = gfInstant() + 600;
+        if (g && g.tactile && g.lance) gfDeposer(g, p.clientX, p.clientY); else gfGesteFini(wrap);
+      },
+      annuler: function (etaitLeve) {
+        var g = gfGlisse;
+        if (etaitLeve) gfClicMuetJusqua = gfInstant() + 600;
+        if (g && g.tactile && g.lance) gfNettoyerGlisse(g);
+        else { if (g && g.tactile) gfGlisse = null; gfGesteFini(wrap); }
+      },
+    }, { maintienMs: GF_MAINTIEN_DOIGT });
+    // (pose apres le demarrage : un geste d avant, abandonne par celui-ci, a rendu le tableau libre)
+    if (window.PinlaneTouchDrag.actif()) wrap._gfGeste = true;
+  }
+
+  // DEPUIS LA FICHE (le Programme de l onglet Infos, renderGroupeEtapes) : la cle d une heure qui se
+  // touche, et la meme pop-up.
+  window.pgCleHeure = function (r, etape) {
+    if (!r || !etape || etape.start == null || etape.libre || etape.aPlacer || etape.extra || !etape.activityId) return '';
+    var id = etape.activityId;
+    if (GF_SANS_HEURE[id] || /^service_/.test(id) || !gfPeutDeplacerHeure(r, id)) return '';
+    var cle = id === 'laser_game' ? (etape.unite ? 'laser_game:' + etape.unite : '') : id;
+    return cle && gfPointDe(r, cle) ? cle : '';
+  };
+  window.pgOuvrirHeureFiche = function (bouton, ev) {
+    if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+    if (!bouton) return;
+    var r = gfDossier(bouton.getAttribute('data-pg-res'));
+    if (!gfOuvrirHeure(bouton, r, bouton.getAttribute('data-pg-heure'), gpMinutesDe(bouton.textContent), true, Boolean(ev && ev.detail === 0)) && typeof toast === 'function') toast('Cette heure ne se change pas d’ici : passez par Modifier.');
+  };
+  window.__gfHeure = { ouverte: function () { return Boolean(gfPop); }, glisse: function () { return Boolean(gfGlisse && gfGlisse.lance); } };
+
   // ---- LE RENDU --------------------------------------------------------------
   var gfStats = window.__gfStats = { rendus: 0, ecritures: 0 };
   function renderGlobalPlanning(wrap) {
     if (!wrap) return;
+    // UN GESTE EN COURS (le glisser d une heure ou d une ligne, l appui long qui le prepare) : le tableau
+    // ne se reecrit pas sous le doigt, il s ecrit a la fin du geste (gfGesteFini). Un geste perdu (aucun
+    // n est plus en cours) ne retient rien.
+    if (wrap._gfGeste) {
+      if ((gfGlisse && gfGlisse.lance && gfGlisse.wrap === wrap) || (window.PinlaneTouchDrag && window.PinlaneTouchDrag.actif())) { wrap._gfARefaire = true; return; }
+      wrap._gfGeste = false;
+    }
     // EPINGLE A UN JOUR (la fenetre « planning de ce jour » d une demande sur mesure) : le
     // modele lit le jour de la page. Le temps du rendu, ce jour-la, sans filtre ni recherche ;
     // le redessin au redimensionnement passe aussi par ici.
@@ -2125,6 +3124,9 @@
       if (!wrap._gfApres) wrap._gfApres = requestAnimationFrame(function () { wrap._gfApres = 0; if (wrap._gfSuit) gfAllerAMaintenant(wrap, false); });
     }
     gfSuivreMaintenant(wrap);
+    // (la pop-up d une heure suit sa pastille : reecrite au meme endroit, elle reste ; partie ou
+    // deplacee, la pop-up se ferme)
+    if (gfPop && !gfPop.depuisFiche) gfPopDefile();
   }
   // CE QUI CHANGE A CHAQUE MINUTE s ecrit en place, ici seulement : la
   // pastille de l heure et les minutes de retard. Le HTML compare n en porte
@@ -2348,9 +3350,21 @@
   // « Arrivé » pointe le groupe (le chemin de la vue Terrain, avec son toast
   // « Annuler ») ; « Ils sont 10 » ouvre le compte ; un clic ou Entree ailleurs
   // sur la ligne ouvre la fiche.
+  // L heure touchee ouvre sa pop-up ; une heure que ce dossier ne laisse plus changer d ici ouvre la fiche,
+  // comme le reste de la ligne.
+  function gfToucherHeure(act, parClavier) {
+    var tr = act.closest('[data-gf-id]');
+    var r = tr && gfDossier(tr.getAttribute('data-gf-id'));
+    if (!r) return;
+    if (!gfOuvrirHeure(act, r, act.getAttribute('data-gf-act'), gpMinutesDe(act.textContent), false, parClavier) && typeof openPos === 'function') openPos(Number(r.id));
+  }
   function gfBrancher(wrap) {
     wrap.addEventListener('click', function (e) {
       if (!e.target.closest) return;
+      // (le clic qui suit un glisser ne fait rien d autre : la ligne posee n ouvre pas sa fiche)
+      if (gfInstant() < gfClicMuetJusqua) { gfClicMuetJusqua = 0; e.preventDefault(); e.stopPropagation(); return; }
+      var heureAct = e.target.closest('[data-gf-act]');
+      if (heureAct) { gfToucherHeure(heureAct); return; }
       var arrive = e.target.closest('[data-gf-arrive]');
       if (arrive) { setReservationStatusDirect(arrive.getAttribute('data-gf-arrive'), 'arrived', e); return; }
       var compte = e.target.closest('[data-compte-id]');
@@ -2383,11 +3397,22 @@
     });
     wrap.addEventListener('keydown', function (e) {
       if (e.key !== 'Enter' && e.key !== ' ') return;
+      var heureAct = e.target.closest && e.target.closest('[data-gf-act]');
+      if (heureAct && e.target === heureAct) { e.preventDefault(); gfToucherHeure(heureAct, true); return; }
       var ligne = e.target.closest && e.target.closest('[data-gf-id]');
       if (!ligne || e.target !== ligne) return;
       e.preventDefault();
       if (typeof openPos === 'function') openPos(Number(ligne.getAttribute('data-gf-id')));
     });
+    // LE GLISSER DU PLANNING COMPLET (plus haut) : la souris par le pointeur, le doigt par l appui long.
+    // (le toucher reste passif : un doigt qui defile n attend rien ; le mouvement, lui, doit pouvoir
+    // retenir le defilement une fois la ligne levee)
+    wrap.addEventListener('pointerdown', function (e) { gfSourisBas(wrap, e); });
+    wrap.addEventListener('touchstart', function (e) { gfDoigtDebut(wrap, e); }, { passive: true });
+    wrap.addEventListener('touchmove', function (e) { if (window.PinlaneTouchDrag) window.PinlaneTouchDrag.bouger(e); }, { passive: false });
+    wrap.addEventListener('touchend', function (e) { if (window.PinlaneTouchDrag) window.PinlaneTouchDrag.finir(e); }, { passive: false });
+    wrap.addEventListener('touchcancel', function (e) { if (window.PinlaneTouchDrag) window.PinlaneTouchDrag.interrompre(e); });
+    wrap.addEventListener('contextmenu', function (e) { if (window.PinlaneTouchDrag) window.PinlaneTouchDrag.menu(e); });
     var attente = 0;
     var recalculer = function () {
       if (attente) return;
@@ -2497,7 +3522,7 @@
       if (actif.matches && actif.matches('input, textarea, select, [contenteditable="true"]')) return;
       if (!(actif.closest && actif.closest('.planning-box, #planningBarre'))) return;
     }
-    if (document.querySelector('#quickBookOverlay:not(.hidden), #posOverlay:not(.hidden), .staff-confirm-overlay, .compte-pop, .staff-action-popover')) return;
+    if (document.querySelector('#quickBookOverlay:not(.hidden), #posOverlay:not(.hidden), .staff-confirm-overlay, .compte-pop, .staff-action-popover, #gfHeurePop')) return;
     champ.focus();
     champ.select();
   });

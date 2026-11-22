@@ -245,8 +245,13 @@ async function main() {
           // L heure et les joueurs de l en-tete se touchent pour etre modifies
           // (.fx-fait-modif, 2026-11-14) : ce sont les faits rendus touchables,
           // comptes a part comme les liens du planning.
-          boutons: [...document.querySelectorAll('#posOverlay button:not(.gc-check):not(.gc-step-link):not(.fx-fait-modif)')].filter(visible).length,
+          // L heure d une activite du programme se touche pour etre changee
+          // (.gc-step-heure, 2026-11-22, la meme pop-up que le planning
+          // complet) : un fait rendu touchable, compte a part, une par
+          // activite au plus.
+          boutons: [...document.querySelectorAll('#posOverlay button:not(.gc-check):not(.gc-step-link):not(.fx-fait-modif):not(.gc-step-heure)')].filter(visible).length,
           faitsTouchables: [...document.querySelectorAll('#posOverlay .fx-chiffres .fx-fait-modif')].filter(visible).length,
+          heuresTouchables: [...document.querySelectorAll('#posOverlay .gc-step .gc-step-heure')].filter(visible).length,
           liens: [...document.querySelectorAll('#posOverlay .gc-step .gc-step-link')].filter(visible).length,
           cases: [...document.querySelectorAll('#posOverlay .gc-step .gc-check')].filter(visible).length,
           pas: [...document.querySelectorAll('#posOverlay .gc-step')].filter(visible).length,
@@ -282,8 +287,9 @@ async function main() {
     // PLAFOND 11 DEPUIS LE 2026-11-14 (Ansar : « le retard [...] super facile
     // d acces ») : « Retard » sort de son pli en bas de colonne et devient un
     // bouton de la rangee des gestes (scripts/fiche-simple-check.js, [G1]).
-    ok(infos.boutons <= 11, `« Infos » : ${infos.boutons} boutons d action a l ecran (plafond 11 ; les cases des activites, les liens du planning et l heure et les joueurs touchables a part)`);
+    ok(infos.boutons <= 11, `« Infos » : ${infos.boutons} boutons d action a l ecran (plafond 11 ; les cases des activites, les liens du planning, l heure des activites et l heure et les joueurs touchables a part)`);
     ok(infos.faitsTouchables <= 2, `« Infos » : ${infos.faitsTouchables} faits de l en-tete touchables, l heure et les joueurs au plus`);
+    ok(infos.heuresTouchables <= infos.pas, `« Infos » : ${infos.heuresTouchables} heures d activite touchables, au plus une par activite (${infos.pas})`);
     ok(infos.liens <= infos.pas, `« Infos » : ${infos.liens} liens vers le planning, au plus un par activite (${infos.pas})`);
     ok(infos.pas > 0 && infos.cases === infos.pas, `« Infos » : chaque activite du programme a sa case (${infos.cases} cases pour ${infos.pas} activites)`);
     ok(infos.redites.length === 0, `« Infos » : ${infos.redites.length} fait de l en-tete recopie dans le corps${infos.redites.length ? ' : ' + infos.redites.join(' | ') : ''}`);

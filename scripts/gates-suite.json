@@ -272,6 +272,7 @@
     "test:extras-libres",
     "test:petits-defauts",
     "test:heure-activite-dossier",
+    "test:planning-heure-glisser",
     "test:programme-complet",
     "test:reserver-heure-activite",
     "test:saisie-nombres-heures",

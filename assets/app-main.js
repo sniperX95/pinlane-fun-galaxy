@@ -35303,14 +35303,22 @@ function peindreVaguesLaserEdition() {
 // besoin » rejoint la partie d un autre groupe, lib/database.js rejoindreLesParties). Les autres groupes
 // du jour dont la partie a le meme depart et la meme fin : la fiche les nomme (« avec Boucquiaux »), et
 // la vague de Modifier compte leurs armes avec celles du groupe (« 1 vague de 11 armes »).
-function partenairesLaser(r, fenetre) {
+// ELLE N EST COMMUNE QUE QUAND TOUS TIENNENT (2026-11-22, la regle d Ansar : la partie se partage seulement
+// quand les armes qui restent suffisent, « pas un manque de place »). Le groupe (`joueurs` : le nombre tape
+// dans Modifier, sinon les joueurs de sa partie) et ses partenaires, en une vague sur les armes du centre ;
+// sinon pas de partie commune, ni « avec … » : la ligne dit les vagues du groupe seul (attribution-visible
+// [A7] : 14 puis 24 joueurs au meme depart que les 10 de Sacha, sur 20 armes).
+function partenairesLaser(r, fenetre, joueurs = null) {
   if (!r || !fenetre || typeof state === 'undefined' || !Array.isArray(state.reservations)) return [];
   const meme = (a, b) => Math.abs(Number(a) - Number(b)) < 1 / 120;
-  return state.reservations
+  const partenaires = state.reservations
     .filter(autre => autre && Number(autre.id) !== Number(r.id) && autre.date === r.date && autre.status !== 'cancelled' && !autre.absentAt)
     .flatMap(autre => getStaffResourceWindows(autre, 'all')
       .filter(f => f.resourceType === 'laser_arena' && meme(f.start, fenetre.start) && meme(f.end, fenetre.end))
       .map(f => ({ nom: String(autre.name || '').trim() || 'un autre groupe', joueurs: Number(f.joueursReels ?? f.players) || Number(autre.pax) || 0 })));
+  if (!partenaires.length || typeof getLaserWaveCount !== 'function') return partenaires;
+  const groupe = joueurs !== null ? Number(joueurs) || 0 : Number(fenetre.joueursReels ?? fenetre.players) || Number(r.pax) || 0;
+  return getLaserWaveCount(groupe + partenaires.reduce((total, p) => total + p.joueurs, 0)) === 1 ? partenaires : [];
 }
 
 function partenairesEnMots(partenaires) {
@@ -35323,7 +35331,7 @@ function vaguesLaserEditionEnMots(e, r) {
   const joueurs = joueursLaserEdition(e, r);
   if (joueurs === null) return '';
   const premiere = r ? getStaffResourceWindows(r, 'all').filter(f => f.resourceType === 'laser_arena' && !f.aVolonte).sort((a, b) => a.start - b.start)[0] : null;
-  const partenaires = premiere && Math.max(1, Number(premiere.groupWaveCount) || 1) === 1 ? partenairesLaser(r, premiere) : [];
+  const partenaires = premiere && Math.max(1, Number(premiere.groupWaveCount) || 1) === 1 ? partenairesLaser(r, premiere, joueurs) : [];
   if (!partenaires.length) return vaguesLaserEnMots(joueurs);
   return `${vaguesLaserEnMots(joueurs + partenaires.reduce((total, p) => total + p.joueurs, 0))}, ${partenairesEnMots(partenaires)}`;
 }

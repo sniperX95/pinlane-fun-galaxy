@@ -857,9 +857,9 @@ const MUTATIONS = [
   // [D] la plaine de jeux remise a une heure : au calcul, au programme de la fiche, dans Réserver.
   { nom: 'plaine-a-heure', lettre: 'D', scenarios: ['tout'], editions: [{ fichier: LIB, serveur: true, de: '    if (LIBRES_TOUTE_LA_JOURNEE.includes(id)) return;\n', vers: '' }] },
   { nom: 'plaine-a-heure-au-programme', lettre: 'D', scenarios: ['tout'], editions: [
-    { fichier: JS, de: "      start: accesIllimite || item.activityId === 'playground' ? null : item.start,", vers: '      start: accesIllimite ? null : item.start,' },
-    { fichier: JS, de: "      end: accesIllimite || item.activityId === 'playground' ? null : item.end,", vers: '      end: accesIllimite ? null : item.end,' },
-    { fichier: JS, de: "      ...(accesIllimite ? { libre: true, volonte: true } : item.activityId === 'playground' ? { libre: true } : {}),", vers: '      ...(accesIllimite ? { libre: true, volonte: true } : {}),' },
+    { fichier: JS, de: "      start: accesIllimite || sansHeure(item) ? null : item.start,", vers: '      start: accesIllimite ? null : item.start,' },
+    { fichier: JS, de: "      end: accesIllimite || sansHeure(item) ? null : item.end,", vers: '      end: accesIllimite ? null : item.end,' },
+    { fichier: JS, de: "      ...(accesIllimite ? { libre: true, volonte: true } : sansHeure(item) ? { libre: true } : {}),", vers: '      ...(accesIllimite ? { libre: true, volonte: true } : {}),' },
   ] },
   { nom: 'plaine-a-heure-dans-reserver', lettre: 'D', scenarios: ['tout'], editions: [{ fichier: JS, de: "  if (!id && getFormulaActivityIds({ desc: [texte] }).includes('playground')) return `<li class=\"is-libre\">${escapeHtml(texte)}<span class=\"rs-cc-libre\">libre</span></li>`;\n", vers: '' }] },
   // [H] la bulle du planning qui rouvre l ancien plan en cascade.

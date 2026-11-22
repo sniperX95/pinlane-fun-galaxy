@@ -483,6 +483,8 @@ button.gf-bloc__in:focus-visible { outline: 2px solid var(--console-focus); outl
 .gf-x.is-encours .gf-x__t { background: var(--bk-cadre); color: var(--bk-encre); }
 .gf-x.is-credit { font-size: 13px; }
 .gf-x.is-credit .gf-x__d { font-size: 12px; white-space: nowrap; }
+/* Des arcades vendues en argent : le montant se lit de loin, comme une heure (Ansar, 2026-11-22 : « 8 € en gros »). */
+.gf-x .gf-x__montant { font-size: 15px; font-weight: 750; letter-spacing: -.01em; font-variant-numeric: tabular-nums; color: var(--text); }
 .gf-x.is-libre { padding-left: 8px; color: var(--muted); font-size: 13px; white-space: normal; }
 .gf-x.is-retard .gf-x__t { background: var(--gf-rouge-pale); color: var(--gf-rouge); }
 .gf-x.is-aplacer { color: var(--warning); }

@@ -167,11 +167,37 @@
     return { court: numero ? 'F' + numero[1] : nom, long: nom, adaptee: /\(adapt[ée]e\)/i.test(String(r.label || '')) };
   }
   // « 8 crédits d'arcade (8€) par enfant » : 8 par enfant.
+  // DES ARCADES EN ARGENT SE DISENT EN MONTANT (2026-11-22, Ansar : « 8 € en gros quand arcades c argent,
+  // pour les cartes avec argent tu dois juste mettre le montant ») : « 8 crédits d'arcade (8 €) par enfant »
+  // devient « 8 € » et « par enfant » ; sans montant dans le texte, les crédits restent des crédits.
   function gpCredits(label, enfants) {
     var m = /(\d+)\s*cr[ée]dits?/i.exec(String(label || ''));
     var n = m ? Number(m[1]) : 0;
     var parEnfant = /par\s+enfant/i.test(String(label || ''));
-    return { n: n, parEnfant: parEnfant, total: parEnfant ? n * Math.max(1, Number(enfants) || 1) : n };
+    var e = new RegExp('(\\d+(?:[.,]\\d+)?)\\s*(?:' + motifSignesMonnaie() + ')').exec(String(label || ''));
+    var euros = e ? Number(e[1].replace(',', '.')) : null;
+    var total = parEnfant ? n * Math.max(1, Number(enfants) || 1) : n;
+    return { n: n, parEnfant: parEnfant, total: total, euros: euros, detail: euros != null && parEnfant ? 'par enfant' : '', eurosTotal: euros != null ? (parEnfant ? euros * Math.max(1, Number(enfants) || 1) : euros) : null };
+  }
+  // Un montant d arcades : le chiffre que le bar charge, jamais masque comme un prix (c est une quantite de jeu).
+  function gpMontant(v) {
+    var x = Math.round((Number(v) || 0) * 100) / 100;
+    return new Intl.NumberFormat('fr-BE', { minimumFractionDigits: Number.isInteger(x) ? 0 : 2, maximumFractionDigits: 2 }).format(x) + ' ' + signeMonnaie();
+  }
+  // Les arcades vendues en argent d un dossier : le sur mesure (une ligne « arcades-argent », son montant par
+  // joueur) et les cartes de credit d une visite a la carte (le prix de l offre, par carte).
+  function gpArcadesSurMesure(r) {
+    var rep = [];
+    (Array.isArray(r.extras) ? r.extras : []).forEach(function (x) {
+      if (!x || String(x.id || '') !== 'arcades-argent') return;
+      var nom = String(x.name || '');
+      var joueurs = Math.max(1, Math.trunc(Number((/×\s*(\d+)\s*joueurs?$/.exec(nom) || [])[1])) || Math.trunc(Number(r.pax)) || 1);
+      var total = Math.max(0, Number(x.offert ? x.valeur : x.price) || 0);
+      if (!(total > 0)) return;
+      var parJoueur = Math.round(total / joueurs * 100) / 100;
+      rep.push({ n: 0, parEnfant: false, total: 0, euros: parJoueur, detail: 'par joueur', eurosTotal: total, nom: 'Arcades' });
+    });
+    return rep;
   }
   // « 2 cruches boissons » se lit « 2 cruches » : on sait ce que c est.
   function gpServi(label) { return String(label || '').replace(/^(\d+\s+cruches?)\s+boissons?$/i, '$1'); }
@@ -182,6 +208,8 @@
     (Array.isArray(r.extras) ? r.extras : []).forEach(function (e) {
       var brut = e && String(e.name || e.label || '').trim();
       if (!brut) return;
+      // (les arcades vendues en argent ont leur montant dans la colonne Arcades, 2026-11-22)
+      if (e.id === 'arcades-argent') return;
       var fois = /^(.*\S)\s*×\s*(\d+)$/.exec(brut);
       var nom = fois ? fois[1] : brut;
       var heure = /^\d{1,2}:\d{2}/.test(String(e.heure || e.time || e.startTime || '')) ? String(e.heure || e.time || e.startTime).slice(0, 5) : '';
@@ -193,6 +221,15 @@
       compte.set(cle, l);
     });
     return Array.from(compte.values()).map(function (l) { return (l.n > 1 ? l.n + ' × ' : '') + l.nom + (l.heure ? ' à ' + l.heure : ''); });
+  }
+
+  // Une carte d arcades en credits choisie a la carte : son prix par carte, le nombre de cartes a cote.
+  function gpCarteArgent(r, it) {
+    if (!it || it.activityId !== 'arcade_time' || !it.arcadeMode || it.arcadeMode === 'time') return null;
+    var q = typeof getArcadeOfferQuote === 'function' && typeof catalogueDeLigne === 'function'
+      ? getArcadeOfferQuote(catalogueDeLigne(it), it, Number(it.participants) || Number(r.pax) || 1) : null;
+    if (!q) return { n: 0, parEnfant: false, total: 0, euros: null, detail: '', eurosTotal: null };
+    return { n: 0, parEnfant: false, total: 0, euros: q.price, detail: q.cards > 1 ? q.cards + ' cartes' : '', eurosTotal: q.price };
   }
 
   // LES ACTIVITES SANS HEURE D UN GROUPE, a leur heure probable, par la regle
@@ -208,7 +245,7 @@
       if (!it || it.planned !== false || it.waitOffer) return;
       var posee = typeof getEtapeAvant === 'function' ? getEtapeAvant(r, it) : null;
       if (posee) { avant.push({ l: { id: it.activityId, nom: nomActivite(it), unites: Math.max(0, Math.trunc(Number(it.units) || 0)), enfants: Number(it.participants) || 0 }, start: timeToNum(posee.startTime), end: timeToNum(posee.endTime), fixe: true }); return; }
-      lignes.push({ id: it.activityId, nom: nomActivite(it), minutes: gpMinutes(it.activityId, it), journee: ligneALaJournee(it), unites: Math.max(0, Math.trunc(Number(it.units) || 0)), enfants: Number(it.participants) || 0 });
+      lignes.push({ id: it.activityId, nom: nomActivite(it), minutes: gpMinutes(it.activityId, it), journee: ligneALaJournee(it), unites: Math.max(0, Math.trunc(Number(it.units) || 0)), enfants: Number(it.participants) || 0, argent: gpCarteArgent(r, it) });
     });
     // Une formule suivie : ses activites sans heure que le programme ne porte pas.
     if (typeof reservationHasFormulaActivities === 'function' && reservationHasFormulaActivities(r)) {
@@ -218,8 +255,8 @@
         lignes.push({ id: it.activityId, nom: it.label || gpNomActivite(it.activityId), minutes: gpMinutes(it.activityId, null), journee: false, unites: 0, enfants: 0 });
       });
     }
-    var servis = lignes.filter(function (l) { return GP_SANS_DUREE[l.id]; });
-    lignes = lignes.filter(function (l) { return !GP_SANS_DUREE[l.id]; });
+    var servis = lignes.filter(function (l) { return GP_SANS_DUREE[l.id] || l.argent; });
+    lignes = lignes.filter(function (l) { return !GP_SANS_DUREE[l.id] && !l.argent; });
     var blocs = getStaffResourceWindows(r, 'all').map(function (w) { return [Number(w.start), Number(w.end)]; })
       .filter(function (b) { return Number.isFinite(b[0]) && Number.isFinite(b[1]) && b[1] > b[0]; })
       .sort(function (a, b) { return a[0] - b[0]; });
@@ -478,6 +515,8 @@
         if (it.activityId === 'party_table') { g.table = g.table || it; return; }
         if (GP_SERVI[it.activityId]) { var servi = gpServi(it.label || gpNomActivite(it.activityId)); g.boissons = g.boissons || { nom: servi, start: it.start }; g.infos.push(servi); return; }
         if (it.activityId === 'arcade_credit') { var crf = gpCredits(it.label || gpNomActivite(it.activityId), r.pax); g.credits.push(crf); poser('arcade_credit', { credit: true, nom: it.label, credits: crf }); return; }
+        // (des arcades vendues en argent, un contenu de formule ou une carte : le montant, jamais une heure)
+        if (typeof arcadesEnArgentDuDossier === 'function' && arcadesEnArgentDuDossier(r, it)) { var cra = gpCredits(it.label || gpNomActivite(it.activityId), r.pax); g.credits.push(cra); poser('arcade_time', { credit: true, nom: it.label, credits: cra }); return; }
         poser(it.activityId, { start: it.start, end: Math.max(it.end, it.start + 0.25), illimite: acces, volonte: acces });
       });
       var libres = gpLibres(g);
@@ -487,8 +526,11 @@
       });
       libres.servis.forEach(function (l) {
         if (l.id === 'arcade_credit') { var cr = gpCredits(l.nom, l.enfants || r.pax); g.credits.push(cr); poser('arcade_credit', { credit: true, nom: l.nom, credits: cr }); }
+        else if (l.argent) { g.credits.push(l.argent); poser('arcade_time', { credit: true, nom: l.nom, credits: l.argent }); }
         else g.infos.push(gpServi(l.nom));
       });
+      // Le sur mesure : « Arcades 8 € par joueur » de Modifier ou de Réserver (une ligne du dossier, sans heure).
+      gpArcadesSurMesure(r).forEach(function (cs) { g.credits.push(cs); poser('arcade_time', { credit: true, nom: cs.nom, credits: cs }); });
       g.extras = gpExtras(r);
       g.formule = gpFormule(r);
       g.illimite = gfIllimite(r);
@@ -722,7 +764,7 @@
   function gfActivite(g, e, col, m) {
     var r = g.r;
     var etat = gfEtat(g, e, m);
-    var t = '', d = '', d2 = '', d3 = '', bulle = '', panne = false;
+    var t = '', d = '', d2 = '', d3 = '', bulle = '', panne = false, montant = false;
     if ((g.illimite || e.illimite) && !e.credit) {
       t = e.volonte ? GF_VOLONTE : GF_ILLIMITE;
       bulle = gpTitreActivite(e.activityId) + (e.volonte ? ' : à volonté pendant la visite, sans heure fixe' : ' : illimité pendant la visite, sans heure fixe');
@@ -731,9 +773,19 @@
       bulle = 'Laser : une partie encore sans heure, à placer au planning laser';
     } else if (e.credit) {
       var cr = e.credits || { n: 0, total: 0, parEnfant: false };
-      t = (cr.parEnfant ? cr.n : cr.total) + ' crédits';
-      if (cr.parEnfant) d = 'par enfant';
-      bulle = 'Arcades : ' + (cr.parEnfant ? cr.n + ' crédits par enfant, ' + cr.total + ' en tout' : cr.total + ' crédits');
+      if (cr.euros != null) {
+        // En argent : le montant, en gros, sans heure (2026-11-22).
+        t = gpMontant(cr.euros); montant = true;
+        d = cr.detail || '';
+        bulle = 'Arcades en argent : ' + gpMontant(cr.euros) + (cr.detail ? ' ' + cr.detail : '') + (cr.eurosTotal != null && cr.eurosTotal !== cr.euros ? ', ' + gpMontant(cr.eurosTotal) + ' en tout' : '') + ', sans heure : ils jouent quand ils veulent';
+      } else if (!cr.n && !cr.total) {
+        t = 'Libre';
+        bulle = 'Arcades en argent, sans heure : ils jouent quand ils veulent';
+      } else {
+        t = (cr.parEnfant ? cr.n : cr.total) + ' crédits';
+        if (cr.parEnfant) d = 'par enfant';
+        bulle = 'Arcades : ' + (cr.parEnfant ? cr.n + ' crédits par enfant, ' + cr.total + ' en tout' : cr.total + ' crédits');
+      }
     } else {
       var debut = e.journee ? g.span.start : e.start;
       var fin = e.journee ? g.span.end : e.end;
@@ -779,7 +831,7 @@
       }
     }
     var classes = 'gf-x is-' + etat + (etat === 'fini' && gfVientDeFinir(g, e, col, m.jour) ? ' vient-de-finir' : '') + (e.libre && !e.journee ? ' is-libre' : '') + (e.credit ? ' is-credit' : '') + (gfBientot(g, e, etat, m) ? ' is-bientot' : '') + (panne ? ' is-panne' : '');
-    return '<span class="' + classes + '" title="' + gpEsc(bulle + ' · ' + GF_ETATS[etat]) + '"' + (panne ? ' data-gf-voir="bowling"' : '') + '>' + gfHeureHtml(t, etat === 'fini' && gfPresent(g), etat) + (d ? '<span class="gf-x__d">' + gfNumerosEntiers(d) + '</span>' : '') + gfHorsHtml(d2, d3) + '</span>';
+    return '<span class="' + classes + '" title="' + gpEsc(bulle + ' · ' + GF_ETATS[etat]) + '"' + (panne ? ' data-gf-voir="bowling"' : '') + '>' + (montant ? '<b class="gf-x__t is-nu gf-x__montant">' + gpEsc(t) + '</b>' : gfHeureHtml(t, etat === 'fini' && gfPresent(g), etat)) + (d ? '<span class="gf-x__d">' + gfNumerosEntiers(d) + '</span>' : '') + gfHorsHtml(d2, d3) + '</span>';
   }
   // L HEURE SE REPERE DE LOIN (2026-11-03, Movsar : « les heures et tout on voit pas bien
   // [...] c trop monochrome ») : l heure fixe, une pastille de la teinte du statut de la
@@ -918,7 +970,8 @@
     if (!g.table) return '';
     var fin = Math.max(Number(g.table.end) || 0, Number(g.span.end) || 0);
     var texte = gpHeure(g.table.start) + ' à ' + gpHeure(fin);
-    return g.boissons ? texte + ', ' + g.boissons.nom + ' à ' + gpHeure(g.boissons.start) : texte;
+    // (les cruches n ont pas d heure : ils prennent quand ils veulent, 2026-11-22)
+    return g.boissons ? texte + ', ' + g.boissons.nom : texte;
   }
   // LES NOTES DE L EQUIPE D UN DOSSIER, dans l ordre ou elles ont ete ecrites : la derniere
   // est la plus recente. La ligne du Complet les lit toutes, le Terrain la derniere. Chacune
@@ -1279,7 +1332,7 @@
       parts.push(c.titre + ' ' + liste.map(function (e) {
         if ((g.illimite || e.illimite) && !e.credit) return e.volonte ? 'à volonté' : 'illimité';
         if (e.aPlacer) return 'à placer';
-        if (e.credit) return (e.credits ? e.credits.total : 0) + ' crédits';
+        if (e.credit) return e.credits && e.credits.euros != null ? gpMontant(e.credits.euros) + (e.credits.detail ? ' ' + e.credits.detail : '') : (e.credits ? e.credits.total : 0) + ' crédits';
         if (e.libre && !e.journee) return 'sans heure fixe ' + GF_ETATS[gfEtat(g, e, m)];
         return gpHeure(e.journee ? g.span.start : e.start) + ' ' + GF_ETATS[gfEtat(g, e, m)];
       }).join(', '));

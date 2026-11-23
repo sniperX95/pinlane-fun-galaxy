@@ -66,6 +66,9 @@
 //        celle qu on a touchee ; ce qui passe dit chaque activite a sa nouvelle heure ;
 //   [T4] des pistes se prennent entre le verdict et le toucher : le serveur refuse, l avis dit quelle
 //        activite coince, a quelle heure, et que rien n a bouge ;
+//   [D1] au telephone (390 px, au doigt) : toucher le champ de l heure ne ferme pas la pop-up, la saisie se
+//        juge ; le clavier qui reduit la fenetre non plus, elle se repose entiere contre sa pastille ; sans le
+//        champ en main, la page qui defile la ferme ;
 //   [J1] aucune erreur JS.
 // La console reelle (scripts/planning-v3-fixtures.js, journee « pic » de Fun Galaxy Libramont, samedi
 // 16 janvier 2027 a 15:10) ; ses PATCH et ses calculs a blanc partent au VRAI handler
@@ -1050,6 +1053,69 @@ async function scenarioGroupe(browser) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// [D1] : au telephone, le champ de l heure (Henrard, bowling 16:00).
+// ---------------------------------------------------------------------------
+function lireTelephone(id) {
+  const p = document.getElementById('gfHeurePop');
+  const a = document.querySelector(`#globalPlanningGridWrap tr[data-gf-id="${id}"] [data-gf-act="bowling"]`);
+  const rp = p && p.getBoundingClientRect();
+  const ra = a && a.getBoundingClientRect();
+  const actif = document.activeElement;
+  return {
+    ouverte: Boolean(p),
+    champEnMain: Boolean(actif && actif.matches && actif.matches('#gfHeurePop [data-gf-hp-champ]')),
+    verdict: (((p && p.querySelector('[data-gf-hp-verdict]')) || {}).textContent || '').trim(),
+    entiere: Boolean(rp) && rp.top >= 0 && rp.bottom <= window.innerHeight,
+    contre: Boolean(rp && ra) && (Math.abs(rp.top - (ra.bottom + 6)) <= 1 || Math.abs(rp.bottom - (ra.top - 6)) <= 1),
+  };
+}
+async function scenarioTelephone(browser) {
+  const { ctx, page, erreurs, patchs } = await monter(browser, { appareil: 'telephone' });
+  try {
+    const sel = PASTILLE(HENRARD, 'bowling');
+    // (le gerant cherche son groupe du doigt : la liste ne suit plus l heure, la page est a lui)
+    const cdp = await ctx.newCDPSession(page);
+    const point = (x, y) => [{ x, y, id: 1, radiusX: 4, radiusY: 4, force: 1 }];
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: point(200, 640) });
+    for (let i = 1; i <= 12; i += 1) { await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: point(200, 640 - i * 25) }); await page.waitForTimeout(16); }
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await page.waitForTimeout(300);
+    await page.evaluate((s) => document.querySelector(s).scrollIntoView({ block: 'center' }), sel);
+    await page.waitForTimeout(300);
+    await page.tap(sel);
+    await page.waitForSelector('#gfHeurePop.is-rempli', { timeout: 10000 }).catch(() => null);
+    await page.tap('#gfHeurePop [data-gf-hp-champ]');
+    await page.waitForTimeout(300);
+    const touche = await page.evaluate(lireTelephone, HENRARD);
+    await page.keyboard.type('1607');
+    await page.waitForFunction(() => /16:07 passe/.test(((document.querySelector('#gfHeurePop [data-gf-hp-verdict]') || {}).textContent || '')), null, { timeout: 10000 }).catch(() => null);
+    const tape = await page.evaluate(lireTelephone, HENRARD);
+    // Le clavier du telephone s ouvre : la fenetre perd 400 px (index.html, interactive-widget=resizes-content).
+    await page.setViewportSize({ width: 390, height: 444 });
+    await page.waitForTimeout(400);
+    const clavier = await page.evaluate(lireTelephone, HENRARD);
+    ok(touche.ouverte && touche.champEnMain && tape.ouverte && tape.verdict === '16:07 passe.' && clavier.ouverte && clavier.champEnMain && clavier.entiere && clavier.contre && patchs.length === 0,
+      '[D1] au telephone : toucher le champ ne ferme pas la pop-up, 16:07 se juge ; le clavier qui reduit la fenetre non plus, elle se repose entiere contre sa pastille', { touche, tape, clavier });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(400);
+    // Sans le champ en main, la page qui defile emporte la pastille : la pop-up se ferme.
+    await page.evaluate((s) => document.querySelector(s).scrollIntoView({ block: 'center' }), sel);
+    await page.waitForTimeout(300);
+    await page.tap(sel);
+    await page.waitForSelector('#gfHeurePop.is-rempli', { timeout: 10000 }).catch(() => null);
+    const rouverte = await page.evaluate(lireTelephone, HENRARD);
+    await page.evaluate(() => window.scrollBy(0, 120));
+    await page.waitForTimeout(400);
+    const defilee = await page.evaluate(lireTelephone, HENRARD);
+    ok(rouverte.ouverte && !rouverte.champEnMain && !defilee.ouverte && patchs.length === 0, '[D1] sans le champ en main, la page qui defile ferme la pop-up', { rouverte, defilee });
+    ok(erreurs.length === 0, '[J1] aucune erreur JS (au telephone)', erreurs);
+  } finally {
+    await ctx.close();
+  }
+}
+
 const MUTATIONS = [
   { nom: 'pop-au-coin', lettre: 'P1', scenarios: ['pop'], editions: [{ fichier: MODULE, de: '    var top = Math.max(marge, dessous ? a.bottom + 6 : a.top - 6 - h);', vers: '    var top = marge;' }] },
   { nom: 'goutte-lente', lettre: 'P2', scenarios: ['pop'], editions: [{ fichier: FEUILLE, de: '  .gf-hp.is-nait { animation: gfHpGoutte 260ms cubic-bezier(0.23, 1, 0.32, 1) both; }', vers: '  .gf-hp.is-nait { animation: gfHpGoutte 600ms ease both; }' }] },
@@ -1135,6 +1201,10 @@ const MUTATIONS = [
   { nom: 'groupe-juge-comme-seul', lettre: 'T1', scenarios: ['groupe'], editions: [{ fichier: MODULE, de: "    if (p.mode === 'groupe') { gfRemplirGroupe(r); return; }\n", vers: '' }] },
   // (un toucher sur une heure du groupe ne part pas)
   { nom: 'groupe-toucher-mort', lettre: 'T2', scenarios: ['groupe'], editions: [{ fichier: MODULE, de: '      if (r && ve && ve.passe) gfEnregistrerGroupe(r, point, offset, e);\n', vers: '' }] },
+  // (le clavier du telephone qui reduit la fenetre ferme la pop-up, champ en main)
+  { nom: 'telephone-clavier-ferme', lettre: 'D1', scenarios: ['telephone'], editions: [{ fichier: MODULE, de: "    if (p && actif && p.el.contains(actif) && actif.matches && actif.matches('[data-gf-hp-champ]')) { gfPoserPop(true); return; }\n", vers: '' }] },
+  // (la page qui defile laisse la pop-up en l air)
+  { nom: 'telephone-defile-reste', lettre: 'D1', scenarios: ['telephone'], editions: [{ fichier: MODULE, de: '    if (!p || (a && Math.abs(a.getBoundingClientRect().top - p.haut) < 8)) return;\n', vers: '    if (true) return;\n' }] },
 ];
 
 async function jouer(browser, noms) {
@@ -1148,6 +1218,7 @@ async function jouer(browser, noms) {
     if (nom === 'vagues') await scenarioVagues(browser);
     if (nom === 'minute') await scenarioMinute(browser);
     if (nom === 'groupe') await scenarioGroupe(browser);
+    if (nom === 'telephone') await scenarioTelephone(browser);
   }
 }
 
@@ -1157,7 +1228,7 @@ async function main() {
   const t0 = Date.now();
   try {
     if (!process.argv.includes('--contre-preuves')) {
-      await jouer(browser, liste(process.env.HG_SCENARIOS) || ['pop', 'souris', 'doigt', 'ligne', 'gele', 'fiche', 'vagues', 'minute', 'groupe']);
+      await jouer(browser, liste(process.env.HG_SCENARIOS) || ['pop', 'souris', 'doigt', 'ligne', 'gele', 'fiche', 'vagues', 'minute', 'groupe', 'telephone']);
     } else {
       console.log('[K] contre-preuves : chaque garde retiree fait rougir sa lettre');
       for (const m of MUTATIONS.filter((x) => !process.env.HG_MUTATIONS || liste(process.env.HG_MUTATIONS).includes(x.nom))) {

@@ -42101,6 +42101,10 @@ function renderQuickBookInner() {
   }
   if (!overlay.dataset.rsEcoute) {
     overlay.dataset.rsEcoute = '1';
+    // (Tab se lit sur window, a la capture : le piege a focus de la fenetre (containStaffDialog) l arrete
+    // sur document, et rsTouche ne le voyait jamais. Sans lui, Entree sur un bouton atteint a Tab
+    // creait la reservation au lieu de toucher ce bouton, 2026-11-23.)
+    window.addEventListener('keydown', (ev) => { if (ev.key === 'Tab') rsAuClavier = true; }, true);
     document.addEventListener('keydown', rsTouche);
     rsSuivreAppui(overlay);
   }

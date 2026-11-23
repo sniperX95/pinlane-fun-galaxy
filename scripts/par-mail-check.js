@@ -101,6 +101,7 @@ const MUTATIONS = [
   { nom: 'par-mail-exige-le-telephone', lettre: 'R', cible: '[R] Par mail, adresse vide : Créer cree le dossier', fichier: APP, de: '  if (!rvParMail(s)) return rvTelephoneValide(s.phone);', vers: '  return rvTelephoneValide(s.phone);' },
   { nom: 'contact-oublie-a-l-envoi', lettre: 'R', cible: '[R] Par mail, adresse vide : Créer cree le dossier', fichier: APP, de: "    ...(!simulation && rvParMail(s) ? { contact: 'mail' } : {}),\n", vers: '' },
   { nom: 'tab-vole-par-un-bouton', lettre: 'R', cible: '[R] Tab va du telephone au nom', fichier: APP, de: "onblur=\"rsTelFini(this)\">${reconnu ? '<span class=\"rv-tag\">reconnu</span>' : ''}</span></label>`;", vers: "onblur=\"rsTelFini(this)\">${reconnu ? '<span class=\"rv-tag\">reconnu</span>' : ''}<button type=\"button\" class=\"rs-tk-bascule\">Par mail</button></span></label>`;" },
+  { nom: 'tab-non-lu-sur-window', lettre: 'R', cible: '[R] Reserver pret a creer, Tab jusqu au bouton', fichier: APP, de: "    window.addEventListener('keydown', (ev) => { if (ev.key === 'Tab') rsAuClavier = true; }, true);\n", vers: '' },
   { nom: 'retour-perd-le-numero', lettre: 'R', cible: '[R] « Par téléphone » rend le champ du numero', fichier: APP, de: "  s.contact = rvParMail(s) ? 'tel' : 'mail';\n  s.telDemande = false;", vers: "  s.contact = rvParMail(s) ? 'tel' : 'mail';\n  s.phone = '+32 ';\n  s.telDemande = false;" },
   { nom: 'reserver-ignore-l-adresse-connue', lettre: 'R', cible: '[R] un client deja venu dans ce centre', fichier: APP, de: "    if (connue && rvEmailValide(connue) && !String(quickBookState.email || '').trim()) quickBookState.email = connue;", vers: '' },
   { nom: 'reserver-ignore-l-adresse-du-client', lettre: 'R', cible: '[R] un client qui a deja une adresse', fichier: APP, de: '    contact: rvContactInitial(prefill.phone, prefill.email),', vers: "    contact: 'tel'," },
@@ -671,15 +672,37 @@ async function scenarioR(browser) {
     await page.keyboard.press('Shift+Tab');
     const surBouton = await lireContact(page);
     ok(surBouton.focus === 'rsContactBascule', '[R] Maj+Tab depuis le telephone atteint le bouton « Par mail »', { focus: surBouton.focus });
+    // (Reserver est pret a creer : le nom et le numero tiennent. Entree sur un bouton atteint a Tab touche ce bouton,
+    // jamais « Créer » : Tab se lit sur window, avant le piege a focus de la fenetre, b50dcc7.)
+    const avantEntree = new Set(B.base.reservations.keys());
+    const envoisAvantEntree = creations(journal).length;
     await page.keyboard.press('Enter');
     await page.waitForTimeout(300);
     const auClavier = await lireContact(page);
+    await page.waitForTimeout(500);
+    const creeParEntree = [...B.base.reservations.keys()].filter((k) => !avantEntree.has(k)).length;
+    ok(creeParEntree === 0 && creations(journal).length === envoisAvantEntree && await page.evaluate(() => Boolean(document.querySelector('#quickBookOverlay:not(.hidden)'))),
+      '[R] Reserver pret a creer, Tab jusqu au bouton « Par mail » puis Entree : le bouton agit, AUCUNE reservation n est creee et la fenetre reste ouverte', { cree: creeParEntree, envois: creations(journal).length - envoisAvantEntree });
     ok(Boolean(auClavier.mail) && !auClavier.tel && auClavier.focus === 'qbEmail', '[R] Entree sur le bouton passe « Par mail » : le clavier suffit', { mail: auClavier.mail, focus: auClavier.focus });
     await page.click('#rsContactBascule');
     await page.waitForTimeout(300);
     const retour = await lireContact(page);
     ok(Boolean(retour.tel) && String(retour.tel.valeur).replace(/\D/g, '').endsWith('470998877') && Boolean(retour.bouton) && retour.bouton.texte === 'Par mail' && retour.focus === 'qbPhone',
       '[R] « Par téléphone » rend le champ du numero, le numero tape garde, le focus dedans', { tel: retour.tel, bouton: retour.bouton && retour.bouton.texte, focus: retour.focus });
+    // Le meme geste sur un bouton qui n a PAS son propre garde Entree (« Total » du ticket) : Tab l atteint, Entree le touche
+    // et ne cree rien. Sans la lecture de Tab sur window (b50dcc7), le piege a focus de la fenetre arretait Tab avant
+    // rsTouche, rsAuClavier restait faux et Entree creait la reservation.
+    await page.click('#qbPhone');
+    let atteint = '';
+    for (let i = 0; i < 14 && atteint !== 'rsL-total'; i += 1) { await page.keyboard.press('Tab'); atteint = await page.evaluate(() => (document.activeElement || {}).id || ''); }
+    const avantTotal = new Set(B.base.reservations.keys());
+    const envoisAvantTotal = creations(journal).length;
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(500);
+    const creeParTotal = [...B.base.reservations.keys()].filter((k) => !avantTotal.has(k)).length;
+    ok(atteint === 'rsL-total' && creeParTotal === 0 && creations(journal).length === envoisAvantTotal && await page.evaluate(() => rsLigneIci() === 'total' && Boolean(document.querySelector('#quickBookOverlay:not(.hidden)'))),
+      '[R] Reserver pret a creer, Tab jusqu au bouton « Total » puis Entree : le bouton agit (le total s ouvre), AUCUNE reservation n est creee', { atteint, cree: creeParTotal, envois: creations(journal).length - envoisAvantTotal });
+    await page.click('#qbPhone');
     // Un numero deja venu dans CE centre : « Par mail » montre son adresse, sans qu on la retape.
     await page.fill('#qbPhone', DOSSIERS.adresse.champs.phone);
     await page.keyboard.press('Tab');

@@ -499,15 +499,17 @@
         var j = Math.max(1, Number(w.joueursReels != null ? w.joueursReels : w.players) || Number(r.pax) || 1);
         var deja = parties.get(k);
         // (chaque vague garde sa cle, celle que le glisser deplace : l heure qui se touche les emporte)
-        if (deja) { deja.joueurs += j; deja.end = Math.max(deja.end, w.end); if (deja.groupe !== (Number(w.sousGroupe) || 0)) deja.groupe = 0; deja.unites.push(laserBlockUnitKey(w)); return; }
-        var e = { start: w.start, end: w.end, joueurs: j, aVolonte: Boolean(w.aVolonte), groupe: Number(w.sousGroupe) || 0, rang: Number(w.countIndex) || 1, unites: [laserBlockUnitKey(w)] };
+        // (deux groupes d un grand groupe qui partent ensemble font une case : elle garde leurs numeros, « groupes 1 et 2 »)
+        var sien = Number(w.sousGroupe) || 0;
+        if (deja) { deja.joueurs += j; deja.end = Math.max(deja.end, w.end); if (sien && deja.groupes.indexOf(sien) < 0) deja.groupes.push(sien); if (deja.groupe !== sien) deja.groupe = 0; deja.unites.push(laserBlockUnitKey(w)); return; }
+        var e = { start: w.start, end: w.end, joueurs: j, aVolonte: Boolean(w.aVolonte), groupe: sien, groupes: sien ? [sien] : [], rang: Number(w.countIndex) || 1, unites: [laserBlockUnitKey(w)] };
         parties.set(k, e);
         poser('laser_game', e);
       });
       // (un depart garde a volonte n est pas une partie de plus : il ne se compte pas)
       // (les departs d un grand groupe sont des sous-groupes, pas des parties : la partie est celle du plan)
       Array.from(parties.values()).filter(function (e) { return !e.aVolonte; }).sort(function (a, b) { return a.start - b.start; }).forEach(function (e, n, toutes) {
-        var enGroupes = toutes.some(function (x) { return x.groupe; });
+        var enGroupes = toutes.some(function (x) { return x.groupe || x.groupes.length; });
         e.partie = enGroupes ? e.rang : n + 1;
         e.parties = enGroupes ? Math.max.apply(null, toutes.map(function (x) { return x.rang; })) : toutes.length;
       });
@@ -715,6 +717,11 @@
   }
   var GF_UNITES = { billards: ['table', 'tables'], duckpin_bowling: ['piste', 'pistes'] };
   function gfPluriel(n, mots) { return n + ' ' + (n > 1 ? mots[1] : mots[0]); }
+  // « 1 et 2 », « 1, 2 et 3 » : les groupes d un grand groupe qui partent ensemble.
+  function gfGroupesEnMots(groupes) {
+    var l = groupes.slice().sort(function (a, b) { return a - b; });
+    return l.length > 1 ? l.slice(0, -1).join(', ') + ' et ' + l[l.length - 1] : String(l[0] || '');
+  }
   var GF_FAIT = '<svg class="gf-x__ok" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
   var GF_PLIS_MIN = 3;
   var gfFinisOuverts = false;
@@ -804,8 +811,9 @@
       // case dit les enfants)
       var desLeDebut = col.nature === 'plaine' && (e.journee || Math.abs(debut - g.heure) <= 0.25 + 1e-6);
       // LE SOUS-GROUPE D UN GRAND GROUPE (2026-11-22, lib/grand-groupe.js) : « groupe 1 » dans la case,
-      // a cote de ses joueurs ; la bulle le redit.
-      var groupe = e.groupe ? 'groupe ' + e.groupe : '';
+      // a cote de ses joueurs ; la bulle le redit. Deux groupes que le comptoir fait partir ensemble au laser
+      // (2026-11-23) : « groupes 1 et 2 », jamais une case sans numero.
+      var groupe = e.groupe ? 'groupe ' + e.groupe : e.groupes && e.groupes.length > 1 ? 'groupes ' + gfGroupesEnMots(e.groupes) : '';
       t = desLeDebut ? '' : e.libre && !gfSeuleActivite(g) ? 'Libre' : gpHeure(debut);
       if (col.nature === 'bowling') {
         var n = e.pistes ? e.pistes.length : 0;

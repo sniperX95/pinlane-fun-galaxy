@@ -6,7 +6,7 @@
 // groupe va où, et quand, à combien ». La page des groupes de la fenetre Reserver se joue ici dans une
 // sandbox (les VRAIES fonctions de assets/app-main.js, la place d un centre de 8 pistes et 30 armes), sur
 // des plans du serveur tels que la fenetre les recoit (lib/reserver-fenetre.js resumerPlanPourLaFenetre).
-// Le vrai ecran se joue a part, dans un navigateur (scripts/groupes-ecran-check.js).
+// Le vrai ecran se joue a part, dans un navigateur (scripts/grands-groupes-check.js --seul=B et --seul=I).
 //   [A] LE NOMBRE DE GROUPES : le plus petit que la place demande (60 joueurs, 30 armes : 2 ; 80 : 3),
 //       sinon celui que le comptoir a choisi, jamais moins que ce minimum, jamais plus que 12 ni que le groupe.
 //   [B] LA DEMANDE AU SERVEUR : le nombre choisi, les joueurs seulement quand ils font le groupe, les heures

@@ -35868,7 +35868,12 @@ function resumeModifsEdition() {
   Object.entries(heuresNouvellesEnvoyees() || {}).filter(([id]) => auDossier.has(id)).forEach(([id, heure]) => modifs.push(`${nomActiviteHeureEdition(id)} à ${heure}`));
   modifs.push(...modifsExtrasEdition());
   const prix = getEditPriceValue();
-  if (prix != null && Math.round(prix * 100) !== Math.round((Number(origine.price) || 0) * 100)) modifs.push(`Prix ${formatMoneyCentimes(origine.price)} → ${formatMoneyCentimes(prix)}`);
+  // UN GRAND GROUPE REFUSE PAR LE SERVEUR N ANNONCE AUCUN PRIX (2026-11-23) : le prix de la barre est celui que la
+  // console estime seule, et tant que le serveur refuse l heure d un groupe, ce prix-la n est celui de rien
+  // (« 1 068 € → 990 € » pour un dossier qui ne s enregistre pas).
+  const verdictGroupes = verdictEdition();
+  const groupesRefuses = Boolean(e.groupes && grandGroupeEdition() && verdictGroupes.pour === e && !verdictGroupes.enCours && verdictGroupes.resultat && verdictGroupes.resultat.refus);
+  if (!groupesRefuses && prix != null && Math.round(prix * 100) !== Math.round((Number(origine.price) || 0) * 100)) modifs.push(`Prix ${formatMoneyCentimes(origine.price)} → ${formatMoneyCentimes(prix)}`);
   if (change('name')) modifs.push('Nom modifié');
   // (le telephone et l adresse tels qu ils partiront : « Par mail » retire un numero, « par mail » ou « / »
   // d avant ne changent pas sans geste, 2026-11-23)
@@ -36319,6 +36324,9 @@ function peindreVerdictEdition() {
     zone.textContent = texte;
     zone.hidden = !texte;
   }
+  // (la barre du bas se repeint avec le verdict : le prix d un grand groupe refuse en disparait, resumeModifsEdition)
+  const barreModifs = document.getElementById('editModifs');
+  if (barreModifs && state.editState) { barreModifs.innerHTML = resumeModifsEditionHtml(); barreModifs.classList.toggle('is-vide', !resumeModifsEdition().length); }
   // Le refus d une heure se lit a son activite (son champ en rouge, la phrase dessous).
   peindreRefusHeuresEdition();
   // (celui d une activite en plus, a sa rangee ; son heure et son prix, ceux que le serveur ecrirait)

@@ -98,6 +98,7 @@ const lf = (t) => String(t).split('\r\n').join('\n');
 const APP = 'assets/app-main.js';
 const CSS = 'assets/pinlane-staff.css';
 const PLANNING = 'assets/pinlane-planning-global.js';
+const PLANNING_CSS = 'assets/pinlane-planning-global.css';
 const MOTEUR = 'lib/ops-engine.js';
 const GG = 'lib/grand-groupe.js';
 const OPS = 'lib/reservation-ops.js';
@@ -162,6 +163,9 @@ const MUTATIONS = [
   // [I] Modifier : le programme d un groupe revient a cote de son nom (cases coupees, bouton qui inverse sous la
   // rangee) ; le bowling du programme redit « 1er groupe, 2e groupe » au lieu du vrai numero.
   { nom: 'modifier-programme-a-cote', lettre: 'I', fichier: CSS, de: 'body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-prog { flex: 1 1 100%; order: 2;', vers: 'body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-prog { flex: 1 1 320px; order: 0;' },
+  // [I] la barre de Modifier annonce un prix que le serveur n ecrirait pas ; les pastilles du planning complet debordent de leur colonne.
+  { nom: 'prix-annonce-malgre-refus', lettre: 'I', fichier: APP, de: '  if (!groupesRefuses && prix != null && Math.round(prix * 100)', vers: '  if (prix != null && Math.round(prix * 100)' },
+  { nom: 'pastilles-qui-debordent', lettre: 'I', fichier: PLANNING_CSS, de: 'line-height: 17px; white-space: normal; overflow-wrap: anywhere; }', vers: 'line-height: 17px; white-space: nowrap; }' },
   { nom: 'programme-groupes-ordinaux', lettre: 'I', fichier: APP, de: "${Number(etape.sousGroupe) > 0 ? `Groupe ${Number(etape.sousGroupe)}` : `${index ? `${index + 1}e` : '1er'} groupe`} à", vers: "${index ? `${index + 1}e` : '1er'} groupe à" },
 ];
 
@@ -981,6 +985,34 @@ async function principal() {
           && [1, 2].every((n) => cases.some((t) => new RegExp(`^Bowling de 16:30 à 17:30 · groupe ${n} ·`).test(t)))
           && [3, 4].every((n) => cases.some((t) => new RegExp(`^Bowling de 15:30 à 16:30 · groupe ${n} ·`).test(t))),
         '[I] le planning complet marque chaque groupe, « groupes 1 et 2 » sur la partie de laser qu ils jouent ensemble', cases);
+        // [I] LE PLANNING COMPLET TIENT A 1280 PUIS A 1024 (2026-11-23) : « 15 joueurs » et « groupes 1 et 2 » debordaient
+        // de leur colonne de quelques pixels. Chaque mot d une case reste dans sa colonne (et sa case), a 1366, 1280 et
+        // 1024 de large ; le texte n est jamais tronque avec des points de suspension ni a une hauteur qui l ecrase.
+        const largeurInitiale = page.viewportSize();
+        const sortiesPlanning = {};
+        for (const largeur of [1366, 1280, 1024]) {
+          await page.setViewportSize({ width: largeur, height: largeurInitiale.height });
+          await page.waitForTimeout(500);
+          if (process.env.GG_CAPTURE_DIR) await page.screenshot({ path: require('path').join(process.env.GG_CAPTURE_DIR, `planning-${largeur}.png`) });
+          sortiesPlanning[largeur] = r ? await page.evaluate((id) => {
+            const rang = document.querySelector(`.gf-r[data-gf-id="${id}"]`);
+            const sorties = [];
+            if (!rang) return ['rang absent'];
+            rang.querySelectorAll('.gf-x').forEach((x) => {
+              const colonne = (x.closest('.gf-a') || x).getBoundingClientRect();
+              const feuilles = Array.from(x.querySelectorAll('*')).filter((e) => e.children.length === 0 && (e.textContent || '').trim());
+              feuilles.forEach((e) => {
+                const b = e.getBoundingClientRect();
+                const coupe = e.scrollWidth > e.clientWidth + 1 && getComputedStyle(e).display !== 'inline';
+                if (b.width > 0 && (b.right > colonne.right + 0.5 || b.left < colonne.left - 0.5 || coupe)) sorties.push(`${(e.textContent || '').trim().slice(0, 30)} (${Math.round(b.right - colonne.right)}px, colonne ${Math.round(colonne.width)}px)`);
+              });
+            });
+            return sorties;
+          }, r.id) : [];
+        }
+        ok(Object.values(sortiesPlanning).every((l) => l.length === 0), '[I] le planning complet tient dans ses colonnes a 1366, 1280 et 1024 de large : « 15 joueurs » et « groupes 1 et 2 » ne debordent pas', sortiesPlanning);
+        await page.setViewportSize(largeurInitiale);
+        await page.waitForTimeout(300);
         await capture(page, '60-en-4-groupes-planning');
         const fiche = r ? await ouvrirLaFiche(page, r.id) : { groupes: '' };
         ok(/4 groupes qui tournent/.test(fiche.groupes) && /Groupe 1, 15 joueurs : laser 15:30, bowling 16:30/.test(fiche.groupes) && /Groupe 4, 15 joueurs : bowling 15:30, laser 16:30/.test(fiche.groupes),
@@ -1035,6 +1067,12 @@ async function principal() {
           // Une heure avant l ouverture : la case du groupe 1 le dit en rouge, avant « Enregistrer ».
           await page.evaluate((i) => { closePos(); openPos(i); setTab('modifier'); }, r.id);
           await page.waitForSelector('#editGroupes .fm-gg-l', { timeout: 12000 });
+          // [I] UN PRIX QUE LE SERVEUR N ECRIRAIT PAS NE S ANNONCE PAS (2026-11-23) : le prix du champ differe de celui du
+          // dossier (l estimation de la console seule, « 1 068 € → 990 € » vu au comptoir) ; avant tout refus la barre le
+          // dit, des que le serveur refuse l heure d un groupe elle n annonce plus aucun prix.
+          await page.evaluate((prix) => { state.editState.prixFige = true; state.editState.price = String(prix); majModifsEdition(); }, Number(r.price) + 78);
+          const barrePrix = await texte(page, '#editModifs');
+          ok(/Prix [\d\s.,]+ € → [\d\s.,]+ €/.test(barrePrix), '[I] Modifier : avant tout refus, la barre du bas annonce le prix du champ', barrePrix);
           // (l heure se tape comme au comptoir, puis le comptoir passe au champ suivant du bloc, l heure du bowling
           // du groupe 1. Le champ heure de Chromium a trois arrets de tabulation, les heures, les minutes et son
           // horloge : une seule tabulation apres l heure restait dans le champ, la frappe restait en cours et le
@@ -1045,6 +1083,9 @@ async function principal() {
           await page.waitForSelector('#editGroupes .fm-gg-c.is-ko[data-groupe="1"][data-activite="laser_game"]', { timeout: 15000 }).catch(() => {});
           const ko = await texte(page, '#editGroupes .fm-gg-l[data-groupe="1"] .fm-gg-ko');
           ok(/Groupe 1 : le laser à 08:00 commence avant l’ouverture \(\d{2}:\d{2}\)\./.test(ko), '[I] Modifier : le laser du groupe 1 a 08:00, sa case est rouge et dit pourquoi, avant « Enregistrer »', ko);
+          const barreRefus = await texte(page, '#editModifs');
+          ok(/commence avant l’ouverture/.test(await texte(page, '#editVerdict') + ko) && !/Prix/.test(barreRefus) && /Groupe 1 : laser/.test(barreRefus),
+            '[I] Modifier : tant que l heure d un groupe est refusee, la barre du bas n annonce aucun prix (le reste y est)', { barreRefus, verdict: await texte(page, '#editVerdict') });
           await capture(page, '60-en-4-groupes-modifier-refus');
           await page.evaluate(() => { if (typeof closePos === 'function') closePos(); });
         }

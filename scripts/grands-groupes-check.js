@@ -1012,8 +1012,13 @@ async function principal() {
           // Une heure avant l ouverture : la case du groupe 1 le dit en rouge, avant « Enregistrer ».
           await page.evaluate((i) => { closePos(); openPos(i); setTab('modifier'); }, r.id);
           await page.waitForSelector('#editGroupes .fm-gg-l', { timeout: 12000 });
-          await page.locator('#editGg1-laser_game').fill('08:00');
-          await page.keyboard.press('Tab');
+          // (l heure se tape comme au comptoir, puis le comptoir passe au champ suivant du bloc, l heure du bowling
+          // du groupe 1. Le champ heure de Chromium a trois arrets de tabulation, les heures, les minutes et son
+          // horloge : une seule tabulation apres l heure restait dans le champ, la frappe restait en cours et le
+          // bloc ne se repeignait pas, par choix, groupesSortieEdition ; la barre du bas disait deja le refus.)
+          await page.locator('#editGg1-laser_game').focus();
+          await page.keyboard.type('0800');
+          await page.locator('#editGg1-bowling').click();
           await page.waitForSelector('#editGroupes .fm-gg-c.is-ko[data-groupe="1"][data-activite="laser_game"]', { timeout: 15000 }).catch(() => {});
           const ko = await texte(page, '#editGroupes .fm-gg-l[data-groupe="1"] .fm-gg-ko');
           ok(/Groupe 1 : le laser à 08:00 commence avant l’ouverture \(\d{2}:\d{2}\)\./.test(ko), '[I] Modifier : le laser du groupe 1 a 08:00, sa case est rouge et dit pourquoi, avant « Enregistrer »', ko);

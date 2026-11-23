@@ -10185,10 +10185,16 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv.rs .rs-texte.rs-heure-refus { color: var(--danger); font-weight: 600; }
 /* UN GRAND GROUPE (2026-11-22, refait le 2026-11-23) : une rangee par groupe, ses joueurs, son programme
    dans l ordre de ses heures, chaque heure a toucher (rsRangeeDuGroupeHtml). Le bowling et le laser gardent
-   les teintes de leurs blocs ; ce qui coince se dit en rouge, sur la case. */
+   les teintes de leurs blocs ; ce qui coince se dit en rouge, sur la case.
+   4 GROUPES TIENNENT A L ECRAN (2026-11-23, le premier passage au navigateur) : a 1366 x 768, 60 joueurs en
+   4 groupes debordaient de 49 a 83 px, le total et « Proposer les heures » sous le bord, et « jusqu’à 15:55 »
+   ou « pistes 4 à 6 » passaient sur deux lignes dans 66 px. Les touches des joueurs a 44 px (la taille du
+   comptoir), l heure a 64 px et des rangees moins hautes : le detail tient sur une ligne, les rangees font
+   63 px au lieu de 86. */
 .qb-modal.rv.rs .rs-gg-nv { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; min-width: 0; }
 .qb-modal.rv.rs .rs-gg-liste { display: flex; flex-direction: column; }
-.qb-modal.rv.rs .rs-gg-l { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 0; }
+.qb-modal.rv.rs .rs-gg-l { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 5px 0; }
+.qb-modal.rv.rs .rs-gg-l .rs-pas button { width: 44px; }
 .qb-modal.rv.rs .rs-gg-l + .rs-gg-l { border-top: 1px solid var(--rs-ligne); }
 .qb-modal.rv.rs .rs-gg-q { flex: 0 0 76px; font-size: 15px; font-weight: 600; line-height: 1.2; color: var(--text); }
 .qb-modal.rv.rs .rs-gg-j { flex: none; display: inline-flex; align-items: center; gap: 8px; }
@@ -10204,9 +10210,9 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv.rs .rs-gg-a b { font-size: 15px; font-weight: 600; line-height: 1.2; color: var(--text); }
 .qb-modal.rv.rs .rs-gg-a small { font-size: 13px; line-height: 1.3; color: var(--muted); overflow-wrap: anywhere; }
 .qb-modal.rv.rs .rs-gg-c.is-ko .rs-gg-a small { color: var(--danger); font-weight: 600; }
-.qb-modal.rv.rs .rs-gg-h { flex: none; display: inline-flex; align-items: center; justify-content: center; min-width: 72px; height: 40px; padding: 0 8px; border-radius: 8px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--rs-ligne-forte); font-size: 17px; font-weight: 600; line-height: 1; color: var(--text); font-variant-numeric: tabular-nums; cursor: text; }
+.qb-modal.rv.rs .rs-gg-h { flex: none; display: inline-flex; align-items: center; justify-content: center; min-width: 64px; height: 40px; padding: 0 8px; border-radius: 8px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--rs-ligne-forte); font-size: 17px; font-weight: 600; line-height: 1; color: var(--text); font-variant-numeric: tabular-nums; cursor: text; }
 .qb-modal.rv.rs .rs-gg-h:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.qb-modal.rv.rs .rs-gg-c .rs-gg-champ { flex: none; width: 72px; height: 40px; font-size: 17px; }
+.qb-modal.rv.rs .rs-gg-c .rs-gg-champ { flex: none; width: 64px; height: 40px; font-size: 17px; }
 .qb-modal.rv.rs .rs-gg-inv { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 10px; background: var(--rs-touche); color: var(--text); }
 .qb-modal.rv.rs .rs-gg-inv svg { width: 20px; height: 20px; }
 .qb-modal.rv.rs .rs-gg-inv:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

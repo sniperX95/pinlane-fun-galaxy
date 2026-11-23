@@ -33470,7 +33470,15 @@ function getEditProgramItems() {
     // Le duckpin : ses pistes suivent ses joueurs et le choix de l equipe, et le detail de la rangee
     // les dit avant l enregistrement (le serveur les recompte, lib/visit-program.js).
     const pistes = pistesDuckpin(getCenterActivity(id), item.participants, reglages.pistesChoisies);
-    if (pistes) { item.units = pistes.n; item.sessions = pistes.tours; }
+    // UN DOSSIER ENREGISTRE S OUVRE TEL QUEL (2026-11-23) : ses pistes et ses tours ne se recalculent que si
+    // l equipe change les joueurs du duckpin ou son choix de pistes ; sinon « 2 pistes, 2 tours de 1h »
+    // devenait, des l ouverture, le conseil du centre pour ce groupe.
+    const enregistre = (state.selectedRes?.program?.items || []).find(line => line.activityId === id);
+    const joueursEnregistres = enregistre ? (Number(enregistre.participants) > 0 ? Number(enregistre.participants) : Number(state.selectedRes.pax)) : 0;
+    const inchange = Boolean(pistes && enregistre && Number(enregistre.units) > 0 && joueursEnregistres === Number(item.participants)
+      && Math.trunc(Number(enregistre.pistesChoisies) || 0) === Math.trunc(Number(reglages.pistesChoisies) || 0));
+    if (inchange) { item.units = Number(enregistre.units); if (Number(enregistre.sessions) > 0) item.sessions = Number(enregistre.sessions); }
+    else if (pistes) { item.units = pistes.n; item.sessions = pistes.tours; }
     if (id === 'arcade_time') {
       const saved=(state.selectedRes?.program?.items || []).find(line=>line.activityId===id);
       if (editArcadeTimingChanged() || (saved && item.participants !== Number(saved.participants || state.selectedRes.pax))) delete item.arcadeOffer;

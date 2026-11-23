@@ -37267,22 +37267,21 @@ function peindreGroupesEdition() {
   if (repose) repose.focus({ preventScroll: true });
 }
 
-// Apres le verdict a blanc : le bloc se repeint, sauf pendant une frappe dans l un de ses champs (le champ
-// tape resterait sous les doigts ; la sortie du champ le repeint, groupesSortieEdition).
+// Apres le verdict a blanc : le bloc se repeint, sauf sous le champ ou une frappe est en cours (le champ tape
+// resterait sous les doigts ; sa sortie repeint le bloc, groupesSortieEdition). Un autre champ du bloc, atteint
+// d une tabulation, retrouve son focus : la case qui coince se voit sans quitter le bloc.
 function peindreGroupesApresVerdictEdition() {
   const zone = document.getElementById('editGroupes');
   const actif = document.activeElement;
-  if (zone && actif && zone.contains(actif) && actif.tagName === 'INPUT') return;
+  const cle = zone && actif && zone.contains(actif) && actif.getAttribute ? actif.getAttribute('data-pl-focus') : '';
+  if (cle && state.editState && state.editState.groupesFrappe === cle) return;
   peindreGroupesEdition();
 }
 
+// La sortie d un champ du bloc : la frappe est finie, le bloc se repeint (le champ qui prend le focus le garde).
 function groupesSortieEdition() {
-  setTimeout(() => {
-    const zone = document.getElementById('editGroupes');
-    const actif = document.activeElement;
-    if (zone && actif && zone.contains(actif) && actif.tagName === 'INPUT') return;
-    peindreGroupesEdition();
-  }, 0);
+  if (state.editState) state.editState.groupesFrappe = '';
+  setTimeout(() => peindreGroupesApresVerdictEdition(), 0);
 }
 
 // Un geste du bloc : l etat, puis le bloc, le prix et la barre du bas (et le verdict a blanc).
@@ -37305,6 +37304,8 @@ function groupesNombreEdition(delta) {
 
 function groupesTailleEdition(n, valeur, repeindre = false) {
   const e = state.editState;
+  // (une frappe dans le champ, meme vide ou a moitie tapee : le verdict ne le repeint pas sous les doigts)
+  if (e && !repeindre) e.groupesFrappe = `fiche.edit.groupe.${n}.joueurs`;
   const g = grandGroupeEdition();
   const lu = Math.trunc(Number(valeur));
   if (!e || !g || n < 1 || n > g.nombre || !Number.isFinite(lu) || lu < 1) return;
@@ -37342,6 +37343,8 @@ function groupesEgalesEdition() {
 // L heure d un groupe a une activite : les heures du bloc, celle-ci changee, deviennent celles du comptoir.
 function groupesHeureEdition(n, id, heure) {
   const e = state.editState;
+  // (une frappe dans le champ, meme a moitie tapee : le verdict ne le repeint pas sous les doigts)
+  if (e) e.groupesFrappe = `fiche.edit.groupe.${n}.${id}`;
   const g = grandGroupeEdition();
   if (!e || !g || n < 1 || n > g.nombre || !g.ids.includes(id)) return;
   const valeur = /^\d{2}:\d{2}$/.test(String(heure || '').slice(0, 5)) ? String(heure).slice(0, 5) : '';

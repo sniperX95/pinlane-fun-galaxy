@@ -28,6 +28,9 @@
 //       planning.
 //   [I] LE VERDICT : apres un calcul a blanc en 3 groupes, le bloc montre les heures et les joueurs que le
 //       serveur ecrirait.
+//   [J] LE REPEINT : le verdict ne repeint jamais le bloc sous le champ ou une frappe est en cours (meme
+//       vide) ; une tabulation vers un autre champ du bloc finit la frappe, et le bloc se repeint (la case qui
+//       coince se voit sans quitter le bloc).
 //
 // CONTRE-PREUVES : `--contre-preuves` rejoue tout sur du code casse expres, une mutation a la fois (en
 // memoire, le disque n est jamais touche), et exige que chacune rougisse sa lettre.
@@ -47,7 +50,7 @@ const FONCTIONS = [
   'departsEdition', 'verdictEdition', 'dossierEcritDuVerdict', 'lireVerdictEdition',
   'groupesDuPlanEdition', 'joueursDesGroupesEdition', 'grandGroupeEdition', 'groupesDOrigineEdition', 'demandeGroupesEdition',
   'groupesIncompletsEdition', 'modifsGroupesEdition', 'coincentEdition', 'plafondDUnGroupeEdition', 'rangeeGroupeEditionHtml',
-  'groupesEditionHtml', 'peindreGroupesEdition', 'apresGesteGroupesEdition', 'groupesNombreEdition', 'groupesTailleEdition',
+  'groupesEditionHtml', 'peindreGroupesEdition', 'peindreGroupesApresVerdictEdition', 'groupesSortieEdition', 'apresGesteGroupesEdition', 'groupesNombreEdition', 'groupesTailleEdition',
   'groupesTaillePasEdition', 'groupesEgalesEdition', 'groupesHeureEdition', 'groupesInverserEdition', 'groupesHeuresDuPlanEdition',
   'editionReplanifie', 'editionChangeLePrix', 'resumeModifsEdition', 'preparerModificationEdition',
 ];
@@ -71,9 +74,9 @@ function constante(source, tete) {
 // seul le bloc des groupes est juge ici.
 const ENVIRONNEMENT = `
 var state = { editState: null, selectedRes: null, editError: '', laneStatuses: {} };
-var document = { activeElement: null, getElementById: () => null, querySelectorAll: () => [], querySelector: () => null };
+var document = { __zones: {}, activeElement: null, getElementById: (id) => document.__zones[id] || null, querySelectorAll: () => [], querySelector: () => null };
 var rafraichi = 0;
-function setTimeout() {}
+function setTimeout(faire) { if (typeof faire === 'function') faire(); }
 function setEditError(m) { state.editError = m; }
 function refreshEditPreview() { rafraichi += 1; }
 function formuleChangeeEdition() { return Boolean(state.editState && state.editState.autreFormule); }
@@ -362,6 +365,23 @@ function jouer(source) {
     ok('I', rangee(page, 3) && rangee(page, 3).dit === 'Groupe 3 · 20 joueurs · Laser 17:00 → Bowling 17:30' && !/id="editGgCalcul"/.test(page),
       '[I] la rangee du groupe 3 : laser 17:00 puis bowling 17:30', rangee(page, 3) && rangee(page, 3).dit);
   });
+
+  section('J', () => {
+    ouvrir();
+    // Le bloc pose, le focus dans le champ du laser du groupe 2 : la frappe y est en cours.
+    appel("document.__zones = { editGroupes: { outerHTML: '', contains: (x) => x === document.activeElement } }; document.activeElement = { tagName: 'INPUT', getAttribute: () => 'fiche.edit.groupe.2.laser_game' };");
+    appel("groupesHeureEdition(2, 'laser_game', '15:40')");
+    appel("document.__zones.editGroupes.outerHTML = ''; peindreGroupesApresVerdictEdition();");
+    ok('J', appel('document.__zones.editGroupes.outerHTML') === '', '[J] pendant la frappe dans le laser du groupe 2, le verdict ne repeint pas le bloc sous les doigts');
+    appel("document.activeElement = { tagName: 'INPUT', getAttribute: () => 'fiche.edit.groupe.2.bowling' }; groupesSortieEdition();");
+    ok('J', /class="fm-gg-l/.test(appel('document.__zones.editGroupes.outerHTML')) && !c.state.editState.groupesFrappe,
+      '[J] une tabulation vers le bowling du groupe 2 : la frappe est finie, le bloc se repeint', { frappe: c.state.editState.groupesFrappe });
+    appel("document.__zones.editGroupes.outerHTML = ''; peindreGroupesApresVerdictEdition();");
+    ok('J', /class="fm-gg-l/.test(appel('document.__zones.editGroupes.outerHTML')), '[J] le verdict suivant repeint le bloc : la case qui coince se voit sans quitter le bloc');
+    appel("groupesTailleEdition(1, '', false); document.activeElement = { tagName: 'INPUT', getAttribute: () => 'fiche.edit.groupe.1.joueurs' }; document.__zones.editGroupes.outerHTML = ''; peindreGroupesApresVerdictEdition();");
+    ok('J', appel('document.__zones.editGroupes.outerHTML') === '', '[J] les joueurs du groupe 1 effaces pour en taper d autres : le verdict ne remet pas l ancien nombre sous les doigts');
+    appel('document.__zones = {}; document.activeElement = null;');
+  });
   return rouges;
 }
 
@@ -388,6 +408,10 @@ const MUTATIONS = [
   { nom: 'inverser-sans-effet', lettre: 'H', de: '  heures[n - 1] = { ...heures[n - 1], [a]: heures[n - 1][b], [b]: heures[n - 1][a] };\n  e.groupes = { ...(e.groupes || {}), nombre: g.nombre, heures };', vers: '  e.groupes = { ...(e.groupes || {}), nombre: g.nombre, heures };' },
   { nom: 'heures-du-plan-sans-effet', lettre: 'H', de: '  const { heures: _h, ...reste } = e.groupes;\n  e.groupes = reste;', vers: '  const { heures: _h, ...reste } = e.groupes;' },
   { nom: 'verdict-ignore', lettre: 'I', de: '  const plan = groupesDuPlanEdition(dossierEcritDuVerdict() || r);', vers: '  const plan = groupesDuPlanEdition(r);' },
+  { nom: 'repeint-bloque-par-le-focus', lettre: 'J', de: '  if (cle && state.editState && state.editState.groupesFrappe === cle) return;', vers: '  if (cle) return;' },
+  { nom: 'frappe-repeinte', lettre: 'J', de: '  if (e) e.groupesFrappe = `fiche.edit.groupe.${n}.${id}`;\n', vers: '' },
+  { nom: 'frappe-des-joueurs-repeinte', lettre: 'J', de: '  if (e && !repeindre) e.groupesFrappe = `fiche.edit.groupe.${n}.joueurs`;\n', vers: '' },
+  { nom: 'sortie-garde-la-frappe', lettre: 'J', de: "  if (state.editState) state.editState.groupesFrappe = '';\n", vers: '' },
 ];
 
 const source = fs.readFileSync(APP, 'utf8');

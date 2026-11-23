@@ -2423,16 +2423,14 @@
   }
 
   // ---- L ENREGISTREMENT ----
-  // Une heure : le chemin du glisser des plannings, une etape apres l autre (envoyerDeplacementActivite,
-  // PATCH activityMove), puis le toast « Annuler », qui la remet ou elle etait par le meme chemin.
+  // Une heure : le chemin du glisser des plannings (envoyerDeplacementActivite, PATCH activityMove ; les
+  // vagues d une partie laser ensemble, envoyerDeplacementsActivite, PATCH activityMoves), puis le toast
+  // « Annuler », qui la remet ou elle etait par le meme chemin.
   var gfEcritures = new Set();
-  // La phrase du moteur, sans ce qui ne vaut que pour un autre ecran. (« Ce créneau vient de changer.
-  // Merci de relancer la recherche » est celle du formulaire en ligne : le moteur la rend aussi quand
-  // les pistes d un groupe deplace ne tiennent pas a la nouvelle heure, lib/database.js
-  // ensureAssignableLanes ; au comptoir, elle se dit avec les pistes.)
+  // La phrase du serveur, sans ce qui ne vaut que pour un autre ecran. (Des pistes prises a l heure d un
+  // groupe deplace, le serveur les dit lui-meme au comptoir, api/staff-reservations.js PHRASE_PISTES_PRISES.)
   function gfPhraseErreur(erreur) {
-    var phrase = String((erreur && erreur.message) || 'Le serveur n’a pas donné de motif.').replace(/\s*(Cet horaire reste inchangé|Les autres horaires restent inchangés)\.\s*$/, '').trim();
-    return /^Ce créneau vient de changer\./.test(phrase) ? 'Pas de piste libre pour ce groupe à cette heure.' : phrase;
+    return String((erreur && erreur.message) || 'Le serveur n’a pas donné de motif.').replace(/\s*(Cet horaire reste inchangé|Les autres horaires restent inchangés)\.\s*$/, '').trim();
   }
   // Ce que le serveur a ecrit devient le dossier de l ecran, garde le temps que la relecture le rattrape.
   function gfAdopter(dossier, champs) {
@@ -2444,19 +2442,24 @@
     var fiche = document.getElementById('posOverlay');
     if (peint && !peint.fiche && fiche && !fiche.classList.contains('hidden') && state.selectedRes && Number(state.selectedRes.id) === Number(dossier.id) && typeof renderPos === 'function') renderPos();
   }
-  // Un refus : rien n est ecrit (ou seulement les etapes deja passees, celles d un laser en deux vagues) ;
-  // un collegue a change le dossier, sa version devient celle de l ecran.
-  function gfApresRefus(erreur, champs) {
-    if (erreur && erreur.derniere) gfAdopter(erreur.derniere, champs);
-    else if (erreur && erreur.reservation && typeof applyOptimisticReservation === 'function') applyOptimisticReservation(erreur.reservation);
+  // Un refus : rien n est ecrit ; un collegue a change le dossier, sa version devient celle de l ecran.
+  function gfApresRefus(erreur) {
+    if (erreur && erreur.reservation && typeof applyOptimisticReservation === 'function') applyOptimisticReservation(erreur.reservation);
   }
+  // (les vagues d une partie laser partent ensemble : toutes ou aucune, le serveur les juge et les ecrit
+  // d un bloc)
   function gfDeplacerEtapes(r, moves) {
-    var derniere = null;
-    return moves.reduce(function (suite, move) {
-      return suite.then(function () {
-        return envoyerDeplacementActivite(derniere || r, move).then(function (payload) { derniere = payload && payload.reservation; });
-      });
-    }, Promise.resolve()).then(function () { return derniere; }, function (erreur) { if (erreur && typeof erreur === 'object') erreur.derniere = derniere; throw erreur; });
+    var envoi = moves.length > 1 ? envoyerDeplacementsActivite(r, moves) : envoyerDeplacementActivite(r, moves[0]);
+    return envoi.then(function (payload) { return payload && payload.reservation; });
+  }
+  // Ce qui n a pas bouge, dit avec la vague qui coince (`rang` du refus) quand la partie en a plusieurs.
+  function gfRefusDeLHeure(erreur, point, moves, quand, titre) {
+    if (typeof showPlanningMoveNotice !== 'function') return;
+    var lu = (erreur && erreur.payload) || {};
+    // (un groupe qui s est mis a jouer, redit par le serveur : la phrase de la pop-up)
+    if (lu.code === 'groupe_en_jeu') { showPlanningMoveNotice('Ne bouge pas', gfPhraseErreur(erreur), 'warning'); return; }
+    var vague = moves.length > 1 && Number.isInteger(lu.rang) && moves[lu.rang] ? ', groupe ' + (Number(String(moves[lu.rang].unitKey).split('.')[1]) || lu.rang + 1) + ' sur ' + moves.length : '';
+    showPlanningMoveNotice(titre, point.nom + vague + quand + ' : ' + gfPhraseErreur(erreur) + (moves.length > 1 ? ' Aucun groupe n’a bougé.' : ''), 'warning');
   }
   // (un groupe qui s est mis a jouer depuis l ouverture de la pop-up, ou pendant le glisser, ne bouge plus)
   function gfGeleAvantEcriture(r) {
@@ -2476,8 +2479,8 @@
       if (typeof toastAnnulable === 'function') toastAnnulable(dit, function () { gfDefaireHeure(ecrit.id, point, offset, retour); });
       return ecrit;
     }, function (erreur) {
-      gfApresRefus(erreur, ['lanes', 'opsPlan']);
-      if (typeof showPlanningMoveNotice === 'function') showPlanningMoveNotice('Pas déplacé', point.nom + ' à ' + gpHeure(d + offset) + ' : ' + gfPhraseErreur(erreur), 'warning');
+      gfApresRefus(erreur);
+      gfRefusDeLHeure(erreur, point, moves, ' à ' + gpHeure(d + offset), 'Pas déplacé');
       return null;
     }).then(function (x) { gfEcritures.delete(Number(r.id)); return x; });
   }
@@ -2489,8 +2492,8 @@
       gfAdopter(ecrit, ['lanes', 'opsPlan']);
       if (typeof toast === 'function') toast((r.name || 'Le groupe') + ' : ' + point.nom + ' revient à ' + gpHeure(point.debut + offset) + '.');
     }, function (erreur) {
-      gfApresRefus(erreur, ['lanes', 'opsPlan']);
-      if (typeof showPlanningMoveNotice === 'function') showPlanningMoveNotice('Pas remis', point.nom + ' : ' + gfPhraseErreur(erreur), 'warning');
+      gfApresRefus(erreur);
+      gfRefusDeLHeure(erreur, point, retour, '', 'Pas remis');
     }).then(function () { gfEcritures.delete(Number(id)); });
   }
   // LA LIGNE ENTIERE : l heure du dossier change par le chemin de « Modifier » (son enregistrement,
@@ -2531,13 +2534,13 @@
           gfAdopter(rendu && rendu.reservation, champs);
           if (typeof toast === 'function') toast(nom + ' : réservation remise à ' + avant + '.');
         }, function (erreur) {
-          gfApresRefus(erreur, champs);
+          gfApresRefus(erreur);
           if (typeof showPlanningMoveNotice === 'function') showPlanningMoveNotice('Pas remis', nom + ' : ' + gfPhraseErreur(erreur), 'warning');
         }).then(function () { gfEcritures.delete(Number(courant.id)); });
       });
       return ecrit;
     }, function (erreur) {
-      gfApresRefus(erreur, champs);
+      gfApresRefus(erreur);
       if (typeof showPlanningMoveNotice === 'function') showPlanningMoveNotice('Pas déplacé', nom + ' à ' + heure + ' : ' + gfPhraseErreur(erreur), 'warning');
       return null;
     }).then(function (x) { gfEcritures.delete(Number(r.id)); return x; });

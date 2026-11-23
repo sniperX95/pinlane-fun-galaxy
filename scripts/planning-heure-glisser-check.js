@@ -36,6 +36,16 @@
 //        rien ne s ecrit ;
 //   [F1] un groupe qui joue deja ne bouge pas : sa pop-up le dit sans proposer d heure, ni son heure
 //        ni sa ligne ne se levent, rien ne s ecrit ; le serveur le redit (`gele`) ;
+//   [F2] une console restee ouverte sur un etat perime envoie quand meme : le PATCH qui deplace une
+//        activite (activityMove ou activityMoves) et le calcul a blanc de « Modifier » refusent ce
+//        groupe avec la phrase de la pop-up, rien ne s ecrit ;
+//   [W1] les deux groupes d une partie laser lancee ensemble (Ethan, 40 joueurs) bougent en bloc : un
+//        toucher, un seul PATCH activityMoves, les deux a la nouvelle heure ; « Annuler » les remet
+//        ensemble, d un seul PATCH ;
+//   [W2] le serveur juge les groupes ensemble : le second coince, il refuse tout, dit lequel (`rang`)
+//        et n ecrit rien ;
+//   [W3] l arene se remplit entre la pop-up et le toucher : le second groupe coince au serveur, rien
+//        ne bouge (ni l un ni l autre), et l avis dit lequel coince ;
 //   [S1] le meme geste depuis la fiche : l heure du Programme ouvre la meme pop-up, contre elle, avec
 //        les memes heures, et un toucher enregistre ;
 //   [J1] aucune erreur JS.
@@ -71,6 +81,9 @@ const MANON = 1618; // laser 15:30 (1re partie) et 16:00 (2e), 8 joueurs : a 17:
 const HENRARD = 1635; // bowling 16:00, piste 8, arrivee 16:00 : toute sa visite passe a 17:00
 const NOEL = 1637; // bowling 16:30, piste 6 : a 16:00, le bowling est complet
 const LINA = 1601; // arrivee, son laser a commence a 15:00 : elle joue
+// (journee normale, variante « deux-groupes ») 40 joueurs : sa 1re partie de laser en deux groupes, 18 et
+// 22, lances ensemble a 16:00 (1.1 et 1.2), sa 2e a 16:30 ; le basket (12) joue a 19:30
+const ETHAN = 1588;
 
 let echecs = 0;
 let silence = false;
@@ -128,16 +141,18 @@ function enBase(id) {
 
 // L HEURE DU SERVEUR EST CELLE DE LA PAGE : 15:10 a Libramont (UTC+1 en janvier). Le montage recharge
 // les modules de lib/ : l horloge se regle apres lui.
-function reglerHorloge() { require(path.join(ROOT, RETARD)).__horloge.instant = () => new Date(`${JOUR}T14:10:00Z`); }
+function reglerHorloge(jour = JOUR) { require(path.join(ROOT, RETARD)).__horloge.instant = () => new Date(`${jour}T14:10:00Z`); }
 
-async function monter(browser, { appareil = 'ordinateur', mouvementReduit = false } = {}) {
-  B.semer(FIXTURE.staffState.reservations.map(ligneDepuis));
+async function monter(browser, { appareil = 'ordinateur', mouvementReduit = false, fixture = 'pic', variante = [] } = {}) {
+  // (une autre journee ou une variante : la meme sur le serveur et dans la page, FX.varier)
+  const journee = fixture === 'pic' && !variante.length ? FIXTURE.staffState : FX.varier(FX.lireFixture(fixture), FX.lireCentre(), variante).fixture.staffState;
+  B.semer(journee.reservations.map(ligneDepuis));
   const serveur = B.monter({ mutations: mutation ? mutation.editions.filter((ed) => ed.serveur) : [], session: B.sessionDuRole('manager', { nom: 'Rachel' }) });
-  reglerHorloge();
+  reglerHorloge(journee.date);
   const patchs = [];
   const blancs = [];
   const { ctx, page, erreurs } = await FX.monter(browser, {
-    fixture: 'pic', appareil, theme: 'light', port: PORT, heure: '15:10', mouvementReduit,
+    fixture, variante, appareil, theme: 'light', port: PORT, heure: '15:10', mouvementReduit,
     avantChargement: async (p) => {
       await p.exposeFunction('__fixtureServeur', async (corps) => { patchs.push(corps); return serveur.appeler('PATCH', '/api/staff-reservations', corps); });
       await p.exposeFunction('__fixtureBlanc', async (corps) => { blancs.push(corps); return serveur.appeler('POST', '/api/staff-reservations', corps); });
@@ -628,7 +643,90 @@ async function scenarioGele(browser) {
     const rep = await serveur.appeler('POST', '/api/staff-reservations', { dryRun: true, centerId: 'libramont', deplacement: { id: LINA, centerId: 'libramont', baseUpdatedAt: enBase(LINA).version, essais: [[{ activityId: 'minigolf_blacklight', startTime: '16:30' }]] } });
     ok(rep.statut === 200 && rep.json && rep.json.gele === phrase && Array.isArray(rep.json.essais) && rep.json.essais.length === 0 && brut(LINA) === depart,
       '[F1] le serveur le redit : son calcul a blanc rend `gele`, aucune heure', rep.json);
+    // [F2] Une console restee ouverte sur l etat d avant envoie quand meme : le serveur refuse.
+    const version = enBase(LINA).version;
+    const minigolf = { activityId: 'minigolf_blacklight', startTime: '16:30' };
+    const seul = await serveur.appeler('PATCH', '/api/staff-reservations', { id: LINA, centerId: 'libramont', baseUpdatedAt: version, activityMove: minigolf });
+    const ensemble = await serveur.appeler('PATCH', '/api/staff-reservations', { id: LINA, centerId: 'libramont', baseUpdatedAt: version, activityMoves: [minigolf] });
+    // (le verdict d une heure changee dans « Modifier », et celui de toute la modification qui la porte)
+    const verdict = await serveur.appeler('POST', '/api/staff-reservations', { dryRun: true, centerId: 'libramont', deplacement: { id: LINA, centerId: 'libramont', baseUpdatedAt: version, activityMoves: [minigolf] } });
+    const modifier = await serveur.appeler('POST', '/api/staff-reservations', { dryRun: true, modification: { id: LINA, centerId: 'libramont', baseUpdatedAt: version, deplacements: [minigolf] } });
+    const refuse = (r) => r.statut === 409 && r.json && r.json.ok === false && r.json.message === phrase && r.json.code === 'groupe_en_jeu';
+    const refusABlanc = (r) => Boolean(r.json && r.json.refus && r.json.refus.message === phrase && r.json.refus.code === 'groupe_en_jeu');
+    ok(refuse(seul) && refuse(ensemble) && refusABlanc(verdict) && refusABlanc(modifier) && brut(LINA) === depart,
+      '[F2] le PATCH qui deplace son activite, seul ou en bloc, et les verdicts de « Modifier » la refusent avec la phrase de la pop-up ; rien ne s ecrit',
+      { seul: [seul.statut, seul.json], ensemble: [ensemble.statut, ensemble.json && ensemble.json.message], verdict: verdict.json && verdict.json.refus, modifier: modifier.json && modifier.json.refus });
     ok(erreurs.length === 0, '[J1] aucune erreur JS (le groupe qui joue)', erreurs);
+  } finally {
+    await ctx.close();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// [W1] [W2] [W3] : les deux groupes de la 1re partie laser d Ethan (journee normale, « deux-groupes »).
+// ---------------------------------------------------------------------------
+// Un groupe arrive au comptoir pendant que la pop-up est ouverte : 10 joueurs dans l arene a `heure`
+// (sur le modele du laser de Theo, la meme journee).
+function groupeDeDerniereMinute(heure) {
+  const r = JSON.parse(JSON.stringify(FX.lireFixture('normal').staffState.reservations.find((x) => x.id === 1584)));
+  const debut = minutes(heure);
+  const bloc = r.opsPlan.resourceBlocks.find((b) => b.resourceType === 'laser_arena');
+  Object.assign(r, { id: 9902, name: 'DÉMO · Groupe de dernière minute', pax: 10, startTime: heure });
+  r.opsPlan = { ...r.opsPlan, timeline: [], laserPassPlan: undefined, resourceBlocks: [{ ...bloc, start: debut, end: debut + 25, startTime: heure, endTime: hhmm(debut + 25), players: 10, weaponNeed: 10, groupPlayers: 10, playersTotal: 10, playersBefore: 0, countIndex: 1, groupWaveIndex: 1, groupWaveCount: 1 }] };
+  return r;
+}
+async function scenarioVagues(browser) {
+  const { ctx, page, erreurs, serveur, patchs } = await monter(browser, { fixture: 'normal', variante: ['deux-groupes'] });
+  try {
+    const sel = PASTILLE(ETHAN, 'laser_game:1.1+1.2');
+    const ouvrir = async (heure) => {
+      await ligneEnHaut(page, ETHAN);
+      await page.click(sel);
+      await page.waitForSelector('#gfHeurePop.is-rempli', { timeout: 10000 }).catch(() => null);
+      await page.waitForTimeout(300);
+      const choix = page.locator('#gfHeurePop [data-gf-hp-choix]', { hasText: heure }).first();
+      return { offerte: (await choix.count()) > 0, choix };
+    };
+    const dits = (corps) => ((corps && corps.activityMoves) || []).map((m) => `${m.unitKey}>${m.startTime}`).join(' ');
+
+    // [W2] Sans la console : le 1er groupe a 18:00, le 2e a 19:30, ou le basket joue a 12.
+    const depart = brut(ETHAN);
+    const refus = await serveur.appeler('PATCH', '/api/staff-reservations', { id: ETHAN, centerId: 'libramont', baseUpdatedAt: enBase(ETHAN).version, activityMoves: [{ activityId: 'laser_game', unitKey: '1.1', startTime: '18:00' }, { activityId: 'laser_game', unitKey: '1.2', startTime: '19:30' }] });
+    ok(refus.statut === 409 && refus.json && refus.json.rang === 1 && refus.json.message === 'Laser Game complet de 19:30 à 19:55 : 34 joueurs pour 30 armes.' && brut(ETHAN) === depart,
+      '[W2] le 2e groupe coince (19:30, 34 joueurs pour 30 armes) : le serveur refuse les deux, dit lequel (rang 1), rien n est ecrit', { statut: refus.statut, json: refus.json, apres: enBase(ETHAN) });
+
+    // [W1] La pop-up : 18:00 touche, un seul PATCH, les deux groupes ensemble ; « Annuler » les remet ensemble.
+    const a = await ouvrir('18:00');
+    if (a.offerte) await a.choix.click();
+    await attendre(page, async () => patchs.length >= 1);
+    await page.waitForTimeout(300);
+    const apres = enBase(ETHAN);
+    const toast = await page.evaluate(lireToast);
+    ok(a.offerte && patchs.length === 1 && !('activityMove' in patchs[0]) && dits(patchs[0]) === '1.1>18:00 1.2>18:00'
+      && apres.laser['1.1'] === '18:00' && apres.laser['1.2'] === '18:00' && apres.laser['2.1'] === '16:30' && /Amis d.Ethan : Laser, 1re partie passe à 18:00\./.test(toast.texte) && toast.annuler,
+      '[W1] « 18:00 » touche : un seul PATCH activityMoves, les deux groupes a 18:00 en base, le toast avec « Annuler »', { offerte: a.offerte, patchs, apres, toast });
+    if (toast.annuler) await page.click('#toast .toast-annuler');
+    await attendre(page, async () => patchs.length >= 2);
+    await page.waitForTimeout(300);
+    const remis = enBase(ETHAN);
+    ok(patchs.length === 2 && dits(patchs[1]) === '1.1>16:00 1.2>16:00' && remis.laser['1.1'] === '16:00' && remis.laser['1.2'] === '16:00',
+      '[W1] « Annuler » remet les deux groupes a 16:00, d un seul PATCH', { retour: dits(patchs[1]), remis, patchs: patchs.length });
+
+    // [W3] La pop-up ouverte sur 18:00, un groupe de 10 entre dans l arene a 18:00, puis le toucher :
+    // 18 + 10 tiennent, 22 + 10 non.
+    const n = patchs.length;
+    const avant = brut(ETHAN);
+    const b = await ouvrir('18:00');
+    B.base.reservations.set(9902, ligneDepuis(groupeDeDerniereMinute('18:00')));
+    if (b.offerte) await b.choix.click();
+    await attendre(page, async () => patchs.length > n);
+    await page.waitForTimeout(500);
+    const avis = await page.evaluate(lireAvis);
+    const puce = await page.evaluate((s) => ((document.querySelector(s) || {}).textContent || '').trim(), sel);
+    ok(b.offerte && patchs.length === n + 1 && dits(patchs[n]) === '1.1>18:00 1.2>18:00' && brut(ETHAN) === avant && puce === '16:00'
+      && /Pas déplacé/.test(avis) && avis.includes('Laser, 1re partie, groupe 2 sur 2 à 18:00 : Laser Game complet de 18:00 à 18:25 : 32 joueurs pour 30 armes.') && avis.includes('Aucun groupe n’a bougé.'),
+      '[W3] l arene remplie entre la pop-up et le toucher : le 2e groupe coince, aucun ne bouge, l avis dit lequel', { avis, puce, envoye: dits(patchs[n]), apres: enBase(ETHAN) });
+    ok(erreurs.length === 0, '[J1] aucune erreur JS (les deux groupes)', erreurs);
   } finally {
     await ctx.close();
   }
@@ -712,6 +810,20 @@ const MUTATIONS = [
     { fichier: RETARD, serveur: true, de: '  if (!commencees.length) return null;', vers: '  if (true) return null;' },
   ] },
   { nom: 'gele-serveur-muet', lettre: 'F1', scenarios: ['gele'], editions: [{ fichier: RETARD, serveur: true, de: '  if (!commencees.length) return null;', vers: '  if (true) return null;' }] },
+  // (le PATCH deplace le groupe qui joue, pour une console restee sur l etat d avant)
+  { nom: 'gele-patch-ouvert', lettre: 'F2', scenarios: ['gele'], editions: [{ fichier: API, serveur: true, de: '        refuserSiLeGroupeJoue(current, deplacements);\n', vers: '' }] },
+  // (le verdict d une heure de « Modifier » le laisse passer)
+  { nom: 'gele-heure-a-blanc', lettre: 'F2', scenarios: ['gele'], editions: [{ fichier: API, serveur: true, de: '    refuserSiLeGroupeJoue(current, deplacements);\n    let candidat = current;', vers: '    let candidat = current;' }] },
+  // (le verdict de toute la modification le laisse passer)
+  { nom: 'gele-modifier-a-blanc', lettre: 'F2', scenarios: ['gele'], editions: [{ fichier: API, serveur: true, de: '  // (le PATCH activityMove le refusera : le verdict le dit avant le clic)\n  refuserSiLeGroupeJoue(current, deplacements);\n', vers: '' }] },
+  // (les groupes partent l un apres l autre, un PATCH chacun : le premier bouge meme si le second coince)
+  { nom: 'vagues-une-a-une', lettre: 'W1', scenarios: ['vagues'], editions: [{ fichier: MODULE, de: '    var envoi = moves.length > 1 ? envoyerDeplacementsActivite(r, moves) : envoyerDeplacementActivite(r, moves[0]);', vers: '    var envoi = moves.reduce(function (s, m) { return s.then(function (p) { return envoyerDeplacementActivite((p && p.reservation) || r, m); }); }, Promise.resolve(null));' }] },
+  // (la base n ecrit que le premier groupe)
+  { nom: 'vagues-en-partie', lettre: 'W1', scenarios: ['vagues'], editions: [{ fichier: 'lib/database.js', serveur: true, de: '    const deplacements = Array.isArray(input.activityMoves) ? input.activityMoves : (input.activityMove ? [input.activityMove] : null);', vers: '    const deplacements = Array.isArray(input.activityMoves) ? input.activityMoves.slice(0, 1) : (input.activityMove ? [input.activityMove] : null);' }] },
+  // (le refus ne dit plus quel groupe coince)
+  { nom: 'vagues-sans-rang', lettre: 'W2', scenarios: ['vagues'], editions: [{ fichier: API, serveur: true, de: '    if (error && Number.isInteger(error.rangDuDeplacement)) extra.rang = error.rangDuDeplacement;\n', vers: '' }] },
+  // (l avis tait le groupe qui coince)
+  { nom: 'vagues-sans-nom', lettre: 'W3', scenarios: ['vagues'], editions: [{ fichier: MODULE, de: "    var vague = moves.length > 1 && Number.isInteger(lu.rang) && moves[lu.rang] ?", vers: "    var vague = false ?" }] },
   { nom: 'fiche-sans-heure', lettre: 'S1', scenarios: ['fiche'], editions: [{ fichier: CONSOLE, de: "    const cleHeure = options.coches && typeof window.pgCleHeure === 'function' ? window.pgCleHeure(r, etape) : '';", vers: "    const cleHeure = '';" }] },
 ];
 
@@ -723,6 +835,7 @@ async function jouer(browser, noms) {
     if (nom === 'ligne') await scenarioLigne(browser);
     if (nom === 'gele') await scenarioGele(browser);
     if (nom === 'fiche') await scenarioFiche(browser);
+    if (nom === 'vagues') await scenarioVagues(browser);
   }
 }
 
@@ -732,7 +845,7 @@ async function main() {
   const t0 = Date.now();
   try {
     if (!process.argv.includes('--contre-preuves')) {
-      await jouer(browser, liste(process.env.HG_SCENARIOS) || ['pop', 'souris', 'doigt', 'ligne', 'gele', 'fiche']);
+      await jouer(browser, liste(process.env.HG_SCENARIOS) || ['pop', 'souris', 'doigt', 'ligne', 'gele', 'fiche', 'vagues']);
     } else {
       console.log('[K] contre-preuves : chaque garde retiree fait rougir sa lettre');
       for (const m of MUTATIONS.filter((x) => !process.env.HG_MUTATIONS || liste(process.env.HG_MUTATIONS).includes(x.nom))) {

@@ -2424,6 +2424,45 @@ function envoyerDeplacementActivite(avant, activityMove) {
   });
 }
 
+// LES VAGUES D UNE PARTIE LASER, EN BLOC (2026-11-22, le planning complet) : un seul PATCH activityMoves,
+// ecrit tout entier ou refuse tout entier. Le refus porte le rang de la vague qui coince
+// (error.payload.rang) ; rien n a bouge. La meme verification qu un deplacement seul : seules ces vagues
+// ont change.
+function envoyerDeplacementsActivite(avant, activityMoves) {
+  return enchainerEcritureReservation(avant.id, async (derniere) => {
+    const base = derniere && String(derniere.id) === String(avant.id) ? derniere : avant;
+    let payload;
+    try {
+      payload = await apiRequest(API_ENDPOINTS.staffReservations, {
+        method: 'PATCH',
+        body: JSON.stringify({ id: base.id, centerId: base.centerId || base.center_id || getCurrentStaffCenterId(), baseUpdatedAt: base.updatedAt, activityMoves })
+      });
+    } catch (error) {
+      if (error.status === 409 && error.payload?.reservation) {
+        throw conflitReservation(error.payload.reservation, ['opsPlan'], 'Le planning a changé sur un autre poste. Vérifiez sa position actuelle puis refaites le déplacement.');
+      }
+      throw error;
+    }
+    const saved = payload?.reservation;
+    const recus = Array.isArray(payload?.activityMoves) ? payload.activityMoves : [];
+    const unites = new Set(activityMoves.map(move => move.unitKey));
+    const cible = block => (block.resourceType === 'laser_arena' || block.activityId === 'laser_game') && unites.has(laserBlockUnitKey(block));
+    const autres = plan => (plan?.resourceBlocks || []).filter(block => !cible(block));
+    const invariants = ['date', 'startTime', 'duration', 'totalDuration', 'pax', 'price', 'basePrice', 'extras', 'program', 'status', 'activityProgress'];
+    const ancienPlanExplicite = Boolean(base.opsPlan?.resourceBlocks?.length);
+    const conforme = saved && String(saved.id) === String(base.id)
+      && String(saved.centerId || saved.center_id) === String(base.centerId || base.center_id || getCurrentStaffCenterId())
+      && activityMoves.every(move => move.activityId === 'laser_game')
+      && recus.length === activityMoves.length
+      && recus.every((recu, rang) => recu?.activityId === 'laser_game' && recu.unitKey === activityMoves[rang].unitKey && recu.unchangedActivities === true)
+      && invariants.every(key => valeurReservationComparable(saved[key]) === valeurReservationComparable(base[key]))
+      && (!ancienPlanExplicite || valeurReservationComparable(autres(saved.opsPlan)) === valeurReservationComparable(autres(base.opsPlan)))
+      && (!Array.isArray(base.opsPlan?.timeline) || valeurReservationComparable((saved.opsPlan?.timeline || []).filter(block => !cible(block))) === valeurReservationComparable(base.opsPlan.timeline.filter(block => !cible(block))));
+    if (!conforme) throw new Error('Le serveur n’a pas confirmé un déplacement limité à cette activité. Actualisez le planning avant de réessayer.');
+    return payload;
+  });
+}
+
 function envoyerModificationReservation(avant, appliquer, overrides = {}) {
   return enchainerEcritureReservation(avant.id, async (derniere) => {
     // Une ecriture de CE poste vient d aboutir sur ce dossier : on part de ce

@@ -507,8 +507,13 @@ function deriver() {
 //                 l equipe avec leur auteur, deux dossiers modifies, et
 //                 l Equipe de basket arrivee (a 19:40, sa partie de 19:30 est en
 //                 cours, celle de 20:00 a venir, dans la meme case).
+//   deux-groupes  les Amis d Ethan (journee normale) a 40 : plus de joueurs que
+//                 d armes, leur 1re partie se joue en deux groupes lances ensemble
+//                 a 16:00 (18 et 22 : quand l arene se remplit, c est le second, le
+//                 plus grand, qui coince), une heure qui les emporte tous les deux
+//                 (planning-heure-glisser-check.js, 2026-11-22).
 // ---------------------------------------------------------------------------
-const VARIANTES = ['maintenance5', 'enligne6', 'laser34', 'gembloux', 'pistes6', 'eparses', 'vagues', 'sansdemo', 'notes'];
+const VARIANTES = ['maintenance5', 'enligne6', 'laser34', 'gembloux', 'pistes6', 'eparses', 'vagues', 'sansdemo', 'notes', 'deux-groupes'];
 function varier(fx, centre, variantes = []) {
   const f = JSON.parse(JSON.stringify(fx));
   const c = JSON.parse(JSON.stringify(centre));
@@ -568,6 +573,16 @@ function varier(fx, centre, variantes = []) {
       const court = blocLaser('16:00', 4, 1);
       Object.assign(court, { end: court.start + 5, endTime: enHeure(court.start + 5), durationMinutes: 5 });
       res.push(neuf(9111, { name: 'DÉMO · Amis de Lou', pax: 4, type: 'laser', blocs: [court], price: 40 }));
+    }
+    if (v === 'deux-groupes') {
+      const ethan = res.find((x) => /Amis d.Ethan/.test(x.name));
+      const i = ethan ? ethan.opsPlan.resourceBlocks.findIndex((x) => x.resourceType === 'laser_arena' && x.start === enMin('16:00')) : -1;
+      if (!(i >= 0)) throw new Error('deux-groupes : pas de partie de 16:00 pour Amis d Ethan');
+      const b = ethan.opsPlan.resourceBlocks[i];
+      ethan.pax = 40;
+      ethan.opsPlan.resourceBlocks.splice(i, 1,
+        { ...b, players: 18, weaponNeed: 18, groupPlayers: 40, groupWaveCount: 2, groupWaveIndex: 1 },
+        { ...b, players: 22, weaponNeed: 22, groupPlayers: 40, groupWaveCount: 2, groupWaveIndex: 2 });
     }
     if (v === 'notes') {
       const trouver = (motif) => {

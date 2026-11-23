@@ -605,7 +605,10 @@ async function scenarioMoteur() {
     '[I] apres un glisser, changer l heure du dossier decale du meme ecart que la fenetre l annonce : 17:00 -> 18:00', { statut: noelHeure.statut, message: noelHeure.json.message, etapes: etapes(enBase(NOEL).plan) });
 
   serveur = monterServeur();
-  const arthurDeplace = (await deplacer(serveur, arthur, { activityId: 'bowling', startTime: '13:00', lanes: [3, 4] })).json.reservation;
+  // (glisse a 13:10, avant que son bowling commence : a 15:10 il joue depuis 13:30, et un groupe qui joue
+  // ne bouge plus d un glisser, api/staff-reservations.js refuserSiLeGroupeJoue, 2026-11-22 ; le recompte
+  // de 15:10, lui, passe par « Modifier »)
+  const arthurDeplace = (await auJour(() => serveur.appeler('PATCH', url, { id: arthur.id, centerId: 'libramont', baseUpdatedAt: arthur.updatedAt, activityMove: { activityId: 'bowling', startTime: '13:00', lanes: [3, 4] } }), '13:10')).json.reservation;
   const arthurPlus = await auJour(() => serveur.appeler('PATCH', url, corpsDe(arthurDeplace, { pax: 10 })));
   const a2 = enBase(ARTHUR);
   ok(arthurPlus.statut === 200 && etape(a2.plan, 'bowling').startTime === '13:00' && etape(a2.plan, 'minigolf_blacklight').startTime === '14:35' && etape(a2.plan, 'arcade_time').startTime === '15:25',

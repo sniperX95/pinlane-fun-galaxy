@@ -35143,7 +35143,7 @@ function renderEditExtras(r) {
       ${modele[groupe].map((l, i) => `<div class="fm-x-ligne" data-x="${groupe}-${i}">
         ${champ(groupe, i, 'choix', l.choix, `list="fmx-${groupe}" placeholder="${invite}" aria-label="${titre} : ${invite.toLowerCase()}"`)}
         ${l.parPersonne ? `<span class="fm-x-qte fm-x-tous" id="fmxQte-${groupe}-${i}">${qteLigneExtra(l)}</span>` : champ(groupe, i, 'qte', l.qte, 'type="number" min="1" max="999" inputmode="numeric" aria-label="Quantité"')}
-        <span class="fm-euro" id="fmxPrix-${groupe}-${i}"${prixExtraPermis(l) ? '' : ' hidden'}>${champ(groupe, i, 'prix', l.aPayer ? '' : l.prix, `type="number" min="0" step="0.5" inputmode="decimal" placeholder="Prix" aria-label="Prix à l’unité en ${nomsMonnaie()}"${l.aPayer ? ' disabled' : ''}`)}<span aria-hidden="true">${signeMonnaie()}</span></span>
+        <span class="fm-euro" id="fmxPrix-${groupe}-${i}"${prixExtraPermis(l) ? '' : ' hidden'}>${champ(groupe, i, 'prix', l.aPayer ? '' : l.prix, `type="number" min="0" step="0.01" inputmode="decimal" placeholder="Prix" aria-label="Prix à l’unité en ${nomsMonnaie()}"${l.aPayer ? ' disabled' : ''}`)}<span aria-hidden="true">${signeMonnaie()}</span></span>
         <b class="fm-x-somme${extraAPayer(l) ? ' pl-a-payer' : ''}" id="fmxSomme-${groupe}-${i}">${escapeHtml(sommeLigneExtra(l))}</b>
         <button type="button" class="fm-x-retirer" aria-label="Retirer ${escapeHtml(l.choix || 'cette ligne')}" onclick="retirerEditExtra('${groupe}',${i})">×</button>
         <span class="fm-x-opts">

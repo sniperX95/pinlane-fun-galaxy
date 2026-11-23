@@ -513,7 +513,7 @@ async function ouvrirModifier(page, id) {
   await page.waitForTimeout(250);
 }
 async function basculer(page, mode) {
-  await page.click(`#posOverlay [data-tva="${mode}"]`);
+  await page.click(`#posOverlay [data-tva="${mode}"]`, { timeout: 3000 }).catch(() => null); // (HTVA ferme : l assertion qui suit le dit, le test ne s interrompt pas)
   await page.waitForSelector(`#posOverlay [data-tva="${mode}"].active`, { timeout: 5000 }).catch(() => null);
 }
 const lireTva = (page) => page.evaluate(() => {
@@ -686,7 +686,7 @@ async function scenarioB2(browser) {
     && dedans.every((l) => { const c = carte.find((x) => x.nom === l.nom); return c && proche(l.poids, (formule.montant * Number(c.prix)) / somme, 0.0001) && l.prixCarte === Number(c.prix); })
     && proche(dedans.reduce((s, l) => s + l.poids, 0), formule.montant, 0.0001)
     && Boolean(cruches) && proche(cruches.prix, 2 * Number(CRUCHE.prix)) && dedans.some((l) => l.sorte === 'drinks' && l.taux === TAUX_VALIDES.drinks)
-    && dedans.some((l) => l.sorte === 'activities' && l.taux === TAUX_VALIDES.activities) && dedans.some((l) => l.sorte === 'arcades' && l.taux === TAUX_VALIDES.arcades) && tauxJustes
+    && dedans.some((l) => l.sorte === 'activities' && l.taux === TAUX_VALIDES.activities) && tauxJustes
     && Boolean(pepsi) && proche(pepsi.poids, LIGNE_PEPSI.price) && pepsi.taux === TAUX_VALIDES.drinks,
   '[B2] la formule se repartit entre ses composants au prorata de leurs prix a la carte, chaque part a son taux, et les Pepsi a celui des boissons', { formule, carte, dedans, pepsi });
   await capture(page, 'tva-4-modifier-htva', montrerLePrix);

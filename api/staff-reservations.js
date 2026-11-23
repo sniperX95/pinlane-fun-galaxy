@@ -519,7 +519,7 @@ async function modifierABlanc(req, res, corps) {
     return { ok: true, dryRun: true, modification: true, reservation, ...(planNonRefait ? { planNonRefait } : {}) };
   } catch (error) {
     if ((error && error.statusCode >= 500) || estErreurInfra(error)) throw error;
-    return { ok: true, dryRun: true, modification: true, refus: { message: String(error.message), statut: error.statusCode || 400, ...(error.code ? { code: error.code } : {}), ...(Number.isInteger(error.rangDuDeplacement) ? { rang: error.rangDuDeplacement, suggestions: error.heuresProches || [] } : {}), ...(error.enPlus ? { enPlus: String(error.enPlus) } : {}) } };
+    return { ok: true, dryRun: true, modification: true, refus: { message: String(error.message), statut: error.statusCode || 400, ...(error.code ? { code: error.code } : {}), ...(Number.isInteger(error.rangDuDeplacement) ? { rang: error.rangDuDeplacement, suggestions: error.heuresProches || [] } : {}), ...(error.enPlus ? { enPlus: String(error.enPlus) } : {}), ...(Array.isArray(error.coincent) && error.coincent.length ? { coincent: error.coincent } : {}) } };
   }
 }
 
@@ -1093,6 +1093,15 @@ async function calculerLaModification({ body, current, session, requestedCenterI
   if (shouldReplan && ops.planAvailable === false && patch.program && (heuresAPoser.length || !memesActivites(current, proposedItems))) {
     const motif = String(ops.planRefusal || ops.planWarning || 'le moteur n’a pas donné de motif.').trim();
     throw createHttpError(`Ce programme ne tient pas au planning : ${motif}`, 422);
+  }
+  // DES GROUPES REGLES DANS MODIFIER QUI NE TIENNENT PAS (2026-11-23, lib/grand-groupe.js) : leur nombre,
+  // leurs joueurs ou leurs heures. Rien ne s ecrit : l ancien plan sous des groupes que l ecran montrait
+  // autres serait un mensonge. Le refus dit le groupe et l activite qui coincent (`coincent`).
+  const groupesDemandes = patch.preference && typeof patch.preference === 'object' ? patch.preference.grandGroupe : null;
+  if (shouldReplan && ops.planAvailable === false && groupesDemandes && typeof groupesDemandes === 'object'
+    && (Array.isArray(groupesDemandes.heures) || Array.isArray(groupesDemandes.tailles) || Number(groupesDemandes.nombre) >= 2)) {
+    const motif = String(ops.planRefusal || ops.planWarning || 'le moteur n’a pas donné de motif.').trim();
+    throw Object.assign(createHttpError(`Ces groupes ne tiennent pas au planning : ${motif}`, 422), { coincent: Array.isArray(ops.groupesQuiCoincent) ? ops.groupesQuiCoincent : [] });
   }
   if (heuresAPoser.length && shouldReplan && ops.opsPlan && ops.planAvailable !== false) {
     const jour = String(patch.date ?? current.date);

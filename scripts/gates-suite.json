@@ -240,6 +240,7 @@
     "test:pistes-cote-a-cote",
     "test:autre-ordre",
     "test:grands-groupes",
+    "test:groupes",
     "test:tour-controle",
     "test:migrations-attendues",
     "test:garde-postes",

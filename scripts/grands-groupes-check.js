@@ -107,7 +107,7 @@ const MUTATIONS = [
   { nom: 'tailles-sans-plafond', lettre: 'B', fichier: APP, de: '  return plafonds.length ? Math.min(...plafonds) : pax;', vers: '  return pax;' },
   { nom: 'groupes-qui-debordent', lettre: 'B', fichier: CSS, de: '.qb-modal.rv.rs .rs-gg-c { display: flex; flex-direction: column; justify-content: center; gap: 1px; min-width: 0; min-height: 52px;', vers: '.qb-modal.rv.rs .rs-gg-c { display: flex; flex-direction: column; justify-content: center; gap: 1px; min-width: 0; min-height: 220px;' },
   { nom: 'sous-groupe-a-deux-endroits', lettre: 'B', serveur: true, fichier: MOTEUR, de: '    const cle = Number(fenetre.sousGroupe) || 0;', vers: '    const cle = 0;' },
-  { nom: 'compte-sans-groupes', lettre: 'B', serveur: true, fichier: OPS, de: '    ...(isEdit ? grandGroupeGarde(request) : {}),\n', vers: '' },
+  { nom: 'compte-sans-groupes', lettre: 'B', serveur: true, fichier: OPS, de: '    ...(isEdit ? grandGroupeGarde(request, shiftMinutes) : {}),\n', vers: '' },
   // [C] la rangee se tait, la proche se cherche sur le laser, le refus dit l heure de la ligne.
   { nom: 'rangee-muette', lettre: 'C', fichier: APP, de: '  if (rvRotationEnJeu(grand) && id === grand.ids[0]) return v;\n', vers: '' },
   { nom: 'proche-sur-le-laser', lettre: 'C', fichier: APP, de: '  const id = rvGroupesEnJeu(grand) ? grand.ids[0] : ids.includes(refus.activite) ? refus.activite : ids[0];', vers: '  const id = ids.includes(refus.activite) ? refus.activite : ids[0];' },
@@ -117,7 +117,7 @@ const MUTATIONS = [
   { nom: 'laser-sur-les-tailles', lettre: 'D', serveur: true, fichier: GG, de: '    const parts = joueurs === personnes ? choisies.slice() : partsAuProrata(joueurs, choisies);', vers: '    const parts = choisies.slice();' },
   { nom: 'tailles-ignorees', lettre: 'D', serveur: true, fichier: GG, de: '    choisies = posees;\n', vers: '' },
   { nom: 'armes-depassees', lettre: 'D', serveur: true, fichier: GG, de: '    const trop = capacite > 0 ? parts.findIndex((part) => part > capacite) : -1;', vers: '    const trop = -1;' },
-  { nom: 'modification-sans-groupes', lettre: 'D', serveur: true, fichier: OPS, de: '    ...(isEdit ? grandGroupeGarde(request) : {}),\n', vers: '' },
+  { nom: 'modification-sans-groupes', lettre: 'D', serveur: true, fichier: OPS, de: '    ...(isEdit ? grandGroupeGarde(request, shiftMinutes) : {}),\n', vers: '' },
   { nom: 'public-lit-la-demande', lettre: 'D', serveur: true, fichier: MOTEUR, de: "  const demandeGrandGroupe = input.channel === 'staff' ? lireGrandGroupe(preference.grandGroupe) : null;", vers: '  const demandeGrandGroupe = lireGrandGroupe(preference.grandGroupe);' },
   { nom: 'pistes-du-groupe-partagees', lettre: 'D', serveur: true, fichier: MOTEUR, de: "      const occupees = dejaPoses.length ? [...reservations, pseudoReservationFromBlocks('grand-groupe', dejaPoses)] : reservations;", vers: '      const occupees = reservations;' },
   // [E] les groupes tournent d office meme quand le plan d avant tient (le prix change en silence) ;
@@ -138,7 +138,7 @@ const MUTATIONS = [
   { nom: 'sous-groupe-deplace-a-deux-endroits', lettre: 'G', serveur: true, fichier: MOUVEMENT, de: '    const groupe = Number(movedBlock && movedBlock.sousGroupe) || 0;', vers: '    const groupe = 0;' },
   // [H] un grand groupe a la minute : la rotation refuse la minute, se cale sur la grille du centre, ou
   // ses heures posees se rejouent par-dessus les groupes.
-  { nom: 'rotation-refuse-la-minute', lettre: 'H', serveur: true, fichier: MOTEUR, de: "  if (!aLaMinute && debut % PROGRAM_GRID_MINUTES !== 0) return { ok: false, code: 'off_grid'", vers: "  if (debut % PROGRAM_GRID_MINUTES !== 0) return { ok: false, code: 'off_grid'" },
+  { nom: 'rotation-refuse-la-minute', lettre: 'H', serveur: true, fichier: MOTEUR, de: "  if (!heuresVoulues && !aLaMinute && debut % PROGRAM_GRID_MINUTES !== 0) return { ok: false, code: 'off_grid'", vers: "  if (!heuresVoulues && debut % PROGRAM_GRID_MINUTES !== 0) return { ok: false, code: 'off_grid'" },
   { nom: 'rotation-sur-la-grille-du-centre', lettre: 'H', serveur: true, fichier: GG, de: '  const origine = ((Number(debut) % grille) + grille) % grille;', vers: '  const origine = 0;' },
   { nom: 'heures-posees-rejouees-sur-les-groupes', lettre: 'H', serveur: true, fichier: FENETRE, de: "  const aPoser = enSousGroupes ? heuresPosees.filter((posee) => posee.activityId !== 'bowling' && posee.activityId !== 'laser_game') : heuresPosees;", vers: '  const aPoser = heuresPosees;' },
 ];

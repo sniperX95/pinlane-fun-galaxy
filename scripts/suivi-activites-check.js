@@ -68,7 +68,12 @@ const CAPTURES = process.env.SA_CAPTURES || '';
 async function capturer(page, nom, selecteur, garder = null) {
   if (!CAPTURES) return;
   fs.mkdirSync(CAPTURES, { recursive: true });
-  if (garder) await page.evaluate(([sel, ids]) => { document.querySelectorAll(sel).forEach((tr) => { tr.style.display = ids.includes(tr.getAttribute('data-gf-id')) ? '' : 'none'; }); }, [garder.lignes, garder.ids.map(String)]);
+  if (garder) {
+    // (des lignes choisies, chacune photographiee a part : masquer les autres casserait la mise en page du tableau)
+    const morceaux = [page.locator('#globalPlanningGridWrap thead tr, #globalPlanningGridWrap .gf-tete').first(), ...garder.ids.map((id) => page.locator(`${garder.lignes}[data-gf-id="${id}"]`))];
+    for (let i = 0; i < morceaux.length; i += 1) await morceaux[i].screenshot({ path: path.join(CAPTURES, `${nom}.${i}.png`) });
+    return;
+  }
   await FX.repos(page, 200);
   await page.locator(selecteur).first().screenshot({ path: path.join(CAPTURES, nom) });
 }

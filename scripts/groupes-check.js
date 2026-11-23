@@ -31,6 +31,9 @@
 //       qu il avait deplace au planning reste a son heure.
 //   [F] LE GLISSER DU PLANNING : un groupe deplace au planning garde son heure a la modification suivante.
 //   [G] LE CANAL PUBLIC ne lit ni le nombre ni les heures : le formulaire en ligne garde son plan.
+//   [I] « CRÉER » SUR DES GROUPES QUI GENENT UN AUTRE DOSSIER (4 pistes prises a 15:00, 20 armes au laser a 14:00)
+//       se refuse avant la base, et la phrase dit chaque groupe, son activite et son heure ; jamais « Ce créneau
+//       vient de changer ». « Créer quand même » part toujours a placer.
 //
 // CONTRE-PREUVES : `--contre-preuves` rejoue le gate sur du code casse expres, une mutation a la fois, en
 // memoire (le crochet de compilation du banc : le disque n est jamais touche), et exige que chacune
@@ -62,6 +65,7 @@ const GG = 'lib/grand-groupe.js';
 const OPS = 'lib/reservation-ops.js';
 const API = 'api/staff-reservations.js';
 const MOUVEMENT = 'lib/reservation-activity-move.js';
+const FENETRE = 'lib/reserver-fenetre.js';
 
 // LES MUTATIONS : une regle retiree a la fois, `lettre` le scenario qui doit rougir.
 const MUTATIONS = [
@@ -98,6 +102,10 @@ const MUTATIONS = [
   { nom: 'glisser-sans-marque', lettre: 'F', fichier: MOUVEMENT, de: '    if (heures) plan.grandGroupe = { ...old.grandGroupe, heures, auxHeures: true };\n', vers: '' },
   // [G] le canal public lit la demande.
   { nom: 'public-lit-les-groupes', lettre: 'G', fichier: MOTEUR, de: "  const demandeGrandGroupe = input.channel === 'staff' ? lireGrandGroupe(preference.grandGroupe) : null;", vers: '  const demandeGrandGroupe = lireGrandGroupe(preference.grandGroupe);' },
+  // [I] « Créer » sur des groupes qui ne tiennent pas repart a la base (« Ce créneau vient de changer »), ou la
+  // phrase ne dit plus le groupe ni l activite.
+  { nom: 'creer-sans-refus-des-groupes', lettre: 'I', fichier: FENETRE, de: '  if (prepare.groupesRefuses) throw prepare.groupesRefuses;\n', vers: '' },
+  { nom: 'refus-sans-groupe-ni-activite', lettre: 'I', fichier: FENETRE, de: "      phrase = `Groupe ${n}${quoi ? `, ${quoi}` : ''} : ${raison.charAt(0).toLowerCase()}${raison.slice(1)}`;\n", vers: '' },
 ];
 
 function lancer(args) {
@@ -470,6 +478,49 @@ async function principal() {
       const enLigne = await prepareReservationOps({ ...demande }, 'public');
       const auComptoir = await prepareReservationOps({ ...demande }, 'staff');
       ok(sousGroupesDu(enLigne) === 0 && sousGroupesDu(auComptoir) === 8, '[G] le formulaire en ligne garde son plan ; le comptoir pose ses 4 groupes', { public: sousGroupesDu(enLigne), staff: sousGroupesDu(auComptoir) });
+    }
+
+    // =======================================================================
+    if (joue('I')) {
+      section('[I] « CRÉER » SUR DES GROUPES QUI GENENT UN AUTRE DOSSIER DIT LESQUELS');
+      // 60 joueurs en 4 groupes de 15 : les groupes 1 et 2 au laser a 14:00 puis au bowling a 15:00, les groupes 3
+      // et 4 l inverse, 3 pistes chacun.
+      const heures = [{ laser_game: '14:00', bowling: '15:00' }, { laser_game: '14:00', bowling: '15:00' }, { bowling: '14:00', laser_game: '15:00' }, { bowling: '14:00', laser_game: '15:00' }];
+      const quatre = corps(60, { impose: true, nombre: 4, heures });
+      const voisin = (activite, heure, pax, lanes) => ({
+        name: 'Dossier Voisin', phone: '0470999888', email: '', notes: '', occasion: '', date: jour, startTime: heure, duration: 1, totalDuration: 1, lanes, pax, status: 'pending', type: activite === 'bowling' ? 'bowling' : 'visite', formuleId: '',
+        program: activite === 'bowling' ? [{ activityId: 'bowling', pax, participants: pax, duration: 1 }] : [{ activityId: 'laser_game', pax, participants: pax, games: 1 }],
+        laserGames: 0, extras: [], channel: 'staff', requiresLanes: activite === 'bowling', centerId: 'libramont',
+        preference: activite === 'bowling' ? { activityOrder: ['bowling'], preferredTimes: { bowling: heure } } : { activityOrder: ['laser_game'], preferredTimes: { laser_game: heure }, laserGameTimes: [heure], laserPlacement: 'scheduled' },
+      });
+      // Un autre dossier tient 4 pistes a 15:00 : il en reste 4 pour les 6 des groupes 1 et 2. La fenetre le dit sur
+      // la case ; « Créer » (sans « Créer quand même ») refusait plus loin, a la base : « Ce créneau vient de changer ».
+      vider();
+      const pistes = await creer(voisin('bowling', '15:00', 20, [1, 2, 3, 4]));
+      const avantPistes = B.base.reservations.size;
+      const planPistes = await simuler(quatre);
+      const creePistes = await creer(quatre);
+      const ditPistes = String(creePistes.json.message || '');
+      ok(pistes.statut < 300 && planPistes.disponible === false && (planPistes.coincent || []).some((x) => x.activite === 'bowling' && /Pas assez de pistes libres à 15:00/.test(x.raison)),
+        '[I] MONTAGE : un autre dossier sur 4 pistes a 15:00, la fenetre dit sur la case qu un groupe manque de pistes', { statut: pistes.statut, coincent: planPistes.coincent, refus: planPistes.refus });
+      ok(creePistes.statut === 409 && /^Ces groupes ne tiennent pas au planning : Groupe [12], bowling : pas assez de pistes libres à 15:00 : il en faut 3\./.test(ditPistes)
+        && !/Ce créneau vient de changer/.test(ditPistes) && B.base.reservations.size === avantPistes,
+      '[I] « Créer » : refuse, la phrase dit le groupe, le bowling et 15:00, rien ne s ecrit', { statut: creePistes.statut, message: ditPistes, ecrits: B.base.reservations.size - avantPistes });
+      // Un autre dossier tient 20 armes au laser a 14:00 : les groupes 1 et 2 (15 + 15) n y tiennent pas.
+      vider();
+      const laser = await creer(voisin('laser_game', '14:00', 20, []));
+      const avantLaser = B.base.reservations.size;
+      const creeLaser = await creer(quatre);
+      const ditLaser = String(creeLaser.json.message || '');
+      ok(laser.statut < 300 && creeLaser.statut === 409 && /Groupe 1 : laser à 14:00 : il reste 10 places sur 30, il en faut 15\./.test(ditLaser)
+        && /Groupe 2 : laser à 14:00 : plus aucune place sur 30 \(le groupe 1 y joue\), il en faut 15\./.test(ditLaser) && !/Ce créneau vient de changer/.test(ditLaser)
+        && B.base.reservations.size === avantLaser,
+      '[I] 20 armes prises au laser a 14:00 : « Créer » dit les groupes 1 et 2 au laser a 14:00, rien ne s ecrit', { statut: creeLaser.statut, message: ditLaser });
+      // « Créer quand même » reste le choix de l equipe : le dossier part a placer, sans rien prendre.
+      const force = await creer({ ...quatre, forcer: true });
+      const place = force.json.reservation;
+      ok(force.statut < 300 && Boolean(place) && place.validationStatus === 'staff_review' && !(place.lanes || []).length,
+        '[I] « Créer quand même » : le dossier part a placer, sans piste', { statut: force.statut, message: force.json.message, statutDossier: place && place.validationStatus, pistes: place && place.lanes });
     }
   } catch (error) {
     ok(false, `exception : ${error.message}`, String(error.stack || '').split('\n').slice(0, 4).join(' | '));

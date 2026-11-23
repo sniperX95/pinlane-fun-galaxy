@@ -36297,13 +36297,15 @@ function boutonHeureEditionHtml(cle, heure, classes, quoi, focus) {
 // « 1re partie à 15:00 · 2e partie à 15:30 » : les heures d un laser a plusieurs
 // parties, en mots, chacune se touche et ne deplace qu elle. « 1er groupe à
 // 13:00 · 2e groupe à 14:00 » pour un bowling en plusieurs services : il se
-// deplace d un bloc, par son heure a gauche.
+// deplace d un bloc, par son heure a gauche. Un grand groupe en sous-groupes dit
+// leurs vrais numeros, ceux du bloc des groupes juste dessous (2026-11-23 : « 1er
+// groupe à 15:30 » nommait le groupe 3, qui commence au bowling).
 function partiesActiviteHtml(etapes, activityId) {
   const placees = etapes.filter(etape => etape.start !== null && etape.start !== undefined);
   const separe = '<span class="fm-partie-sep" aria-hidden="true"> · </span>';
   if (activityId === 'bowling') {
     if (placees.length < 2) return '';
-    return placees.map((etape, index) => `<span class="fm-partie">${index ? `${index + 1}e` : '1er'} groupe à <span class="fm-heure-mot">${escapeHtml(formatClockDisplay(etape.start))}</span></span>`).join(separe);
+    return placees.map((etape, index) => `<span class="fm-partie">${Number(etape.sousGroupe) > 0 ? `Groupe ${Number(etape.sousGroupe)}` : `${index ? `${index + 1}e` : '1er'} groupe`} à <span class="fm-heure-mot">${escapeHtml(formatClockDisplay(etape.start))}</span></span>`).join(separe);
   }
   if (activityId !== 'laser_game' || !placees.length || partiesLaserDuDossier(placees) < 2) return '';
   const touchable = peutChangerHeureEdition(state.selectedRes, activityId);

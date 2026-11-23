@@ -108,6 +108,8 @@ const MUTATIONS = [
   { nom: 'b3-projection-sans-reglage', lettre: 'B3', cible: '[B3] « Les groupes seulement » puis Enregistrer : la vraie sauvegarde l ecrit, la page le relit', serveur: true, fichier: PROJECTION, de: '    // Quand Modifier s ouvre hors TVA (2026-11-23), meme raison : l ecran le montre et le remet en place.\n    htvaParDefaut: config.htvaParDefaut,\n', vers: '' },
   { nom: 'b3-ouverture-sans-reglage', lettre: 'B3', cible: '[B3] « Les groupes seulement » : Modifier s ouvre en HTVA pour un team building', fichier: APP, de: '  etat.prixVu = prixVuALOuverture(reservation);\n', vers: '' },
   { nom: 'b3-choix-defait', lettre: 'B3', cible: '[B3] le choix du comptoir tient tant que la fiche est ouverte', fichier: APP, de: '  if (prixVuDeLaFiche && r && Number(prixVuDeLaFiche.id) === Number(r.id)) return prixVuDeLaFiche.vu;\n', vers: '' },
+  { nom: 'b3-survol-sur-le-choix', lettre: 'B3', cible: '[B3] le bouton HTVA choisi garde son fond de choix sous la souris', fichier: 'assets/pinlane-staff.css', de: ':is(.qb-opt, .dossier-option):hover:not(:disabled):not(.is-on, .selected, .active) { background: var(--subtle); }', vers: ':is(.qb-opt, .dossier-option):hover:not(:disabled) { background: var(--subtle); }' },
+  { nom: 'b2-detail-brut', lettre: 'B2', cible: '[B2] le detail du calcul ecrit « 6,60 € »', fichier: APP, de: "<b>${l.montant == null ? 'sur place' : formatMoneyCentimes(l.montant)}</b>", vers: "<b>${l.montant == null ? 'sur place' : `${Math.round((l.montant) * 100) / 100} ${signeMonnaie()}`}</b>" },
   { nom: 'b3-poll-oublie', lettre: 'B3', cible: '[B3] sans la page Etablissement, le poll apporte le reglage', fichier: APP, de: '    if (payload.htvaParDefaut) state.staffHtvaParDefaut = payload.htvaParDefaut;\n', vers: '' },
 ];
 const LES_MUTATIONS = new Map(MUTATIONS.map((m) => [m.nom, m]));
@@ -687,6 +689,11 @@ async function scenarioB2(browser) {
   ok(Boolean(ref) && memesTva(calcul.tva, ref.tva) && /^dont TVA /.test(hors.parTaux) && memesTva(tvaDuTexte(hors.parTaux), ref.tva) && proche(montantsDe(hors.horsTva)[0], ref.htva),
     '[B2] le detail du calcul donne la TVA par taux : « dont TVA 6 % : x · 21 % : y », et le hors TVA', { parTaux: hors.parTaux, attendu: ref && ref.tva, horsTva: hors.horsTva });
 
+  // Le detail du calcul passe par le formateur de la console : deux Pepsi = « 6,60 € », jamais « 6.6 € » (7d7732f).
+  const detail = await page.evaluate(() => Array.from(document.querySelectorAll('#posOverlay .dossier-price-detail li')).map((li) => ({ nom: ((li.querySelector('span') || {}).textContent || '').replace(/\s+/g, ' ').trim(), montant: ((li.querySelector('b') || {}).textContent || '').replace(/\s+/g, ' ').trim() })));
+  const lignePepsi = detail.find((l) => /Pepsi/i.test(l.nom));
+  ok(Boolean(lignePepsi) && lignePepsi.montant === '6,60 €' && !detail.some((l) => /\d\.\d/.test(l.montant)), '[B2] le detail du calcul ecrit « 6,60 € » (deux Pepsi), jamais « 6.6 € »', detail);
+
   // La formule : ses composants a leur prix a la carte, sa part a chacun, chaque part a son taux.
   const formule = calcul && calcul.formule[0];
   const carte = calcul ? calcul.composants.filter((c) => Number(c.prix) > 0) : [];
@@ -798,6 +805,24 @@ async function scenarioB3(browser) {
   ok(tb.vu === 'htva' && !tb.htvaFerme && tb.libelleTotal === 'Total HTVA' && tb.libelleParJoueur === 'Par joueur HTVA',
     '[B3] « Les groupes seulement » : Modifier s ouvre en HTVA pour un team building', tb);
   await capture(page, 'tva-7-modifier-team-building-htva', montrerLePrix);
+  // Un bouton choisi garde son fond de choix sous la souris (7d7732f : la regle :hover le passait en fond clair
+  // sous un texte blanc). Le bouton non choisi (TVAC) prend bien le fond de survol : le survol marche toujours.
+  const style = (sel) => page.evaluate((s) => { const b = document.querySelector(s); const c = getComputedStyle(b); return { fond: c.backgroundColor, texte: c.color }; }, sel);
+  await page.mouse.move(2, 2);
+  await page.waitForTimeout(350);
+  const choisiAuRepos = await style('#posOverlay [data-tva="htva"]');
+  const autreAuRepos = await style('#posOverlay [data-tva="tvac"]');
+  await page.hover('#posOverlay [data-tva="htva"]');
+  await page.waitForTimeout(350);
+  const choisiSousLaSouris = await style('#posOverlay [data-tva="htva"]');
+  await capture(page, 'tva-8-modifier-htva-sous-la-souris');
+  await page.hover('#posOverlay [data-tva="tvac"]');
+  await page.waitForTimeout(350);
+  const autreSousLaSouris = await style('#posOverlay [data-tva="tvac"]');
+  ok(choisiSousLaSouris.fond === choisiAuRepos.fond && choisiSousLaSouris.texte === choisiAuRepos.texte && choisiAuRepos.fond !== autreAuRepos.fond,
+    '[B3] le bouton HTVA choisi garde son fond de choix sous la souris', { choisiAuRepos, choisiSousLaSouris, autreAuRepos });
+  ok(autreSousLaSouris.fond !== autreAuRepos.fond && autreSousLaSouris.fond !== choisiAuRepos.fond, '[B3] un bouton non choisi prend toujours le fond de survol', { autreAuRepos, autreSousLaSouris });
+  await page.mouse.move(2, 2);
   await ouvrirModifier(page, SACHA);
   const sacha = await lireTva(page);
   ok(sacha.vu === 'tvac' && sacha.libelleTotal === 'Total', '[B3] « Les groupes seulement » : l anniversaire de Sacha s ouvre en TVAC', sacha);

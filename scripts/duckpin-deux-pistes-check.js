@@ -93,6 +93,8 @@ const MUTATIONS = [
   { nom: 'garde-aveugle', lettre: 'D4', cible: '[D4] le serveur refuse 2 pistes', serveur: true, fichier: GARDE, de: '  if (Number.isFinite(compte) && compte > 0) return Math.trunc(compte);', vers: '  if (Number.isFinite(compte) && compte > 0) return 1;' },
   { nom: 'planning-muet', lettre: 'D2', cible: '[D2] le planning dit « 2 pistes »', fichier: PLANNING, de: "        if (e.unites > 1) d = mots ? gfPluriel(e.unites, mots) : '×' + e.unites;", vers: "        if (false) d = mots ? gfPluriel(e.unites, mots) : '×' + e.unites;" },
   { nom: 'fiche-muette', lettre: 'D2', cible: '[D2] la fiche dit « 2 pistes · 1h »', fichier: APP, de: "  if (priceType === 'grid_bowling') return detailUnitesLigne(item, catalogue, reservation, Number(item.duration) || 1);", vers: "  if (priceType === 'grid_bowling') return formatDurationLabel(Number(item.duration) || 1);" },
+  { nom: 'ouvre-recalcule', lettre: 'D7', cible: '[D7] le duckpin enregistre a 2 pistes, 2 tours de 1h s ouvre tel quel', fichier: APP, de: '    if (inchange) { item.units = Number(enregistre.units);', vers: '    if (false) { item.units = Number(enregistre.units);' },
+  { nom: 'ne-recalcule-jamais', lettre: 'D7', cible: '[D7] l equipe change les joueurs du duckpin', fichier: APP, de: '    const inchange = Boolean(pistes && enregistre && Number(enregistre.units) > 0 && joueursEnregistres === Number(item.participants)', vers: '    const inchange = Boolean(pistes && enregistre && Number(enregistre.units) > 0' },
   { nom: 'rangee-qui-deborde', lettre: 'D6', cible: '[D6] sur un telephone, la rangee du duckpin tient dans l ecran', fichier: STYLE, de: '.qb-modal.rv.rs .rs-act-l { flex: none; display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; max-width: 100%; }', vers: '.qb-modal.rv.rs .rs-act-l { flex: none; display: inline-flex; align-items: center; gap: 8px; }' },
 ];
 const LES_MUTATIONS = new Map(MUTATIONS.map((m) => [m.nom, m]));
@@ -548,7 +550,36 @@ async function scenarioD6(browser) {
 }
 
 // ---------------------------------------------------------------------------
-const SCENARIOS = { D1: scenarioD1, D2: scenarioD2, D3: scenarioD3, D4: scenarioD4, D5: scenarioD5, D6: scenarioD6 };
+// [D7] UN DOSSIER ENREGISTRE S OUVRE TEL QUEL (2026-11-23)
+// Un duckpin enregistre a « 2 pistes, 2 tours de 1h » (sans choix du comptoir : units 2, sessions 2)
+// s ouvrait dans Modifier au conseil du centre pour ses joueurs : getEditProgramItems reecrivait
+// units et sessions des l ouverture. Ses pistes ne se recalculent que si l equipe change les
+// joueurs du duckpin ou son choix de pistes.
+// ---------------------------------------------------------------------------
+async function scenarioD7(browser) {
+  console.log('\n[D7] Modifier : un duckpin enregistre a 2 pistes, 2 tours s ouvre tel quel');
+  const m = await ouvrirConsole(browser, [{ nom: 'Famille Enregistree', pax: 4, heure: '17:00' }]);
+  const { page } = m;
+  const id = m.poses[0].reservation && m.poses[0].reservation.id;
+  await page.evaluate((i) => {
+    const r = state.reservations.find((x) => String(x.id) === String(i));
+    const l = r.program.items.find((x) => x.activityId === 'duckpin_bowling');
+    Object.assign(l, { units: 2, sessions: 2, duration: 1 }); delete l.pistesChoisies;
+  }, id);
+  await ouvrirModifier(page, id);
+  const detail = await detailModifier(page);
+  const ligne = () => page.evaluate(() => { const l = getEditProgramItems().find((x) => x.activityId === 'duckpin_bowling'); return l && { units: l.units, sessions: l.sessions }; });
+  const l0 = await ligne();
+  ok(/2 pistes.*2 tours de 1h/.test(detail) && l0 && l0.units === 2 && l0.sessions === 2, '[D7] le duckpin enregistre a 2 pistes, 2 tours de 1h s ouvre tel quel', { detail, l0 });
+  if (process.env.DUCKPIN_CAPTURE) await page.screenshot({ path: process.env.DUCKPIN_CAPTURE, clip: { x: 130, y: 10, width: 1098, height: 748 } });
+  await page.evaluate(() => { state.editState.programmeEdite.othersOptions.duckpin_bowling.participants = 2; });
+  const l1 = await ligne();
+  ok(Boolean(l1) && l1.units === 1 && l1.sessions === 1, '[D7] l equipe change les joueurs du duckpin : ses pistes se recalculent', { l1 });
+  await m.finir('D7');
+}
+
+// ---------------------------------------------------------------------------
+const SCENARIOS = { D1: scenarioD1, D2: scenarioD2, D3: scenarioD3, D4: scenarioD4, D5: scenarioD5, D6: scenarioD6, D7: scenarioD7 };
 
 function verifierLesAncres() {
   let mortes = 0;

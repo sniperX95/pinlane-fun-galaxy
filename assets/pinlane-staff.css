@@ -18368,7 +18368,9 @@ body:is(.staff-mode, .admin-mode) .staff-option-group { display: flex; align-ite
 body:is(.staff-mode, .admin-mode) .staff-option-label { flex-basis: 100%; }
 body:is(.staff-mode, .admin-mode) :is(.staff-option-list, .dossier-options) { display: flex; flex-wrap: wrap; gap: 6px; }
 body:is(.staff-mode, .admin-mode) :is(.qb-opt, .dossier-option) { min-height: 44px; border: 1px solid var(--control-border); border-radius: 8px; background: var(--surface); color: var(--text); padding: 8px 10px; font-size: 12px; line-height: 1.35; font-weight: 500; }
-body:is(.staff-mode, .admin-mode) :is(.qb-opt, .dossier-option):hover:not(:disabled) { background: var(--subtle); }
+/* (un bouton choisi garde sa couleur sous le doigt : sur tablette le survol reste colle apres un toucher,
+   et le fond clair sous le texte blanc du choix le rendait illisible, 2026-11-23) */
+body:is(.staff-mode, .admin-mode) :is(.qb-opt, .dossier-option):hover:not(:disabled):not(.is-on, .selected, .active) { background: var(--subtle); }
 body:is(.staff-mode, .admin-mode) :is(.qb-opt.is-on, .qb-opt.selected, .dossier-option.selected, .dossier-option.active) { background: var(--console-selected); border-color: var(--console-selected); color: var(--console-selected-text); }
 body:is(.staff-mode, .admin-mode) :is(.qb-opt, .dossier-option) small { display: block; color: inherit; font-size: 12px; font-weight: 400; opacity: .85; margin-top: 2px; }
 body:is(.staff-mode, .admin-mode) :is(.lane-chip, .dossier-lanes button) { min-width: 44px; height: 44px; border-radius: 8px; border-color: var(--control-border); font-size: 13px; background: var(--surface); }

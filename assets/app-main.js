@@ -34792,7 +34792,7 @@ function renderEditPrix(r) {
 // joueurs ajoute 39 EUR ; sans lui, le montant a l air arbitraire.
 function lignesDetailPrixHtml(estime) {
   // (une ligne a payer n a pas de montant : « À payer », jamais « 0 € »)
-  return estime.lignes.map(l => `<li><span>${escapeHtml(l.nom)}${l.detail ? ` <em>${escapeHtml(l.detail)}</em>` : ''}</span>${l.aPayer ? '<b class="pl-a-payer">À payer</b>' : `<b>${l.montant == null ? 'sur place' : `${Math.round((l.montant) * 100) / 100} ${signeMonnaie()}`}</b>`}</li>`).join('');
+  return estime.lignes.map(l => `<li><span>${escapeHtml(l.nom)}${l.detail ? ` <em>${escapeHtml(l.detail)}</em>` : ''}</span>${l.aPayer ? '<b class="pl-a-payer">À payer</b>' : `<b>${l.montant == null ? 'sur place' : formatMoneyCentimes(l.montant)}</b>`}</li>`).join('');
 }
 
 // LA TVA DU PRIX (2026-11-23, Ansar : « Et pouvoir mettre tva ou htva quand on va dans modifier prix »,
@@ -35132,7 +35132,7 @@ function renderEditExtras(r) {
       <div class="fm-x-arcades">
         <div class="dossier-options" role="group" aria-label="Arcades au temps ou en argent">${[['temps', 'Au temps'], ['argent', 'En argent']].map(([v, mot]) => `<button type="button" class="qb-dur-btn dossier-option${a.mode === v ? ' active' : ''}" aria-pressed="${a.mode === v}" onclick="setEditArcadesExtra('mode','${v}')">${mot}</button>`).join('')}</div>
         ${a.mode === 'temps' ? `<div class="dossier-options" role="group" aria-label="Temps d’arcades">${[15, 30, 60, 999].map((m) => `<button type="button" class="qb-dur-btn dossier-option${Number(a.minutes) === m ? ' active' : ''}" aria-pressed="${Number(a.minutes) === m}" onclick="setEditArcadesExtra('minutes',${m})">${m >= 999 ? 'À volonté' : `${m} min`}</button>`).join('')}</div>` : ''}
-        <span class="fm-euro"><input class="input fm-x-prix" type="number" min="0" step="0.5" inputmode="decimal" value="${escapeHtml(String(a.prix ?? ''))}" aria-label="${a.mode === 'temps' ? 'Prix des arcades par joueur' : 'Montant d’arcades par joueur'} en ${nomsMonnaie()}" oninput="setEditArcadesExtra('prix',this.value,true)"><span aria-hidden="true">${signeMonnaie()}</span></span>
+        <span class="fm-euro"><input class="input fm-x-prix" type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(String(a.prix ?? ''))}" aria-label="${a.mode === 'temps' ? 'Prix des arcades par joueur' : 'Montant d’arcades par joueur'} en ${nomsMonnaie()}" oninput="setEditArcadesExtra('prix',this.value,true)"><span aria-hidden="true">${signeMonnaie()}</span></span>
         <span class="fm-x-par" id="fmxPar-arcades">par joueur × ${Math.max(1, Math.trunc(Number(a.joueurs) || 1))}</span>
         <b class="fm-x-somme" id="fmxSomme-arcades">${escapeHtml(sommeArcadesExtra(a))}</b>
         <button type="button" class="fm-x-retirer" aria-label="Retirer les arcades" onclick="retirerEditArcadesExtra()">×</button>
@@ -38932,7 +38932,7 @@ function renderQuickExtras() {
       ${e[groupe].map((l, i) => `<div class="qb-x-ligne">
         ${champ(groupe, i, 'choix', l.choix, `list="qbx-${groupe}" placeholder="${groupe === 'autres' ? 'Libellé' : 'Choix'}" aria-label="${titre} : choix"`)}
         ${champ(groupe, i, 'qte', l.qte, 'type="number" min="1" max="999" inputmode="numeric" aria-label="Quantité" placeholder="Qté"')}
-        <span class="qb-x-prix">${champ(groupe, i, 'prix', l.prix, `type="number" min="0" step="0.5" inputmode="decimal" aria-label="Prix unitaire en ${nomsMonnaie()}" placeholder="Prix"`)}<i>${signeMonnaie()}</i></span>
+        <span class="qb-x-prix">${champ(groupe, i, 'prix', l.prix, `type="number" min="0" step="0.01" inputmode="decimal" aria-label="Prix unitaire en ${nomsMonnaie()}" placeholder="Prix"`)}<i>${signeMonnaie()}</i></span>
         <button type="button" class="qb-x-rm" aria-label="Retirer la ligne" onclick="retirerQuickExtra('${groupe}',${i})">×</button>
       </div>`).join('')}
       <button type="button" class="qb-x-add" onclick="ajouterQuickExtra('${groupe}')">+ ${groupe === 'nourriture' ? 'Ajouter un plat' : groupe === 'boissons' ? 'Ajouter des boissons' : 'Ajouter une ligne'}</button>
@@ -38946,7 +38946,7 @@ function renderQuickExtras() {
         ${[['', 'Aucune'], ['temps', 'Au temps'], ['argent', 'En argent']].map(([v, mot]) => `<button type="button" class="qb-dur-btn ${e.arcades.mode === v ? 'active' : ''}" onclick="setQuickArcades('mode','${v}')">${mot}</button>`).join('')}
       </div>
       ${e.arcades.mode === 'temps' ? `<div class="qb-x-seg">${[15, 30, 60, 999].map((m) => `<button type="button" class="qb-dur-btn ${Number(e.arcades.minutes) === m ? 'active' : ''}" onclick="setQuickArcades('minutes',${m})">${m >= 999 ? 'À volonté' : `${m} min`}</button>`).join('')}</div>` : ''}
-      ${e.arcades.mode ? `<label class="qb-x-montant">${e.arcades.mode === 'temps' ? 'Prix par joueur' : 'Montant par joueur'} <input class="qb-input" type="number" min="0" step="0.5" inputmode="decimal" value="${escapeHtml(String(e.arcades.prix ?? ''))}" placeholder="${signeMonnaie()}" oninput="setQuickArcades('prix',this.value,true)"> ${signeMonnaie()}</label>` : ''}
+      ${e.arcades.mode ? `<label class="qb-x-montant">${e.arcades.mode === 'temps' ? 'Prix par joueur' : 'Montant par joueur'} <input class="qb-input" type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(String(e.arcades.prix ?? ''))}" placeholder="${signeMonnaie()}" oninput="setQuickArcades('prix',this.value,true)"> ${signeMonnaie()}</label>` : ''}
     </div>
     `}
     ${lignes('nourriture', 'Nourriture', 'quantité et prix à l’unité')}
@@ -40829,7 +40829,7 @@ function illNouvelHtml(ou) {
   const suite = ou === 'ed' ? 'ce dossier le prend tout de suite' : 'il se réserve tout de suite';
   return `<section class="rs-ill-nv" id="${p}" aria-labelledby="${p}Titre">
     <div class="rs-ill-nv-t"><p class="rs-ill-nv-n"><b id="${p}Titre">Accès illimité</b><span>Ce centre n’en a pas encore. Tapez son prix par joueur et choisissez sa durée, ${suite}.</span></p>
-      <label class="rs-ill-nv-prix"><span>Prix par joueur</span><span class="rs-ill-nv-champ"><input id="${p}Prix" type="number" min="0" max="1000" step="0.5" inputmode="decimal" autocomplete="off" value="${escapeHtml(String(n.prix == null ? '' : n.prix))}" aria-label="Prix par joueur en ${nomsMonnaie()}" oninput="illNouvelPrix('${ou}',this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();illNouvelCreer('${ou}');}"><span aria-hidden="true">${signeMonnaie()}</span></span></label></div>
+      <label class="rs-ill-nv-prix"><span>Prix par joueur</span><span class="rs-ill-nv-champ"><input id="${p}Prix" type="number" min="0" max="1000" step="0.01" inputmode="decimal" autocomplete="off" value="${escapeHtml(String(n.prix == null ? '' : n.prix))}" aria-label="Prix par joueur en ${nomsMonnaie()}" oninput="illNouvelPrix('${ou}',this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();illNouvelCreer('${ou}');}"><span aria-hidden="true">${signeMonnaie()}</span></span></label></div>
     <div class="rs-ill-nv-l"><span class="rs-ill-nv-lbl" id="${p}DureeT">Durée</span><div class="rs-ill-nv-seg" role="radiogroup" aria-labelledby="${p}DureeT">${duree}</div>${autreChamp}</div>
     <div class="rs-ill-nv-l is-acts"><span class="rs-ill-nv-lbl">Compris</span>${tuiles}</div>
     ${n.message ? `<p class="rs-ill-nv-ko" id="${p}Erreur" role="alert">${escapeHtml(n.message)}</p>` : ''}
@@ -47810,7 +47810,7 @@ function rsBandeHtml() {
   // Un prix « a saisir » se tape, au niveau catalogue comme au libre : le serveur garde
   // le prix tape d un article du centre a 0. Le prix d une ligne libre ne se tape qu au
   // libre ; au catalogue elle est « à payer » (resoudreExtras, lib/droits-reservation.js).
-  const prixChamp = (a ? a.prix == null : libre) ? `<input class="rs-x-prix" id="rsXPrix" type="number" min="0" step="0.5" inputmode="decimal" placeholder="Prix" value="${escapeHtml(String(ligne.prixUnitaire ?? ''))}" aria-label="Prix à l’unité en ${nomsMonnaie()}" oninput="rsArticleChamp('prix',this.value)">` : '';
+  const prixChamp = (a ? a.prix == null : libre) ? `<input class="rs-x-prix" id="rsXPrix" type="number" min="0" step="0.01" inputmode="decimal" placeholder="Prix" value="${escapeHtml(String(ligne.prixUnitaire ?? ''))}" aria-label="Prix à l’unité en ${nomsMonnaie()}" oninput="rsArticleChamp('prix',this.value)">` : '';
   const parPersonne = Boolean(ligne.suit);
   const calcul = valeur == null ? 'à payer'
     : ligne.offert ? `offert, au lieu de ${rsEuros(valeur)}`
@@ -48019,7 +48019,7 @@ function rsFormuleMesureHtml() {
   const mode = `<div class="rs-seg" role="group" aria-label="Prix par joueur ou pour le groupe"><button type="button" class="${fm.mode === 'total' ? '' : 'is-on'}" id="rsFmParJoueur" aria-pressed="${fm.mode !== 'total'}" onclick="rsFmMode('personne')">Par joueur</button><button type="button" class="${fm.mode === 'total' ? 'is-on' : ''}" id="rsFmAuTotal" aria-pressed="${fm.mode === 'total'}" onclick="rsFmMode('total')">Pour le groupe</button></div>`;
   const prixHtml = rsNiveau('prix') === 'non'
     ? '<p class="rs-texte" id="rsPrixFixe">Le prix se change avec un responsable.</p>'
-    : `<div class="rs-fm-ligne">${mode}<label class="rs-champ rs-fm-montant"><input id="rsFmMontant" type="number" min="0" step="0.5" inputmode="decimal" value="${escapeHtml(String(fm.montant ?? ''))}" aria-label="${fm.mode === 'total' ? 'Prix pour le groupe' : 'Prix par joueur'} en ${nomsMonnaie()}" oninput="rsFmChamp('montant',this.value)"><span aria-hidden="true">${signeMonnaie()}</span></label><span class="rs-fm-dit" id="rsFmCalcul">${escapeHtml(dit)}</span></div>${rsPlafondHtml()}`;
+    : `<div class="rs-fm-ligne">${mode}<label class="rs-champ rs-fm-montant"><input id="rsFmMontant" type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(String(fm.montant ?? ''))}" aria-label="${fm.mode === 'total' ? 'Prix pour le groupe' : 'Prix par joueur'} en ${nomsMonnaie()}" oninput="rsFmChamp('montant',this.value)"><span aria-hidden="true">${signeMonnaie()}</span></label><span class="rs-fm-dit" id="rsFmCalcul">${escapeHtml(dit)}</span></div>${rsPlafondHtml()}`;
   return `<section class="rs-fm" aria-label="Formule pour ce groupe">
     <div class="rs-rang rs-fm-rang"><span class="rs-lbl">Nom</span><div class="rs-champ"><input id="rsFmNom" maxlength="80" autocomplete="off" value="${escapeHtml(fm.nom || '')}" aria-label="Nom de la formule" oninput="rsFmChamp('nom',this.value)"></div></div>
     <div class="rs-rang rs-fm-rang"><span class="rs-lbl is-haut">Contient</span><div>${rsRecuHtml()}<p class="rs-fm-somme"><span>Prix normal</span><b id="rsFmDetail">${escapeHtml(rsEuros(reference))}</b></p></div></div>
@@ -48035,7 +48035,7 @@ function rsMesureArcadesHtml() {
   const rangs = [rsRang('Forme', [['temps', 'Au temps'], ['argent', 'En argent']].map(([v, mot]) => rsPetite(mot, e.arcades.mode === v, `rsFixer(() => setQuickArcades('mode','${v}'))`)).join(''), 2)];
   if (e.arcades.mode === 'temps') rangs.push(rsRang('Temps', [15, 30, 60, 999].map((m) => rsPetite(m >= 999 ? 'À volonté' : `${m} min`, Number(e.arcades.minutes) === m, `rsFixer(() => setQuickArcades('minutes',${m}))`)).join(''), 4));
   if (e.arcades.mode) {
-    rangs.push(`<label class="rs-champ"><span>${e.arcades.mode === 'temps' ? 'Prix par joueur' : 'Montant par joueur'} (${joueurs})</span><input id="rsXPrix" type="number" min="0" step="0.5" inputmode="decimal" value="${escapeHtml(String(e.arcades.prix ?? ''))}" aria-label="Prix des arcades par joueur" oninput="setQuickArcades('prix',this.value,true); rsMajTicket()"></label>`);
+    rangs.push(`<label class="rs-champ"><span>${e.arcades.mode === 'temps' ? 'Prix par joueur' : 'Montant par joueur'} (${joueurs})</span><input id="rsXPrix" type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(String(e.arcades.prix ?? ''))}" aria-label="Prix des arcades par joueur" oninput="setQuickArcades('prix',this.value,true); rsMajTicket()"></label>`);
     rangs.push(rsPetite('Retirer les arcades', false, "rsFixer(() => setQuickArcades('mode',''))", 'id="rsArcadesRetirer"'));
   }
   return `<div class="rs-rangs">${rangs.join('')}</div>`;
@@ -48063,7 +48063,7 @@ function rsMesureHtml() {
   // payer » ; au catalogue, son nom seul, « à payer » : le seul geste hors de la carte de ce niveau
   // (resoudreExtras, lib/droits-reservation.js). Sa quantite se regle sur sa ligne, comme un article.
   const prixLibre = niveau === 'libre'
-    ? `<label class="rs-champ"><span>Prix</span><input id="rsLibrePrix" type="number" min="0" step="0.5" inputmode="decimal" placeholder="À payer" value="${escapeHtml(String(b.mesure.prix ?? ''))}" aria-label="Prix de l’article libre en ${nomsMonnaie()}, vide pour à payer" oninput="rsLibreChamp('prix',this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();rsLibreAjouter();}"></label>`
+    ? `<label class="rs-champ"><span>Prix</span><input id="rsLibrePrix" type="number" min="0" step="0.01" inputmode="decimal" placeholder="À payer" value="${escapeHtml(String(b.mesure.prix ?? ''))}" aria-label="Prix de l’article libre en ${nomsMonnaie()}, vide pour à payer" oninput="rsLibreChamp('prix',this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();rsLibreAjouter();}"></label>`
     : '<span class="rs-champ rs-libre-apayer"><span>Prix</span><b class="pl-a-payer" id="rsLibreAPayer">À payer</b></span>';
   const libre = niveau === 'libre' || niveau === 'catalogue' ? `<div class="rs-libre"><label class="rs-champ"><span>Ajouter ce que vous voulez</span><input id="rsLibreNom" maxlength="80" autocomplete="off" value="${escapeHtml(b.mesure.nom || '')}" placeholder="Karaoké, open bar, gâteau…" aria-label="Nom de l’article libre" oninput="rsLibreChamp('nom',this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();rsLibreAjouter();}"></label>${prixLibre}<button type="button" class="rs-p" id="rsLibreAjouter" onclick="rsLibreAjouter()" title="La ligne est déjà au ticket dès que vous écrivez son nom : ce bouton en prépare une autre."><b>${rsLibreEnCours() ? 'Ajouter un autre' : 'Ajouter'}</b></button></div>` : '';
   if (courante === 'activites') return `${rsRetourHtml(droite)}${tabs}<div class="rs-petits rs-petits-mesure" role="group" aria-label="Activités en plus de la formule">${activites.map((id) => rsTuileHtml(id, [])).join('')}</div>${libre}`;

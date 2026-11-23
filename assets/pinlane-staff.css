@@ -20546,6 +20546,19 @@ body:is(.staff-mode, .admin-mode) .fx-modal .fm .edit-prix-detail { display: gri
 body:is(.staff-mode, .admin-mode) .fx-modal .fm .edit-prix-detail li { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; line-height: 1.4; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm .edit-prix-detail em { font-style: normal; color: var(--muted); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm .edit-prix-detail b { font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* LE PRIX TVAC OU HTVA (2026-11-23) : le choix en face du titre « Prix », la ligne des deux montants sous
+   les champs en HTVA, la TVA part par part dans le detail du calcul. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-prix-tete { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 8px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-prix-tete .fm-titre { margin: 0; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-tva { display: inline-flex; gap: 6px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-tva .fm-tva-b { min-width: 60px; min-height: 36px; padding: 0 10px; font-size: 13px; font-weight: 600; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-prix-tva { margin: 10px 0 0; font-size: 14px; font-weight: 600; line-height: 1.4; color: var(--text); font-variant-numeric: tabular-nums; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-prix-tva[hidden] { display: none; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .edit-prix-tva { display: grid; gap: 6px; margin: 10px 0 0; padding: 10px 0 0; border-top: 1px solid var(--line); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .edit-prix-tva p { display: flex; justify-content: space-between; gap: 12px; margin: 0; font-size: 13px; line-height: 1.4; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .edit-prix-tva em { font-style: normal; color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .edit-prix-tva b { font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .edit-prix-tva .edit-prix-tva-t { font-weight: 600; color: var(--text); }
 
 /* Le client : ses champs l un sous l autre, puis l occasion et les
    accompagnants (un compteur court, pas une ligne entiere). */

@@ -3765,6 +3765,8 @@ async function syncDateReservations(dateStr, opts = {}) {
     if (payload.classification) state.staffClassification = payload.classification;
     // Le seuil de retard du centre (Etablissement > Regles), meme chemin.
     if (payload.accueil) state.staffAccueil = payload.accueil;
+    // Les taux de TVA du centre (Etablissement > Le centre > TVA), meme chemin : Modifier les lit.
+    if (payload.vatRates) state.staffTva = payload.vatRates;
     // Les jours ouverts autrement pour un groupe (lib/booking-config), toute la liste.
     if (!payload.degraded) smPoserOuvertures(payload.ouvertures);
     hydrateSelectedReservation();
@@ -14767,6 +14769,19 @@ function validateEstablishmentForm() {
       invalid.push(input);
     }
   });
+  // La TVA : un taux de 0 a 100 %, deux decimales au plus. Une case vide garde le taux enregistre
+  // (collectEstablishmentVatRates ne l envoie pas).
+  Object.keys(TVA_SORTES).forEach((cle) => {
+    const input = document.getElementById(`estab-tva-${cle}`);
+    if (!input) return;
+    const brut = String(input.value || '').trim().replace(',', '.');
+    if (brut === '') return;
+    const value = Number(brut);
+    if (!Number.isFinite(value) || value < 0 || value > 100 || Math.abs(Math.round(value * 100) - value * 100) > 1e-6) {
+      markEstablishmentFieldError(input, `TVA des ${TVA_SORTES[cle]} : un taux de 0 à 100 %.`);
+      invalid.push(input);
+    }
+  });
   // Les installations des activites : un entier, au moins 1. Une saisie
   // refusee revient au gerant avec sa raison, jamais jetee en silence.
   document.querySelectorAll('[data-estab-page] .estab-cap-input').forEach((input) => {
@@ -14983,6 +14998,7 @@ async function submitCenterConfig(centerId) {
     })(),
     classification,
     accueil: { lateThresholdMinutes: Number(establishmentInputValue('estab-lateThreshold', STAFF_LATE_THRESHOLD_DEFAUT)) },
+    vatRates: collectEstablishmentVatRates(),
     bookingRules: { minDaysAhead: Number(establishmentInputValue('estab-book-min', 0)) || 0, horizonDays: establishmentInputValue('estab-book-horizon', '') === '' ? null : Number(establishmentInputValue('estab-book-horizon', '')) },
     customActivities: establishmentCustomActivitiesDraft.map(item => ({ id: item.id, label: item.label }))
   };
@@ -15773,6 +15789,28 @@ function ebSectionDe(k, salles) {
 }
 
 // ── Le centre ────────────────────────────────────────────────────────────────
+// LA TVA DU CENTRE (2026-11-23, Ansar : « oui et paramettrable ») : un taux par sorte de ligne, pour lire
+// un prix hors TVA dans Modifier. Les valeurs viennent de la config du centre (normalizeVatRates).
+function ebTvaHtml(center) {
+  const taux = center.vatRates && typeof center.vatRates === 'object' ? center.vatRates : {};
+  const champ = (cle, titre, aide) => ebR(`${titre} (%)`, aide, ebNum(`estab-tva-${cle}`, `TVA des ${TVA_SORTES[cle]}, en pour cent`, { value: taux[cle] ?? '', min: 0, max: 100, step: 1, htmlStep: '0.01' }));
+  return ebG('TVA', 'Les taux qui servent à lire un prix hors TVA dans Modifier. Le prix enregistré reste TVA comprise.',
+    champ('activities', 'Activités', 'Bowling, duckpin, laser, minigolf, billard, playground, pixel : l’accès et l’usage.')
+    + champ('food', 'Nourriture', '')
+    + champ('drinks', 'Boissons', '')
+    + champ('arcades', 'Arcades', ''), { id: 'eb-tva' });
+}
+// Les taux tapes, tels quels : le serveur les borne (normalizeVatRates) et refuse ce qui sort de 0 a 100 %.
+// Une case vide ne part pas : le taux enregistre reste (la fusion de saveCenterConfig, cle par cle).
+function collectEstablishmentVatRates() {
+  const taux = {};
+  Object.keys(TVA_SORTES).forEach((cle) => {
+    const brut = String(document.getElementById(`estab-tva-${cle}`)?.value ?? '').trim().replace(',', '.');
+    if (brut !== '') taux[cle] = brut;
+  });
+  return Object.keys(taux).length ? taux : undefined;
+}
+
 function ebCentreHtml(c) {
   const center = c.center;
   const ident = center.identity && typeof center.identity === 'object' ? center.identity : {};
@@ -15792,6 +15830,7 @@ function ebCentreHtml(c) {
       + ebR('Site du centre', 'Le formulaire, les mails et l’assistant y renvoient.', ebTexte('estab-site', ident.siteUrl || '', { max: 300, ph: 'https://…' }))
       + ebR('Mails aux clients', 'L’expéditeur, les modèles et les relances se règlent dans Emails & relances.', '<button type="button" class="eb-b" onclick="openStaffMenuPage(\'emails\')">Ouvrir</button>')
       + ebR('Mail du centre', 'Les réponses des clients arrivent ici. Il se change avec l’équipe Pinlane.', `<b class="eb-ro-v">${ebE(center.publicEmail || 'Pas encore renseigné')}</b>`))
+    + ebTvaHtml(center)
     + (c.canEdit ? ebG('Ajouter un centre', 'Il arrive en « prévu » : rien ne s’ouvre aux clients avant que vous le décidiez.',
       ebR('Nom du nouveau centre', '', ebTexte('estab-new-name', '', { max: 80, attrs: 'oninput="ebIdentifiantDuNom(this.value)"' }))
       + ebR('Identifiant', 'Sans espace. Il se lit dans le lien de réservation.', ebTexte('estab-new-id', '', { max: 40, ph: 'namur', attrs: 'oninput="this.dataset.touche=\'1\'"' }))
@@ -32963,8 +33002,12 @@ function estimerPrixProgramme(items, pax, dateStr, startTime) {
   let complet = true;
   let chiffrees = 0;
   const lignes = [];
+  // (chaque ligne dit sa sorte pour la TVA, tvaDuPrix : les arcades a part, le reste des activites)
+  let sorte = 'activities';
+  const ajouter = (ligne) => lignes.push({ ...ligne, sorte });
   (items || []).forEach((item) => {
     const id = String(item.activityId || '');
+    sorte = sorteTvaActivite(id);
     const effectif = participantsLigneProgramme(item, joueurs);
     if (id === 'bowling') {
       const heures = Number(item.duration) || 1;
@@ -32976,7 +33019,7 @@ function estimerPrixProgramme(items, pax, dateStr, startTime) {
       const montant = Number(getBasePrice('bowling', heures, pistes, effectif, '', dateStr)) || 0;
       total += montant;
       chiffrees += 1;
-      lignes.push({ nom: `Bowling ${formatDurationLabel(heures)}`, detail: `${pistes} piste${pistes > 1 ? 's' : ''}`, montant });
+      ajouter({ nom: `Bowling ${formatDurationLabel(heures)}`, detail: `${pistes} piste${pistes > 1 ? 's' : ''}`, montant });
       return;
     }
     if (id === 'laser_game') {
@@ -32996,7 +33039,7 @@ function estimerPrixProgramme(items, pax, dateStr, startTime) {
         const montant = Math.round(somme * 100) / 100;
         total += montant;
         chiffrees += 1;
-        lignes.push({ nom: `Laser ${parties} parties`, detail: joueursDesPartiesEnMots(parPartie), montant });
+        ajouter({ nom: `Laser ${parties} parties`, detail: joueursDesPartiesEnMots(parPartie), montant });
         return;
       }
       const option = getLaserOption(parties * 0.5);
@@ -33005,7 +33048,7 @@ function estimerPrixProgramme(items, pax, dateStr, startTime) {
       const montant = Math.round((unitaire * effectif + supplement) * 100) / 100;
       total += montant;
       chiffrees += 1;
-      lignes.push({ nom: `Laser ${parties} partie${parties > 1 ? 's' : ''}`, detail: `${formatMontant(unitaire)}/pers × ${effectif}${item.extraLaser ? ` · + ${item.extraLaser.games - parties} pour ${item.extraLaser.participants} joueurs${Number(item.extraLaser.discountAmount) > 0 ? ` · remise ${formatMoneyCentimes(item.extraLaser.discountAmount)}` : ''}` : ''}`, montant });
+      ajouter({ nom: `Laser ${parties} partie${parties > 1 ? 's' : ''}`, detail: `${formatMontant(unitaire)}/pers × ${effectif}${item.extraLaser ? ` · + ${item.extraLaser.games - parties} pour ${item.extraLaser.participants} joueurs${Number(item.extraLaser.discountAmount) > 0 ? ` · remise ${formatMoneyCentimes(item.extraLaser.discountAmount)}` : ''}` : ''}`, montant });
       return;
     }
     const activite = typeof getCenterActivity === 'function' ? getCenterActivity(id) : null;
@@ -33013,7 +33056,7 @@ function estimerPrixProgramme(items, pax, dateStr, startTime) {
     if (item.upsell && Number(item.upsell.participants) === effectif && Number.isFinite(Number(item.upsell.price))) {
       const montant = Math.max(0, Number(item.upsell.price));
       total += montant; chiffrees += 1;
-      lignes.push({ nom, detail: `Offre retenue · ${effectif} joueurs${Number(item.upsell.discountAmount) > 0 ? ` · remise ${formatMoneyCentimes(item.upsell.discountAmount)}` : ''}`, montant });
+      ajouter({ nom, detail: `Offre retenue · ${effectif} joueurs${Number(item.upsell.discountAmount) > 0 ? ` · remise ${formatMoneyCentimes(item.upsell.discountAmount)}` : ''}`, montant });
       return;
     }
     // MEME CALCUL QUE LE SERVEUR (lib/visit-program), ligne par ligne. Une
@@ -33026,7 +33069,7 @@ function estimerPrixProgramme(items, pax, dateStr, startTime) {
       const montant = Math.round(Number(item.waitPricePerPax) * attendent * 100) / 100;
       total += montant;
       chiffrees += 1;
-      lignes.push({ nom, detail: `pendant l’attente, ${attendent} pers.`, montant });
+      ajouter({ nom, detail: `pendant l’attente, ${attendent} pers.`, montant });
       return;
     }
     if (activite && activite.priceType === 'grid_bowling' && typeof getActivityUnitPlan === 'function') {
@@ -33036,7 +33079,7 @@ function estimerPrixProgramme(items, pax, dateStr, startTime) {
       const montant = Number(getBasePrice('bowling', heures, plan.units, effectif, '', dateStr)) || 0;
       total += montant;
       chiffrees += 1;
-      lignes.push({ nom: `${nom} ${formatDurationLabel(heures)}`, detail: `${plan.units} piste${plan.units > 1 ? 's' : ''}${plan.tours > 1 ? ` · ${plan.tours} tours` : ''}`, montant });
+      ajouter({ nom: `${nom} ${formatDurationLabel(heures)}`, detail: `${plan.units} piste${plan.units > 1 ? 's' : ''}${plan.tours > 1 ? ` · ${plan.tours} tours` : ''}`, montant });
       return;
     }
     // Les reglages de la ligne comptent : une table de billard sur 2 h ne vaut
@@ -33056,12 +33099,12 @@ function estimerPrixProgramme(items, pax, dateStr, startTime) {
       : null;
     if (ligne == null) {
       complet = false;
-      lignes.push({ nom, detail: 'tarif non saisi', montant: null });
+      ajouter({ nom, detail: 'tarif non saisi', montant: null });
       return;
     }
     total += Number(ligne) || 0;
     chiffrees += 1;
-    lignes.push({ nom, detail: activite?.id === 'arcade_time' ? (() => { const q = getArcadeOfferQuote(activite,item,effectif); return q ? getStaffArcadeOfferDetail({cards:q.cards,arcadeOffer:q.offer}) : ''; })() : '', montant: Number(ligne) || 0 });
+    ajouter({ nom, detail: activite?.id === 'arcade_time' ? (() => { const q = getArcadeOfferQuote(activite,item,effectif); return q ? getStaffArcadeOfferDetail({cards:q.cards,arcadeOffer:q.offer}) : ''; })() : '', montant: Number(ligne) || 0 });
   });
   return {
     total: Math.round(total * 100) / 100,
@@ -33098,7 +33141,7 @@ function estimerFormuleEdition(r, e) {
   if (!(prixFormule > 0)) return null;
   // « 39 € × 11 », comme l addition de la fiche.
   const detail = `${formatMoneyCentimes(formule.price)} × ${formule.type === 'per_lane' ? `${pistes} piste${pistes > 1 ? 's' : ''}` : pax}`;
-  const lignes = [{ nom: nomDeLaFormuleAchetee(r, formule.name), detail, montant: prixFormule }];
+  const lignes = [{ nom: nomDeLaFormuleAchetee(r, formule.name), detail, montant: prixFormule, sorte: 'formule' }];
   const comprises = activitesDeLaFormuleEdition(applyReservationFormulaChoice(formule, r));
   const ajoutees = editProgramAChange() ? getEditProgramItems().filter((item) => !comprises.has(String(item.activityId || ''))) : [];
   const ajouts = ajoutees.length ? estimerPrixProgramme(ajoutees, e.pax, e.date || r.date, e.startTime || r.startTime) : null;
@@ -33161,7 +33204,7 @@ function getEditPrixEstime() {
   if (!extras.length) return estime;
   const total = Math.round((estime.total + sumExtras(extras)) * 100) / 100;
   const joueurs = Math.max(1, Number(state.editState.pax) || 1);
-  return { ...estime, total, lignes: [...estime.lignes, ...extras.map((x) => ({ nom: x.name || 'Extra', detail: '', montant: Number(x.price) || 0, ...(x.aPayer === true ? { aPayer: true } : {}) }))], parPersonne: Math.round(total / joueurs) };
+  return { ...estime, total, lignes: [...estime.lignes, ...extras.map((x) => ({ ...sorteTvaExtra(x), nom: x.name || 'Extra', detail: '', montant: Number(x.price) || 0, ...(x.aPayer === true ? { aPayer: true } : {}) }))], parPersonne: Math.round(total / joueurs) };
 }
 
 function ensureEditProgram(r) {
@@ -33308,7 +33351,8 @@ function setEditLaserGames(nombre) {
 // bouton « Recalculer » rend la main a l estimation.
 function setEditPrice(valeur) {
   if (!state.editState) return;
-  state.editState.price = valeur;
+  // (en HTVA, le montant tape est hors TVA : il s enregistre TVA comprise, au melange de taux du dossier)
+  state.editState.price = prixHorsTvaEdition() ? tvacDuHorsTva(valeur) : valeur;
   state.editState.prixFige = true;
   majEditPrixEstime();
 }
@@ -33329,10 +33373,12 @@ function setEditPricePerPerson(valeur) {
   const parPersonne = Number(brut);
   if (!Number.isFinite(parPersonne) || parPersonne < 0) return;
   const joueurs = Math.max(1, Number(state.editState.pax) || 1);
-  state.editState.price = String(Math.round((parPersonne * joueurs) * 100) / 100);
+  const totalTape = String(Math.round((parPersonne * joueurs) * 100) / 100);
+  // (en HTVA, le total tape est hors TVA : il s enregistre TVA comprise, le champ garde le hors TVA)
+  state.editState.price = prixHorsTvaEdition() ? tvacDuHorsTva(totalTape) : totalTape;
   state.editState.prixFige = true;
   const champTotal = document.getElementById('editPriceInput');
-  if (champTotal) champTotal.value = state.editState.price;
+  if (champTotal) champTotal.value = totalTape;
   majEditPrixEstime();
 }
 
@@ -33353,20 +33399,32 @@ function majEditPrixEstime() {
   const champ = document.getElementById('editPriceInput');
   // Tant que personne n a fige un montant, le champ SUIT ce qu on change
   // (prixSuiviEdition).
+  const horsTva = prixHorsTvaEdition();
   if (!e.prixFige && champ) {
     const valeur = prixSuiviEdition(estime);
-    champ.value = String(valeur);
     e.price = String(valeur);
+    champ.value = String(horsTva ? (tvaEdition() || { htva: valeur }).htva : valeur);
   }
   const facture = getEditPriceValue() ?? (estime ? estime.total : 0);
   const joueurs = Math.max(1, Number(e.pax) || 1);
+  // (en HTVA, les champs disent le hors TVA du prix enregistre ; celui qu on tape garde sa saisie)
+  const tva = tvaEdition();
+  const montantVu = horsTva && tva ? tva.htva : facture;
   // Les deux champs se repondent, mais JAMAIS celui qu on est en train de
   // taper : reecrire sous les doigts transforme un « 1 » en cours de frappe
   // en « 17 » et rend le champ inutilisable.
   const champPersonne = document.getElementById('editPricePerPerson');
-  if (champPersonne && document.activeElement !== champPersonne) champPersonne.value = String(Math.round((facture / joueurs) * 100) / 100);
+  if (champPersonne && document.activeElement !== champPersonne) champPersonne.value = String(Math.round((montantVu / joueurs) * 100) / 100);
   const detail = document.querySelector('#posOverlay .dossier-price-detail .edit-prix-detail');
   if (detail && estime) detail.innerHTML = lignesDetailPrixHtml(estime);
+  const detailTva = document.getElementById('editPrixTvaDetail');
+  if (detailTva) detailTva.innerHTML = tvaDetailHtml(tva);
+  const ligneTva = document.getElementById('editPrixTva');
+  if (ligneTva && horsTva) {
+    const lu = (el) => { const brut = String((el && el.value) || '').trim().replace(',', '.'); return brut === '' ? NaN : Number(brut); };
+    const tape = document.activeElement === champ ? lu(champ) : document.activeElement === champPersonne ? Math.round(lu(champPersonne) * joueurs * 100) / 100 : null;
+    ligneTva.textContent = ligneTvaEditionTexte(tva, Number.isFinite(tape) ? tape : null);
+  }
   peindreEtatPrix(estime);
   peindreRaisonPrixEdition();
   majModifsEdition();
@@ -34701,25 +34759,31 @@ function renderEditPrix(r) {
   const detailHtml = estime && estime.lignes.length
     ? `<ul class="edit-prix-detail">${lignesDetailPrixHtml(estime)}</ul>`
     : '';
+  // LE PRIX SE LIT TVAC OU HTVA (2026-11-23) : en HTVA, les champs disent le hors TVA du prix, et ce qui
+  // s y tape repart TVA comprise (setEditPrice). Le detail du calcul donne la TVA par taux.
+  const horsTva = prixHorsTvaEdition();
+  const tva = tvaEdition();
+  const montantVu = horsTva && tva ? tva.htva : Number(valeurChamp);
   const etat = textePrixEdition(r, estime);
   const formuleSM = formuleDuComptoir(r);
   return `<section class="fm-prix dossier-price-section" aria-labelledby="dossierPriceHeading">
-    <h4 class="fm-titre" id="dossierPriceHeading">Prix</h4>
+    <div class="fm-prix-tete"><h4 class="fm-titre" id="dossierPriceHeading">Prix</h4>${choixTvaEditionHtml()}</div>
     ${formuleSM ? `<p class="fm-prix-formule" id="editFormuleSM"><b>${escapeHtml(formuleSM.nom)}</b> formule sur mesure${formuleSM.prixParPersonne != null ? `, ${escapeHtml(formatMoneyCentimes(formuleSM.prixParPersonne))} par joueur` : ''}</p>` : ''}
     <div class="fm-prix-champs">
       <div class="fm-champ">
-        <label class="lbl" for="editPriceInput">Total</label>
-        <div class="fm-euro"><input id="editPriceInput" class="input" type="number" min="0" max="100000" step="0.01" inputmode="decimal" value="${escapeHtml(String(valeurChamp))}" oninput="setEditPrice(this.value)"><span aria-hidden="true">${signeMonnaie()}</span></div>
+        <label class="lbl" for="editPriceInput">Total${horsTva ? ' HTVA' : ''}</label>
+        <div class="fm-euro"><input id="editPriceInput" class="input" type="number" min="0" max="100000" step="0.01" inputmode="decimal" value="${escapeHtml(String(horsTva ? montantVu : valeurChamp))}" oninput="setEditPrice(this.value)"><span aria-hidden="true">${signeMonnaie()}</span></div>
       </div>
       <div class="fm-champ">
-        <label class="lbl" for="editPricePerPerson">Par joueur</label>
-        <div class="fm-euro"><input id="editPricePerPerson" class="input" type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(String(Math.round((valeurChamp / joueursActuels) * 100) / 100))}" oninput="setEditPricePerPerson(this.value)"><span aria-hidden="true">${signeMonnaie()}</span></div>
+        <label class="lbl" for="editPricePerPerson">Par joueur${horsTva ? ' HTVA' : ''}</label>
+        <div class="fm-euro"><input id="editPricePerPerson" class="input" type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(String(Math.round((montantVu / joueursActuels) * 100) / 100))}" oninput="setEditPricePerPerson(this.value)"><span aria-hidden="true">${signeMonnaie()}</span></div>
       </div>
     </div>
+    <p class="fm-prix-tva" id="editPrixTva"${horsTva ? '' : ' hidden'}>${horsTva ? escapeHtml(ligneTvaEditionTexte(tva)) : ''}</p>
     <p class="fm-prix-etat" id="editPrixEstime"${etat ? '' : ' hidden'}>${escapeHtml(etat)}</p>
     <button type="button" class="edit-adapter-btn fm-recalculer" id="editRecalculer" onclick="recalculerEditPrix()"${state.editState.prixFige ? '' : ' hidden'}>Recalculer avec les tarifs</button>
     ${raisonPrixEditionHtml()}
-    ${detailHtml ? `<details class="dossier-price-detail"><summary>Détail du calcul</summary>${detailHtml}</details>` : ''}
+    ${detailHtml ? `<details class="dossier-price-detail"><summary>Détail du calcul</summary>${detailHtml}<div class="edit-prix-tva" id="editPrixTvaDetail">${tvaDetailHtml(tva)}</div></details>` : ''}
   </section>`;
 }
 
@@ -34729,6 +34793,193 @@ function renderEditPrix(r) {
 function lignesDetailPrixHtml(estime) {
   // (une ligne a payer n a pas de montant : « À payer », jamais « 0 € »)
   return estime.lignes.map(l => `<li><span>${escapeHtml(l.nom)}${l.detail ? ` <em>${escapeHtml(l.detail)}</em>` : ''}</span>${l.aPayer ? '<b class="pl-a-payer">À payer</b>' : `<b>${l.montant == null ? 'sur place' : `${Math.round((l.montant) * 100) / 100} ${signeMonnaie()}`}</b>`}</li>`).join('');
+}
+
+// LA TVA DU PRIX (2026-11-23, Ansar : « Et pouvoir mettre tva ou htva quand on va dans modifier prix »,
+// puis « oui et paramettrable »). Les taux sont ceux du centre (Etablissement > Le centre > TVA,
+// lib/center-config.js normalizeVatRates) : aucun taux n est ecrit ici. Le prix enregistre reste TVA
+// comprise ; le hors TVA se lit, et un montant tape hors TVA repart TVA comprise.
+const TVA_SORTES = Object.freeze({ activities: 'activités', food: 'nourriture', drinks: 'boissons', arcades: 'arcades' });
+
+// Les taux du centre : ceux que la page Etablissement vient de relire d abord, puis ceux que le poll de la
+// journee sert a toute l equipe. Sans eux, null : le hors TVA ne se calcule pas.
+function tauxTvaDuCentre() {
+  const centre = typeof staffCenterConfigCache !== 'undefined' && staffCenterConfigCache && Array.isArray(staffCenterConfigCache.centers)
+    ? staffCenterConfigCache.centers.find((c) => c && c.id === getCurrentStaffCenterId())
+    : null;
+  const lus = (centre && centre.vatRates) || (state && state.staffTva) || null;
+  if (!lus || typeof lus !== 'object') return null;
+  const taux = {};
+  for (const cle of Object.keys(TVA_SORTES)) {
+    const n = Number(lus[cle]);
+    if (!Number.isFinite(n) || n < 0 || n > 100) return null;
+    taux[cle] = n;
+  }
+  return taux;
+}
+
+// La sorte d une activite : les arcades a part, tout le reste est l acces et l usage d une installation.
+function sorteTvaActivite(activityId) {
+  return activityId === 'arcade_time' || activityId === 'arcade_credit' ? 'arcades' : 'activities';
+}
+
+// La sorte d un extra : sa categorie du catalogue d abord, sinon ce que son nom dit (groupeExtraDossier).
+// Ce qui ne se reconnait pas prend le taux des activites, et le dit (`inconnue`).
+function sorteTvaExtra(x) {
+  if (/^arcades-/.test(String((x && x.id) || ''))) return { sorte: 'arcades' };
+  const categorie = String((x && x.categorie) || '');
+  if (categorie === 'nourriture' || categorie === 'gateaux') return { sorte: 'food' };
+  if (categorie === 'boissons') return { sorte: 'drinks' };
+  const parNom = groupeExtraDossier({}, x && x.name);
+  if (parNom === 'nourriture') return { sorte: 'food' };
+  if (parNom === 'boissons') return { sorte: 'drinks' };
+  return { sorte: 'activities', inconnue: true };
+}
+
+// UNE FORMULE EST UNE VENTE COMPOSEE : son prix se repartit entre ce qu elle comprend, au prorata des prix
+// a la carte du groupe, et chaque part prend son taux. Un composant sans prix a la carte ne prend pas de
+// part (`sansPrix`) ; sans aucun prix a la carte, toute la formule prend le taux des activites, et le dit.
+function repartirFormule(nom, montant, composants) {
+  const chiffres = composants.filter((c) => Number(c.prix) > 0);
+  const somme = chiffres.reduce((s, c) => s + Number(c.prix), 0);
+  if (!(somme > 0)) return [{ nom, sorte: 'activities', inconnue: true, montant: Number(montant) || 0 }];
+  return [
+    ...chiffres.map((c) => ({ nom: c.nom, sorte: c.sorte, montant: (Number(montant) || 0) * Number(c.prix) / somme, prixCarte: Number(c.prix), dansFormule: true })),
+    ...composants.filter((c) => !(Number(c.prix) > 0)).map((c) => ({ nom: c.nom, sorte: c.sorte, montant: 0, dansFormule: true, sansPrix: true })),
+  ];
+}
+
+// Ce que la formule du dossier comprend, chacun a son prix a la carte pour ce groupe : ses activites comme
+// Modifier les chiffre (estimerPrixProgramme, une ligne par activite), ses boissons au prix de l article du
+// catalogue du centre que leur ligne nomme, quand il n y en a qu un (« 2 cruches boissons » : la cruche).
+function composantsDeLaFormuleEdition() {
+  const e = state.editState;
+  const r = state.selectedRes && dossierPourFormule(state.selectedRes);
+  const carte = r && r.formuleId ? resolveDisplayFormule(r.formuleId) : null;
+  if (!e || !carte) return [];
+  const formule = applyReservationFormulaChoice(carte, r);
+  const comprises = activitesDeLaFormuleEdition(formule);
+  const items = getEditProgramItems().filter((item) => comprises.has(String(item.activityId || '')));
+  const aLaCarte = items.length ? estimerPrixProgramme(items, e.pax, e.date || r.date, e.startTime || r.startTime) : { lignes: [] };
+  const composants = aLaCarte.lignes.map((l) => ({ nom: l.nom, sorte: l.sorte || 'activities', prix: l.montant == null ? null : Number(l.montant) }));
+  const { centre, articles } = typeof catalogueSurMesureConsole !== 'undefined' ? catalogueSurMesureConsole : {};
+  const boissons = centre === getCurrentStaffCenterId() && Array.isArray(articles) ? articles.filter((a) => a && a.categorie === 'boissons' && a.actif !== false) : [];
+  const vides = new Set(['de', 'd', 'des', 'du', 'la', 'le', 'les', 'a', 'au', 'aux', 'par', 'boisson', 'boissons', 'enfant', 'enfants', 'personne', 'personnes']);
+  (formule.desc || []).forEach((texte) => {
+    const ligne = formulaActivityToken(texte);
+    if (!/cruche|boisson|biere/.test(ligne)) return;
+    const nombre = Math.max(1, Number((ligne.match(/^\s*(\d+)/) || [])[1]) || 1);
+    const mots = ligne.replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter((m) => m && !/^\d+$/.test(m) && !vides.has(m)).map((m) => m.replace(/s$/, ''));
+    const trouves = mots.length ? boissons.filter((a) => mots.every((m) => formulaActivityToken(a.nom).includes(m))) : [];
+    const prix = trouves.length === 1 && Number(trouves[0].prix) > 0 ? Math.round(Number(trouves[0].prix) * nombre * 100) / 100 : null;
+    composants.push({ nom: texte, sorte: 'drinks', prix });
+  });
+  return composants;
+}
+
+// LES PARTS DU PRIX DE MODIFIER, chacune avec sa sorte : les lignes du detail du calcul, la formule
+// eclatee en ses composants. Une ligne « À payer » n a pas encore de montant : elle ne pese rien et dit
+// le taux qu elle prendra, celui des activites.
+function partsTvaEdition(estime) {
+  const parts = [];
+  ((estime && estime.lignes) || []).forEach((l) => {
+    if (l.sorte === 'formule') { parts.push(...repartirFormule(l.nom, l.montant, composantsDeLaFormuleEdition())); return; }
+    // (une ligne « À payer » se regle au comptoir : elle prend le taux des activites, et le detail le dit)
+    const sorte = !l.aPayer && TVA_SORTES[l.sorte] ? l.sorte : 'activities';
+    parts.push({ nom: l.nom, sorte, inconnue: Boolean(!l.aPayer && (l.inconnue || !TVA_SORTES[l.sorte])), aPayer: Boolean(l.aPayer), montant: l.aPayer ? 0 : Number(l.montant) || 0 });
+  });
+  return parts;
+}
+
+// LA TVA D UN PRIX TVA COMPRIS. Le total se repartit au prorata des parts (un prix fixe a la main garde
+// les proportions du detail), chaque part au taux de sa sorte. La TVA se donne par taux, au centime ; le
+// hors TVA est ce qui reste, pour que les deux retombent sur le total. `facteur` ramene un montant hors
+// TVA au TVA compris, avec le meme melange de taux ; `aCote` : les parts qui ne pesent rien.
+function tvaDuPrix(parts, totalTvac, taux) {
+  if (!taux) return null;
+  const total = Number(totalTvac);
+  if (!Number.isFinite(total) || total < 0) return null;
+  const pesent = parts.filter((p) => Number(p.montant) > 0);
+  const poids = pesent.reduce((s, p) => s + Number(p.montant), 0);
+  const base = poids > 0 ? pesent : [{ nom: '', sorte: 'activities', inconnue: true, montant: 1 }];
+  const somme = poids > 0 ? poids : 1;
+  const parTaux = new Map();
+  let inverse = 0;
+  const lignes = base.map((p) => {
+    const t = Number.isFinite(Number(taux[p.sorte])) ? Number(taux[p.sorte]) : Number(taux.activities);
+    const part = (total * Number(p.montant)) / somme;
+    parTaux.set(t, (parTaux.get(t) || 0) + part - part / (1 + t / 100));
+    inverse += (Number(p.montant) / somme) / (1 + t / 100);
+    return { ...p, taux: t, part };
+  });
+  const tva = [...parTaux.entries()].sort((a, b) => a[0] - b[0]).map(([t, m]) => ({ taux: t, montant: Math.round(m * 100) / 100 }));
+  const totalTva = tva.reduce((s, x) => s + x.montant, 0);
+  return {
+    tvac: Math.round(total * 100) / 100,
+    htva: Math.round((total - totalTva) * 100) / 100,
+    tva,
+    facteur: inverse > 0 ? 1 / inverse : 1,
+    lignes,
+    aCote: parts.filter((p) => !(Number(p.montant) > 0)),
+    sansDetail: !(poids > 0),
+    taux,
+  };
+}
+
+// La TVA du prix en cours dans Modifier : le montant du champ (TVA comprise), les parts du detail.
+function tvaEdition() {
+  if (!state.editState) return null;
+  const estime = getEditPrixEstime();
+  const valeur = Number(getEditPriceValue() ?? (estime ? estime.total : 0));
+  return tvaDuPrix(partsTvaEdition(estime), Number.isFinite(valeur) ? valeur : 0, tauxTvaDuCentre());
+}
+
+// Un montant tape hors TVA, ramene au TVA compris : c est lui qui s enregistre.
+function tvacDuHorsTva(valeur) {
+  const brut = String(valeur ?? '').trim().replace(',', '.');
+  if (brut === '') return '';
+  const n = Number(brut);
+  const tva = tvaEdition();
+  // (un montant illisible reste tel quel : getEditPriceValue le refuse, comme en TVA comprise)
+  if (!Number.isFinite(n) || n < 0 || !tva) return String(valeur ?? '');
+  return String(Math.round(n * tva.facteur * 100) / 100);
+}
+
+// Le prix se lit TVA comprise (le defaut, le prix d aujourd hui) ou hors TVA.
+function prixHorsTvaEdition() {
+  return Boolean(state.editState && state.editState.prixVu === 'htva' && tauxTvaDuCentre());
+}
+
+function basculerTvaEdition(mode) {
+  if (!state.editState) return;
+  state.editState.prixVu = mode === 'htva' && tauxTvaDuCentre() ? 'htva' : 'tvac';
+  renderPos();
+}
+
+function choixTvaEditionHtml() {
+  const lus = Boolean(tauxTvaDuCentre());
+  const vu = prixHorsTvaEdition() ? 'htva' : 'tvac';
+  return `<span class="fm-tva" role="group" aria-label="Prix TVA comprise ou hors TVA">${[['tvac', 'TVAC', 'TVA comprise'], ['htva', 'HTVA', 'hors TVA']].map(([mode, mot, dit]) => `<button type="button" class="qb-dur-btn dossier-option fm-tva-b${vu === mode ? ' active' : ''}" aria-pressed="${vu === mode}" data-tva="${mode}" aria-label="Prix ${dit}"${mode === 'htva' && !lus ? ' disabled title="Les taux de TVA du centre ne sont pas encore lus."' : ''} onclick="basculerTvaEdition('${mode}')">${mot}</button>`).join('')}</span>`;
+}
+
+// « 138,14 € HTVA = 156 € TVAC » : les deux montants, sous les champs, en HTVA.
+function ligneTvaEditionTexte(tva, horsTvaTape = null) {
+  if (!tva) return '';
+  const hors = horsTvaTape != null ? horsTvaTape : tva.htva;
+  return `${formatMoneyCentimes(hors)} HTVA = ${formatMoneyCentimes(tva.tvac)} TVAC`;
+}
+
+// La TVA dans le detail du calcul : chaque part et son taux, puis la TVA par taux et le hors TVA.
+function tvaDetailHtml(tva) {
+  if (!tva) return '<p class="edit-prix-tva-l"><span>TVA : les taux du centre ne sont pas encore lus.</span></p>';
+  const taux = (t) => `${String(t).replace('.', ',')} %`;
+  const lignes = tva.sansDetail
+    ? [`<p class="edit-prix-tva-l"><span>Tout le prix <em>sans détail chiffré : taux des activités</em></span><b>${taux(tva.taux.activities)}</b></p>`]
+    : tva.lignes.map((l) => `<p class="edit-prix-tva-l"><span>${escapeHtml(l.nom)}${l.dansFormule ? ' <em>dans la formule</em>' : ''}${l.inconnue ? ' <em>sorte inconnue : taux des activités</em>' : ''}</span><b>${formatMoneyCentimes(l.part)} · ${taux(l.taux)}</b></p>`);
+  const aCote = tva.aCote.map((l) => `<p class="edit-prix-tva-l"><span>${escapeHtml(l.nom)} <em>${l.aPayer ? `à payer : taux des activités, ${taux(tva.taux.activities)}` : l.sansPrix ? 'dans la formule, sans prix à la carte : hors répartition' : 'sans montant'}</em></span></p>`);
+  return `<p class="edit-prix-tva-t">TVA</p>${[...lignes, ...aCote].join('')}`
+    + `<p class="edit-prix-tva-l edit-prix-tva-somme" id="editTvaParTaux"><span>dont TVA ${tva.tva.map((x) => `${taux(x.taux)} : ${formatMoneyCentimes(x.montant)}`).join(' · ')}</span></p>`
+    + `<p class="edit-prix-tva-l"><span>Hors TVA</span><b id="editTvaHorsTva">${formatMoneyCentimes(tva.htva)}</b></p>`;
 }
 
 // NOURRITURE ET EXTRAS DANS L ONGLET MODIFIER (2026-10-27, Movsar : « faut

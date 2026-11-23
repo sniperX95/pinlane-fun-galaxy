@@ -15,7 +15,8 @@
 //   [C] LA PAGE : une rangee par groupe (« Groupe 2 · 30 joueurs · Laser 15:30 → Bowling 16:30 »), ses
 //       cases dans l ordre de ses heures, ses pistes ; le « − » du nombre s arrete au minimum et dit
 //       pourquoi ; un groupe ne depasse pas les armes ; ce qui coince est rouge sur SA case avec la phrase
-//       du serveur ; le total contre le groupe, rouge quand il ne le fait pas ; une heure qui manque se dit.
+//       du serveur, un refus sans case se lit sous les groupes (jamais les deux) ; le total contre le
+//       groupe, rouge quand il ne le fait pas ; une heure qui manque se dit.
 //   [D] LES GESTES : une heure changee garde les autres heures a l ecran et le dossier commence a la plus
 //       tot ; l ordre d un groupe s inverse ; un autre nombre repart de parts egales et des heures du moteur,
 //       revenu au minimum il n est plus un choix ; une taille tapee garde les autres.
@@ -206,6 +207,7 @@ function jouer(source) {
   // Ce qui coince, sur SA case.
   const refuse = PLAN_DEUX();
   refuse.disponible = false;
+  refuse.refus = 'Laser à 15:30 : 18 places, il en faut 30. Décalez le départ.';
   refuse.coincent = [{ groupe: 2, activite: 'laser_game', raison: 'Laser à 15:30 : 18 places, il en faut 30. Décalez le départ.' }];
   poser(etat({ planCourant: refuse }));
   page = appel('rsGroupesHtml()');
@@ -215,6 +217,15 @@ function jouer(source) {
     && /<small class="rs-gg-ko" role="alert">Laser à 15:30, 18 places, il en faut 30\. Décalez le départ\.<\/small>/.test(rouge2.html),
   '[C] le laser du groupe 2 ne tient pas : sa case est rouge et la phrase du serveur se lit sous la rangee', rouge2 && rouge2.html);
   ok('C', rouge1 && !/is-ko/.test(rouge1.html) && rouge2 && !/class="rs-gg-c is-bowling is-ko"/.test(rouge2.html), '[C] les autres cases restent comme elles sont', [rouge1 && rouge1.html.slice(0, 200)]);
+  ok('C', !/id="rsGgRefus"/.test(page), '[C] le refus d une case ne se redit pas sous les groupes', (/rs-gg-liste[\s\S]*$/.exec(page) || [''])[0].slice(-600));
+  // Un refus qui ne tient a aucune case (le centre ferme ce jour-la) : la phrase du serveur sous les groupes.
+  const ferme = PLAN_DEUX();
+  ferme.disponible = false;
+  ferme.refus = 'Le centre est fermé à cette date.';
+  poser(etat({ planCourant: ferme }));
+  page = appel('rsGroupesHtml()');
+  ok('C', /<p class="rs-texte rs-heure-refus" id="rsGgRefus" role="alert">Le centre est fermé à cette date\.<\/p>/.test(page),
+    '[C] un refus sans case : la phrase du serveur se lit sous les groupes, en rouge', (/rs-gg-liste[\s\S]*$/.exec(page) || [''])[0].slice(-600));
   // Le total qui ne fait pas le groupe.
   poser(etat({ grandGroupe: { tailles: [30, 28], pourPax: 60 } }));
   page = appel('rsGroupesHtml()');
@@ -318,18 +329,23 @@ const MUTATIONS = [
   { nom: 'tailles-sans-total', lettre: 'B', de: '    && tailles.reduce((t, n) => t + n, 0) === pax ? tailles.slice() : null;', vers: '    ? tailles.slice() : null;' },
   { nom: 'premier-par-dessus-les-heures', lettre: 'B', de: '    ...(premier && !heures ? { premier } : {}),', vers: '    ...(premier ? { premier } : {}),' },
   { nom: 'heures-a-moitie-envoyees', lettre: 'B', de: '  return posees && posees.every((h) => grand.ids.every((id) => h[id])) ? posees : null;', vers: '  return posees;' },
-  { nom: 'case-sans-rouge', lettre: 'C', de: '  const raison = coincent.find((x) => x.groupe === n && x.activite === p.id);', vers: '  const raison = null;' },
+  // (le saut de ligne devant : la meme ligne existe plus indentee dans Modifier, rangeeGroupeEditionHtml)
+  { nom: 'case-sans-rouge', lettre: 'C', de: '\n  const raison = coincent.find((x) => x.groupe === n && x.activite === p.id);', vers: '\n  const raison = null;' },
+  { nom: 'refus-sans-case-muet', lettre: 'C', de: "  const refus = plan && plan.disponible === false && !coincent.length && !manque && plan.refus ? rsPhrase(plan.refus) : '';", vers: "  const refus = '';" },
+  { nom: 'refus-de-case-redit', lettre: 'C', de: "  const refus = plan && plan.disponible === false && !coincent.length && !manque && plan.refus ? rsPhrase(plan.refus) : '';", vers: "  const refus = plan && plan.disponible === false && !manque && plan.refus ? rsPhrase(plan.refus) : '';" },
   { nom: 'total-muet', lettre: 'C', de: '<p class="rs-gg-total${total === pax ? \'\' : \' is-ko\'}"', vers: '<p class="rs-gg-total"' },
   { nom: 'cases-dans-l-ordre-des-activites', lettre: 'C', de: '    .sort((a, b) => (a.heure ? rvMinutesDe(a.heure) : 1e4) - (b.heure ? rvMinutesDe(b.heure) : 1e4) || a.rang - b.rang);', vers: '    .sort((a, b) => a.rang - b.rang);' },
   { nom: 'moins-sous-le-minimum', lettre: 'C', de: '  const moins = n > grand.minimum ? `rsFixer(() => rsNombreDeGroupes(${n - 1}))` : \'\';', vers: '  const moins = n > 2 ? `rsFixer(() => rsNombreDeGroupes(${n - 1}))` : \'\';' },
   { nom: 'groupe-au-dela-des-armes', lettre: 'C', de: '  const plus = joueurs + 1 <= plafond ? `rsFixer(() => rsTailleDuGroupe(${n}, ${joueurs + 1}))` : \'\';', vers: '  const plus = `rsFixer(() => rsTailleDuGroupe(${n}, ${joueurs + 1}))`;' },
   { nom: 'heure-sans-depart', lettre: 'D', de: '    s.startTime = rvEnHeure(Math.min(...toutes.map(rvMinutesDe)));\n', vers: '' },
   { nom: 'heure-efface-les-autres', lettre: 'D', de: '  const heures = rvHeuresAffichees(grand) || Array.from({ length: grand.nombre }, () => ({}));', vers: '  const heures = Array.from({ length: grand.nombre }, () => ({}));' },
-  { nom: 'inverser-sans-effet', lettre: 'D', de: '  heures[n - 1] = { ...heures[n - 1], [a]: heures[n - 1][b], [b]: heures[n - 1][a] };\n', vers: '' },
+  // (avec la ligne qui suit : Modifier a la meme, groupesInverserEdition)
+  { nom: 'inverser-sans-effet', lettre: 'D', de: '  heures[n - 1] = { ...heures[n - 1], [a]: heures[n - 1][b], [b]: heures[n - 1][a] };\n  rvPoserLesHeuresDesGroupes(grand, heures);', vers: '  rvPoserLesHeuresDesGroupes(grand, heures);' },
   { nom: 'nombre-garde-les-heures', lettre: 'D', de: '  const { tailles: _t, pourPax: _p, heures: _h, pourDepart: _d, pourActivites: _a, nombre: _n, ...reste } = s.grandGroupe || {};', vers: '  const { nombre: _n, ...reste } = s.grandGroupe || {};' },
   { nom: 'minimum-reste-un-choix', lettre: 'D', de: '  s.grandGroupe = voulu > grand.minimum ? { ...reste, nombre: voulu } : reste;', vers: '  s.grandGroupe = { ...reste, nombre: voulu };' },
   { nom: 'heure-tapee-stricte', lettre: 'E', de: ' || /^(\\d{1,2})(\\d{2})$/.exec(brut)', vers: '' },
-  { nom: 'creer-sans-garde', lettre: 'F', de: '  if (groupesIncomplets) return { erreur: groupesIncomplets };\n', vers: '' },
+  // (avec la ligne qui precede : Modifier a la meme garde, preparerModificationEdition)
+  { nom: 'creer-sans-garde', lettre: 'F', de: "  const groupesIncomplets = simulation ? '' : rvGroupesIncomplets();\n  if (groupesIncomplets) return { erreur: groupesIncomplets };\n", vers: "  const groupesIncomplets = simulation ? '' : rvGroupesIncomplets();\n" },
   { nom: 'creer-sans-heures', lettre: 'F', de: '  const rang = posees ? posees.findIndex((h) => grand.ids.some((id) => !h[id])) : -1;', vers: '  const rang = -1;' },
   { nom: 'saisie-des-groupes-perdue', lettre: 'G', de: "  if (sorte === 'g' || sorte === 't') { rsGgSaisieValider(cle, sorte, quoi, brut, clavier); return; }\n", vers: '' },
   { nom: 'plafond-ignore-a-la-frappe', lettre: 'G', de: '    else if (Number(brut) > plafond) refus = `Groupe ${n} : ${plafond} au plus à la fois.`;\n', vers: '' },

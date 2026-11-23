@@ -37165,7 +37165,9 @@ function modifsGroupesEdition() {
   if (g.heures) {
     g.heures.forEach((h, i) => g.ids.forEach((id) => {
       const avant = (origine[i].passages[id] || {}).debut || '';
-      if (g.heuresTapees && h[id] && h[id] !== avant) lignes.push(`Groupe ${i + 1} : ${id === 'laser_game' ? 'laser' : 'bowling'} ${avant || 'sans heure'} → ${h[id]}`);
+      // (une heure effacee se dit aussi : la barre la montre, et le verdict dit l heure qui manque avant
+      // « Enregistrer », groupesIncompletsEdition ; sans ligne, rien ne partait au calcul a blanc)
+      if (g.heuresTapees && h[id] !== avant) lignes.push(`Groupe ${i + 1} : ${id === 'laser_game' ? 'laser' : 'bowling'} ${avant || 'sans heure'} → ${h[id] || 'sans heure'}`);
     }));
   }
   return lignes;
@@ -43312,6 +43314,9 @@ function rsGroupesHtml() {
   const plafond = rvPlafondDUnGroupe(grand);
   const manque = posees && !rvHeuresVoulues(grand) ? 'Donnez l’heure de chaque case : le planning juge les groupes dès qu’elles y sont toutes.' : '';
   const calcul = !heures ? (rvPlanEnCalcul() ? 'Le planning partage le groupe…' : 'Le planning dira qui joue où dès qu’une heure tient.') : manque;
+  // (un refus qui ne tient a aucune case, le centre ferme ce jour-la, un nombre de groupes qui ne va pas : la
+  // phrase du serveur se lit sous les groupes ; celui d une case se lit deja sous sa rangee)
+  const refus = plan && plan.disponible === false && !coincent.length && !manque && plan.refus ? rsPhrase(plan.refus) : '';
   const rangees = tailles.map((joueurs, rang) => rsRangeeDuGroupeHtml(grand, rang + 1, joueurs, heures ? heures[rang] : null, plan, coincent, plafond)).join('');
   return `${rsRetourHtml()}
     <section class="rs-seance is-page rs-gg" aria-labelledby="rsQ">
@@ -43320,6 +43325,7 @@ function rsGroupesHtml() {
       ${grand.tourne && !posees ? rsPremierDesGroupesHtml(grand, plan) : ''}
       <div class="rs-gg-liste" id="rsGgListe" role="list" aria-label="Les groupes, leurs joueurs et leurs heures">${rangees}</div>
       ${calcul ? `<p class="rs-texte" id="rsGgCalcul">${escapeHtml(calcul)}</p>` : ''}
+      ${refus ? `<p class="rs-texte rs-heure-refus" id="rsGgRefus" role="alert">${escapeHtml(refus)}</p>` : ''}
       ${rsPiedDesGroupesHtml(grand, tailles)}
     </section>`;
 }

@@ -2096,6 +2096,21 @@
   //     groupeEnJeu), lue ici sur le meme dossier (gfEnJeuDuDossier), redite par le serveur.
   // Le tableau (au moins 640 px) seulement pour le glisser : au telephone, chaque ligne est une carte
   // et les demi-heures vides n y sont pas ; la pastille, elle, s y touche aussi.
+  // LA SUITE (2026-11-23, Ansar sur la pop-up « Bowling » d un groupe : « c'est bien stylé, c'est cool
+  // mais pas complet : on peut pas choisir l'heure qu'on veut à la minute, et il y a pas 15h, 15h30 parce
+  // que les autres activités sont à ces heures-là ; mais c'est con, parce que si on veut tout avancer de
+  // 30 minutes, on peut pas »).
+  //   - L HEURE A LA MINUTE : le champ et les pas de 5 min de la fenetre du retard (.rt-heure, .rt-pas,
+  //     minutesHeureEdition). L heure tapee se juge au serveur, par le calcul a blanc des heures
+  //     proposees (gfJuger), et « Déplacer » l enregistre par leur chemin. Les heures libres restent en
+  //     raccourcis : un toucher les enregistre.
+  //   - TOUT LE GROUPE : toute la visite du meme ecart, l arrivee comprise (lib/decaler-le-groupe.js) ;
+  //     les heures que tiennent ses propres activites ne coincent plus. Le serveur juge chaque ecart
+  //     (decalerABlanc) et l ecrit d un bloc, tout ou rien (PATCH toutLeGroupe, envoyerDecalageDuGroupe) ;
+  //     « Annuler » remet tout.
+  //   - CE QUI NE TIENT PAS SE DIT : l activite, l heure, et la raison du serveur (gfNeTientPas).
+  //   - UN GROUPE GELE SE DIT COMME LE SERVEUR LE VERIFIE : une activite cochee a la main, ou sur place et
+  //     l heure d une activite passee ; jamais « joue » si personne n a coche (groupeEnJeu).
   var GF_SANS_HEURE = { party_table: true, arcade_credit: true, playground: true };
   // (la demi-heure du bowling et des departs laser, le quart d heure pour le reste)
   var GF_PAS_HEURE = { bowling: 30, laser_game: 30 };
@@ -2184,19 +2199,35 @@
     var de = gpMinutesDe(f.from);
     return de != null && Number(f.minutes) > 0 ? de + Number(f.minutes) / 60 : -Infinity;
   }
+  // LA PHRASE DIT CE QUI EST VERIFIE (2026-11-23, la phrase du serveur mot pour mot) : une activite
+  // cochee a la main, sinon sur place et l heure d une activite passee. Les activites se lisent comme le
+  // serveur les compte : le bowling d un bloc (sa premiere heure), chaque partie de laser, chaque autre.
+  function gfNomDuGel(id) {
+    return id === 'bowling' ? 'Bowling' : id === 'laser_game' ? 'Laser Game' : gpNomActivite(id, String(id || '').replace(/_/g, ' '));
+  }
   function gfEnJeuDuDossier(r) {
     if (!r || r.status === 'cancelled') return null;
     var maintenant = gfMaintenantDuJour(r.date);
     var surPlace = r.status === 'arrived' || r.status === 'paid';
     var arrivee = gfArriveeEnRetard(r);
-    var debuts = [];
+    var parCle = new Map();
     getGroupeProgramme(r).forEach(function (e) {
       if (e.start == null || e.libre || e.aPlacer || e.extra || !e.activityId || e.activityId === 'party_table' || e.activityId === 'playground' || /^service_/.test(e.activityId)) return;
-      if (e.fait || (surPlace && e.start <= maintenant + 1e-6 && e.start >= arrivee - 1e-6)) debuts.push(e.start);
+      var cle = e.activityId === 'laser_game' ? 'laser_game:' + (e.unite || '1.1') : e.activityId;
+      var deja = parCle.get(cle);
+      if (!deja) { parCle.set(cle, { activityId: e.activityId, start: e.start, coche: Boolean(e.fait) }); return; }
+      if (e.activityId === 'bowling') deja.start = Math.min(deja.start, e.start);
+      deja.coche = deja.coche || Boolean(e.fait);
     });
-    if (!debuts.length) return null;
-    var depuis = gpHeure(Math.min.apply(null, debuts));
-    return { depuis: depuis, phrase: (r.name || 'Ce groupe') + ' joue depuis ' + depuis + ' : ses heures ne bougent plus.' };
+    var commencees = Array.from(parCle.values()).filter(function (x) { return x.coche || (surPlace && x.start <= maintenant + 1e-6 && x.start >= arrivee - 1e-6); });
+    if (!commencees.length) return null;
+    var depuis = gpHeure(Math.min.apply(null, commencees.map(function (x) { return x.start; })));
+    var cochees = commencees.filter(function (x) { return x.coche; });
+    var premiere = (cochees.length ? cochees : commencees).reduce(function (a, b) { return b.start < a.start - 1e-6 ? b : a; });
+    var motif = cochees.length
+      ? 'une activité est cochée faite (' + gfNomDuGel(premiere.activityId) + ', ' + gpHeure(premiere.start) + ')'
+      : 'sur place, et l’heure de ' + gfNomDuGel(premiere.activityId) + ' (' + gpHeure(premiere.start) + ') est passée';
+    return { depuis: depuis, motif: motif, phrase: (r.name || 'Ce groupe') + ' : ' + motif + '. Ses heures ne bougent plus.' };
   }
 
   // LE PLUS TOT, la regle de Modifier (preparerDeplacementsEdition) : ni avant l arrivee du groupe (son
@@ -2325,6 +2356,22 @@
       + '<p class="gf-hp__dit">Prévu à <b>' + gpEsc(gpHeure(point.debut + offset)) + '</b>' + (point.pistes && point.pistes.length ? ', ' + gpEsc(gfPistesEnMots(point.pistes).toLowerCase()) : '') + '</p>'
       + '<div class="gf-hp__corps" data-gf-hp-corps>' + corps + '</div>';
   }
+  // LE CORPS (2026-11-23) : « Cette activité » ou « Tout le groupe » (gfGroupeDeplacable), l heure a la
+  // minute (le champ et les pas de 5 min de la fenetre du retard) et son bouton, ce que le serveur dit de
+  // cette heure, puis les heures libres en raccourcis.
+  function gfPopCorpsHtml(p) {
+    var mode = p.groupe ? '<div class="gf-hp__mode" role="group" aria-label="Ce qui bouge">'
+      + '<button type="button" class="gf-hp__m" data-gf-hp-mode="seul" aria-pressed="' + (p.mode === 'seul') + '">Cette activité</button>'
+      + '<button type="button" class="gf-hp__m" data-gf-hp-mode="groupe" aria-pressed="' + (p.mode === 'groupe') + '">Tout le groupe</button></div>' : '';
+    return mode
+      + '<div class="gf-hp__minute">'
+      + '<input class="rt-heure gf-hp__champ" type="time" step="60" value="' + gpEsc(gpHeure(p.minute / 60)) + '" aria-label="' + gpEsc('Nouvelle heure, ' + p.point.nom) + '" aria-describedby="gfHeurePopVerdict" data-gf-hp-champ>'
+      + '<span class="rt-pas-groupe"><button type="button" class="rt-pas" data-gf-hp-pas="-5" aria-label="5 minutes plus tôt">−5</button><button type="button" class="rt-pas" data-gf-hp-pas="5" aria-label="5 minutes plus tard">+5</button></span>'
+      + '<button type="button" class="gf-hp__go" data-gf-hp-valider disabled>' + (p.mode === 'groupe' ? 'Tout décaler' : 'Déplacer') + '</button>'
+      + '</div>'
+      + '<p class="gf-hp__verdict" id="gfHeurePopVerdict" role="status" data-gf-hp-verdict></p>'
+      + '<div class="gf-hp__libres" data-gf-hp-heures><p class="gf-hp__attente" role="status">Calcul des heures libres…</p></div>';
+  }
   function gfOuvrirHeure(ancre, r, cle, heure, depuisFiche, parClavier) {
     if (!ancre || !r) return false;
     // (la meme heure touchee une seconde fois referme, meme si sa pastille a ete reecrite entre-temps)
@@ -2343,21 +2390,26 @@
     el.setAttribute('aria-labelledby', 'gfHeurePopTitre');
     el.setAttribute('data-gf-hp-res', String(r.id));
     el.setAttribute('data-gf-hp-cle', cle);
-    el.innerHTML = gfPopHtml(r, point, offset, gele ? gfPopGeleHtml(gele.phrase, depuisFiche) : '<p class="gf-hp__attente" role="status">Calcul des heures libres…</p>');
-    document.body.appendChild(el);
     gfJetonPop += 1;
-    gfPop = { el: el, ancre: ancre, id: Number(r.id), cle: cle, point: point, offset: offset, depuisFiche: Boolean(depuisFiche), clavier: Boolean(parClavier), jeton: gfJetonPop, verdicts: null };
+    // (`minute` : l heure du champ, en minutes de la journee du groupe ; `juge` : ce que le serveur en a dit)
+    var p = { el: el, ancre: ancre, id: Number(r.id), cle: cle, point: point, offset: offset, depuisFiche: Boolean(depuisFiche), clavier: Boolean(parClavier), jeton: gfJetonPop, verdicts: null,
+      mode: 'seul', groupe: gele ? null : gfGroupeDeplacable(r), minute: gfMinutePrevue({ point: point, offset: offset }), juge: null, seq: 0, attente: null };
+    el.innerHTML = gfPopHtml(r, point, offset, gele ? gfPopGeleHtml(gele.phrase, depuisFiche) : gfPopCorpsHtml(p));
+    document.body.appendChild(el);
+    gfPop = p;
     gfPoserPop();
     // (la goutte se joue une fois : un repositionnement ne la rejoue pas)
     el.classList.add('is-nait');
     el.addEventListener('animationend', function fin(ev) { if (ev.target === el) { el.classList.remove('is-nait'); el.removeEventListener('animationend', fin); } });
     el.addEventListener('click', gfClicDansPop);
+    el.addEventListener('input', gfSaisiePop);
+    el.addEventListener('keydown', gfTouchePop);
     document.addEventListener('pointerdown', gfPopDehors, true);
     document.addEventListener('keydown', gfPopClavier, true);
     document.addEventListener('scroll', gfPopDefile, true);
     window.addEventListener('resize', gfPopFermerSansFocus);
-    // (le focus entre dans la pop-up : Echap et Tab y vivent ; au clavier, il va a la premiere heure)
-    var premier = parClavier ? el.querySelector('[data-gf-hp-choix], [data-gf-hp-fiche]') : null;
+    // (le focus entre dans la pop-up : Echap et Tab y vivent ; au clavier, il va au champ de l heure)
+    var premier = parClavier ? el.querySelector('[data-gf-hp-champ], [data-gf-hp-choix], [data-gf-hp-fiche]') : null;
     (premier || el).focus({ preventScroll: true });
     if (!gele) gfRemplirPop(r, point, offset);
     return true;
@@ -2365,30 +2417,61 @@
   function gfPopGeleHtml(phrase, depuisFiche) {
     return '<p class="gf-hp__gele" role="status">' + gpEsc(phrase) + '</p>' + (depuisFiche ? '' : '<div class="gf-hp__pied"><button type="button" class="gf-hp__second" data-gf-hp-fiche>Ouvrir la fiche</button></div>');
   }
+  // Les heures libres de ce qui bouge : cette activite (gfJuger), ou tout le groupe (gfRemplirGroupe).
   function gfRemplirPop(r, point, offset) {
     var p = gfPop;
+    if (p.mode === 'groupe') { gfRemplirGroupe(r); return; }
     var jeton = p.jeton;
     var plancher = gfAuPlusTot(r, false);
     var debuts = gfGrille(r, point).filter(function (d) { return d >= plancher.h - 1e-6; });
+    var vu = function () { return gfPop && gfPop.jeton === jeton && gfPop.mode === 'seul'; };
     gfJuger(r, point, debuts, plancher).then(function (memo) {
-      if (!gfPop || gfPop.jeton !== jeton) return;
+      if (!vu()) return;
       gfPop.verdicts = memo.verdicts;
       if (memo.gele) { gfCorpsPop(gfPopGeleHtml(memo.gele, gfPop.depuisFiche)); return; }
       var libres = debuts.filter(function (d) { var v = memo.verdicts.get(gfMinute(d)); return v && v.passe; });
       // (les plus proches de l heure prevue, dans l ordre de la journee)
       var montres = libres.slice().sort(function (a, b) { return Math.abs(a - point.debut) - Math.abs(b - point.debut) || a - b; }).slice(0, GF_HEURES_MONTREES).sort(function (a, b) { return a - b; });
-      if (!montres.length) { gfCorpsPop('<p class="gf-hp__rien" role="status">Aucune autre heure libre ce jour-là.</p>'); return; }
-      gfCorpsPop('<div class="gf-hp__heures" role="group" aria-label="Heures libres">' + montres.map(function (d) {
+      if (!montres.length) { gfHeuresPop('<p class="gf-hp__rien" role="status">Aucune autre heure libre ce jour-là.</p>', 'seul'); return; }
+      gfHeuresPop('<div class="gf-hp__heures" role="group" aria-label="Heures libres">' + montres.map(function (d) {
         var v = memo.verdicts.get(gfMinute(d));
         var pistes = gfPistesChangees(point, v.moves);
         var heure = gpHeure(d + offset);
         return '<button type="button" class="gf-hp__h" data-gf-hp-choix="' + gfMinute(d) + '" aria-label="' + gpEsc(point.nom + ' à ' + heure + (pistes ? ', ' + gfPistesEnMots(pistes).toLowerCase() : '')) + '">' + gpEsc(heure) + (pistes ? '<small>' + gpEsc(gfPistesEnMots(pistes)) + '</small>' : '') + '</button>';
-      }).join('') + '</div>');
+      }).join('') + '</div>', 'seul');
     }, function (erreur) {
-      if (!gfPop || gfPop.jeton !== jeton) return;
-      gfCorpsPop('<p class="gf-hp__rien" role="status">Les heures libres ne se lisent pas : ' + gpEsc(String((erreur && erreur.message) || 'le serveur ne répond pas.').replace(/\.$/, '')) + '.</p>');
+      if (!vu()) return;
+      gfHeuresPop('<p class="gf-hp__rien" role="status">Les heures libres ne se lisent pas : ' + gpEsc(String((erreur && erreur.message) || 'le serveur ne répond pas.').replace(/\.$/, '')) + '.</p>', 'seul');
     });
   }
+  // TOUT LE GROUPE : les heures de cette activite (sa grille) ou toute la visite tient, du meme ecart,
+  // jugees d une requete par le serveur (decalerABlanc) ; sous chaque heure, l ecart (« +30 min »).
+  function gfRemplirGroupe(r) {
+    var p = gfPop;
+    var jeton = p.jeton;
+    var point = p.point;
+    var plancher = gfAuPlusTot(r, true);
+    var ecarts = gfGrille(r, point).map(function (d) { return Math.round((d - point.debut) * 60); })
+      .filter(function (e) { return e !== 0 && !gfPlusTotDuGroupe(p, e, plancher); });
+    var vu = function () { return gfPop && gfPop.jeton === jeton && gfPop.mode === 'groupe'; };
+    if (!ecarts.length) { gfHeuresPop('<p class="gf-hp__rien" role="status">Aucune autre heure ce jour-là pour tout le groupe.</p>', 'groupe'); return; }
+    gfHeuresPop('<p class="gf-hp__attente" role="status">Calcul des heures libres…</p>', '');
+    gfJugerDecalage(r, ecarts, plancher).then(function (memo) {
+      if (!vu()) return;
+      if (memo.gele) { gfCorpsPop(gfPopGeleHtml(memo.gele, gfPop.depuisFiche)); return; }
+      var libres = ecarts.filter(function (e) { var v = memo.verdicts.get(e); return v && v.passe; });
+      var montres = libres.slice().sort(function (a, b) { return Math.abs(a) - Math.abs(b) || a - b; }).slice(0, GF_HEURES_MONTREES).sort(function (a, b) { return a - b; });
+      if (!montres.length) { gfHeuresPop('<p class="gf-hp__rien" role="status">Aucune autre heure ce jour-là pour tout le groupe.</p>', 'groupe'); return; }
+      gfHeuresPop('<div class="gf-hp__heures" role="group" aria-label="Heures libres pour tout le groupe">' + montres.map(function (e) {
+        var heure = gpHeure(point.debut + p.offset + e / 60);
+        return '<button type="button" class="gf-hp__h" data-gf-hp-ecart="' + e + '" aria-label="' + gpEsc('Tout le groupe, ' + point.nom + ' à ' + heure + ', ' + gfEcartEnMots(e)) + '">' + gpEsc(heure) + '<small>' + gpEsc(gfEcartCourt(e)) + '</small></button>';
+      }).join('') + '</div>', 'groupe');
+    }, function (erreur) {
+      if (!vu()) return;
+      gfHeuresPop('<p class="gf-hp__rien" role="status">Les heures libres ne se lisent pas : ' + gpEsc(String((erreur && erreur.message) || 'le serveur ne répond pas.').replace(/\.$/, '')) + '.</p>', 'groupe');
+    });
+  }
+  // Tout le corps (un groupe que le serveur dit gele, une erreur).
   function gfCorpsPop(html) {
     var p = gfPop;
     var corps = p && p.el.querySelector('[data-gf-hp-corps]');
@@ -2401,10 +2484,265 @@
     if (premier && p.clavier && (avaitFocus || document.activeElement === document.body)) premier.focus({ preventScroll: true });
     else if (!avaitFocus && document.activeElement === document.body) p.el.focus({ preventScroll: true });
   }
+  // Les heures libres seules : le champ et ce qu on y tape ne bougent pas, ni le focus. `pour` : ce qui
+  // bouge (« seul », « groupe ») quand elles sont arrivees, vide pendant le calcul.
+  function gfHeuresPop(html, pour) {
+    var p = gfPop;
+    var zone = p && p.el.querySelector('[data-gf-hp-heures]');
+    if (!zone) return;
+    var garde = document.activeElement && zone.contains(document.activeElement) ? document.activeElement.getAttribute('data-gf-hp-choix') || document.activeElement.getAttribute('data-gf-hp-ecart') : null;
+    zone.innerHTML = html;
+    if (pour) { zone.setAttribute('data-gf-hp-pour', pour); p.el.classList.add('is-rempli'); }
+    else zone.removeAttribute('data-gf-hp-pour');
+    gfPoserPop(true);
+    var revient = garde ? zone.querySelector('[data-gf-hp-choix="' + garde + '"], [data-gf-hp-ecart="' + garde + '"]') : null;
+    if (revient) revient.focus({ preventScroll: true });
+    else if (garde || document.activeElement === document.body) p.el.focus({ preventScroll: true });
+  }
+
+  // ---- L HEURE A LA MINUTE ET TOUT LE GROUPE (2026-11-23) ----
+  // L heure prevue de ce qui a ete touche, en minutes de la journee du groupe.
+  function gfMinutePrevue(p) { return Math.round((p.point.debut + p.offset) * 60); }
+  // L heure du champ (« 00:15 » apres un groupe de 23:30 continue sa journee : 24:15).
+  function gfMinuteDuChamp(p, valeur) {
+    var m = typeof minutesHeureEdition === 'function' ? minutesHeureEdition(valeur) : NaN;
+    if (!Number.isFinite(m)) return NaN;
+    return m / 60 + 12 < p.point.debut + p.offset ? m + 24 * 60 : m;
+  }
+  // « 30 min », « 1 h », « 1 h 30 » ; l ecart dit « plus tard » ou « plus tôt », en court « +30 min ».
+  function gfDureeEnMots(min) {
+    var h = Math.floor(min / 60), m = min % 60;
+    return h ? h + ' h' + (m ? ' ' + String(m).padStart(2, '0') : '') : m + ' min';
+  }
+  function gfEcartEnMots(e) { return gfDureeEnMots(Math.abs(e)) + (e > 0 ? ' plus tard' : ' plus tôt'); }
+  function gfEcartCourt(e) { return (e > 0 ? '+' : '−') + gfDureeEnMots(Math.abs(e)); }
+  // Le nom d une activite du groupe par sa cle (celle du serveur : bowling, laser_game:1.2, minigolf_blacklight).
+  function gfActiviteDeCle(cle) { return String(cle || '').indexOf('laser_game:') === 0 ? 'laser_game' : String(cle || ''); }
+  function gfNomDeCle(r, cle) {
+    var id = gfActiviteDeCle(cle);
+    if (id === 'bowling') return 'Bowling';
+    if (id !== 'laser_game') return gpTitreActivite(id);
+    var unite = String(cle).slice(11);
+    var vagues = getLaserWindowsFromReservation(r).filter(function (w) { return (Number(w.countIndex) || 1) === (Number(unite.split('.')[0]) || 1); }).length;
+    return gfPartieDit(r, unite) + (vagues > 1 ? ', groupe ' + (Number(unite.split('.')[1]) || 1) + ' sur ' + vagues : '');
+  }
+  // CE QUI NE TIENT PAS SE DIT : l activite, l heure, puis la raison du serveur. Une raison qui les dit deja en
+  // tete (« Bowling 13:30 : la piste 1 est prise par un groupe qui joue. ») ne les redit pas.
+  function gfNeTientPas(nom, activityId, heure, raison) {
+    var texte = String(raison || 'Le planning refuse cette heure.').trim();
+    var tete = heure ? gfNomDuGel(activityId) + ' ' + heure + ' : ' : '';
+    if (tete && texte.indexOf(tete) === 0) texte = texte.slice(tete.length);
+    return nom + ' ne tient pas' + (heure ? ' à ' + heure : '') + ' : ' + texte;
+  }
+  // LES ACTIVITES A HEURE DU GROUPE, comme le serveur les decale (lib/decaler-le-groupe.js, la liste du
+  // retard) : le bowling d un bloc, chaque partie de laser, chaque autre activite a heure. « Tout le groupe »
+  // ne s offre qu a partir de deux, sans acces a volonte, quand ce role les deplace toutes.
+  function gfActivitesDuGroupe(r) {
+    var liste = [];
+    var fb = getBowlingWindowsFromReservation(r);
+    var fl = getLaserWindowsFromReservation(r);
+    if (fb.concat(fl).some(function (w) { return w.aVolonte; })) return null;
+    if (fb.length) liste.push({ cle: 'bowling', activityId: 'bowling', nom: 'Bowling', debut: Math.min.apply(null, fb.map(function (w) { return Number(w.start); })) });
+    var vues = new Set();
+    fl.forEach(function (w) {
+      var u = laserBlockUnitKey(w);
+      if (vues.has(u)) return;
+      vues.add(u);
+      liste.push({ cle: 'laser_game:' + u, activityId: 'laser_game', nom: gfNomDeCle(r, 'laser_game:' + u), debut: Number(w.start) });
+    });
+    var autres = new Map();
+    ((r.opsPlan && r.opsPlan.timeline) || []).forEach(function (s) {
+      var id = s && String(s.activityId || '');
+      if (!s || s.type !== 'activity' || s.flexible === true || !id || id === 'bowling' || id === 'laser_game' || id === 'party_table' || id === 'playground' || /^service_/.test(id) || !s.startTime || !s.endTime) return;
+      var a = timeToNum(s.startTime);
+      if (!(timeToNum(s.endTime) > a)) return;
+      var deja = autres.get(id);
+      if (deja) deja.debut = Math.min(deja.debut, a);
+      else autres.set(id, { cle: id, activityId: id, nom: gpTitreActivite(id), debut: a });
+    });
+    autres.forEach(function (x) { liste.push(x); });
+    return liste.filter(function (x) { return Number.isFinite(x.debut); }).sort(function (a, b) { return a.debut - b.debut; });
+  }
+  function gfGroupeDeplacable(r) {
+    var liste = gfActivitesDuGroupe(r);
+    if (!liste || liste.length < 2) return null;
+    var d = gfDroitsHeure(r.date);
+    var a = function (id) { return liste.some(function (x) { return x.activityId === id; }); };
+    return d.deplacer && (!a('bowling') || d.bowling) && (!a('laser_game') || d.laser) ? liste : null;
+  }
+  // Le groupe ne remonte pas le temps : la premiere de ses activites qui passerait avant maintenant.
+  function gfPlusTotDuGroupe(p, ecart, plancher) {
+    if (!p.groupe || !plancher || !Number.isFinite(plancher.h)) return null;
+    var tot = p.groupe.find(function (a) { return a.debut + ecart / 60 < plancher.h - 1e-6; });
+    return tot ? { nom: tot.nom, activityId: tot.activityId, heure: gpHeure(tot.debut + ecart / 60) } : null;
+  }
+  // « Tout le groupe passe 30 min plus tard : Bowling 16:00 · Laser, 1re partie 17:30. »
+  function gfPhraseDuGroupe(p, ecart, v) {
+    return 'Tout le groupe passe ' + gfEcartEnMots(ecart) + ' : ' + p.groupe.map(function (a) {
+      return a.nom + ' ' + gpHeure(a.debut + ecart / 60) + (a.activityId === 'bowling' && v && Array.isArray(v.pistes) && v.pistes.length ? ', ' + gfPistesEnMots(v.pistes).toLowerCase() : '');
+    }).join(' · ') + '.';
+  }
+  // Les heures libres et le jugement de tout le groupe, par ecart : une requete pour ceux qui manquent,
+  // gardee tant que le dossier ne change pas. Rend { verdicts: Map(ecart -> verdict), gele }.
+  var gfMemoireDecalage = new Map();
+  function gfJugerDecalage(r, ecarts, plancher) {
+    var cle = [r.id, r.updatedAt].join('|');
+    var memo = gfMemoireDecalage.get(cle);
+    if (!memo) { memo = { verdicts: new Map(), gele: null }; gfMemoireDecalage.set(cle, memo); if (gfMemoireDecalage.size > 40) gfMemoireDecalage.delete(gfMemoireDecalage.keys().next().value); }
+    var manque = ecarts.filter(function (e) { return !memo.verdicts.has(e); });
+    if (memo.gele || !manque.length) return Promise.resolve(memo);
+    var centre = r.centerId || r.center_id || (typeof getCurrentStaffCenterId === 'function' ? getCurrentStaffCenterId() : '');
+    var paquets = [];
+    for (var i = 0; i < manque.length; i += 60) paquets.push(i);
+    return Promise.all(paquets.map(function (i) {
+      var corps = { id: r.id, centerId: centre, baseUpdatedAt: r.updatedAt, toutLeGroupe: { ecarts: manque.slice(i, i + 60) } };
+      if (plancher && Number.isFinite(plancher.h)) corps.auPlusTot = gfMinute(plancher.h);
+      return apiRequest(API_ENDPOINTS.staffReservations, { method: 'POST', body: JSON.stringify({ dryRun: true, centerId: centre, deplacement: corps }) }).then(function (rep) {
+        if (rep && rep.gele) { memo.gele = String(rep.gele); return; }
+        if (!rep || rep.groupe !== true || !Array.isArray(rep.essais)) throw new Error((rep && rep.refus && rep.refus.message) || 'Le serveur ne juge pas encore tout le groupe.');
+        rep.essais.forEach(function (v, k) { memo.verdicts.set(manque[i + k], v || { passe: false }); });
+      });
+    })).then(function () { return memo; });
+  }
+  // CE QUE LE SERVEUR DIT DE L HEURE DU CHAMP, peint en place : la ligne du verdict et le bouton. Le champ
+  // garde sa saisie et son focus.
+  function gfPeindreVerdict(juge) {
+    var p = gfPop;
+    if (!p) return;
+    var ligne = p.el.querySelector('[data-gf-hp-verdict]');
+    var bouton = p.el.querySelector('[data-gf-hp-valider]');
+    var champ = p.el.querySelector('[data-gf-hp-champ]');
+    if (!ligne || !bouton) return;
+    var texte = !juge ? '' : juge.attente ? 'Vérification au planning…' : String(juge.texte || '');
+    if (ligne.textContent !== texte) ligne.textContent = texte;
+    ligne.className = 'gf-hp__verdict' + (juge && !juge.attente && juge.passe === true ? ' is-passe' : juge && !juge.attente && juge.passe === false ? ' is-bloque' : '');
+    bouton.disabled = !(juge && juge.passe === true);
+    var mot = p.mode === 'groupe' ? 'Tout décaler' : 'Déplacer';
+    if (bouton.textContent !== mot) bouton.textContent = mot;
+    if (champ) { if (juge && juge.passe === false) champ.setAttribute('aria-invalid', 'true'); else champ.removeAttribute('aria-invalid'); }
+    gfPoserPop(true);
+  }
+  function gfVerdictPop(seq, juge) {
+    var p = gfPop;
+    if (!p || seq !== p.seq) return;
+    p.juge = juge;
+    gfPeindreVerdict(juge);
+  }
+  // L heure tapee se juge apres une courte pause (le champ garde sa saisie) ; Entree, un pas, tout de suite.
+  function gfPoserMinute(m, toutDeSuite) {
+    var p = gfPop;
+    if (!p) return;
+    p.minute = m;
+    p.juge = null;
+    p.seq += 1;
+    clearTimeout(p.attente);
+    if (m === gfMinutePrevue(p)) { gfPeindreVerdict({ passe: null, texte: 'C’est l’heure prévue.' }); return; }
+    gfPeindreVerdict({ attente: true });
+    p.attente = setTimeout(gfJugerMinute, toutDeSuite ? 0 : 450);
+  }
+  function gfJugerMinute() {
+    var p = gfPop;
+    var r = p && gfDossier(p.id);
+    if (!p || !r) return;
+    var seq = p.seq;
+    var m = p.minute;
+    var mode = p.mode;
+    var heure = gpHeure(m / 60);
+    var jeton = p.jeton;
+    var encore = function () { return gfPop && gfPop.jeton === jeton && gfPop.seq === seq; };
+    var muet = function (erreur) { if (encore()) gfVerdictPop(seq, { minute: m, mode: mode, passe: false, texte: 'Le planning ne répond pas : ' + String((erreur && erreur.message) || 'réessayez.').replace(/\.$/, '') + '.' }); };
+    if (mode === 'groupe') {
+      var ecart = m - gfMinutePrevue(p);
+      var plancherG = gfAuPlusTot(r, true);
+      var tot = gfPlusTotDuGroupe(p, ecart, plancherG);
+      if (tot) { gfVerdictPop(seq, { minute: m, mode: mode, passe: false, texte: gfNeTientPas(tot.nom, tot.activityId, tot.heure, 'déjà passé, il est ' + gpHeure(currentTimeDecimal()) + '.') }); return; }
+      gfJugerDecalage(r, [ecart], plancherG).then(function (memo) {
+        if (!encore()) return;
+        if (memo.gele) { gfCorpsPop(gfPopGeleHtml(memo.gele, gfPop.depuisFiche)); return; }
+        var v = memo.verdicts.get(ecart) || { passe: false };
+        gfVerdictPop(seq, v.passe
+          ? { minute: m, mode: mode, passe: true, ecart: ecart, texte: gfPhraseDuGroupe(p, ecart, v) }
+          : { minute: m, mode: mode, passe: false, texte: v.cle ? gfNeTientPas(gfNomDeCle(r, v.cle), gfActiviteDeCle(v.cle), v.heure || '', v.plancher ? 'déjà passé, il est ' + gpHeure(currentTimeDecimal()) + '.' : v.raison) : gfNeTientPas('Tout le groupe', '', '', v.raison) });
+      }, muet);
+      return;
+    }
+    // Cette activite : son debut (la pastille touchee peut etre son second bowling) et le plus tot permis.
+    var d = m / 60 - p.offset;
+    var plancher = gfAuPlusTot(r, false);
+    if (d < plancher.h - 1e-6) {
+      var motif = plancher.maintenant != null && d < plancher.maintenant - 1e-6 ? 'déjà passé, il est ' + gpHeure(currentTimeDecimal()) + '.' : 'avant l’arrivée du groupe, à ' + gpHeure(plancher.arrivee) + '.';
+      gfVerdictPop(seq, { minute: m, mode: mode, passe: false, texte: gfNeTientPas(p.point.nom, p.point.activityId, heure, motif) });
+      return;
+    }
+    gfJuger(r, p.point, [d], plancher).then(function (memo) {
+      if (!encore()) return;
+      if (memo.gele) { gfCorpsPop(gfPopGeleHtml(memo.gele, gfPop.depuisFiche)); return; }
+      var v = memo.verdicts.get(gfMinute(d));
+      if (!v) { muet(null); return; }
+      var pistes = v.passe ? gfPistesChangees(p.point, v.moves) : null;
+      gfVerdictPop(seq, v.passe
+        ? { minute: m, mode: mode, passe: true, d: d, moves: v.moves, texte: heure + ' passe' + (pistes ? ', ' + gfPistesEnMots(pistes).toLowerCase() : '') + '.' }
+        : { minute: m, mode: mode, passe: false, texte: gfNeTientPas(p.point.nom, p.point.activityId, heure, v.raison) });
+    }, muet);
+  }
+  function gfSaisiePop(ev) {
+    var p = gfPop;
+    if (!p || !ev.target || !ev.target.matches || !ev.target.matches('[data-gf-hp-champ]')) return;
+    var m = gfMinuteDuChamp(p, ev.target.value);
+    // (une heure pas encore complete ne part pas)
+    if (Number.isFinite(m)) gfPoserMinute(m, false);
+  }
+  function gfTouchePop(ev) {
+    var p = gfPop;
+    if (!p || ev.key !== 'Enter' || !ev.target || !ev.target.matches || !ev.target.matches('[data-gf-hp-champ]')) return;
+    ev.preventDefault();
+    var m = gfMinuteDuChamp(p, ev.target.value);
+    if (!Number.isFinite(m)) return;
+    // (deja jugee et elle passe : Entree l enregistre, comme le bouton ; sinon elle se juge tout de suite)
+    if (p.juge && p.juge.passe === true && p.juge.minute === m && p.juge.mode === p.mode) { gfValiderPop(); return; }
+    if (m !== p.minute || !p.juge) gfPoserMinute(m, true);
+  }
+  // Les pas de 5 min, depuis l heure du champ.
+  function gfPasPop(pas) {
+    var p = gfPop;
+    var champ = p && p.el.querySelector('[data-gf-hp-champ]');
+    if (!p || !champ) return;
+    var depart = gfMinuteDuChamp(p, champ.value);
+    var m = Math.max(0, Math.min(48 * 60 - 1, (Number.isFinite(depart) ? depart : p.minute) + pas));
+    champ.value = gpHeure(m / 60);
+    gfPoserMinute(m, true);
+  }
+  // « Cette activité » ou « Tout le groupe » : l heure du champ se rejuge pour ce qui bouge, les heures
+  // libres aussi.
+  function gfModePop(mode) {
+    var p = gfPop;
+    if (!p || !p.groupe || p.mode === mode || (mode !== 'seul' && mode !== 'groupe')) return;
+    p.mode = mode;
+    Array.prototype.forEach.call(p.el.querySelectorAll('[data-gf-hp-mode]'), function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-gf-hp-mode') === mode)); });
+    // (l heure prevue n a rien a juger : la ligne se tait)
+    if (p.minute === gfMinutePrevue(p)) { clearTimeout(p.attente); p.juge = null; p.seq += 1; gfPeindreVerdict(null); }
+    else gfPoserMinute(p.minute, true);
+    var r = gfDossier(p.id);
+    if (r) gfRemplirPop(r, p.point, p.offset);
+  }
+  // « Déplacer » ou « Tout décaler » : ce que le serveur a juge pour l heure du champ, rien d autre.
+  function gfValiderPop() {
+    var p = gfPop;
+    var j = p && p.juge;
+    if (!p || !j || j.passe !== true || j.minute !== p.minute || j.mode !== p.mode) return;
+    var r = gfDossier(p.id);
+    var point = p.point;
+    var offset = p.offset;
+    gfFermerHeure(false);
+    if (!r) return;
+    if (j.mode === 'groupe') gfEnregistrerGroupe(r, point, offset, j.ecart);
+    else gfEnregistrerHeure(r, point, j.d, offset, j.moves);
+  }
   function gfFermerHeure(rendreFocus, sansSortie) {
     var p = gfPop;
     if (!p) return;
     gfPop = null;
+    clearTimeout(p.attente);
     document.removeEventListener('pointerdown', gfPopDehors, true);
     document.removeEventListener('keydown', gfPopClavier, true);
     document.removeEventListener('scroll', gfPopDefile, true);
@@ -2444,7 +2782,13 @@
     p.el.style.setProperty('--gf-hp-sy', sy.toFixed(3));
     p.el.style.setProperty('--gf-hp-r0', Math.round(b.height / 2 / sx) + 'px / ' + Math.round(b.height / 2 / sy) + 'px');
   }
-  function gfPopFermerSansFocus() { gfFermerHeure(false); }
+  // (le clavier du telephone qui s ouvre sur le champ redimensionne la fenetre : la pop-up reste et se repose)
+  function gfPopFermerSansFocus() {
+    var p = gfPop;
+    var actif = document.activeElement;
+    if (p && actif && p.el.contains(actif) && actif.matches && actif.matches('[data-gf-hp-champ]')) { gfPoserPop(true); return; }
+    gfFermerHeure(false);
+  }
   function gfPopDehors(ev) {
     var p = gfPop;
     if (!p || p.el.contains(ev.target)) return;
@@ -2457,8 +2801,8 @@
     if (!gfPop) return;
     if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); gfFermerHeure(true); return; }
     if (ev.key !== 'Tab') return;
-    // (le focus reste dans la pop-up tant qu elle est ouverte)
-    var touchables = Array.prototype.slice.call(gfPop.el.querySelectorAll('button'));
+    // (le focus reste dans la pop-up tant qu elle est ouverte : ses boutons actifs et son champ)
+    var touchables = Array.prototype.slice.call(gfPop.el.querySelectorAll('button:not(:disabled), input:not(:disabled)'));
     if (!touchables.length) return;
     var i = touchables.indexOf(document.activeElement);
     var suivant = ev.shiftKey ? (i <= 0 ? touchables.length - 1 : i - 1) : (i < 0 || i === touchables.length - 1 ? 0 : i + 1);
@@ -2477,13 +2821,27 @@
     if (!p || !ev.target.closest) return;
     if (ev.target.closest('[data-gf-hp-fermer]')) { gfFermerHeure(true); return; }
     if (ev.target.closest('[data-gf-hp-fiche]')) { var id = p.id; gfFermerHeure(false); if (typeof openPos === 'function') openPos(id); return; }
+    var mode = ev.target.closest('[data-gf-hp-mode]');
+    if (mode) { gfModePop(mode.getAttribute('data-gf-hp-mode')); return; }
+    var pas = ev.target.closest('[data-gf-hp-pas]');
+    if (pas) { gfPasPop(Number(pas.getAttribute('data-gf-hp-pas'))); return; }
+    if (ev.target.closest('[data-gf-hp-valider]')) { gfValiderPop(); return; }
+    var r = gfDossier(p.id);
+    var point = p.point;
+    var offset = p.offset;
+    var ecart = ev.target.closest('[data-gf-hp-ecart]');
+    if (ecart) {
+      var e = Number(ecart.getAttribute('data-gf-hp-ecart'));
+      var memo = r ? gfMemoireDecalage.get([r.id, r.updatedAt].join('|')) : null;
+      var ve = memo && memo.verdicts.get(e);
+      gfFermerHeure(false);
+      if (r && ve && ve.passe) gfEnregistrerGroupe(r, point, offset, e);
+      return;
+    }
     var choix = ev.target.closest('[data-gf-hp-choix]');
     if (!choix) return;
     var minute = Number(choix.getAttribute('data-gf-hp-choix'));
     var v = p.verdicts && p.verdicts.get(minute);
-    var r = gfDossier(p.id);
-    var point = p.point;
-    var offset = p.offset;
     gfFermerHeure(false);
     if (r && v && v.passe) gfEnregistrerHeure(r, point, minute / 60, offset, v.moves);
   }
@@ -2560,6 +2918,53 @@
     }, function (erreur) {
       gfApresRefus(erreur);
       gfRefusDeLHeure(erreur, point, retour, '', 'Pas remis');
+    }).then(function () { gfEcritures.delete(Number(id)); });
+  }
+  // TOUT LE GROUPE (2026-11-23) : un seul PATCH toutLeGroupe (envoyerDecalageDuGroupe), tout ou rien ; le
+  // toast le dit avec « Annuler », qui remet tout le groupe, ses pistes d avant comprises, par le meme
+  // chemin. Ce qui coince se dit : l activite, l heure, la raison, et que rien n a bouge.
+  function gfPistesDuBowling(r) {
+    var blocs = (r && r.opsPlan && Array.isArray(r.opsPlan.resourceBlocks)) ? r.opsPlan.resourceBlocks : [];
+    return Array.from(new Set(blocs.filter(function (b) { return b && b.resourceType === 'bowling_lane'; }).reduce(function (t, b) { return t.concat(b.lanes || []); }, []).map(Number))).sort(function (a, b) { return a - b; });
+  }
+  function gfRefusDuGroupe(erreur, r, titre) {
+    if (typeof showPlanningMoveNotice !== 'function') return;
+    var lu = (erreur && erreur.payload) || {};
+    if (lu.code === 'groupe_en_jeu') { showPlanningMoveNotice('Ne bouge pas', gfPhraseErreur(erreur), 'warning'); return; }
+    var texte = (lu.cle ? gfNeTientPas(gfNomDeCle(r, lu.cle), gfActiviteDeCle(lu.cle), String(lu.heure || ''), gfPhraseErreur(erreur)) : gfPhraseErreur(erreur)).replace(/\s*$/, '');
+    showPlanningMoveNotice(titre, 'Tout le groupe : ' + texte + (/[.!?]$/.test(texte) ? '' : '.') + ' Rien n’a bougé.', 'warning');
+  }
+  function gfEnregistrerGroupe(r, point, offset, ecart) {
+    if (!ecart || gfEcritures.has(Number(r.id)) || gfGeleAvantEcriture(r)) return Promise.resolve(null);
+    if (typeof envoyerDecalageDuGroupe !== 'function') return Promise.resolve(null);
+    gfEcritures.add(Number(r.id));
+    var nom = r.name || 'Le groupe';
+    var pistesAvant = gfPistesDuBowling(r);
+    var quoi = point.nom + ' à ' + gpHeure(point.debut + offset + ecart / 60);
+    return envoyerDecalageDuGroupe(r, ecart).then(function (payload) {
+      var ecrit = payload && payload.reservation;
+      gfAdopter(ecrit, ['startTime', 'lanes', 'opsPlan']);
+      var pistes = gfPistesDuBowling(ecrit);
+      var autres = pistes.length > 0 && pistes.join(',') !== pistesAvant.join(',');
+      var dit = nom + ' : tout le groupe passe ' + gfEcartEnMots(ecart) + ' (' + quoi + (autres ? ', ' + gfPistesEnMots(pistes).toLowerCase() : '') + ').';
+      if (typeof toastAnnulable === 'function') toastAnnulable(dit, function () { gfDefaireGroupe(ecrit.id, ecart, autres ? pistesAvant : null); });
+      return ecrit;
+    }, function (erreur) {
+      gfApresRefus(erreur);
+      gfRefusDuGroupe(erreur, r, 'Pas déplacé');
+      return null;
+    }).then(function (x) { gfEcritures.delete(Number(r.id)); return x; });
+  }
+  function gfDefaireGroupe(id, ecart, pistes) {
+    var r = gfDossier(id);
+    if (!r || gfEcritures.has(Number(id))) return;
+    gfEcritures.add(Number(id));
+    envoyerDecalageDuGroupe(r, -ecart, pistes).then(function (payload) {
+      gfAdopter(payload && payload.reservation, ['startTime', 'lanes', 'opsPlan']);
+      if (typeof toast === 'function') toast((r.name || 'Le groupe') + ' : tout le groupe revient à ses heures.');
+    }, function (erreur) {
+      gfApresRefus(erreur);
+      gfRefusDuGroupe(erreur, r, 'Pas remis');
     }).then(function () { gfEcritures.delete(Number(id)); });
   }
   // LA LIGNE ENTIERE : l heure du dossier change par le chemin de « Modifier » (son enregistrement,
@@ -2699,7 +3104,7 @@
     gfFermerHeure(false, true);
     var gele = gfEnJeuDuDossier(r);
     if (gele) {
-      if (typeof showPlanningMoveNotice === 'function') showPlanningMoveNotice('Ne bouge pas', g.type === 'ligne' ? (r.name || 'Ce groupe') + ' joue depuis ' + gele.depuis + ' : sa ligne ne bouge pas.' : gele.phrase, 'warning');
+      if (typeof showPlanningMoveNotice === 'function') showPlanningMoveNotice('Ne bouge pas', g.type === 'ligne' ? (r.name || 'Ce groupe') + ' : ' + gele.motif + '. Sa ligne ne bouge pas.' : gele.phrase, 'warning');
       return false;
     }
     g.r = r;

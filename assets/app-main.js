@@ -2475,6 +2475,47 @@ function envoyerDeplacementsActivite(avant, activityMoves) {
   });
 }
 
+// TOUT LE GROUPE DU MEME ECART (2026-11-23, la pop-up de l heure du planning complet) : un seul PATCH
+// toutLeGroupe, que le serveur juge et ecrit d un bloc (lib/decaler-le-groupe.js), ou refuse tout entier ;
+// le refus dit l activite et l heure qui coincent (error.payload.cle, .heure), rien n a bouge. `pistes` :
+// celles que le bowling reprend (« Annuler » rend celles d avant). La verification : l arrivee et chaque
+// bloc du groupe du meme ecart, le reste du dossier tel quel.
+function envoyerDecalageDuGroupe(avant, ecart, pistes = null) {
+  return enchainerEcritureReservation(avant.id, async (derniere) => {
+    const base = derniere && String(derniere.id) === String(avant.id) ? derniere : avant;
+    let payload;
+    try {
+      payload = await apiRequest(API_ENDPOINTS.staffReservations, {
+        method: 'PATCH',
+        body: JSON.stringify({ id: base.id, centerId: base.centerId || base.center_id || getCurrentStaffCenterId(), baseUpdatedAt: base.updatedAt, toutLeGroupe: { ecart, ...(Array.isArray(pistes) && pistes.length ? { pistes } : {}) } })
+      });
+    } catch (error) {
+      if (error.status === 409 && error.payload?.reservation) {
+        throw conflitReservation(error.payload.reservation, ['startTime', 'opsPlan'], 'Le planning a changé sur un autre poste. Vérifiez sa position actuelle puis refaites le déplacement.');
+      }
+      throw error;
+    }
+    const saved = payload?.reservation;
+    const minute = texte => { const m = /^(\d{2}):(\d{2})/.exec(String(texte || '')); return m ? Number(m[1]) * 60 + Number(m[2]) : NaN; };
+    // (chaque bloc du groupe : le bowling dans son ordre, chaque partie de laser par sa cle)
+    const debuts = (plan, decale) => {
+      const blocs = (plan?.resourceBlocks || []).filter(Boolean);
+      const bowling = blocs.filter(block => block.resourceType === 'bowling_lane').map((block, rang) => `bowling:${rang}@${minute(block.startTime) + decale}`);
+      const laser = blocs.filter(block => block.resourceType === 'laser_arena').map(block => `laser:${laserBlockUnitKey(block)}@${minute(block.startTime) + decale}`);
+      return [...bowling, ...laser].sort().join(' ');
+    };
+    const invariants = ['date', 'duration', 'totalDuration', 'pax', 'price', 'basePrice', 'extras', 'program', 'status', 'activityProgress'];
+    const conforme = saved && String(saved.id) === String(base.id)
+      && String(saved.centerId || saved.center_id) === String(base.centerId || base.center_id || getCurrentStaffCenterId())
+      && payload.toutLeGroupe && payload.toutLeGroupe.ecart === ecart && payload.toutLeGroupe.unchangedActivities === true
+      && minute(saved.startTime) === minute(base.startTime) + ecart
+      && invariants.every(key => valeurReservationComparable(saved[key]) === valeurReservationComparable(base[key]))
+      && debuts(saved.opsPlan, 0) === debuts(base.opsPlan, ecart);
+    if (!conforme) throw new Error('Le serveur n’a pas confirmé le décalage de tout le groupe. Actualisez le planning avant de réessayer.');
+    return payload;
+  });
+}
+
 function envoyerModificationReservation(avant, appliquer, overrides = {}) {
   return enchainerEcritureReservation(avant.id, async (derniere) => {
     // Une ecriture de CE poste vient d aboutir sur ce dossier : on part de ce

@@ -841,8 +841,9 @@ body.gf-en-glisse .pl-surbrillance { visibility: hidden; }
   .gf-x__t[data-gf-act]::before { content: ''; position: absolute; left: -8px; right: -8px; top: -2px; bottom: -2px; }
 }
 
-/* LA POP-UP DE L HEURE, posee contre la pastille. Aucun bouton plein : les heures sont des boutons
-   encadres de bleu (le second geste de la console), toutes egales. */
+/* LA POP-UP DE L HEURE, posee contre la pastille. Les heures libres sont des boutons encadres de bleu (le
+   second geste de la console), toutes egales ; le seul bouton plein, bleu, enregistre l heure tapee
+   (2026-11-23). */
 .gf-hp { position: fixed; z-index: 700; left: 0; top: 0; box-sizing: border-box; width: min(328px, calc(100vw - 16px)); padding: 10px 10px 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--raised); color: var(--text); box-shadow: var(--shadow-overlay); font-family: var(--font-ui); font-size: 13px; line-height: 1.35; font-variant-numeric: tabular-nums; transform-origin: var(--gf-hp-ox, 24px) var(--gf-hp-oy, 0px); }
 .gf-hp:focus { outline: none; }
 .gf-hp__tete { display: flex; align-items: flex-start; gap: 6px; }
@@ -854,15 +855,31 @@ body.gf-en-glisse .pl-surbrillance { visibility: hidden; }
 .gf-hp__dit b { color: var(--text); font-weight: 650; }
 /* (la hauteur de trois rangees d heures, reservee pendant le calcul : la goutte ne change pas de forme
    quand elles arrivent) */
-.gf-hp__corps { min-height: 132px; }
-.gf-hp.is-rempli .gf-hp__corps { min-height: 0; }
+.gf-hp__libres { min-height: 132px; margin-top: 10px; }
+.gf-hp.is-rempli .gf-hp__libres { min-height: 0; }
+/* (2026-11-23) Ce qui bouge, « Cette activité » ou « Tout le groupe », en deux boutons encadres, celui qui
+   est choisi en bleu pale ; l heure a la minute, le champ et les pas de la fenetre du retard (.rt-heure,
+   .rt-pas), puis le bouton plein bleu ; ce que le serveur dit de cette heure, en vert ou en rouge. */
+.gf-hp__mode { display: grid; grid-template-columns: 1fr 1fr; margin: 0 0 8px; border: 1px solid var(--control-border); border-radius: 10px; overflow: hidden; }
+.gf-hp__m { appearance: none; min-width: 0; height: 34px; padding: 0 6px; border: 0; background: var(--surface); color: var(--text); font: inherit; font-weight: 600; cursor: pointer; transition: background-color 120ms ease, color 120ms ease; }
+.gf-hp__m + .gf-hp__m { border-left: 1px solid var(--control-border); }
+.gf-hp__m[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-strong); box-shadow: inset 0 0 0 1px var(--accent); }
+.gf-hp__minute { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.gf-hp__minute .rt-heure { width: 100px; }
+.gf-hp__go { appearance: none; margin-left: auto; min-height: 36px; padding: 0 12px; border: 1px solid var(--accent); border-radius: var(--radius-md); background: var(--accent); color: var(--accent-contrast); font: inherit; font-weight: 650; cursor: pointer; transition: opacity 120ms ease; }
+.gf-hp__go:disabled { opacity: .45; cursor: default; }
+.gf-hp__verdict { margin: 6px 4px 0; color: var(--muted); line-height: 18px; overflow-wrap: anywhere; }
+.gf-hp__verdict:empty { display: none; }
+.gf-hp__verdict.is-passe { color: var(--success); }
+.gf-hp__verdict.is-bloque { color: var(--danger); }
 .gf-hp__heures { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
 .gf-hp__h { appearance: none; display: inline-flex; flex-direction: column; align-items: center; justify-content: center; min-width: 0; height: 40px; padding: 0 2px; border: 1px solid var(--accent); border-radius: 10px; background: var(--surface); color: var(--accent-strong); font: inherit; font-size: 15px; font-weight: 650; line-height: 1.1; cursor: pointer; transition: background-color 120ms ease; }
 .gf-hp__h small { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; font-weight: 500; color: var(--muted); }
 .gf-hp__second { appearance: none; height: 36px; padding: 0 14px; border: 1px solid var(--accent); border-radius: 10px; background: var(--surface); color: var(--accent-strong); font: inherit; font-weight: 650; cursor: pointer; transition: background-color 120ms ease; }
 @media (hover: hover) {
   .gf-hp__fermer:hover { background: var(--subtle); color: var(--text); }
-  .gf-hp__h:hover, .gf-hp__second:hover { background: var(--accent-soft); }
+  .gf-hp__h:hover, .gf-hp__second:hover, .gf-hp__m:hover { background: var(--accent-soft); }
+  .gf-hp__go:not(:disabled):hover { opacity: .9; }
 }
 .gf-hp button:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 2px; }
 .gf-hp__attente, .gf-hp__rien, .gf-hp__gele { margin: 0 4px; }
@@ -873,6 +890,7 @@ body.gf-en-glisse .pl-surbrillance { visibility: hidden; }
   .gf-hp__fermer { width: 44px; height: 44px; margin: -8px -8px 0 0; }
   .gf-hp__h { height: 44px; }
   .gf-hp__second { height: 44px; }
+  .gf-hp__m, .gf-hp__go { min-height: 44px; }
 }
 /* LA GOUTTE : la pop-up nait de la pastille touchee, a sa taille, sa teinte et son arrondi de pastille,
    s etire un peu et se pose en panneau. Transform et opacity, l arrondi et la teinte d un panneau seul :

@@ -35,7 +35,9 @@
 //        la remet ; posee ou elle ne passe pas (pistes prises, heure deja passee), la raison se dit et
 //        rien ne s ecrit ;
 //   [F1] un groupe qui joue deja ne bouge pas : sa pop-up le dit sans proposer d heure, ni son heure
-//        ni sa ligne ne se levent, rien ne s ecrit ; le serveur le redit (`gele`) ;
+//        ni sa ligne ne se levent, rien ne s ecrit ; le serveur le redit (`gele`), mot pour mot ; la
+//        phrase dit ce que le serveur verifie (sur place et l heure d une activite passee, ou une
+//        activite cochee a la main), jamais « joue » (2026-11-23 : la coche automatique est retiree) ;
 //   [F2] une console restee ouverte sur un etat perime envoie quand meme : le PATCH qui deplace une
 //        activite (activityMove ou activityMoves) et le calcul a blanc de « Modifier » refusent ce
 //        groupe avec la phrase de la pop-up, rien ne s ecrit ;
@@ -48,6 +50,20 @@
 //        ne bouge (ni l un ni l autre), et l avis dit lequel coince ;
 //   [S1] le meme geste depuis la fiche : l heure du Programme ouvre la meme pop-up, contre elle, avec
 //        les memes heures, et un toucher enregistre ;
+//   [M1] l heure a la minute (2026-11-23, Ansar : « on peut pas choisir l'heure qu'on veut à la
+//        minute ») : le champ et ses pas de 5 min (ceux de la fenetre du retard) ; le serveur juge
+//        l heure du champ, « Déplacer » l enregistre (un PATCH activityMove), Entree aussi ; les heures
+//        libres restent en raccourcis ; « Annuler » remet ;
+//   [M2] une minute qui ne tient pas le dit (l activite, l heure, la raison du serveur) et rien ne
+//        part ; une minute deja passee se dit sans demander au serveur ;
+//   [T1] « Tout le groupe » (Ansar : « si on veut tout avancer de 30 minutes, on peut pas ») : seul, le
+//        bowling de Sacha ne va pas a 16:00 (ses arcades y sont) ; tout le groupe, si (+30 min) ; 16:30
+//        non ; une requete, le calcul a blanc du groupe ;
+//   [T2] un toucher decale tout le groupe d un PATCH (toutLeGroupe), en base ; « Annuler » remet tout ;
+//   [T3] a la minute, ce qui coince se dit : l activite et l heure qui coincent, meme quand ce n est pas
+//        celle qu on a touchee ; ce qui passe dit chaque activite a sa nouvelle heure ;
+//   [T4] des pistes se prennent entre le verdict et le toucher : le serveur refuse, l avis dit quelle
+//        activite coince, a quelle heure, et que rien n a bouge ;
 //   [J1] aucune erreur JS.
 // La console reelle (scripts/planning-v3-fixtures.js, journee « pic » de Fun Galaxy Libramont, samedi
 // 16 janvier 2027 a 15:10) ; ses PATCH et ses calculs a blanc partent au VRAI handler
@@ -81,6 +97,8 @@ const MANON = 1618; // laser 15:30 (1re partie) et 16:00 (2e), 8 joueurs : a 17:
 const HENRARD = 1635; // bowling 16:00, piste 8, arrivee 16:00 : toute sa visite passe a 17:00
 const NOEL = 1637; // bowling 16:30, piste 6 : a 16:00, le bowling est complet
 const LINA = 1601; // arrivee, son laser a commence a 15:00 : elle joue
+const SACHA = 1604; // bowling 15:30 (pistes 1 et 2), arcades 16:35, laser 17:30 : tout le groupe passe a +30 min
+const NATHAN = 1607; // bowling 17:00, pistes 1 et 2 (le modele du groupe de derniere minute)
 // (journee normale, variante « deux-groupes ») 40 joueurs : sa 1re partie de laser en deux groupes, 18 et
 // 22, lances ensemble a 16:00 (1.1 et 1.2), sa 2e a 16:30 ; le basket (12) joue a 19:30
 const ETHAN = 1588;
@@ -642,13 +660,14 @@ async function scenarioLigne(browser) {
 }
 
 // ---------------------------------------------------------------------------
-// [F1] : Lina joue depuis 15:00.
+// [F1] : Lina, sur place, son laser de 15:00 passe ; Manon, une partie cochee a la main.
 // ---------------------------------------------------------------------------
 async function scenarioGele(browser) {
   const { ctx, page, erreurs, serveur, patchs, blancs } = await monter(browser);
   try {
     const depart = brut(LINA);
-    const phrase = 'DÉMO · Anniversaire Lina (12 ans) joue depuis 15:00 : ses heures ne bougent plus.';
+    // (2026-11-23 : personne ne l a cochee ; le serveur sait qu elle est la et que l heure de son laser est passee)
+    const phrase = 'DÉMO · Anniversaire Lina (12 ans) : sur place, et l’heure de Laser Game (15:00) est passée. Ses heures ne bougent plus.';
     await ligneEnHaut(page, LINA);
     const sel = PASTILLE(LINA, 'minigolf_blacklight');
     await page.click(sel);
@@ -656,8 +675,8 @@ async function scenarioGele(browser) {
     const pop = await page.evaluate(lirePop);
     await capture(page, 'pop-gele');
     const essais = blancs.filter((c) => c.deplacement && Number(c.deplacement.id) === LINA && Array.isArray(c.deplacement.essais));
-    ok(pop && pop.gele === phrase && pop.heures.length === 0 && pop.fiche && essais.length === 0,
-      '[F1] sa pop-up dit qu elle joue, sans proposer d heure ; « Ouvrir la fiche » reste', { pop, essais: essais.length });
+    ok(pop && pop.gele === phrase && !/\bjoue/.test(pop.gele) && pop.heures.length === 0 && pop.fiche && essais.length === 0,
+      '[F1] sa pop-up dit ce qui la gele (sur place, l heure de son laser passee), jamais « joue », sans proposer d heure ; « Ouvrir la fiche » reste', { pop, essais: essais.length });
     await page.keyboard.press('Escape');
     await page.waitForTimeout(300);
     // Son heure ne se leve pas.
@@ -673,7 +692,7 @@ async function scenarioGele(browser) {
     const ligne = await glisserALaSouris(page, deL, versL);
     await page.waitForTimeout(200);
     const avisL = await page.evaluate(lireAvis);
-    ok(!heure.leve && !ligne.leve && patchs.length === 0 && brut(LINA) === depart && avis.includes(phrase) && /joue depuis 15:00 : sa ligne ne bouge pas\./.test(avisL),
+    ok(!heure.leve && !ligne.leve && patchs.length === 0 && brut(LINA) === depart && avis.includes(phrase) && avisL.includes('DÉMO · Anniversaire Lina (12 ans) : sur place, et l’heure de Laser Game (15:00) est passée. Sa ligne ne bouge pas.'),
       '[F1] ni son heure ni sa ligne ne se levent : la raison se dit, rien ne s ecrit', { heure: heure.leve, ligne: ligne.leve, avis, avisL, patchs: patchs.length });
     const rep = await serveur.appeler('POST', '/api/staff-reservations', { dryRun: true, centerId: 'libramont', deplacement: { id: LINA, centerId: 'libramont', baseUpdatedAt: enBase(LINA).version, essais: [[{ activityId: 'minigolf_blacklight', startTime: '16:30' }]] } });
     ok(rep.statut === 200 && rep.json && rep.json.gele === phrase && Array.isArray(rep.json.essais) && rep.json.essais.length === 0 && brut(LINA) === depart,
@@ -691,6 +710,21 @@ async function scenarioGele(browser) {
     ok(refuse(seul) && refuse(ensemble) && refusABlanc(verdict) && refusABlanc(modifier) && brut(LINA) === depart,
       '[F2] le PATCH qui deplace son activite, seul ou en bloc, et les verdicts de « Modifier » la refusent avec la phrase de la pop-up ; rien ne s ecrit',
       { seul: [seul.statut, seul.json], ensemble: [ensemble.statut, ensemble.json && ensemble.json.message], verdict: verdict.json && verdict.json.refus, modifier: modifier.json && modifier.json.refus });
+    // [F1] Une coche a la main : Manon, sa 1re partie cochee (15:30, l heure n est pas encore la). La pop-up
+    // et le serveur disent la coche, mot pour mot.
+    const manon = B.base.reservations.get(MANON);
+    B.base.reservations.set(MANON, { ...manon, activity_progress: { 'laser_game-1': { done: true } } });
+    await page.evaluate((id) => { const r = state.reservations.find((x) => Number(x.id) === id); r.activityProgress = { 'laser_game-1': { done: true } }; }, MANON);
+    await ligneEnHaut(page, MANON);
+    await page.click(PASTILLE(MANON, 'laser_game:1.1'));
+    await page.waitForTimeout(500);
+    const popM = await page.evaluate(lirePop);
+    const repM = await serveur.appeler('POST', '/api/staff-reservations', { dryRun: true, centerId: 'libramont', deplacement: { id: MANON, centerId: 'libramont', baseUpdatedAt: enBase(MANON).version, toutLeGroupe: { ecarts: [30] } } });
+    const phraseM = `${manon.name} : une activité est cochée faite (Laser Game, 15:30). Ses heures ne bougent plus.`;
+    ok(popM && popM.gele === phraseM && popM.heures.length === 0 && repM.json && repM.json.gele === phraseM,
+      '[F1] une activite cochee a la main gele le groupe : la pop-up et le serveur disent « une activité est cochée faite (Laser Game, 15:30) »', { pop: popM && popM.gele, serveur: repM.json && repM.json.gele });
+    await capture(page, 'pop-gele-coche');
+    await page.keyboard.press('Escape');
     ok(erreurs.length === 0, '[J1] aucune erreur JS (le groupe qui joue)', erreurs);
   } finally {
     await ctx.close();
@@ -807,6 +841,187 @@ async function scenarioFiche(browser) {
 // ---------------------------------------------------------------------------
 // LES CONTRE-PREUVES : chaque garde retiree (en memoire) fait rougir sa lettre.
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// [M1] [M2] : l heure a la minute ; [T1] [T2] [T3] [T4] : tout le groupe (2026-11-23).
+// ---------------------------------------------------------------------------
+// Le champ, ses pas, son bouton, la ligne du verdict, ce qui bouge, et les raccourcis.
+function lireMinute() {
+  const p = document.getElementById('gfHeurePop');
+  if (!p) return null;
+  const champ = p.querySelector('[data-gf-hp-champ]');
+  const bouton = p.querySelector('[data-gf-hp-valider]');
+  const verdict = p.querySelector('[data-gf-hp-verdict]');
+  const mode = p.querySelector('[data-gf-hp-mode][aria-pressed="true"]');
+  const zone = p.querySelector('[data-gf-hp-heures]');
+  return {
+    texte: p.innerText.replace(/\s+/g, ' ').trim(),
+    champ: champ ? champ.value : null,
+    pas: Array.from(p.querySelectorAll('[data-gf-hp-pas]')).map((b) => b.textContent.trim()),
+    bouton: bouton ? bouton.textContent.trim() : null,
+    desactive: bouton ? bouton.disabled : null,
+    verdict: verdict ? verdict.textContent.trim() : '',
+    ton: verdict ? ((/is-(passe|bloque)/.exec(verdict.className) || [])[1] || '') : '',
+    mode: mode ? mode.getAttribute('data-gf-hp-mode') : '',
+    pour: zone ? zone.getAttribute('data-gf-hp-pour') || '' : '',
+    heures: Array.from(p.querySelectorAll('[data-gf-hp-choix]')).map((b) => b.childNodes[0].textContent.trim()),
+    raccourcis: Array.from(p.querySelectorAll('[data-gf-hp-ecart]')).map((b) => ({ heure: b.childNodes[0].textContent.trim(), ecart: ((b.querySelector('small') || {}).textContent || '').trim() })),
+  };
+}
+// La ligne du verdict, une fois le serveur (ou le plancher) passe : elle nomme l heure jugee.
+async function verdictLu(page, heure) {
+  await page.waitForFunction((h) => {
+    const v = document.querySelector('#gfHeurePop [data-gf-hp-verdict]');
+    const t = v ? v.textContent : '';
+    return t.indexOf(h) >= 0 && /passe|ne tient pas|ne répond pas/.test(t);
+  }, heure, { timeout: 10000 }).catch(() => null);
+  return page.evaluate(lireMinute);
+}
+async function ouvrirHeure(page, id, cle) {
+  await ligneEnHaut(page, id);
+  await page.click(PASTILLE(id, cle));
+  await page.waitForSelector('#gfHeurePop.is-rempli', { timeout: 10000 }).catch(() => null);
+  await page.waitForTimeout(300);
+}
+
+// Henrard (bowling 16:00, piste 8, seul a heure) et Noel (bowling 16:30, piste 6).
+async function scenarioMinute(browser) {
+  const { ctx, page, erreurs, patchs, blancs } = await monter(browser);
+  try {
+    await ouvrirHeure(page, HENRARD, 'bowling');
+    const ouvert = await page.evaluate(lireMinute);
+    ok(ouvert && ouvert.champ === '16:00' && ouvert.pas.join(' ') === '−5 +5' && ouvert.bouton === 'Déplacer' && ouvert.desactive === true && ouvert.mode === '' && ouvert.verdict === '' && ouvert.heures.length > 0,
+      '[M1] la pop-up porte l heure a la minute : le champ (16:00), −5 et +5, « Déplacer » en attente ; les heures libres restent en raccourcis', ouvert);
+    const n0 = blancs.length;
+    await page.click('#gfHeurePop [data-gf-hp-pas="5"]');
+    const plus5 = await verdictLu(page, '16:05');
+    ok(plus5 && plus5.champ === '16:05' && plus5.verdict === '16:05 passe.' && plus5.ton === 'passe' && plus5.desactive === false && blancs.length === n0 + 1 && patchs.length === 0,
+      '[M1] +5 : 16:05 ; le serveur la juge (un calcul a blanc) : « 16:05 passe. » ; rien n est ecrit avant le bouton', { plus5, blancs: blancs.length - n0, patchs: patchs.length });
+    await capture(page, 'pop-minute');
+    await page.click('#gfHeurePop [data-gf-hp-valider]');
+    await attendre(page, async () => patchs.length >= 1);
+    await page.waitForTimeout(300);
+    const corps = patchs[0] || {};
+    const toast = await page.evaluate(lireToast);
+    ok(patchs.length === 1 && corps.activityMove && corps.activityMove.activityId === 'bowling' && corps.activityMove.startTime === '16:05' && !corps.toutLeGroupe && enBase(HENRARD).bowling === '16:05[8]'
+      && /Famille Henrard : Bowling passe à 16:05\./.test(toast.texte) && toast.annuler,
+      '[M1] « Déplacer » : un PATCH activityMove a 16:05, piste 8, en base ; un toast avec « Annuler »', { corps, base: enBase(HENRARD), toast });
+    if (toast.annuler) await page.click('#toast .toast-annuler');
+    await attendre(page, async () => patchs.length >= 2);
+    await page.waitForTimeout(300);
+    ok(patchs.length === 2 && enBase(HENRARD).bowling === '16:00[8]', '[M1] « Annuler » la remet a 16:00', enBase(HENRARD));
+
+    // Tapee au clavier, puis Entree.
+    await ouvrirHeure(page, HENRARD, 'bowling');
+    await page.fill('#gfHeurePop [data-gf-hp-champ]', '16:17');
+    const tape = await verdictLu(page, '16:17');
+    await page.keyboard.press('Enter');
+    await attendre(page, async () => patchs.length >= 3);
+    await page.waitForTimeout(300);
+    ok(tape && tape.verdict === '16:17 passe.' && patchs.length === 3 && patchs[2].activityMove && patchs[2].activityMove.startTime === '16:17' && enBase(HENRARD).bowling === '16:17[8]',
+      '[M1] tapee au clavier, 16:17 se juge, Entree l enregistre', { tape: tape && tape.verdict, patch: patchs[2], base: enBase(HENRARD) });
+
+    // [M2] Deja passee : 15:05, il est 15:10. Le serveur n est pas derange.
+    await ouvrirHeure(page, HENRARD, 'bowling');
+    const n1 = blancs.length;
+    await page.fill('#gfHeurePop [data-gf-hp-champ]', '15:05');
+    const passee = await verdictLu(page, '15:05');
+    ok(passee && passee.verdict === 'Bowling ne tient pas à 15:05 : déjà passé, il est 15:10.' && passee.ton === 'bloque' && passee.desactive === true && blancs.length === n1,
+      '[M2] 15:05 : « Bowling ne tient pas à 15:05 : déjà passé, il est 15:10. », sans demander au serveur', { passee, blancs: blancs.length - n1 });
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(400);
+
+    // [M2] Noel a 16:02 : le bowling est complet.
+    const departNoel = brut(NOEL);
+    const np = patchs.length;
+    await ouvrirHeure(page, NOEL, 'bowling');
+    await page.fill('#gfHeurePop [data-gf-hp-champ]', '16:02');
+    const refus = await verdictLu(page, '16:02');
+    await capture(page, 'pop-minute-refus');
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(600);
+    ok(refus && /^Bowling ne tient pas à 16:02 : \S/.test(refus.verdict) && refus.ton === 'bloque' && refus.desactive === true && patchs.length === np && brut(NOEL) === departNoel,
+      '[M2] Noel a 16:02 : « Bowling ne tient pas à 16:02 : » puis la raison du serveur ; le bouton reste eteint, Entree n enregistre rien', { refus, patchs: patchs.length - np });
+    ok(erreurs.length === 0, '[J1] aucune erreur JS (l heure a la minute)', erreurs);
+  } finally {
+    await ctx.close();
+  }
+}
+
+// Sacha : bowling 15:30 (pistes 1 et 2), arcades 16:35, laser 17:30.
+async function scenarioGroupe(browser) {
+  const { ctx, page, erreurs, patchs, blancs } = await monter(browser);
+  try {
+    await ouvrirHeure(page, SACHA, 'bowling');
+    const seul = await page.evaluate(lireMinute);
+    ok(seul && seul.mode === 'seul' && seul.pour === 'seul' && /Cette activité/.test(seul.texte) && /Tout le groupe/.test(seul.texte) && !seul.heures.includes('16:00'),
+      '[T1] Sacha (bowling, arcades, laser) : « Cette activité » ou « Tout le groupe » ; seul, son bowling ne va pas a 16:00 (ses arcades y sont)', seul);
+    const n0 = blancs.length;
+    await page.click('#gfHeurePop [data-gf-hp-mode="groupe"]');
+    await page.waitForFunction(() => { const z = document.querySelector('#gfHeurePop [data-gf-hp-heures]'); return Boolean(z) && z.getAttribute('data-gf-hp-pour') === 'groupe'; }, null, { timeout: 10000 }).catch(() => null);
+    const groupe = await page.evaluate(lireMinute);
+    const demandes = blancs.slice(n0).filter((c) => c.deplacement && Number(c.deplacement.id) === SACHA);
+    const raccourcis = (groupe && groupe.raccourcis) || [];
+    ok(groupe && groupe.mode === 'groupe' && groupe.bouton === 'Tout décaler' && raccourcis.some((x) => x.heure === '16:00' && x.ecart === '+30 min') && !raccourcis.some((x) => x.heure === '16:30')
+      && demandes.length === 1 && demandes[0].deplacement.toutLeGroupe && Array.isArray(demandes[0].deplacement.toutLeGroupe.ecarts),
+      '[T1] « Tout le groupe » : 16:00 (+30 min) est proposee, 16:30 non (ses pistes y sont prises) ; une requete, le calcul a blanc du groupe', { raccourcis, demandes: demandes.length });
+    await capture(page, 'pop-groupe');
+
+    // [T2] Un toucher sur 16:00 : tout le groupe passe 30 min plus tard, « Annuler » le remet.
+    const avant = enBase(SACHA);
+    await page.click('#gfHeurePop [data-gf-hp-ecart="30"]');
+    await attendre(page, async () => patchs.length >= 1);
+    await page.waitForTimeout(300);
+    const corps = patchs[0] || {};
+    const apres = enBase(SACHA);
+    const toast = await page.evaluate(lireToast);
+    ok(patchs.length === 1 && Object.keys(corps).sort().join(',') === 'baseUpdatedAt,centerId,id,toutLeGroupe' && JSON.stringify(corps.toutLeGroupe) === '{"ecart":30}'
+      && apres.debut === '16:00' && apres.bowling === '16:00[1,2]' && apres.laser['1.1'] === '18:00' && /: tout le groupe passe 30 min plus tard \(Bowling à 16:00\)\./.test(toast.texte) && toast.annuler,
+      '[T2] un toucher : un seul PATCH toutLeGroupe (+30 min) ; l arrivee, le bowling (pistes 1 et 2) et le laser passent ensemble ; « Annuler » propose', { corps, avant, apres, toast });
+    if (toast.annuler) await page.click('#toast .toast-annuler');
+    await attendre(page, async () => patchs.length >= 2);
+    await page.waitForTimeout(300);
+    const remis = enBase(SACHA);
+    const toast2 = await page.evaluate(lireToast);
+    ok(patchs.length === 2 && JSON.stringify((patchs[1] || {}).toutLeGroupe) === '{"ecart":-30}' && remis.debut === '15:30' && remis.bowling === '15:30[1,2]' && remis.laser['1.1'] === '17:30' && /tout le groupe revient à ses heures\./.test(toast2.texte),
+      '[T2] « Annuler » remet tout le groupe a ses heures, d un PATCH', { remis, toast: toast2.texte });
+
+    // [T3] A la minute, pour tout le groupe.
+    await ouvrirHeure(page, SACHA, 'bowling');
+    await page.click('#gfHeurePop [data-gf-hp-mode="groupe"]');
+    await page.click('#gfHeurePop [data-gf-hp-pas="5"]');
+    const cinq = await verdictLu(page, '17:35');
+    ok(cinq && cinq.champ === '15:35' && /^Laser ne tient pas à 17:35 : l’arène joue déjà la partie de 17:30/.test(cinq.verdict) && cinq.ton === 'bloque' && cinq.desactive === true,
+      '[T3] +5 pour tout le groupe : ce n est pas le bowling touche qui coince, c est son laser, et la ligne le dit (« Laser ne tient pas à 17:35 : ... »)', cinq);
+    await page.fill('#gfHeurePop [data-gf-hp-champ]', '16:30');
+    const soixante = await verdictLu(page, '16:30');
+    ok(soixante && soixante.verdict === 'Bowling ne tient pas à 16:30 : Pistes 1 et 2 déjà prises de 16:30 à 17:30.' && soixante.desactive === true,
+      '[T3] 16:30 : « Bowling ne tient pas à 16:30 : Pistes 1 et 2 déjà prises de 16:30 à 17:30. »', soixante);
+    await page.fill('#gfHeurePop [data-gf-hp-champ]', '16:00');
+    const trente = await verdictLu(page, '16:00');
+    ok(trente && /^Tout le groupe passe 30 min plus tard : Bowling 16:00 · .*Laser 18:00\.$/.test(trente.verdict) && trente.ton === 'passe' && trente.desactive === false && trente.bouton === 'Tout décaler',
+      '[T3] 16:00 : « Tout le groupe passe 30 min plus tard », chaque activite a sa nouvelle heure ; « Tout décaler » s active', trente);
+    await capture(page, 'pop-groupe-minute');
+
+    // [T4] Un groupe de derniere minute prend les pistes 1 et 2 a 16:00, entre le verdict et le toucher.
+    const { planDecale } = require(path.join(ROOT, 'lib/decaler-le-groupe.js'));
+    const nathan = FIXTURE.staffState.reservations.find((x) => x.id === NATHAN);
+    B.base.reservations.set(9903, { ...ligneDepuis(nathan), id: 9903, name: 'DÉMO · Groupe de dernière minute', start_time: '16:00', ops_plan: planDecale(nathan.opsPlan, -60) });
+    const depart = brut(SACHA);
+    const np = patchs.length;
+    await page.click('#gfHeurePop [data-gf-hp-valider]');
+    await attendre(page, async () => patchs.length > np);
+    await page.waitForTimeout(500);
+    const avis = await page.evaluate(lireAvis);
+    await capture(page, 'groupe-refuse');
+    ok(patchs.length === np + 1 && patchs[np].toutLeGroupe && patchs[np].toutLeGroupe.ecart === 30 && brut(SACHA) === depart && /Pas déplacé/.test(avis)
+      && avis.includes('Tout le groupe : Bowling ne tient pas à 16:00 : Pistes 1 et 2 déjà prises de 16:00 à 17:00. Rien n’a bougé.'),
+      '[T4] ses pistes se prennent entre le verdict et le toucher : le serveur refuse, l avis dit l activite et l heure qui coincent, et que rien n a bouge', { avis, patchs: patchs.length - np });
+    ok(erreurs.length === 0, '[J1] aucune erreur JS (tout le groupe)', erreurs);
+  } finally {
+    await ctx.close();
+  }
+}
+
 const MUTATIONS = [
   { nom: 'pop-au-coin', lettre: 'P1', scenarios: ['pop'], editions: [{ fichier: MODULE, de: '    var top = Math.max(marge, dessous ? a.bottom + 6 : a.top - 6 - h);', vers: '    var top = marge;' }] },
   { nom: 'goutte-lente', lettre: 'P2', scenarios: ['pop'], editions: [{ fichier: FEUILLE, de: '  .gf-hp.is-nait { animation: gfHpGoutte 260ms cubic-bezier(0.23, 1, 0.32, 1) both; }', vers: '  .gf-hp.is-nait { animation: gfHpGoutte 600ms ease both; }' }] },
@@ -818,7 +1033,7 @@ const MUTATIONS = [
     { fichier: FEUILLE, de: '@media (prefers-reduced-motion: no-preference) {\n  .gf-hp.is-nait {', vers: '@media all {\n  .gf-hp.is-nait {' },
     { fichier: FEUILLE_COMMUNE, de: '    animation-duration: 0.01ms !important;\n    animation-iteration-count: 1 !important;\n', vers: '' },
   ] },
-  { nom: 'tableau-reecrit', lettre: 'P3', scenarios: ['pop'], editions: [{ fichier: MODULE, de: '    document.body.appendChild(el);\n    gfJetonPop += 1;', vers: "    document.body.appendChild(el);\n    var gw = document.getElementById('globalPlanningGridWrap'); if (gw) { gw._gfParties = null; renderGlobalPlanning(gw); }\n    gfJetonPop += 1;" }] },
+  { nom: 'tableau-reecrit', lettre: 'P3', scenarios: ['pop'], editions: [{ fichier: MODULE, de: '    document.body.appendChild(el);\n    gfPop = p;', vers: "    document.body.appendChild(el);\n    var gw = document.getElementById('globalPlanningGridWrap'); if (gw) { gw._gfParties = null; renderGlobalPlanning(gw); }\n    gfPop = p;" }] },
   { nom: 'heures-sans-verdict', lettre: 'V1', scenarios: ['pop'], editions: [{ fichier: MODULE, de: '      var libres = debuts.filter(function (d) { var v = memo.verdicts.get(gfMinute(d)); return v && v.passe; });', vers: '      var libres = debuts.filter(function (d) { return memo.verdicts.has(gfMinute(d)); });' }] },
   { nom: 'essais-complaisants', lettre: 'V1', scenarios: ['pop'], editions: [{ fichier: API, serveur: true, de: '      return { passe: false, raison: phraseDuRefus(error.message) };', vers: '      return { passe: true };' }] },
   { nom: 'enregistre-pas', lettre: 'E1', scenarios: ['pop'], editions: [{ fichier: MODULE, de: '    if (r && v && v.passe) gfEnregistrerHeure(r, point, minute / 60, offset, v.moves);', vers: '' }] },
@@ -841,7 +1056,7 @@ const MUTATIONS = [
   { nom: 'ligne-annuler-vide', lettre: 'L1', scenarios: ['ligne'], editions: [{ fichier: MODULE, de: '        gfDeplacerLeDossier(courant, avant, autres && pistesAvant.length ? pistesAvant : null).then(function (rendu) {', vers: '        Promise.resolve(null).then(function (rendu) {' }] },
   { nom: 'ligne-heure-passee', lettre: 'L1', scenarios: ['ligne'], editions: [{ fichier: MODULE, de: '    var maintenant = r.date === todayStr() ? Math.ceil(currentTimeDecimal() * 60 - 1e-6) / 60 : null;', vers: '    var maintenant = null;' }] },
   { nom: 'gele-ignore', lettre: 'F1', scenarios: ['gele'], editions: [
-    { fichier: MODULE, de: '    if (!debuts.length) return null;\n', vers: '    if (true) return null;\n' },
+    { fichier: MODULE, de: '    if (!commencees.length) return null;\n', vers: '    if (true) return null;\n' },
     { fichier: RETARD, serveur: true, de: '  if (!commencees.length) return null;', vers: '  if (true) return null;' },
   ] },
   { nom: 'gele-serveur-muet', lettre: 'F1', scenarios: ['gele'], editions: [{ fichier: RETARD, serveur: true, de: '  if (!commencees.length) return null;', vers: '  if (true) return null;' }] },
@@ -860,6 +1075,32 @@ const MUTATIONS = [
   // (l avis tait le groupe qui coince)
   { nom: 'vagues-sans-nom', lettre: 'W3', scenarios: ['vagues'], editions: [{ fichier: MODULE, de: "    var vague = moves.length > 1 && Number.isInteger(lu.rang) && moves[lu.rang] ?", vers: "    var vague = false ?" }] },
   { nom: 'fiche-sans-heure', lettre: 'S1', scenarios: ['fiche'], editions: [{ fichier: CONSOLE, de: "    const cleHeure = options.coches && typeof window.pgCleHeure === 'function' ? window.pgCleHeure(r, etape) : '';", vers: "    const cleHeure = '';" }] },
+  // (la phrase de la pop-up redit « joue depuis », quand personne n a coche)
+  { nom: 'gele-phrase-joue', lettre: 'F1', scenarios: ['gele'], editions: [{ fichier: MODULE, de: "      : 'sur place, et l’heure de ' + gfNomDuGel(premiere.activityId) + ' (' + gpHeure(premiere.start) + ') est passée';", vers: "      : 'joue depuis ' + depuis;" }] },
+  // (une coche a la main se dit comme une heure passee)
+  { nom: 'gele-coche-muette', lettre: 'F1', scenarios: ['gele'], editions: [{ fichier: MODULE, de: '    var motif = cochees.length\n', vers: '    var motif = false\n' }] },
+  // (le serveur redit « joue depuis » : la pop-up et lui ne disent plus la meme chose)
+  { nom: 'gele-serveur-joue', lettre: 'F1', scenarios: ['gele'], editions: [{ fichier: RETARD, serveur: true, de: "  return { depuis, motif, phrase: `${current.name || 'Ce groupe'} : ${motif}. Ses heures ne bougent plus.` };", vers: "  return { depuis, motif, phrase: `${current.name || 'Ce groupe'} joue depuis ${depuis} : ses heures ne bougent plus.` };" }] },
+  // (les pas de 5 min ne font rien)
+  { nom: 'minute-sans-pas', lettre: 'M1', scenarios: ['minute'], editions: [{ fichier: MODULE, de: "    if (pas) { gfPasPop(Number(pas.getAttribute('data-gf-hp-pas'))); return; }", vers: '    if (pas) return;' }] },
+  // (« Déplacer » ne fait rien)
+  { nom: 'minute-sans-bouton', lettre: 'M1', scenarios: ['minute'], editions: [{ fichier: MODULE, de: "    if (ev.target.closest('[data-gf-hp-valider]')) { gfValiderPop(); return; }", vers: "    if (ev.target.closest('[data-gf-hp-valider]')) return;" }] },
+  // (une minute refusee par le serveur se dit libre)
+  { nom: 'minute-complaisante', lettre: 'M2', scenarios: ['minute'], editions: [{ fichier: MODULE, de: '        : { minute: m, mode: mode, passe: false, texte: gfNeTientPas(p.point.nom, p.point.activityId, heure, v.raison) });', vers: "        : { minute: m, mode: mode, passe: true, d: d, moves: [{ activityId: p.point.activityId, startTime: heure, lanes: p.point.pistes }], texte: heure + ' passe.' });" }] },
+  // (une minute deja passee part au serveur)
+  { nom: 'minute-passee-au-serveur', lettre: 'M2', scenarios: ['minute'], editions: [{ fichier: MODULE, de: '    if (d < plancher.h - 1e-6) {\n      var motif = plancher.maintenant', vers: '    if (false) {\n      var motif = plancher.maintenant' }] },
+  // (pas de « Tout le groupe »)
+  { nom: 'groupe-absent', lettre: 'T1', scenarios: ['groupe'], editions: [{ fichier: MODULE, de: "    var mode = p.groupe ? '<div class=\"gf-hp__mode\"", vers: "    var mode = false ? '<div class=\"gf-hp__mode\"" }] },
+  // (les heures du groupe proposees sans le verdict du serveur)
+  { nom: 'groupe-heures-sans-verdict', lettre: 'T1', scenarios: ['groupe'], editions: [{ fichier: MODULE, de: '      var libres = ecarts.filter(function (e) { var v = memo.verdicts.get(e); return v && v.passe; });', vers: '      var libres = ecarts.filter(function (e) { return memo.verdicts.has(e); });' }] },
+  // (le calcul a blanc du groupe laisse tout passer)
+  { nom: 'groupe-serveur-complaisant', lettre: 'T1', scenarios: ['groupe'], editions: [{ fichier: API, serveur: true, de: "        return { passe: false, raison: phraseDuRefus(error.message), ...(error.cleDuDeplacement ? { cle: String(error.cleDuDeplacement), heure: String(error.heureDuDeplacement || '') } : {}) };", vers: '        return { passe: true };' }] },
+  // (« Annuler » ne remet rien)
+  { nom: 'groupe-annuler-vide', lettre: 'T2', scenarios: ['groupe'], editions: [{ fichier: MODULE, de: 'toastAnnulable(dit, function () { gfDefaireGroupe(ecrit.id, ecart, autres ? pistesAvant : null); });', vers: 'toastAnnulable(dit, function () {});' }] },
+  // (la ligne dit l activite touchee, pas celle qui coince)
+  { nom: 'groupe-ligne-muette', lettre: 'T3', scenarios: ['groupe'], editions: [{ fichier: MODULE, de: "          : { minute: m, mode: mode, passe: false, texte: v.cle ? gfNeTientPas(gfNomDeCle(r, v.cle), gfActiviteDeCle(v.cle), v.heure || '', v.plancher ? 'déjà passé, il est ' + gpHeure(currentTimeDecimal()) + '.' : v.raison) : gfNeTientPas('Tout le groupe', '', '', v.raison) });", vers: '          : { minute: m, mode: mode, passe: false, texte: gfNeTientPas(p.point.nom, p.point.activityId, heure, v.raison) });' }] },
+  // (l avis tait l activite et l heure qui coincent)
+  { nom: 'groupe-avis-muet', lettre: 'T4', scenarios: ['groupe'], editions: [{ fichier: MODULE, de: "    var texte = (lu.cle ? gfNeTientPas(gfNomDeCle(r, lu.cle), gfActiviteDeCle(lu.cle), String(lu.heure || ''), gfPhraseErreur(erreur)) : gfPhraseErreur(erreur)).replace(/\\s*$/, '');", vers: '    var texte = gfPhraseErreur(erreur);' }] },
 ];
 
 async function jouer(browser, noms) {
@@ -871,6 +1112,8 @@ async function jouer(browser, noms) {
     if (nom === 'gele') await scenarioGele(browser);
     if (nom === 'fiche') await scenarioFiche(browser);
     if (nom === 'vagues') await scenarioVagues(browser);
+    if (nom === 'minute') await scenarioMinute(browser);
+    if (nom === 'groupe') await scenarioGroupe(browser);
   }
 }
 
@@ -880,7 +1123,7 @@ async function main() {
   const t0 = Date.now();
   try {
     if (!process.argv.includes('--contre-preuves')) {
-      await jouer(browser, liste(process.env.HG_SCENARIOS) || ['pop', 'souris', 'doigt', 'ligne', 'gele', 'fiche', 'vagues']);
+      await jouer(browser, liste(process.env.HG_SCENARIOS) || ['pop', 'souris', 'doigt', 'ligne', 'gele', 'fiche', 'vagues', 'minute', 'groupe']);
     } else {
       console.log('[K] contre-preuves : chaque garde retiree fait rougir sa lettre');
       for (const m of MUTATIONS.filter((x) => !process.env.HG_MUTATIONS || liste(process.env.HG_MUTATIONS).includes(x.nom))) {

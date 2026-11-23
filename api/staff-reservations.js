@@ -1195,8 +1195,13 @@ async function calculerLaModification({ body, current, session, requestedCenterI
     const pistesDuPlan = (ops.opsPlan?.resourceBlocks || []).filter((block) => block.resourceType === 'bowling_lane').flatMap((block) => block.lanes || []).map(Number);
     if (Array.isArray(patch.lanes) && !patch.lanes.length && pistesDuPlan.length) patch.lanes = [...new Set(pistesDuPlan)];
   }
-  if (shouldReplan && JSON.stringify((patch.lanes ?? current.lanes ?? []).map(Number))
-    === JSON.stringify((current.lanes || []).map(Number))) {
+  // UN PLAN EN SOUS-GROUPES TIENT SES PISTES GROUPE PAR GROUPE (2026-11-23, lib/grand-groupe.js) : le moteur les
+  // choisit pour chaque groupe, les pistes du dossier sont leur reunion, jamais celles que le corps propose.
+  // Modifier en envoyait d autres (les pistes libres a l heure du premier bowling, quand un autre dossier tient
+  // une piste d un groupe qui joue plus tard) et la base refusait « Ce créneau vient de changer ».
+  const pistesDuGrandGroupe = (ops.opsPlan?.resourceBlocks || []).some((block) => block && block.resourceType === 'bowling_lane' && Number(block.sousGroupe) > 0);
+  if (shouldReplan && (pistesDuGrandGroupe || JSON.stringify((patch.lanes ?? current.lanes ?? []).map(Number))
+    === JSON.stringify((current.lanes || []).map(Number)))) {
     const allocated = (ops.opsPlan?.resourceBlocks || []).filter((block) => block.resourceType === 'bowling_lane')
       .flatMap((block) => block.lanes || []);
     if (allocated.length) patch.lanes = [...new Set(allocated.map(Number))];

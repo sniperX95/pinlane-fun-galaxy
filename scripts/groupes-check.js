@@ -24,7 +24,8 @@
 //       le dossier decale d une demi-heure decale chaque groupe, de nouvelles heures s ecrivent au prix du
 //       calcul a blanc, des heures qui coincent se refusent (a blanc avec `coincent`, et rien ne s ecrit) ;
 //       4 groupes choisis le restent quand le groupe change ; un groupe pose avant l arrivee fait commencer
-//       le dossier avec lui (Modifier et creation), au meme prix.
+//       le dossier avec lui (Modifier et creation), au meme prix ; d autres pistes envoyees par Modifier ne
+//       remplacent jamais celles que le plan donne a chaque groupe.
 //   [E] LES DOSSIERS EN DEUX GROUPES D AVANT RESTENT JUSTES : un dossier ecrit avant ce lot (sans heures
 //       ni nombre dans son plan) garde ses deux groupes et sa rotation quand le groupe change, et un laser
 //       qu il avait deplace au planning reste a son heure.
@@ -78,6 +79,8 @@ const MUTATIONS = [
   // [C] un groupe hors des horaires du centre ne se dit plus sur sa case, ou plus avec son heure.
   { nom: 'horaires-sans-case', lettre: 'C', fichier: MOTEUR, de: '        ...(horsHoraires ? { conflict: horsHoraires.conflict } : {}),\n', vers: '' },
   { nom: 'horaires-phrase-du-dossier', lettre: 'C', fichier: MOTEUR, de: '    const reason = horsHoraires ? horsHoraires.raison : !manqueLeLibre', vers: '    const reason = !manqueLeLibre' },
+  // [D] les pistes du corps redeviennent celles du dossier en sous-groupes (Modifier se fait refuser).
+  { nom: 'pistes-du-corps-pour-les-groupes', lettre: 'D', fichier: API, de: '  if (shouldReplan && (pistesDuGrandGroupe || JSON.stringify(', vers: '  if (shouldReplan && (false || JSON.stringify(' },
   // [D] un groupe pose avant l arrivee laisse le dossier commencer apres lui.
   { nom: 'arrivee-apres-un-groupe', lettre: 'D', fichier: OPS, de: '    ...(avanceeParUnGroupe ? { startTime: minutesToTime(premierGroupe) } : {}),\n', vers: '' },
   // [D] la modification refait la rotation par-dessus les heures posees, oublie le nombre choisi, ou ecrit
@@ -354,6 +357,24 @@ async function principal() {
         ok(vrai.statut === 200 && String(r.start_time).slice(0, 5) === '15:00' && annonce === '15:00' && horaireDe(r) === 'B1@15:30 B2@16:30 L1@16:30 L2@15:00' && Number(r.price) === prixAvant,
           '[D] le laser du groupe 2 avance a 15:00 dans un dossier arrive a 15:30 : le dossier commence a 15:00 (a blanc aussi), au meme prix', { statut: vrai.statut, message: vrai.json.message, debut: r.start_time, annonce, horaire: horaireDe(r), prix: r.price, avant: prixAvant });
       } else ok(false, '[D] le dossier de 60 est cree', `${c60.statut} ${c60.json.message || ''}`);
+      // Modifier envoie ses pistes (les libres a l heure du premier bowling) avec les groupes : le plan donne les
+      // siennes a chaque groupe, le dossier en garde la reunion, au meme prix (avant : « Ce créneau vient de changer »).
+      vider();
+      const quatre = [{ laser_game: '15:30', bowling: '16:30' }, { laser_game: '15:30', bowling: '16:30' }, { bowling: '15:30', laser_game: '16:30' }, { bowling: '15:30', laser_game: '16:30' }];
+      const c4h = await creer(corps(60, { impose: true, nombre: 4, heures: quatre }, { debut: '15:30' }));
+      const d4h = c4h.json.reservation;
+      if (d4h) {
+        const r0 = ligne(d4h.id);
+        const lu = (r) => (r.lanes || []).map(Number).sort((a, b) => a - b).join(',');
+        const pistesAvant = lu(r0);
+        const plus17 = quatre.map((h, i) => (i === 3 ? { ...h, laser_game: '17:00' } : { ...h }));
+        const corpsModif = { id: d4h.id, centerId: 'libramont', lanes: [1, 2, 3, 4, 5], preference: { grandGroupe: { impose: true, nombre: 4, tailles: [15, 15, 15, 15], heures: plus17 } } };
+        const blanc = await serveur.appeler('POST', '/api/staff-reservations', { dryRun: true, centerId: 'libramont', modification: { ...corpsModif, baseUpdatedAt: version(r0) } });
+        const vrai = await serveur.appeler('PATCH', '/api/staff-reservations', { ...corpsModif, baseUpdatedAt: version(r0) });
+        const r = ligne(d4h.id);
+        ok(!blanc.json.refus && vrai.statut === 200 && /L4@17:00/.test(horaireDe(r)) && lu(r) === pistesAvant && Number(r.price) === Number(r0.price),
+          '[D] Modifier envoie d autres pistes avec les groupes : chaque groupe garde celles du plan, le dossier leur reunion, au meme prix', { refus: blanc.json.refus, statut: vrai.statut, message: vrai.json.message, horaire: horaireDe(r), pistes: lu(r), avant: pistesAvant, prix: r.price });
+      } else ok(false, '[D] le dossier en 4 groupes aux heures posees est cree', `${c4h.statut} ${c4h.json.message || ''}`);
       vider();
       const tot = await creer(corps(80, { impose: true, nombre: 3, heures: [{ bowling: '14:30', laser_game: '15:30' }, { laser_game: '14:00', bowling: '15:30' }, { laser_game: '16:00', bowling: '16:30' }] }, { debut: '14:30' }));
       const rt = tot.json.reservation && ligne(tot.json.reservation.id);

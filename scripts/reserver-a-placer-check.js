@@ -84,7 +84,7 @@ function verifier(f, afficher = true) {
   v(note && note.par === 'Rachel' && /^À placer : créé malgré le conflit\. /.test(note.t) && note.t.includes(f.force.conflits[0] && f.force.conflits[0].message) && /^\d{4}-\d{2}-\d{2}T/.test(note.le),
     `[1] note de l equipe au format existant, signee : ${JSON.stringify(note)}`);
   v(r.price === 39 && r.basePrice === 39, `[1] le dossier à placer garde son prix (base ${r.basePrice}, prix ${r.price})`);
-  v(/^400 Laser Game complet sur ce créneau \(36\/30 joueurs/.test(f.refusLaser), `[1] l arene a vous seuls avec Martin dedans : refusee sans forcer (${f.refusLaser})`);
+  v(/^400 « Pour vous seuls » n’est pas possible à 15:00 : Martin joue déjà dans l’arène à 15:00 \(6 joueurs\)/.test(f.refusLaser), `[1] l arene a vous seuls avec Martin dedans : refusee sans forcer (${f.refusLaser})`);
   const lr = f.laser.r;
   v(f.laser.statut === 201 && f.laser.aPlacer === true && (lr.opsPlan || {}).laserManual === true && ((lr.opsPlan || {}).resourceBlocks || []).length === 0
     && (lr.opsPlan || {}).arene === 'seuls' && ((lr.opsPlan || {}).laserPassPlan || {}).remainingGames === 1,

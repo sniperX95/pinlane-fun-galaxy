@@ -120,7 +120,8 @@ const MUTATIONS = {
   creation: { fichier: 'assets/app-main.js', de: '  // pied, comparee a son dernier rendu, se croyait a jour (2026-10-08).\n  renderQuickBook();', vers: "  // pied, comparee a son dernier rendu, se croyait a jour (2026-10-08).\n  { const b = document.getElementById('rvCreer'); if (b) { b.disabled = true; b.setAttribute('aria-busy', 'true'); b.textContent = 'Création…'; } }", vise: ['C'] },
   // Les heures d une partie de laser ne partent plus au planning : leur
   // verdict ne vient plus du serveur (l horloge de l ancienne fenetre).
-  horloge: { fichier: 'assets/app-main.js', de: "body: JSON.stringify({ ...base, dryRun: true, candidats: variantes })", vers: "body: JSON.stringify({ ...base, dryRun: true, candidats: [] })", vise: ['D'] },
+  // (l ancre porte la ligne qui suit : rsVerifierHeuresPosees envoie le meme corps, 2026-11-20)
+  horloge: { fichier: 'assets/app-main.js', de: "body: JSON.stringify({ ...base, dryRun: true, candidats: variantes }) });\n    if (!quickBookState || seq !== rvCandidatsSeq) return;", vers: "body: JSON.stringify({ ...base, dryRun: true, candidats: [] }) });\n    if (!quickBookState || seq !== rvCandidatsSeq) return;", vise: ['D'] },
   // Les seances ne partent plus au planning : une heure qu il refuse a l air
   // de tenir.
   seances: { fichier: 'assets/app-main.js', de: 'body: JSON.stringify({ ...demande.corps, dryRun: true, candidats: demande.variantes })', vers: 'body: JSON.stringify({ ...demande.corps, dryRun: true, candidats: [] })', vise: ['D'] },
@@ -910,7 +911,9 @@ async function scenarioI(page, verifier) {
   await page.waitForTimeout(400);
   const sans = await lireClient(page);
   const partisSans = await page.evaluate(() => window.__QA_CREES__.length);
-  verifier('I', partisSans === 0 && sans.focus === 'qbPhone' && sans.telManque && /obligatoire/.test(sans.telDit), 'Créer sans telephone : rien ne part, le champ dit pourquoi et prend le focus', JSON.stringify({ partisSans, focus: sans.focus, manque: sans.telManque, dit: sans.telDit }));
+  // (le telephone reste exige, mais un mot ou « / » le remplacent depuis le 2026-11-22, 551ab12 : le champ dit
+  // quoi ecrire, « Le téléphone du client est obligatoire. » ne se lit plus)
+  verifier('I', partisSans === 0 && sans.focus === 'qbPhone' && sans.telManque && /Écrivez un numéro, ou « par mail », ou « [/] » s.il n.y en a pas[.]/.test(sans.telDit), 'Créer sans telephone : rien ne part, le champ dit pourquoi et prend le focus', JSON.stringify({ partisSans, focus: sans.focus, manque: sans.telManque, dit: sans.telDit }));
 
   // 3. Un numero trop court, Entree dans le champ : rien ne part, le champ le dit
   // et garde la main.

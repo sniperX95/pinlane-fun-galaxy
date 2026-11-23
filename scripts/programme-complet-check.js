@@ -422,7 +422,7 @@ async function scenarioModifier(browser) {
       await page.click('#posOverlay .fm-act[data-edit-activity="laser_game"] [data-arene="seuls"]');
       await verdictPose(page);
       const refus = await page.evaluate(lire);
-      ok(/Laser Game complet sur ce créneau/.test(refus.verdict), '[P2] « Pour vous seuls » quand d autres groupes jouent : le serveur le refuse avant le clic, comme une creation', refus.verdict);
+      ok(/« Pour vous seuls » n’est pas possible à \d\d:\d\d : .+ joue déjà dans l’arène/.test(refus.verdict), '[P2] « Pour vous seuls » quand d autres groupes jouent : le serveur le refuse avant le clic, comme une creation', refus.verdict);
       await ouvrirModifier(page, ARENE);
       const a = await page.evaluate(lire);
       ok(a.laser.some((g) => /^Parties par joueur:.*\+ Partie/.test(g)) && a.laser.includes('Arène:Autopartagée si besoin*|Pour vous seulspersonne d’autre'),
@@ -631,12 +631,12 @@ const MUTATIONS = [
   { nom: 'historique-muet', lettre: 'L3', scenarios: SERVEUR, editions: [{ fichier: HISTO, serveur: true, de: '    if (deplacement.libre === true) return `Au planning : ${autre} sans heure, en accès libre`;\n', vers: '' }] },
   { nom: 'libre-reste-marque', lettre: 'L1', scenarios: MODIFIER, editions: [{ fichier: JS, de: "    boutonLibre.classList.toggle('is-on', libreOn);", vers: "    boutonLibre.classList.toggle('is-on', true);" }, { fichier: JS, de: "    boutonLibre.setAttribute('aria-pressed', libreOn ? 'true' : 'false');", vers: "    boutonLibre.setAttribute('aria-pressed', 'true');" }] },
   { nom: 'libre-pas-envoye', lettre: 'L3', scenarios: MODIFIER, editions: [{ fichier: JS, de: "    if (heure === 'libre' && point.activityId !== 'bowling' && point.activityId !== 'laser_game') {", vers: '    if (false) {' }] },
-  { nom: 'posees-ignorees', lettre: 'S1', scenarios: SERVEUR, editions: [{ fichier: FENETRE, serveur: true, de: '  if (heuresPosees.length && dossier.opsPlan && ops.planAvailable !== false) {', vers: '  if (false) {' }] },
-  { nom: 'variante-sans-heures', lettre: 'S1', scenarios: SERVEUR, editions: [{ fichier: SIMULATION, serveur: true, de: "const CHAMPS_VARIANTE = ['startTime', 'preference', 'lanes', 'laneCount', 'heuresPosees'];", vers: "const CHAMPS_VARIANTE = ['startTime', 'preference', 'lanes', 'laneCount'];" }] },
+  { nom: 'posees-ignorees', lettre: 'S1', scenarios: SERVEUR, editions: [{ fichier: FENETRE, serveur: true, de: '  if (aPoser.length && dossier.opsPlan && ops.planAvailable !== false) {', vers: '  if (false) {' }] },
+  { nom: 'variante-sans-heures', lettre: 'S1', scenarios: SERVEUR, editions: [{ fichier: SIMULATION, serveur: true, de: "const CHAMPS_VARIANTE = ['startTime', 'preference', 'lanes', 'laneCount', 'heuresPosees', 'enPlus'];", vers: "const CHAMPS_VARIANTE = ['startTime', 'preference', 'lanes', 'laneCount', 'enPlus'];" }] },
   { nom: 'corps-forge-accepte', lettre: 'S1', scenarios: SERVEUR, editions: [{ fichier: POSEES, serveur: true, de: "  if (typeof brut !== 'object' || Array.isArray(brut)) throw erreur('Heures d’activité invalides.');", vers: "  if (typeof brut !== 'object' || Array.isArray(brut)) return [];" }] },
   { nom: 'creation-malgre-refus', lettre: 'R2', scenarios: SERVEUR, editions: [{ fichier: FENETRE, serveur: true, de: '  if (prepare.heureRefusee) throw prepare.heureRefusee;\n', vers: '' }] },
   { nom: 'phrase-du-dossier-ecrit', lettre: 'R2', scenarios: SERVEUR, editions: [{ fichier: POSEES, serveur: true, de: ".replace(/\\s*(Cet horaire reste inchangé|Les autres horaires restent inchangés)\\.\\s*$/, '').trim();", vers: '.trim();' }] },
-  { nom: 'piste-prise-ignoree', lettre: 'R3', scenarios: SERVEUR, editions: [{ fichier: POSEES, serveur: true, de: "    return [{ activityId, startTime: heure, lanes: pistes }];", vers: "    return [];" }] },
+  { nom: 'piste-prise-ignoree', lettre: 'R3', scenarios: SERVEUR, editions: [{ fichier: POSEES, serveur: true, de: "    return [{ activityId, startTime: heure, lanes: pistes, ...(dureeHeures > 0 ? { dureeHeures } : {}) }];", vers: "    return [];" }] },
   { nom: 'ligne-libre-sans-heures', lettre: 'R1', scenarios: RESERVER, editions: [{ fichier: JS, de: '  else if (ligne && rvPosable(id)) rangs.push(...rsRangHeuresPosees(id, ligne));\n', vers: '' }] },
   { nom: 'heure-posee-pas-envoyee', lettre: 'R1', scenarios: RESERVER, editions: [{ fichier: JS, de: '    ...(rvHeuresPoseesEnvoyees() ? { heuresPosees: rvHeuresPoseesEnvoyees() } : {}),\n', vers: '' }] },
   { nom: 'heure-posee-effacee-par-l-ordre', lettre: 'R1', scenarios: RESERVER, editions: [{ fichier: JS, de: '    s.ordreALaMain = true;\n    s.ordreVariante = null;\n  });\n}', vers: '    s.ordreALaMain = true;\n    s.ordreVariante = null;\n    s.heuresPosees = {};\n  });\n}' }] },

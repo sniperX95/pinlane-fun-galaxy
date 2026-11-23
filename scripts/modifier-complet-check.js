@@ -818,6 +818,10 @@ const toucherHeure = async (page, cle, valeur) => {
   await verdictPose(page);
 };
 async function ajouterBowling(page, heure) {
+  // (depuis le 2026-11-22, « Ajouter » met une activite en plus d une formule prise telle quelle ; le Bowling entre
+  // dans la formule apres « Adapter à ce groupe », le geste que ce gate suit)
+  const adapter = page.locator('#posOverlay #editAdapter button[aria-pressed="false"]');
+  if (await adapter.count()) await adapter.click();
   await page.click('#posOverlay .fm-ajouts .fm-ajout[onclick*="\'bowling\'"]');
   await page.waitForSelector('#posOverlay [data-heure-nouvelle="bowling"]', { timeout: 5000 });
   if (heure) await page.fill('#posOverlay [data-heure-nouvelle="bowling"]', heure);
@@ -907,12 +911,16 @@ async function scenarioGembloux(browser) {
   await vider([Number(casse.id)]);
   const photo = async (nom) => { if (!mutation && process.env.MC_CAPTURES) await page.screenshot({ path: path.join(process.env.MC_CAPTURES, `${nom}.png`) }); };
   try {
-    // [L1] Infos d une Formule 5 : les deux cruches disent 14:40 une fois.
+    // [L1] Infos d une Formule 5 : les deux cruches n ont pas d heure (22/11, Ansar : « ils prennent quand ils
+    // veulent ») ; un extra servi a une heure, lui, la dit une fois (la page seule, rien n est ecrit).
     const f5 = await formule5(serveur);
-    await ouvrirDossier(page, f5, 'details');
+    await ouvrirDossier(page, { ...f5, extras: [{ id: 'pizza-servie', name: 'Pizza Margherita × 1', qte: 1, price: 0, heure: '15:30' }] }, 'details');
     const i0 = await infosLu(page);
     const cruches = i0.etapes.filter((e) => /cruche|boisson/i.test(e.nom));
-    ok(cruches.length > 0 && cruches.every((e) => e.heure === '14:40' && e.fin === ''), '[L1] dans Infos, un service dit son heure une fois (« 14:40 », pas « 14:40 / 14:40 »)', i0.etapes);
+    ok(cruches.length > 0 && cruches.every((e) => e.heure === 'Libre' && e.fin === ''), '[L1] dans Infos, les cruches n ont pas d heure : « Libre »', i0.etapes);
+    const servie = i0.etapes.filter((e) => /pizza/i.test(e.nom));
+    ok(servie.length === 1 && servie[0].heure === '15:30' && servie[0].fin === '', '[L1] dans Infos, un service dit son heure une fois (« 15:30 », pas « 15:30 / 15:30 »)', i0.etapes);
+    await ouvrirDossier(page, f5, 'details');
 
     // [L1] L arrivee 13:00 -> 13:30 : le planning recalcule ; l heure d avant se lit a cote de la nouvelle.
     await rouvrir(page, f5.id, 'modifier');
@@ -1120,7 +1128,7 @@ const MUTATIONS = [
   { nom: 'telephone-libre', lettre: 'T1', scenarios: TELEPHONE, editions: [{ fichier: JS, de: "  if (touches.includes('phone')) {", vers: '  if (false) {' }] },
   { nom: 'telephone-muet', lettre: 'T2', scenarios: TELEPHONE, editions: [{ fichier: JS, de: '  ligne.hidden = false;\n', vers: '' }] },
   { nom: 'telephone-ligne-grise', lettre: 'T2', scenarios: TELEPHONE, editions: [{ fichier: CSS, de: 'body:is(.staff-mode, .admin-mode) .fx-modal #editPhoneHint { font-size: 13px; font-weight: 600; color: var(--danger); }', vers: '' }] },
-  { nom: 'serveur-telephone-court', lettre: 'T3', scenarios: TELEPHONE, editions: [{ fichier: API, serveur: true, de: "    if (tape && !require('../lib/telephone-du-client').telephoneValide(tape)) throw", vers: '    if (false) throw' }] },
+  { nom: 'serveur-telephone-court', lettre: 'T3', scenarios: TELEPHONE, editions: [{ fichier: API, serveur: true, de: "    if (tape && !require('../lib/telephone-du-client').telephoneAccepte(tape)) throw", vers: '    if (false) throw' }] },
   // L espacement du laser : absent, sans effet, la pause au mauvais endroit.
   { nom: 'espacement-absent', lettre: 'G1', scenarios: ESPACEMENT, editions: [{ fichier: JS, de: '${areneEditionHtml()}${espacementLaserEditionHtml(r)}', vers: '${areneEditionHtml()}' }] },
   { nom: 'espacement-sans-effet', lettre: 'G2', scenarios: ESPACEMENT, editions: [{ fichier: JS, de: 'debuts[0].debut + k * minutes]', vers: 'debuts[0].debut + k * 30]' }] },

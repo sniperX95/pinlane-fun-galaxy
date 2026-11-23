@@ -30,7 +30,7 @@ const ctx = vm.createContext({ console, state: { booking: {}, selectedRes: null,
 vm.runInContext(fs.readFileSync(path.join(root, 'assets/booking-core.js'), 'utf8'), ctx);
 ctx.testCatalog = catalog;
 vm.runInContext('setCenterActivities(testCatalog)', ctx);
-const functions = ['getQuickBookLaneNeed', 'rvPistesALaMain', 'bowlingCapacityMessage', 'getEditBowlingCapacityNeed', 'debutBowlingEdition', 'heureNouvelleTapee', 'minutesHeureEdition', 'activiteAjouteeEdition', 'participantsLigneProgramme', 'nomActivite', 'catalogueDeLigne', 'ligneALaJournee', 'detailLigneProgramme', 'detailLigneProgrammeSansEffectif', 'detailUnitesLigne', 'buildEditProgramFromReservation', 'estimerPrixProgramme', 'getEditProgramItems', 'editionChangeLePrix', 'poseEditionChange', 'pistesALaMainDuDossier', 'parseLaneInput', 'rsFmPrix', 'rsFmActive', 'rsFmMontant', 'formuleChangeeEdition', 'dossierPourFormule', 'departsEdition', 'editArcadeTimingChanged', 'editProgramAChange', 'ensureQuickVisit', 'getQuickVisitOptions', 'getQuickVisitParticipants', 'getQuickVisitMinutes', 'getQuickVisitUnits', 'getQuickVisitHours', 'ligneProgrammeQuick', 'renderActivityParticipantsControl', 'setQuickVisitParticipants', 'setEditActivityParticipants', 'syncQuickBookDuration', 'getQuickBookSummaryActivites'];
+const functions = ['getQuickBookLaneNeed', 'rvPistesALaMain', 'bowlingCapacityMessage', 'getEditBowlingCapacityNeed', 'debutBowlingEdition', 'heureNouvelleTapee', 'minutesHeureEdition', 'activiteAjouteeEdition', 'participantsLigneProgramme', 'nomActivite', 'catalogueDeLigne', 'ligneALaJournee', 'detailLigneProgramme', 'detailLigneProgrammeSansEffectif', 'detailUnitesLigne', 'buildEditProgramFromReservation', 'estimerPrixProgramme', 'getEditProgramItems', 'editionChangeLePrix', 'poseEditionChange', 'enPlusEditionChange', 'pistesALaMainDuDossier', 'parseLaneInput', 'rsFmPrix', 'rsFmActive', 'rsFmMontant', 'formuleChangeeEdition', 'dossierPourFormule', 'departsEdition', 'editArcadeTimingChanged', 'editProgramAChange', 'ensureQuickVisit', 'getQuickVisitOptions', 'getQuickVisitParticipants', 'getQuickVisitMinutes', 'getQuickVisitUnits', 'getQuickVisitHours', 'ligneProgrammeQuick', 'renderActivityParticipantsControl', 'setQuickVisitParticipants', 'setEditActivityParticipants', 'syncQuickBookDuration', 'getQuickBookSummaryActivites'];
 for (const name of functions) {
   const from = app.indexOf(`function ${name}(`);
   assert.ok(from >= 0, name);
@@ -196,7 +196,8 @@ assert.equal(ctx.quickBookState.visit.bowling.duration,1.5);
   vm.runInContext(app.slice(from,app.indexOf('\nfunction ',from+1)),ctx);
   // La fenetre v5 tient la liste de ses resas (rvResas) : une seule ici.
   ctx.document={querySelector:()=>null,getElementById:()=>null};ctx.toast=()=>{};ctx.rvResas=[ctx.quickBookState];
-  for (const nom of ['normalizePhoneInput', 'rvTelephoneValide']) { const de = app.indexOf(`function ${nom}(`); vm.runInContext(app.slice(de, app.indexOf('\nfunction ', de + 1)), ctx); }
+  // (le telephone peut etre un mot depuis le 2026-11-22 : les deux lisent rvRessembleAUnNumero)
+  for (const nom of ['rvRessembleAUnNumero', 'normalizePhoneInput', 'rvTelephoneValide']) { const de = app.indexOf(`function ${nom}(`); vm.runInContext(app.slice(de, app.indexOf('\nfunction ', de + 1)), ctx); }
   ctx.quickBookState.pax=1000;ctx.quickBookState.name='Groupe';ctx.quickBookState.phone='+32470111222';ctx.quickBookState.email='';ctx.quickBookState.submitting=false;
   run('saveQuickBook()');
   assert.match(ctx.quickBookState.error,/240 personnes.*planifiée manuellement/);

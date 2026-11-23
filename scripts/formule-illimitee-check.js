@@ -135,7 +135,7 @@ const MUTATIONS = [
   { nom: 'laser-six-heures', lettre: 'D', cible: '[D] le planning montre les pistes et les armes gardees', fichier: 'assets/pinlane-planning-global.js', de: "    else if (col.nature === 'laser' && liste.length > 1 && liste.every(function (e) { return e.aVolonte; })) {", vers: '    else if (false) {' },
   { nom: 'menu-qui-redit', lettre: 'I', cible: '[I] sous « Accès illimité », rien ne redit la formule', fichier: APP, de: "  if (estFormuleIllimitee(String(e.type || '') === 'formule' && e.formuleId ? resolveDisplayFormule(e.formuleId) : null)) return '';\n", vers: '' },
   { nom: 'menu-avec-l-acces', lettre: 'I', cible: '[I] a la carte, le menu « Formule » propose les formules, pas l acces illimite', fichier: APP, de: '  const catalogue = getEffectiveCatalogFormules().filter(f => !estFormuleIllimitee(f) && formuleJoueeAuCentre(f));', vers: '  const catalogue = getEffectiveCatalogFormules().filter(f => formuleJoueeAuCentre(f));' },
-  { nom: 'fiche-heures-suggerees', lettre: 'D', cible: '[D] la fiche : ses autres activites sans heure, « à volonté »', fichier: APP, de: "  const accesIllimite = typeof illimiteDeSaCarte === 'function' && illimiteDeSaCarte(r);\n  getStaffFormulaTimedItems(r)", vers: '  const accesIllimite = false;\n  getStaffFormulaTimedItems(r)' },
+  { nom: 'fiche-heures-suggerees', lettre: 'D', cible: '[D] la fiche : ses autres activites sans heure, « à volonté »', fichier: APP, de: "  const accesIllimite = typeof illimiteDeSaCarte === 'function' && illimiteDeSaCarte(r);\n  // LES CRUCHES", vers: '  const accesIllimite = false;\n  // LES CRUCHES' },
   { nom: 'planning-heures-suggerees', lettre: 'D', cible: '[D] au planning, ses autres activites disent « à volonté », sans heure', fichier: 'assets/pinlane-planning-global.js', de: "      var acces = typeof illimiteDeSaCarte === 'function' && illimiteDeSaCarte(r);", vers: '      var acces = false;' },
   // LE FORMULAIRE COURT, LA PAGE EN PHOTOS, LE SELECTEUR DE MODIFIER (2026-11-20).
   { nom: 'a-la-carte-sans-garde', lettre: 'I', cible: '[I] « À la carte » deja pris ne change rien au dossier', fichier: APP, de: "  if (e.versProgrammeNormal || !estFormuleIllimitee(actuelle)) return;\n", vers: '' },
@@ -877,7 +877,9 @@ async function scenarioI(browser) {
       return window.__vraiAppel('PATCH', '/api/staff-reservations', corps);
     }, { i: ID, formule: ID_ILLIMITEE });
     const message = String((forge.json || {}).message || (forge.json || {}).error || '');
-    ok(forge.statut >= 400 && JSON.stringify(B.base.reservations.get(ID)) === avant && /Laser/.test(message), '[I] une bascule forgee sur une heure pleine est refusee, avec la phrase, rien n est ecrit', { statut: forge.statut, message });
+    // (le refus du laser se dit en clair au comptoir depuis le 2026-11-22, 1672d14 : ce qui reste, ce qu il
+    // faut, la prochaine partie libre ; l ancienne phrase « Laser Game complet sur ce créneau » ne s y lit plus)
+    ok(forge.statut >= 400 && JSON.stringify(B.base.reservations.get(ID)) === avant && /Plus assez d.armes pour le laser à 20:00 : il en reste 5 sur 30, il en faut 10[.]/.test(message), '[I] une bascule forgee sur une heure pleine est refusee, avec la phrase, rien n est ecrit', { statut: forge.statut, message });
   } finally { await finir(m, 'I'); }
 }
 

@@ -315,25 +315,59 @@ async function scenarioPop(browser) {
     // (le premier geste de la page ouvre le son des nouvelles reservations : il se fait avant la mesure)
     await page.keyboard.press('Shift');
     // LA MESURE : ce que le navigateur recalcule, compte par lui-meme dans sa trace de rendu (les elements
-    // que chaque recalcul de style touche, les objets que chaque mise en page reprend). Un rendu du tableau
-    // du jour charge sert d etalon. Un compte, pas une duree : il ne depend ni de la machine ni de sa
+    // que chaque recalcul de style touche, les objets que chaque mise en page reprend). Le tableau du jour
+    // charge, rendu en entier, sert d etalon. Un compte, pas une duree : il ne depend ni de la machine ni de sa
     // charge (une duree bridee x4 allait d un a dix d un passage a l autre).
     const cdp = await ctx.newCDPSession(page);
     const tracer = async (geste) => {
       const evenements = [];
       const recevoir = (e) => { evenements.push(...e.value); };
       cdp.on('Tracing.dataCollected', recevoir);
-      await cdp.send('Tracing.start', { categories: 'devtools.timeline', transferMode: 'ReportEvents' });
+      // (les deux categories de la chronologie, comme formulaire-fluide-check)
+      await cdp.send('Tracing.start', { transferMode: 'ReportEvents', traceConfig: { includedCategories: ['devtools.timeline', 'disabled-by-default-devtools.timeline'] } });
+      // (deux images et 100 ms au repos avant le geste)
+      await page.evaluate(() => new Promise((fin) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(fin, 100)))));
       await geste();
       const fini = new Promise((resolu) => cdp.once('Tracing.tracingComplete', resolu));
       await cdp.send('Tracing.end');
       await fini;
       cdp.off('Tracing.dataCollected', recevoir);
       const styles = evenements.filter((e) => e.name === 'UpdateLayoutTree' && e.args && Number.isFinite(Number(e.args.elementCount))).map((e) => Number(e.args.elementCount));
-      const pages = evenements.filter((e) => e.name === 'Layout' && e.args && e.args.beginData).map((e) => Number(e.args.beginData.dirtyObjects) || 0);
-      return { styleMax: styles.length ? Math.max(...styles) : 0, mises: pages.length, objetsMax: pages.length ? Math.max(...pages) : 0 };
+      const mises = evenements.filter((e) => e.name === 'Layout' && e.args && e.args.beginData).sort((a, b) => a.ts - b.ts).map((e) => ({ sales: Number(e.args.beginData.dirtyObjects) || 0, total: Number(e.args.beginData.totalObjects) || 0 }));
+      const pages = mises.map((m) => m.sales);
+      // (ou les recalculs et les mises en page sont sortis : leur categorie, pour lire un rouge)
+      const categories = {};
+      evenements.filter((e) => e.name === 'UpdateLayoutTree' || e.name === 'Layout').forEach((e) => { categories[e.cat] = (categories[e.cat] || 0) + 1; });
+      // (totalFin : les objets de la page a la derniere mise en page de la trace)
+      return { styleMax: styles.length ? Math.max(...styles) : 0, mises: pages.length, objetsMax: pages.length ? Math.max(...pages) : 0, totalFin: mises.length ? mises[mises.length - 1].total : 0, categories };
     };
-    const tableau = await tracer(() => page.evaluate(() => { const w = document.getElementById('globalPlanningGridWrap'); w._gfParties = null; renderGlobalPlanning(w); return document.body.offsetHeight; }));
+    // L ETALON SE COMPTE EN OBJETS DE LA PAGE, SON TABLEAU BATI (2026-11-22, la suite GitHub du lot). .gf est un
+    // conteneur (container: feuille / inline-size). Sous Chromium 157, celui des machines GitHub (Chrome 157 du
+    // poste aussi), le style de ses descendants se calcule pendant la mise en page : un tableau reecrit n a pas
+    // encore ses objets quand elle commence, et la trace lui en donne 10 a reprendre (beginData.dirtyObjects),
+    // pour le meme travail, 25 ms environ, que les 3 422 d Edge 158. Le tableau se rend donc en entier, puis une sonde
+    // d un pixel, posee et retiree, relance deux petites mises en page : la derniere compte les objets de la page,
+    // tableau bati (2 876 sous les deux versions). Une mesure qui ne les voit pas se rejoue, deux fois au plus. La
+    // pop-up, posee sur le body, hors du conteneur, se compte comme avant : les objets que ses mises en page
+    // reprennent (les memes 40 sous les deux versions).
+    const etalon = async () => {
+      const avant = await page.evaluate(() => window.__gfStats.ecritures);
+      const mesure = await tracer(() => page.evaluate(() => {
+        const w = document.getElementById('globalPlanningGridWrap');
+        w._gfParties = null;
+        renderGlobalPlanning(w);
+        let hauteur = document.body.offsetHeight;
+        const sonde = document.createElement('div');
+        sonde.style.cssText = 'position:absolute;top:0;left:0;width:1px;height:1px';
+        document.body.appendChild(sonde);
+        hauteur += document.body.offsetHeight;
+        sonde.remove();
+        return hauteur + document.body.offsetHeight;
+      }));
+      return { ...mesure, ecrit: (await page.evaluate(() => window.__gfStats.ecritures)) - avant };
+    };
+    let tableau = await etalon();
+    for (let essai = 2; essai <= 3 && tableau.totalFin < 1000; essai += 1) tableau = { ...(await etalon()), essai };
     await page.waitForTimeout(150);
     const puce = await centre(page, sel);
     // (la souris sur la pastille d abord : son survol n est pas la pop-up)
@@ -376,9 +410,10 @@ async function scenarioPop(browser) {
       '[P2] Echap : elle rentre plus vite qu elle n est sortie, puis s en va ; le focus revient a la pastille', { sortie, restes });
     ok(stats1.ecritures === stats0.ecritures && stats1.rendus === stats0.rendus,
       '[P3] ouverte, remplie, fermee : le tableau ne s est ni rendu ni reecrit', { avant: stats0, apres: stats1 });
-    // (l etalon d abord : un rendu du tableau du jour charge reprend des milliers d objets)
-    ok(tableau.objetsMax >= 1000 && pop.objetsMax * 20 <= tableau.objetsMax && pop.styleMax <= 150 && pop.mises <= 14,
-      `[P3] jour charge : la pop-up reprend au plus ${pop.objetsMax} objets en page (un rendu du tableau : ${tableau.objetsMax}), recalcule au plus ${pop.styleMax} elements, ${pop.mises} mises en page de l ouverture a la fermeture`, { pop, tableau });
+    // (l etalon d abord : la page du jour charge, son tableau bati, fait des milliers d objets ; et la trace a vu
+    // la pop-up, au moins une mise en page : une trace qui ne la voit pas ne la dit pas legere)
+    ok(tableau.totalFin >= 1000 && pop.mises >= 1 && pop.objetsMax * 20 <= tableau.totalFin && pop.styleMax <= 150 && pop.mises <= 14,
+      `[P3] jour charge : la pop-up reprend au plus ${pop.objetsMax} objets en page (la page et son tableau : ${tableau.totalFin}), recalcule au plus ${pop.styleMax} elements, ${pop.mises} mises en page de l ouverture a la fermeture`, { pop, tableau });
 
     const { v } = await attendues;
     const prevues = heuresAttendues(v, '15:30');

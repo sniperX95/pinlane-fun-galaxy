@@ -22,7 +22,8 @@
 //   [C] UN REFUS SE DIT : sous le minimum de la formule, le comptoir lit le motif
 //       du moteur (avec pistes : rien n est ecrit ; sans piste : ecrit, et le
 //       toast dit que le planning n a pas suivi), jamais « mise à jour » tout court ;
-//   [D] UN LASER AJOUTE DEPUIS MODIFIER : le serveur ne pose aucune heure, la
+//   [D] UN LASER AJOUTE DEPUIS MODIFIER, DANS LA FORMULE (« Adapter à ce groupe » d abord : depuis le
+//       2026-11-22, « Ajouter » seul le met en plus de la formule) : le serveur ne pose aucune heure, la
 //       console n en invente aucune (ni 15:00, ni « de trop ») : « à placer », et
 //       le toast le dit ;
 //   [E] UN DEPLACEMENT QUI NE DEPLACE RIEN NE SE DIT PAS « déplacé » : Amis de
@@ -200,6 +201,13 @@ async function ouvrirModifier(page, id) {
   await page.evaluate((i) => { closePos(); openPos(i); setTab('modifier'); }, id);
   await page.waitForSelector('#posOverlay .fm-joueurs', { timeout: 8000 });
   await page.waitForTimeout(250);
+}
+// « Adapter à ce groupe » (2026-11-22) : sans lui, « Ajouter » met l activite en plus d une formule prise telle
+// quelle ; ces cas la font entrer dans la formule.
+async function adapterAuGroupe(page) {
+  const bouton = page.locator('#posOverlay #editAdapter button[aria-pressed="false"]');
+  if (await bouton.count()) await bouton.click();
+  await page.waitForTimeout(200);
 }
 async function enregistrerModifier(page) {
   await page.locator('#posOverlay button', { hasText: /^Enregistrer$/ }).first().click();
@@ -412,6 +420,7 @@ async function scenarioLaser(browser) {
   try {
     const tropAvant = await page.evaluate(() => (document.body.innerText.match(/\d+ de trop/g) || []).length);
     await ouvrirModifier(page, ARTHUR);
+    await adapterAuGroupe(page);
     const chip = page.locator('#posOverlay button', { hasText: /^Laser Game$/ }).first();
     await chip.scrollIntoViewIfNeeded();
     await chip.click();
@@ -453,6 +462,7 @@ async function scenarioDeuxParties(browser) {
   const { ctx, page, erreurs } = await monter(browser, serveur);
   try {
     await ouvrirModifier(page, ARTHUR);
+    await adapterAuGroupe(page);
     const chip = page.locator('#posOverlay button', { hasText: /^Laser Game$/ }).first();
     await chip.scrollIntoViewIfNeeded();
     await chip.click();
@@ -684,11 +694,13 @@ const GLISSER = ['glisser'];
 const MOT = ['moteur'];
 const SOURCES = ['sources'];
 const DRAPEAU = "allowPastStart: input.channel === 'staff' && Boolean(input.allowPastStart),";
+// (la ligne qui suit le drapeau dans planFormulaWithAnchors : l heure a la minute du comptoir, 2026-11-22)
+const MINUTE = "aLaMinute: input.channel === 'staff' && input.aLaMinute === true,";
 const MUTATIONS = [
   { nom: 'public-dans-la-modification', lettre: 'K', scenarios: SOURCES, editions: [{ fichier: OPS, serveur: true, de: 'Number(options.ignoreReservationId || (staff ? request.ignoreReservationId : 0) || 0)', vers: 'Number(options.ignoreReservationId || request.ignoreReservationId || 0)' }, { fichier: OPS, serveur: true, de: "  request.heureEnregistree = options.heureEnregistree || '';\n", vers: '' }] },
   { nom: 'a-placer-sans-arene', lettre: 'L', scenarios: SOURCES, editions: [{ fichier: OPS, serveur: true, de: 'if (!ancien || !ancien.laserManual || ancien.aPlacer) return plan;', vers: 'if (!ancien || !ancien.laserManual) return plan;' }] },
   { nom: 'plancher-sur-les-ancres', lettre: 'A', scenarios: COMPTE, editions: [{ fichier: MOTEUR, serveur: true, de: "    preMinutes: FORMULA_ARRIVAL_MINUTES,\n    allowPastStart,\n  });\n  if (!window.ok) return { ok: false, code: 'schedule', reason: window.reason, scenario: null };", vers: "    preMinutes: FORMULA_ARRIVAL_MINUTES,\n  });\n  if (!window.ok) return { ok: false, code: 'schedule', reason: window.reason, scenario: null };" }] },
-  { nom: 'drapeau-non-transmis', lettre: 'A', scenarios: COMPTE, editions: [{ fichier: MOTEUR, serveur: true, de: `    arcadeStart,\n    ${DRAPEAU}\n  });\n\n  const scenarios = result.scenario`, vers: '    arcadeStart,\n  });\n\n  const scenarios = result.scenario' }] },
+  { nom: 'drapeau-non-transmis', lettre: 'A', scenarios: COMPTE, editions: [{ fichier: MOTEUR, serveur: true, de: `    arcadeStart,\n    ${DRAPEAU}\n    ${MINUTE}\n    grandGroupe: sousGroupesDemandes,\n  });`, vers: `    arcadeStart,\n    ${MINUTE}\n    grandGroupe: sousGroupesDemandes,\n  });` }] },
   { nom: 'heures-du-libre-perdues', lettre: 'A', scenarios: COMPTE, editions: [{ fichier: OPS, serveur: true, de: '    recommended = garderLesHeuresDuLibre(recommended, request.opsPlan, visitStartShiftMinutes(request));\n', vers: '' }] },
   { nom: 'fin-qui-recule', lettre: 'A', scenarios: COMPTE, editions: [{ fichier: OPS, serveur: true, de: '    ...(depassement > 0 ? { endTime: minutesToTime(finGardee + marge), totalMinutes: Number(plan.totalMinutes || 0) + depassement } : {}),\n', vers: '' }] },
   { nom: 'boissons-sans-heure', lettre: 'A', scenarios: COMPTE, editions: [{ fichier: OPS, serveur: true, de: '      type: tenue.type,\n', vers: '' }] },
@@ -712,14 +724,14 @@ const MUTATIONS = [
   { nom: 'plancher-leve-pour-tous', lettre: 'G', scenarios: MOT, editions: [{ fichier: MOTEUR, serveur: true, de: '  if (date === today && !allowPastStart) {\n', vers: '  if (false) {\n' }] },
   { nom: 'drapeau-ouvert-en-ligne', lettre: 'G', scenarios: MOT, editions: [
     { fichier: OPS, serveur: true, de: "allowPastStart: channel === 'staff' && Boolean(request.allowPastStart),", vers: 'allowPastStart: Boolean(request.allowPastStart),' },
-    { fichier: MOTEUR, serveur: true, de: `    arcadeStart,\n    ${DRAPEAU}\n  });\n\n  const scenarios = result.scenario`, vers: '    arcadeStart,\n    allowPastStart: Boolean(input.allowPastStart),\n  });\n\n  const scenarios = result.scenario' },
+    { fichier: MOTEUR, serveur: true, de: `    arcadeStart,\n    ${DRAPEAU}\n    ${MINUTE}\n    grandGroupe: sousGroupesDemandes,\n  });`, vers: `    arcadeStart,\n    allowPastStart: Boolean(input.allowPastStart),\n    ${MINUTE}\n    grandGroupe: sousGroupesDemandes,\n  });` },
   ] },
   { nom: 'ecart-oublie', lettre: 'H', scenarios: MOT, editions: [{ fichier: OPS, serveur: true, de: '    const debut = heure(tenue.startTime) + ecart;\n    const fin = heure(tenue.endTime) + ecart;\n', vers: '    const debut = heure(tenue.startTime);\n    const fin = heure(tenue.endTime);\n' }] },
   { nom: 'heure-fausse-gardee', lettre: 'H', scenarios: MOT, editions: [{ fichier: OPS, serveur: true, de: '    if (prises.some((bloc) => debut < bloc.fin && bloc.debut < fin)) return;\n', vers: '' }] },
   { nom: 'date-passee', lettre: 'H', scenarios: MOT, editions: [{ fichier: MOTEUR, serveur: true, de: '  if (date < today && !allowPastStart) {\n', vers: '  if (date < today) {\n' }] },
   { nom: 'seconde-partie-fabriquee', lettre: 'D', scenarios: ['deuxParties'], editions: [{ fichier: 'lib/reservation-activity-move.js', serveur: true, de: ' && !old.laserManual && !toutAPlacer) {\n', vers: ' && !old.laserManual) {\n' }] },
   { nom: 'ecart-au-premier-bloc', lettre: 'I', scenarios: MOT, editions: [{ fichier: OPS, serveur: true, de: '  if (avant && request.startTime) return timeToMinutes(String(request.startTime).slice(0, 5)) - timeToMinutes(avant);\n', vers: '' }] },
-  { nom: 'heure-non-transmise', lettre: 'I', scenarios: MOT, editions: [{ fichier: API, serveur: true, de: ', heureEnregistree: current.startTime })', vers: ' })' }] },
+  { nom: 'heure-non-transmise', lettre: 'I', scenarios: MOT, editions: [{ fichier: API, serveur: true, de: ', heureEnregistree: current.startTime, ...(ancresALaMinute', vers: ', ...(ancresALaMinute' }] },
   { nom: 'bowling-seul-rappele', lettre: 'I', scenarios: MOT, editions: [{ fichier: OPS, serveur: true, de: 'startTime: departDuMoteur(request),', vers: 'startTime: request.startTime,' }] },
   { nom: 'laser-seul-rappele', lettre: 'I', scenarios: MOT, editions: [{ fichier: OPS, serveur: true, de: '    recommended = garderLesPartiesPlacees(recommended, request, visitStartShiftMinutes(request));\n', vers: '' }] },
 ];

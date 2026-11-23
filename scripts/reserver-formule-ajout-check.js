@@ -14,7 +14,11 @@
 // api/staff-reservations.js, au vrai moteur et a la vraie lib/database.js, sur la base en memoire de
 // scripts/reserver-banc.js : aucune base reelle, aucun reseau, aucun mail ne part. Les montants attendus
 // se lisent au catalogue du banc, jamais ecrits ici.
-//   [T1] Reserver, 6 joueurs, le samedi suivant, Formule 5 a 13:00, puis « Ajouter » le Bowling, a 15:30 :
+// DEPUIS LE 2026-11-22 (reserver-formule-en-plus-check), « Ajouter » sur une formule prise telle quelle prend le
+// Bowling EN PLUS : la formule reste entiere, le Bowling est sa ligne. Ce gate garde la formule ADAPTEE, le geste
+// « Adapter à ce groupe » d abord, puis l ajout : sa regle de prix ne change pas.
+//   [T1] Reserver, 6 joueurs, le samedi suivant, Formule 5 a 13:00, « Adapter à ce groupe », puis « Ajouter »
+//        le Bowling, a 15:30 :
 //        le ticket dit « Formule 5, adaptée » a son prix (6 joueurs × 26 €) puis le Bowling au sien ; le
 //        laser et le minigolf, dans la formule, n ont pas de prix ; le total est leur somme ;
 //   [T2] la page Total : le recu dit les memes deux lignes et le meme total ; le champ Total reste
@@ -202,8 +206,8 @@ async function photo(page, nom, selecteur = '#quickBookOverlay .qb-modal') {
   else await page.screenshot({ path: path.join(CAPTURES, `${nom}.png`) });
 }
 
-// Reserver, 6 joueurs, le samedi suivant, la Formule 5 a 13:00 ; puis le Bowling ajoute, a 15:30.
-// Rend ce que « Adapter à ce groupe » promet, lu sur la page de la formule avant l ajout.
+// Reserver, 6 joueurs, le samedi suivant, la Formule 5 a 13:00, adaptee ; puis le Bowling ajoute, a 15:30.
+// Rend ce que « Adapter à ce groupe » promet, lu sur la page de la formule avant de le toucher.
 async function composer(page) {
   await page.locator('.btn-new').first().click();
   await page.waitForSelector('#quickBookOverlay .qb-modal.rv.rs', { timeout: 8000 });
@@ -220,6 +224,9 @@ async function composer(page) {
   await page.click('#quickBookOverlay #rsL-a-formule');
   await page.waitForSelector('#quickBookOverlay #rvAdapter', { timeout: 8000 });
   const promesse = await page.evaluate(() => (document.getElementById('rvAdapter') || {}).textContent.replace(/\s+/g, ' ').trim());
+  // (sans ce geste, le Bowling partirait en plus de la formule telle quelle, reserver-formule-en-plus-check)
+  await page.click('#quickBookOverlay #rvAdapter');
+  await planPose(page);
   for (let i = 0; i < 3 && !(await page.locator('#quickBookOverlay #rsAjout-bowling').count()); i += 1) {
     await page.click('#quickBookOverlay #rsRetour');
     await page.waitForTimeout(300);

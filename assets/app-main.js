@@ -1728,7 +1728,7 @@ function referencePistesEdition() {
   if (!origine) return null;
   const ligne = ((origine.program && origine.program.items) || []).find((item) => item && item.activityId === 'bowling');
   const joueurs = ligne && Number(ligne.participants) > 0 ? Number(ligne.participants) : Number(origine.pax);
-  return { joueurs: Math.max(1, Math.trunc(joueurs) || 1), pistes: (origine.lanes || []).map(Number) };
+  return { joueurs: Math.max(1, Math.trunc(joueurs) || 1), pistes: pistesDeLaFormuleSeule(origine) };
 }
 
 // LE GROUPE QUI BAISSE garde le meilleur bloc parmi ses pistes encore libres a
@@ -1928,6 +1928,14 @@ function pistesDuDeplacementBowling(lanes) {
 // coupe pas le lien. Une activite sans nombre ecrit (une formule prise au
 // catalogue) suit deja le groupe : on ne lui en ecrit pas, sinon la formule
 // partirait « adaptée » pour un simple changement de groupe.
+// CELLES QUI SUIVENT SE DECIDENT UNE FOIS (2026-11-22, Ansar : « sans que ça change
+// direct partout »). La regle comparait chaque activite au groupe de la frappe
+// d avant, ramene au groupe : taper 50 sur un groupe de 60 passait par « 5 », le
+// bowling a 20 et le laser a 30 y valaient 5, puis suivaient tous les deux a 50.
+// Le groupe ne donne que le depart des activites pas encore reglees : celles qui
+// avaient tout le groupe avant la premiere frappe le suivent, et une activite
+// reglee a la main (son compteur, son nombre tape, setEditActivityParticipants)
+// ne le suit plus jamais.
 function suivreLeGroupe(valeur) {
   const e = state.editState;
   const programme = e && e.programmeEdite;
@@ -1940,9 +1948,13 @@ function suivreLeGroupe(valeur) {
     ['laser_game', programme.laser_game && programme.laser_game.on ? programme.laser_game : null],
     ...Object.keys(programme.others || {}).filter(id => programme.others[id]).map(id => [id, (programme.othersOptions || {})[id] || null]),
   ].filter(([, options]) => options);
+  if (!Array.isArray(e.suiventLeGroupe)) {
+    const reglees = Array.isArray(e.joueursRegles) ? e.joueursRegles : [];
+    e.suiventLeGroupe = actives.filter(([id, options]) => !reglees.includes(id) && (!(Number(options.participants) > 0) || Math.trunc(Number(options.participants)) === reference)).map(([id]) => id);
+  }
   let offreRetiree = false;
   actives.forEach(([id, options]) => {
-    if (!(Number(options.participants) > 0) || participantsLigneProgramme(options, reference) !== reference) return;
+    if (!(Number(options.participants) > 0) || !e.suiventLeGroupe.includes(id)) return;
     const bornes = activityParticipantsBounds(id, groupe);
     options.participants = Math.min(bornes.max, Math.max(bornes.min, groupe));
     if (options.upsell) { delete options.upsell; offreRetiree = true; }
@@ -2534,9 +2546,19 @@ function departsEdition() {
   return departsEdition.carte;
 }
 
+// LES PISTES DE LA FORMULE SEULE (2026-11-22, lib/formule-en-plus.js) : un bowling en plus d une formule tient les
+// siennes, a son heure, et Modifier les regle a sa rangee ; les pistes du dossier, sous la rangee du bowling de la
+// formule, sont celles de la formule. Sans activite en plus, toutes celles du dossier.
+function pistesDeLaFormuleSeule(r) {
+  const plan = r && r.opsPlan;
+  const enPlus = plan && plan.enPlus && Array.isArray(plan.enPlus.items) && plan.enPlus.items.length > 0;
+  if (!enPlus) return ((r && r.lanes) || []).map(Number);
+  return [...new Set((Array.isArray(plan.resourceBlocks) ? plan.resourceBlocks : []).filter((bloc) => bloc && bloc.resourceType === 'bowling_lane' && !bloc.enPlus).flatMap((bloc) => bloc.lanes || []).map(Number).filter((n) => Number.isInteger(n) && n > 0))].sort((a, b) => a - b);
+}
+
 function etatEditionDepuis(reservation) {
   const etat = { ...reservation };
-  etat.lanesStr = (reservation.lanes || []).join(', ');
+  etat.lanesStr = pistesDeLaFormuleSeule(reservation).join(', ');
   etat.pistesALaMain = pistesALaMainDuDossier(reservation) > 0;
   departsEdition().set(etat, { origine: { ...reservation }, base: { ...reservation } });
   return etat;
@@ -13341,8 +13363,10 @@ function getVisiteLibreApres(reservation, windows) {
   const items = reservation && reservation.program && Array.isArray(reservation.program.items) ? reservation.program.items : [];
   const posees = reservation && reservation.opsPlan && Array.isArray(reservation.opsPlan.timeline) ? reservation.opsPlan.timeline : [];
   const libres = items.filter(item => item && item.planned === false && !item.waitOffer && !ligneALaJournee(item)
-    // « Venir plus tot » : ce que le plan pose avant la premiere activite n allonge pas la fin.
-    && !(item.avant === true && posees.some(step => step && step.activityId === item.activityId && step.flexible === false && step.startTime)));
+    // « Venir plus tot » : ce que le plan pose avant la premiere activite n allonge pas la fin. Une heure
+    // posee au comptoir non plus : l activite compte a son heure (getStaffTerrainSpan, getEtapeAvant).
+    && !(item.avant === true && posees.some(step => step && step.activityId === item.activityId && step.flexible === false && step.startTime))
+    && !posees.some(step => step && step.activityId === item.activityId && step.flexible === false && step.heurePosee === true && step.startTime && step.endTime));
   const durees = libres.map(item => Math.max(0, Math.round(Number(item.minutes) || 0))).filter(duree => duree > 0);
   const minutes = durees.reduce((total, duree) => total + duree, 0);
   if (!minutes) return 0;
@@ -13430,9 +13454,14 @@ function getVisiteLibreApres(reservation, windows) {
 function getStaffTerrainSpan(reservation) {
   const windows = getStaffResourceWindows(reservation, 'all');
   // « Venir plus tot » : le groupe est la des son activite d avant, pas seulement a son bowling.
+  // L HEURE POSEE AU COMPTOIR COMPTE AUSSI (2026-11-22, la fiche disait « 16:10 → 18:35 » pour un
+  // minigolf pose de 18:40 a 19:25) : une activite libre qui a recu son heure (lib/heures-posees.js)
+  // se lit a cette heure, a la grille comme a la minute, jamais comme du temps libre ajoute a la fin.
   const etapesDuPlan = reservation && reservation.opsPlan && Array.isArray(reservation.opsPlan.timeline) ? reservation.opsPlan.timeline : [];
-  const avant = etapesDuPlan.filter(step => step && step.avant === true && step.startTime && step.endTime).map(step => ({ start: timeToNum(step.startTime), end: timeToNum(step.endTime) }));
+  const avant = etapesDuPlan.filter(step => step && (step.avant === true || step.heurePosee === true) && step.flexible !== true && step.startTime && step.endTime).map(step => ({ start: timeToNum(step.startTime), end: timeToNum(step.endTime) }));
   const items = [...getStaffFormulaTimedItems(reservation), ...getFormulaFreeWindows(reservation), ...avant];
+  // (une activite en plus d une formule, a son heure, fait aussi la visite : le duckpin de 19:00 a 20:00 apres elle)
+  items.push(...etapesDuPlan.filter(step => step && step.enPlus && step.type === 'activity' && step.flexible !== true && step.startTime && step.endTime && !/^service/.test(String(step.activityId || ''))).map(step => ({ start: timeToNum(step.startTime), end: timeToNum(step.endTime) })));
   const starts = [...windows.map(window => Number(window.start)), ...items.map(item => item.start)];
   const ends = [...windows.map(window => Number(window.end)), ...items.map(item => item.end)];
   if (starts.length) {
@@ -13647,8 +13676,8 @@ function renderStaffTerrainCard(item, phase, board) {
   // Le groupe en retard se rappelle : son numero est le geste utile, a la
   // place du temps relatif que sa pastille dit deja.
   const phone = String(reservation.phone || '').trim();
-  const call = phase === 'late' && phone
-    ? `<a class="terrain-call" href="tel:${escapeHtml(phone.replace(/[^0-9+]/g, ''))}" title="Appeler ${escapeHtml(reservation.name || 'le client')}">${STAFF_TERRAIN_PHONE_ICON}<span>${escapeHtml(phone)}</span></a>`
+  const call = phase === 'late' && rvTelephoneEnvoyable(phone)
+    ? `<a class="terrain-call" href="tel:${escapeHtml(rvTelephoneEnvoyable(phone))}" title="Appeler ${escapeHtml(reservation.name || 'le client')}">${STAFF_TERRAIN_PHONE_ICON}<span>${escapeHtml(phone)}</span></a>`
     : '';
   const actions = [renderStaffUtilityAction('Détail', `openStaffReservationDetail(${id})`)];
   // Arrivé : jamais sur un dossier deja paye, le statut est un seul champ et
@@ -26549,6 +26578,13 @@ function nomsDuRetard(r) {
   getGroupeProgramme(r).forEach((etape) => { const cle = cleHeureEtape(etape); if (cle && !noms.has(cle) && etape.nom) noms.set(cle, etape.nom); });
   return noms;
 }
+// LA FENETRE COMPLETE (2026-11-22, le gerant devant elle : « faut que ça mette genre mtn le retard pas
+// a 30 [...] fait un truc complet ou on peut modifier tout genre quand les mettre et ça nous montre
+// joliment les places dispo »). Chaque activite a son heure a la minute dans un champ, des pas de 5 min
+// a cote ; ses places a cette heure (les pistes du bowling, les armes du laser) ; et, quand elle ne passe
+// pas, la raison et les heures libres les plus proches, d un toucher. Chaque heure touchee se rejuge au
+// serveur sans rien ecrire (jugerFenetreRetard) ; le choix envoie les heures posees a la main et celles
+// affichees, et le serveur n ecrit que si son calcul retombe sur elles.
 async function ouvrirFenetreRetard(r, reglage) {
   const minutes = Math.max(1, Math.min(240, Math.round(Number(reglage.minutes) || 0)));
   const prevu = premiereHeureDuGroupe(r);
@@ -26558,21 +26594,106 @@ async function ouvrirFenetreRetard(r, reglage) {
     faites: [...new Set(getGroupeProgramme(r).filter(etape => etape.fait).map(cleHeureEtape).filter(Boolean))],
     noms: nomsDuRetard(r), etapes: null, erreur: '', envoi: false, retour: document.activeElement,
     feuille: Boolean(document.activeElement && document.activeElement.closest && document.activeElement.closest('#globalPlanningGridWrap')),
+    version: r.updatedAt, centre: r.centerId || getCurrentStaffCenterId(), heures: {}, enCours: false, seq: 0, attente: null,
   };
   fenetreRetard = etat;
   rendreFenetreRetard(true);
   toastAnnulableEnAttente(true);
-  try {
-    const payload = await apiRequest(API_ENDPOINTS.staffReservations, { method: 'POST', body: JSON.stringify({ dryRun: true, centerId: r.centerId || getCurrentStaffCenterId(), retard: { id: r.id, baseUpdatedAt: r.updatedAt, minutes, de: etat.de, faites: etat.faites } }) });
-    if (fenetreRetard !== etat) return;
-    if (payload && payload.refus) etat.erreur = payload.refus.message || 'Le planning ne répond pas.';
-    else if (payload && payload.retard && Array.isArray(payload.etapes)) etat.etapes = payload.etapes;
-    else etat.erreur = 'Le planning ne répond pas : les heures restent telles quelles.';
-  } catch (error) {
-    if (fenetreRetard !== etat) return;
-    etat.erreur = error.message || 'Le planning ne répond pas.';
-  }
+  await jugerFenetreRetard(etat);
+}
+// Le verdict du serveur, sans rien ecrire (simulerRetard) : les minutes, ce qui est coche, les heures
+// posees a la main. Seule la derniere demande compte ; pendant qu elle se juge, aucun choix ne part.
+async function jugerFenetreRetard(etat) {
+  if (fenetreRetard !== etat) return;
+  clearTimeout(etat.attente);
+  const r = state.reservations.find(x => Number(x.id) === etat.id);
+  const version = r && Date.parse(r.updatedAt) > Date.parse(etat.version) ? r.updatedAt : etat.version;
+  const seq = ++etat.seq;
+  etat.enCours = true;
   rendreFenetreRetard();
+  let etapes = null;
+  let erreur = '';
+  try {
+    const payload = await apiRequest(API_ENDPOINTS.staffReservations, { method: 'POST', body: JSON.stringify({ dryRun: true, centerId: etat.centre, retard: { id: etat.id, baseUpdatedAt: version, minutes: etat.minutes, de: etat.de, faites: etat.faites, heures: etat.heures } }) });
+    if (payload && payload.refus) erreur = payload.refus.message || 'Le planning ne répond pas.';
+    else if (payload && payload.retard && Array.isArray(payload.etapes)) etapes = payload.etapes;
+    else erreur = 'Le planning ne répond pas : les heures restent telles quelles.';
+  } catch (error) {
+    erreur = error.message || 'Le planning ne répond pas.';
+  }
+  if (fenetreRetard !== etat || seq !== etat.seq) return;
+  Object.assign(etat, { enCours: false, erreur, etapes });
+  rendreFenetreRetard();
+}
+// « Pistes 1 et 2 », « 1, 2 et 3 ».
+function listeDuRetard(nombres) {
+  return nombres.length > 1 ? `${nombres.slice(0, -1).join(', ')} et ${nombres[nombres.length - 1]}` : String(nombres[0] || '');
+}
+// LES PLACES A LA NOUVELLE HEURE (lib/database.js, placesDuDeplacement) : chaque piste du centre (celles
+// du groupe en bleu, les libres encadrees, les prises grisees) et sa phrase ; les armes de l arene en une
+// barre (celles des autres groupes, celles du groupe) et leur phrase. La phrase dit tout, la rangee se voit.
+function placesDuRetardHtml(e) {
+  const p = e && e.places;
+  if (!p) return '';
+  const pl = (n, un, plusieurs) => (n > 1 ? plusieurs : un);
+  if (Array.isArray(p.pistes) && p.pistes.length) {
+    const groupe = p.pistes.filter(x => x.groupe);
+    const prises = groupe.filter(x => x.etat !== 'libre');
+    const autres = p.pistes.filter(x => !x.groupe && x.etat === 'libre').length;
+    const etat = !prises.length ? pl(groupe.length, 'libre', 'libres')
+      : prises.length === groupe.length ? pl(groupe.length, 'prise', 'prises') : `(${listeDuRetard(prises.map(x => x.n))} ${pl(prises.length, 'prise', 'prises')})`;
+    const dit = `${pl(groupe.length, 'Piste', 'Pistes')} ${listeDuRetard(groupe.map(x => x.n))} ${etat} · ${autres ? `${autres} ${pl(autres, 'autre libre', 'autres libres')}` : 'aucune autre libre'}`;
+    const mot = { libre: 'libre', prise: 'prise', hors: 'hors service' };
+    const puces = p.pistes.map(x => `<span class="rt-piste is-${escapeHtml(x.etat)}${x.groupe ? ' is-groupe' : ''}" title="Piste ${Number(x.n)} : ${x.groupe ? 'ce groupe, ' : ''}${mot[x.etat] || ''}">${Number(x.n)}</span>`).join('');
+    return `<span class="rt-places__dit">${escapeHtml(dit)}</span><span class="rt-pistes" aria-hidden="true">${puces}</span>`;
+  }
+  if (p.armes && Number(p.armes.total) > 0) {
+    const a = p.armes;
+    const avec = Array.isArray(a.avec) && a.avec.length ? `Partie avec ${a.avec.join(' et ')} · ` : '';
+    const dit = `${avec}${a.libres} ${pl(a.libres, 'arme libre', 'armes libres')} sur ${a.total}, il en faut ${a.besoin}`;
+    const part = (n) => Math.max(0, Math.min(100, Math.round((Number(n) / Number(a.total)) * 1000) / 10));
+    return `<span class="rt-places__dit">${escapeHtml(dit)}</span><span class="rt-armes${a.besoin > a.libres ? ' is-court' : ''}" aria-hidden="true"><span class="rt-armes__prises" style="width:${part(a.prises)}%"></span><span class="rt-armes__groupe" style="width:${part(Math.min(a.besoin, a.libres))}%"></span></span>`;
+  }
+  return '';
+}
+// Une activite de la fenetre : son nom et son verdict, son heure (un champ a la minute et ses pas),
+// ses places, puis, si elle ne passe pas, la raison et les heures libres proches.
+function ligneDuRetardHtml(etat, e, modifiable) {
+  const nom = etat.noms.get(e.cle) || e.cle;
+  const cle = escapeHtml(e.cle);
+  const valeur = etat.heures[e.cle] || e.apres;
+  const champ = !e.libre && modifiable && Number.isFinite(minutesHeureEdition(valeur));
+  // (des arcades en argent n ont pas d heure : elles passent « libre », hors de l enchainement)
+  const heure = e.libre ? '<b>libre</b>'
+    : champ ? `<input class="rt-heure" type="time" step="60" value="${escapeHtml(valeur)}" aria-label="Nouvelle heure, ${escapeHtml(nom)}"${e.passe ? '' : ' aria-invalid="true"'} data-rt-heure="${cle}" data-rt-focus="heure:${cle}" oninput="poserHeureRetard(this.dataset.rtHeure, this.value)" onkeydown="toucheHeureRetard(event, this.dataset.rtHeure)">`
+      : `<b>${escapeHtml(valeur)}</b>`;
+  const pas = champ ? `<span class="rt-pas-groupe"><button type="button" class="rt-pas" aria-label="5 minutes plus tôt, ${escapeHtml(nom)}" data-rt-focus="pas:${cle}:-5" data-rt-pour="${cle}" onclick="pasHeureRetard(this.dataset.rtPour, -5)">−5</button><button type="button" class="rt-pas" aria-label="5 minutes plus tard, ${escapeHtml(nom)}" data-rt-focus="pas:${cle}:5" data-rt-pour="${cle}" onclick="pasHeureRetard(this.dataset.rtPour, 5)">+5</button></span>` : '';
+  const raison = e.libre && e.passe ? '<p class="rt-etape__raison">Vendues en crédits : sans heure, à leur rythme.</p>'
+    : !e.passe ? `<p class="rt-etape__raison">${escapeHtml(e.raison || 'Le planning refuse cette heure.')} Reste à ${escapeHtml(e.avant)}.</p>` : '';
+  const libres = (!e.passe && modifiable && Array.isArray(e.libres) ? e.libres : []).filter(h => /^\d{2}:\d{2}$/.test(h));
+  const proposees = libres.length ? `<div class="rt-libres" role="group" aria-label="Heures libres les plus proches, ${escapeHtml(nom)}"><span class="rt-libres__titre">Libre à</span>${libres.map(h => `<button type="button" class="rt-libre" data-rt-libre="${h}" data-rt-pour="${cle}" data-rt-focus="libre:${cle}:${h}" onclick="choisirHeureRetard(this.dataset.rtPour, this.dataset.rtLibre)">${h}</button>`).join('')}</div>` : '';
+  return `<li class="rt-etape ${e.passe ? 'is-passe' : 'is-bloque'}${etat.heures[e.cle] ? ' is-posee' : ''}" data-rt-cle="${cle}">`
+    + `<span class="rt-etape__nom">${escapeHtml(nom)}</span><span class="rt-etape__mot">${e.passe ? 'Passe' : 'Ne passe pas'}</span>`
+    + `<div class="rt-etape__reglage"><span class="rt-etape__heures"><s>${escapeHtml(e.avant)}</s> → ${heure}</span>${pas}</div>`
+    + `<div class="rt-etape__places">${placesDuRetardHtml(e)}</div><div class="rt-etape__suite">${raison}${proposees}</div></li>`;
+}
+// UN VERDICT SE PEINT EN PLACE : le champ qu on tape garde le focus et sa saisie, le reste de la ligne
+// se repeint. Un autre programme (des activites en plus ou en moins) redessine la fenetre.
+function peindreLigneRetard(li, etat, e, modifiable) {
+  const modele = document.createElement('template');
+  modele.innerHTML = ligneDuRetardHtml(etat, e, modifiable);
+  const neuve = modele.content.firstElementChild;
+  li.className = neuve.className;
+  ['.rt-etape__mot', '.rt-etape__places', '.rt-etape__suite'].forEach((sel) => {
+    const avant = li.querySelector(sel);
+    const apres = neuve.querySelector(sel);
+    if (avant && apres && avant.innerHTML !== apres.innerHTML) avant.innerHTML = apres.innerHTML;
+  });
+  const champ = li.querySelector('.rt-heure');
+  const lu = neuve.querySelector('.rt-heure');
+  if (!champ || !lu) return;
+  if (champ !== document.activeElement && champ.value !== lu.value) champ.value = lu.value;
+  if (e.passe) champ.removeAttribute('aria-invalid'); else champ.setAttribute('aria-invalid', 'true');
 }
 function rendreFenetreRetard(ouverture = false) {
   let hote = document.getElementById('retardFenetre');
@@ -26589,44 +26710,107 @@ function rendreFenetreRetard(ouverture = false) {
   }
   const etapes = etat.erreur ? [] : etat.etapes;
   const toutPasse = Boolean(etapes && etapes.length && etapes.every(e => e.passe));
-  const lignes = (etapes || []).map((e) => {
-    const nom = etat.noms.get(e.cle) || e.cle;
-    // (des arcades en argent n ont pas d heure : elles passent « libre », hors de l enchainement)
-    const heures = e.libre ? `<s>${escapeHtml(e.avant)}</s> → <b>libre</b>` : `<s>${escapeHtml(e.avant)}</s> → <b>${escapeHtml(e.apres)}</b>`;
-    return `<li class="rt-etape ${e.passe ? 'is-passe' : 'is-bloque'}" data-rt-cle="${escapeHtml(e.cle)}"><span class="rt-etape__nom">${escapeHtml(nom)}</span><span class="rt-etape__heures">${heures}</span><span class="rt-etape__mot">${e.passe ? 'Passe' : 'Ne passe pas'}</span>`
-      + (e.libre && e.passe ? '<p class="rt-etape__raison">Vendues en crédits : sans heure, à leur rythme.</p>' : '')
-      + (!e.passe ? `<p class="rt-etape__raison">${escapeHtml(e.raison || 'Le planning refuse cette heure.')} Reste à ${escapeHtml(e.avant)}.</p>` : '') + '</li>';
-  }).join('');
   const passent = etapes ? etapes.filter(e => e.passe).length : 0;
   // (decaler une heure est le geste du glisser du planning : sans lui, le retard se note seulement)
   const peutDecaler = typeof canUseStaffPermission !== 'function' || canUseStaffPermission(['planning.drag', 'reservations.edit']);
+  // (une heure touchee pas encore rejugee : decaler attend le verdict)
+  const occupe = etat.envoi || etat.enCours;
   const decaler = !etapes || !passent || !peutDecaler ? ''
-    : toutPasse ? `<button type="button" class="rt-bouton est-plein" data-rt-choix="tout" onclick="choisirRetard('tout')"${etat.envoi ? ' disabled' : ''}>Tout décaler</button>`
-      : `<button type="button" class="rt-bouton est-plein" data-rt-choix="passe" onclick="choisirRetard('passe')"${etat.envoi ? ' disabled' : ''}>Décaler ce qui passe</button>`;
-  const garder = `<button type="button" class="rt-bouton${decaler ? '' : ' est-plein'}" data-rt-choix="garder" onclick="choisirRetard('garder')"${etat.envoi ? ' disabled' : ''}>Garder les heures</button>`;
+    : toutPasse ? `<button type="button" class="rt-bouton est-plein" data-rt-choix="tout" data-rt-focus="choix:tout" onclick="choisirRetard('tout')"${occupe ? ' disabled' : ''}>Tout décaler</button>`
+      : `<button type="button" class="rt-bouton est-plein" data-rt-choix="passe" data-rt-focus="choix:passe" onclick="choisirRetard('passe')"${occupe ? ' disabled' : ''}>Décaler ce qui passe</button>`;
+  const garder = `<button type="button" class="rt-bouton${decaler ? '' : ' est-plein'}" data-rt-choix="garder" data-rt-focus="choix:garder" onclick="choisirRetard('garder')"${etat.envoi ? ' disabled' : ''}>Garder les heures</button>`;
   // (apres « Arrivé » ou « Payé », le statut et le retard sont deja ecrits : fermer garde les heures)
   const arrivee = etat.mode === 'arrivee';
   const titre = arrivee ? `Arrivé avec ${dureeDuRetard(etat.minutes)} de retard` : `Retard de ${dureeDuRetard(etat.minutes)}`;
   const quand = arrivee ? `prévu à ${etat.de}, il est ${formatClockDisplay(currentTimeDecimal())}` : `prévu à ${etat.de}`;
   const sous = arrivee ? 'L’arrivée et le retard sont notés sur le dossier. Fermer garde les heures.' : 'Le retard est noté sur le dossier, quel que soit le choix.';
   const note = arrivee ? 'le retard est noté' : 'le retard se note';
-  const etatTexte = etat.erreur ? `${etat.erreur} ${arrivee ? 'Le retard est noté' : 'Le retard se note'}, les heures restent.`
-    : !etapes ? 'Vérification au planning…'
-      : !etapes.length ? `Plus aucune activité à venir : ${note}, rien ne bouge.`
-        : toutPasse ? 'Toutes les activités passent à leur nouvelle heure, chacune après la fin de la précédente.'
-          : passent ? 'Ce qui ne passe pas garde son heure.' : 'Aucune activité ne passe à sa nouvelle heure : elles gardent leur heure.';
+  const etatTexte = etat.enCours ? 'Vérification au planning…'
+    : etat.erreur ? `${etat.erreur} ${arrivee ? 'Le retard est noté' : 'Le retard se note'}, les heures restent.`
+      : !etapes ? 'Vérification au planning…'
+        : !etapes.length ? `Plus aucune activité à venir : ${note}, rien ne bouge.`
+          : toutPasse ? 'Toutes les activités passent à leur nouvelle heure, chacune après la fin de la précédente.'
+            : passent ? 'Ce qui ne passe pas garde son heure.' : 'Aucune activité ne passe à sa nouvelle heure : elles gardent leur heure.';
+  const pied = `${garder}${decaler}`;
+  const forme = `${(etapes || []).map(e => `${e.cle}:${e.libre ? 1 : 0}`).join(',')}|${peutDecaler}`;
+  const fenetre = hote.querySelector('.rt-fenetre');
+  if (!ouverture && fenetre && hote.dataset.rtForme === forme && (etapes || []).length) {
+    (etapes || []).forEach((e) => {
+      const li = [...hote.querySelectorAll('.rt-etape')].find(x => x.getAttribute('data-rt-cle') === e.cle);
+      if (li) peindreLigneRetard(li, etat, e, peutDecaler);
+    });
+    const texte = hote.querySelector('.rt-etat');
+    if (texte.textContent !== etatTexte) texte.textContent = etatTexte;
+    const bas = hote.querySelector('.rt-pied');
+    if (bas.dataset.rtPied !== pied) {
+      const garde = document.activeElement && bas.contains(document.activeElement) ? document.activeElement.getAttribute('data-rt-focus') : '';
+      bas.innerHTML = pied;
+      bas.dataset.rtPied = pied;
+      const revient = garde ? bas.querySelector(`[data-rt-focus="${garde}"]`) : null;
+      if (revient && !revient.disabled) revient.focus(); else if (garde) fenetre.focus();
+    }
+    return;
+  }
+  // (redessinee, la fenetre rend le focus a l element qui l avait, sinon a elle-meme)
+  const garde = !ouverture && document.activeElement && hote.contains(document.activeElement) ? document.activeElement.getAttribute('data-rt-focus') || 'fenetre' : '';
+  const lignes = (etapes || []).map(e => ligneDuRetardHtml(etat, e, peutDecaler)).join('');
+  hote.dataset.rtForme = forme;
   hote.innerHTML = `<div class="rt-fenetre" role="dialog" aria-modal="true" aria-labelledby="rtTitre" aria-describedby="rtSous" tabindex="-1">
       <div class="rt-tete"><h3 class="rt-titre" id="rtTitre">${escapeHtml(titre)}</h3>
-        <button type="button" class="close-btn rt-fermer" aria-label="${arrivee ? 'Fermer, les heures restent' : 'Fermer sans rien enregistrer'}" onclick="fermerFenetreRetard()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+        <button type="button" class="close-btn rt-fermer" data-rt-focus="fermer" aria-label="${arrivee ? 'Fermer, les heures restent' : 'Fermer sans rien enregistrer'}" onclick="fermerFenetreRetard()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
       <p class="rt-sous" id="rtSous">${escapeHtml(r.name || 'Groupe')} · ${escapeHtml(quand)}. ${escapeHtml(sous)}</p>
       ${lignes ? `<ol class="rt-etapes">${lignes}</ol>` : ''}
       <p class="rt-etat" role="status">${escapeHtml(etatTexte)}</p>
-      <div class="rt-pied">${garder}${decaler}</div>
+      <div class="rt-pied" data-rt-pied="${escapeHtml(pied)}">${pied}</div>
     </div>`;
   if (ouverture) hote.querySelector('.rt-fenetre').focus();
+  else if (garde) {
+    const revient = hote.querySelector(`[data-rt-focus="${garde}"]`);
+    (revient && !revient.disabled ? revient : hote.querySelector('.rt-fenetre')).focus();
+  }
+}
+// LA FRAPPE : l heure tapee se rejuge apres une courte pause (le champ garde sa saisie) ; Entree, un
+// pas ou une heure proposee, tout de suite. Une heure pas encore complete n est pas envoyee.
+function poserHeureRetard(cle, valeur, toutDeSuite = false) {
+  const etat = fenetreRetard;
+  if (!etat || etat.envoi || !Number.isFinite(minutesHeureEdition(valeur))) return;
+  const e = (etat.etapes || []).find(x => x.cle === cle);
+  if (!e || e.libre || (!etat.heures[cle] && e.apres === valeur && !toutDeSuite)) return;
+  etat.heures = { ...etat.heures, [cle]: String(valeur) };
+  etat.enCours = true;
+  etat.seq += 1;
+  rendreFenetreRetard();
+  clearTimeout(etat.attente);
+  etat.attente = setTimeout(() => jugerFenetreRetard(etat), toutDeSuite ? 0 : 450);
+}
+function champHeureRetard(cle) {
+  return [...document.querySelectorAll('#retardFenetre .rt-heure')].find(x => x.getAttribute('data-rt-heure') === cle) || null;
+}
+function toucheHeureRetard(event, cle) {
+  if (event.key !== 'Enter') return;
+  event.preventDefault();
+  poserHeureRetard(cle, event.target.value, true);
+}
+// Les pas rapides : 5 min plus tot ou plus tard que l heure du champ.
+function pasHeureRetard(cle, pas) {
+  const etat = fenetreRetard;
+  const champ = champHeureRetard(cle);
+  const depart = minutesHeureEdition(champ ? champ.value : '');
+  if (!etat || !champ || !Number.isFinite(depart)) return;
+  const heure = hhmmDuRetard(Math.max(0, Math.min(23 * 60 + 59, depart + Number(pas))));
+  champ.value = heure;
+  poserHeureRetard(cle, heure, true);
+}
+// Une heure libre proposee : un toucher la pose dans le champ, et le serveur la rejuge.
+function choisirHeureRetard(cle, heure) {
+  const champ = champHeureRetard(cle);
+  if (champ) champ.value = heure;
+  poserHeureRetard(cle, heure, true);
+  if (champ) champ.focus();
 }
 function fermerFenetreRetard() {
   const etat = fenetreRetard;
+  if (etat) clearTimeout(etat.attente);
   fenetreRetard = null;
   rendreFenetreRetard();
   rendreLeFocusDuRetard(etat);
@@ -26648,15 +26832,22 @@ async function choisirRetard(choix) {
   if (!r) { fermerFenetreRetard(); return; }
   const dejaNote = etat.mode === 'arrivee';
   if (dejaNote && choix === 'garder') { fermerFenetreRetard(); return; }
+  // (une heure touchee que le serveur n a pas encore rejugee : rien ne part sur l ancien verdict)
+  if (choix !== 'garder' && etat.enCours) return;
   const etapes = etat.erreur ? null : etat.etapes;
   if (choix === 'tout' && !(etapes && etapes.length && etapes.every(e => e.passe))) return;
   // (les activites que la fenetre a montrees : le serveur refait leurs heures et les rejuge)
   const cles = choix === 'garder' || !etapes ? [] : etapes.filter(e => choix === 'tout' || e.passe).map(e => e.cle);
   if (choix !== 'garder' && !cles.length) return;
+  // LES HEURES DE L ECRAN partent avec le choix : celles posees a la main, que le serveur rejuge, et
+  // celles affichees, qu il doit retrouver a l identique pour ecrire (sinon rien ne s ecrit).
+  const attendues = {};
+  (etapes || []).forEach((e) => { if (cles.includes(e.cle) && !e.libre && e.apres) attendues[e.cle] = e.apres; });
+  const heures = choix === 'garder' ? {} : { heures: { ...etat.heures }, attendues };
   etat.envoi = true;
   rendreFenetreRetard();
   try {
-    const payload = await apiRequest(API_ENDPOINTS.staffReservations, { method: 'PATCH', body: JSON.stringify({ id: r.id, centerId: r.centerId || getCurrentStaffCenterId(), baseUpdatedAt: r.updatedAt, retard: { minutes: etat.minutes, de: etat.de, faites: etat.faites, choix, cles, ...(dejaNote ? { dejaNote: true } : {}) } }) });
+    const payload = await apiRequest(API_ENDPOINTS.staffReservations, { method: 'PATCH', body: JSON.stringify({ id: r.id, centerId: r.centerId || getCurrentStaffCenterId(), baseUpdatedAt: r.updatedAt, retard: { minutes: etat.minutes, de: etat.de, faites: etat.faites, choix, cles, ...heures, ...(dejaNote ? { dejaNote: true } : {}) } }) });
     if (!payload || !payload.ok || !payload.reservation || Number(payload.reservation.id) !== etat.id) throw new Error('Le serveur n’a pas confirmé le retard. Actualisez le dossier.');
     if (fenetreRetard === etat) fenetreRetard = null;
     rendreFenetreRetard();
@@ -29053,6 +29244,20 @@ function joueursDuDossier(r) {
 // du plan du moteur (getStaffFormulaTimedItems), et les activites libres d une
 // visite (minigolf, arcades, billard) n ont pas d heure : elles se font a la
 // guise du groupe. Une partie de laser sans heure au planning est « à placer ».
+// DES ARCADES VENDUES EN ARGENT (2026-11-22) : des credits remis au bar (« 8 crédits d'arcade »), une carte
+// chargee d un montant a la carte, ou un contenu de formule en argent. Elles n ont jamais d heure.
+function arcadesEnArgentDuDossier(r, item) {
+  const id = item && item.activityId;
+  if (id === 'arcade_credit') return true;
+  if (id !== 'arcade_time' || !r) return false;
+  const lignes = Array.isArray(r.program) ? r.program : (r.program && Array.isArray(r.program.items) ? r.program.items : []);
+  const ligne = lignes.find(l => l && l.activityId === 'arcade_time');
+  if (ligne && ligne.arcadeMode) return ligne.arcadeMode !== 'time';
+  const formule = r.formuleId && typeof resolveDisplayFormule === 'function' ? resolveDisplayFormule(r.formuleId) : null;
+  const contenu = formule ? dureeDuContenuDeLaFormule(formule, 'arcade_time') : null;
+  return Boolean(contenu && contenu.argent);
+}
+
 function getGroupeProgramme(r) {
   const etapes = [];
   const effectifActivite = id => participantsLigneProgramme(((r.program && r.program.items) || []).find(item => item.activityId === id), r.pax);
@@ -29071,6 +29276,9 @@ function getGroupeProgramme(r) {
   // Une formule se suit en cochant ses activites (activityProgress) : chaque
   // etape porte la cle de sa coche, la meme que le suivi de la page Formules.
   const formuleSuivie = typeof reservationHasFormulaActivities === 'function' && reservationHasFormulaActivities(r);
+  // (un bowling en plus d une formule, lib/formule-en-plus.js : le meme groupe y rejoue, « en plus », jamais
+  // « groupe 2/2 » ; seuls les services d un groupe scinde se numerotent)
+  const services = bowling.filter(f => !f.enPlus);
   bowling.forEach((f, index) => {
     const pistes = (f.lanes || []).filter(Number.isFinite);
     etapes.push({
@@ -29082,7 +29290,10 @@ function getGroupeProgramme(r) {
         : `${Number(f.players) || effectifActivite('bowling')} joueurs · ${formatDurationLabel(f.duration)}${bowlingCapacityMessage(f.bowlingCapacity) ? ' · ' + bowlingCapacityMessage(f.bowlingCapacity) : ''}`,
       ou: pistes.length ? `piste${pistes.length > 1 ? 's' : ''} ${joindrePistes(pistes)}${f.aVolonte ? ` gardée${pistes.length > 1 ? 's' : ''} toute la visite` : ''}` : 'pistes à attribuer',
       // (le nombre de joueurs du groupe est deja en tete de la ligne : « 10 joueurs · 1h · groupe 1/2 »)
-      groupe: bowling.length > 1 ? `groupe ${index + 1}/${bowling.length}` : '',
+      // (un sous-groupe d un grand groupe se nomme comme au ticket et au planning : « groupe 1 »)
+      groupe: f.enPlus ? 'en plus' : Number(f.sousGroupe) > 0 ? `groupe ${Number(f.sousGroupe)}` : services.length > 1 ? `groupe ${services.indexOf(f) + 1}/${services.length}` : '',
+      sousGroupe: Number(f.sousGroupe) || 0,
+      ...(f.enPlus ? { enPlus: true } : {}),
       start: f.start,
       end: f.end,
       fait: faite(bowling.length === 1 ? 'bowling-1' : `bowling-g${index + 1}`),
@@ -29099,16 +29310,42 @@ function getGroupeProgramme(r) {
       unite: `${partie}.${Number(f.groupWaveIndex) || 1}`,
       activityId: 'laser_game',
       nom: 'Laser Game',
-      quoi: `${Number(f.joueursReels ?? f.players) || effectifActivite('laser_game')} joueurs · ${parties > 1 ? `partie ${partie}/${parties}` : '1 partie'}`,
+      quoi: f.enPlus ? `${Number(f.joueursReels ?? f.players) || effectifActivite('laser_game')} joueurs · 1 partie en plus` : `${Number(f.joueursReels ?? f.players) || effectifActivite('laser_game')} joueurs · ${parties > 1 ? `partie ${partie}/${parties}` : '1 partie'}`,
       // (des armes gardees a chaque depart d un acces illimite, lib/a-volonte.js)
       ...(f.aVolonte ? { quoi: `${Number(f.players) || effectifActivite('laser_game')} armes à chaque départ · à volonté` } : {}),
-      ou: f.aVolonte && f.departs > 1 ? `${f.departs} départs` : '',
-      groupe: vagues > 1 ? `groupe ${Number(f.groupWaveIndex) || 1}/${vagues}` : '',
+      ...(f.enPlus ? { enPlus: true } : {}),
+      // (la partie commune avec un autre groupe : « avec Boucquiaux », partenairesLaser)
+      ou: f.aVolonte && f.departs > 1 ? `${f.departs} départs` : f.aVolonte ? '' : partenairesEnMots(partenairesLaser(r, f)),
+      groupe: Number(f.sousGroupe) > 0 ? `groupe ${Number(f.sousGroupe)}` : vagues > 1 ? `groupe ${Number(f.groupWaveIndex) || 1}/${vagues}` : '',
+      sousGroupe: Number(f.sousGroupe) || 0,
       start: f.start,
       end: f.end,
       fait: faite(vagues === 1 ? `laser_game-${partie}` : `laser_game-${partie}-g${Number(f.groupWaveIndex) || 1}`),
       coche: vagues === 1 ? `laser_game-${partie}` : `laser_game-${partie}-g${Number(f.groupWaveIndex) || 1}`,
       exige: formuleSuivie && vagues === 1,
+    });
+  });
+  // LES PETITES ACTIVITES EN PLUS D UNE FORMULE (2026-11-22, lib/formule-en-plus.js) : chacune a sa ligne, a son
+  // heure ou libre pendant la visite, « en plus » ; jamais lue comme une etape de la formule.
+  const pasEnPlus = (r && r.opsPlan && Array.isArray(r.opsPlan.timeline) ? r.opsPlan.timeline : [])
+    .filter(step => step && step.enPlus && step.type === 'activity' && step.activityId && step.activityId !== 'bowling' && step.activityId !== 'laser_game' && !/^service/.test(String(step.activityId)));
+  const deLaFormule = (item) => !pasEnPlus.some(step => step.activityId === item.activityId && String(step.startTime || '') === String(item.startTime || ''));
+  pasEnPlus.forEach((step, index) => {
+    const libre = step.flexible === true;
+    const ligne = ((r.opsPlan.enPlus && r.opsPlan.enPlus.items) || []).find(x => x && x.activityId === step.activityId) || {};
+    etapes.push({
+      cle: `enplus-${step.activityId}-${index + 1}`,
+      activityId: step.activityId,
+      nom: String(ligne.name || step.label || (typeof nomActiviteHeureEdition === 'function' ? nomActiviteHeureEdition(step.activityId) : step.activityId)),
+      quoi: `${Number(ligne.participants) || Number(r.pax) || 0} joueurs · en plus`,
+      ou: '',
+      groupe: '',
+      start: libre ? null : timeToNum(step.startTime),
+      end: libre ? null : timeToNum(step.endTime),
+      ...(libre ? { libre: true } : {}),
+      enPlus: true,
+      fait: faite(`enplus-${step.activityId}`),
+      coche: `enplus-${step.activityId}`,
     });
   });
   // UN ACCES ILLIMITE NE DONNE PAS D HEURE A SES ACTIVITES LIBRES (2026-11-20, Ansar : « pour les
@@ -29119,8 +29356,15 @@ function getGroupeProgramme(r) {
   // LA PLAINE DE JEUX EST LIBRE TOUTE LA JOURNEE (2026-11-21, le gerant : « il n'y a pas d'heure,
   // c'est vraiment libre tout le temps ») : « Libre » au programme, jamais une heure.
   const accesIllimite = typeof illimiteDeSaCarte === 'function' && illimiteDeSaCarte(r);
+  // LES CRUCHES ET LES ARCADES EN ARGENT N ONT PAS D HEURE (2026-11-22, Ansar : « les cruches pour formules
+  // ça met un temps et ça me clc, ils prennent quand ils veulent » ; « pour les cartes avec argent tu dois
+  // juste mettre le montant, comme playground, c quand ils veulent »). Comme la plaine : « Libre » au
+  // programme, jamais une heure, quelle que soit l heure que le plan leur a posee. Seul « Servir à » d un
+  // extra donne une heure (plus bas). La jumelle du serveur dit pareil (lib/programme-a-cocher.js).
+  const sansHeure = (item) => item.activityId === 'playground' || /^service_/.test(String(item.activityId || ''))
+    || (typeof arcadesEnArgentDuDossier === 'function' && arcadesEnArgentDuDossier(r, item));
   getStaffFormulaTimedItems(r)
-    .filter(item => item.activityId !== 'bowling' && item.activityId !== 'laser_game')
+    .filter(item => item.activityId !== 'bowling' && item.activityId !== 'laser_game' && deLaFormule(item))
     .forEach(item => etapes.push({
       cle: item.key,
       activityId: item.activityId,
@@ -29128,9 +29372,9 @@ function getGroupeProgramme(r) {
       quoi: accesIllimite ? 'à volonté' : '',
       ou: '',
       groupe: '',
-      start: accesIllimite || item.activityId === 'playground' ? null : item.start,
-      end: accesIllimite || item.activityId === 'playground' ? null : item.end,
-      ...(accesIllimite ? { libre: true, volonte: true } : item.activityId === 'playground' ? { libre: true } : {}),
+      start: accesIllimite || sansHeure(item) ? null : item.start,
+      end: accesIllimite || sansHeure(item) ? null : item.end,
+      ...(accesIllimite ? { libre: true, volonte: true } : sansHeure(item) ? { libre: true } : {}),
       fait: Boolean(item.done),
       coche: item.key,
       exige: true,
@@ -29138,7 +29382,8 @@ function getGroupeProgramme(r) {
   // Une activite de formule sans heure au plan reste au programme, cochable.
   if (formuleSuivie) {
     getFormulaActivityProgressSummary(r).items
-      .filter(item => !item.startTime && item.activityId !== 'bowling' && item.activityId !== 'laser_game')
+      // (une petite activite en plus libre n en est pas une : une formule lue d apres son plan la comptait deux fois)
+      .filter(item => !item.startTime && item.activityId !== 'bowling' && item.activityId !== 'laser_game' && !pasEnPlus.some(step => step.flexible === true && step.activityId === item.activityId))
       .forEach(item => etapes.push({
         cle: item.key, activityId: item.activityId, nom: item.label, quoi: '', ou: '', groupe: '',
         start: null, end: null, libre: true, fait: Boolean(item.done), coche: item.key, exige: true,
@@ -29215,7 +29460,45 @@ function getGroupeProgramme(r) {
     });
   });
   const rang = e => (e.start !== null && e.start !== undefined ? 0 : e.aPlacer ? 1 : 2);
-  return etapes.sort((a, b) => rang(a) - rang(b) || (a.start || 0) - (b.start || 0) || (a.end || 0) - (b.end || 0));
+  // (a la meme heure, les sous-groupes d un grand groupe dans leur ordre : groupe 1, puis groupe 2)
+  return etapes.sort((a, b) => rang(a) - rang(b) || (a.start || 0) - (b.start || 0) || (a.sousGroupe || 0) - (b.sousGroupe || 0) || (a.end || 0) - (b.end || 0));
+}
+
+// LES SOUS-GROUPES D UN GRAND GROUPE, EN UNE PHRASE CHACUN (2026-11-22, lib/grand-groupe.js) : la fiche
+// dit qui joue quoi et quand, groupe par groupe (« Groupe 1, 30 joueurs : bowling 15:30, laser 16:30 »),
+// lu sur le plan du dossier. null pour tout autre dossier.
+function sousGroupesDuDossier(r) {
+  const blocs = r && r.opsPlan && Array.isArray(r.opsPlan.resourceBlocks) ? r.opsPlan.resourceBlocks : [];
+  const parGroupe = new Map();
+  blocs.forEach((b) => {
+    const n = Number(b && b.sousGroupe) || 0;
+    if (!n || !['bowling_lane', 'laser_arena'].includes(b.resourceType)) return;
+    if (!parGroupe.has(n)) parGroupe.set(n, []);
+    parGroupe.get(n).push(b);
+  });
+  if (parGroupe.size < 2) return null;
+  const gg = r.opsPlan.grandGroupe && typeof r.opsPlan.grandGroupe === 'object' ? r.opsPlan.grandGroupe : {};
+  const tailles = Array.isArray(gg.tailles) ? gg.tailles : [];
+  const groupes = [...parGroupe.entries()].sort((a, b) => a[0] - b[0]).map(([n, liste]) => {
+    const passages = liste.map((b) => ({ id: b.resourceType === 'bowling_lane' ? 'bowling' : 'laser_game', heure: String(b.startTime || '').slice(0, 5), joueurs: Number(b.joueursReels ?? b.players) || 0 }))
+      .filter((p) => p.heure).sort((x, y) => x.heure.localeCompare(y.heure));
+    // (les parties de laser d un groupe se disent ensemble : « laser 15:00 et 15:30 »)
+    const dits = [];
+    passages.forEach((p) => {
+      const der = dits[dits.length - 1];
+      if (der && der.id === p.id) { der.heures.push(p.heure); return; }
+      dits.push({ id: p.id, heures: [p.heure] });
+    });
+    const joueurs = Number(tailles[n - 1]) || Math.max(0, ...passages.map((p) => p.joueurs));
+    return { n, joueurs, texte: dits.map((d) => `${d.id === 'bowling' ? 'bowling' : 'laser'} ${joindreListe(d.heures)}`).join(', ') };
+  });
+  const tourne = gg.tourne === true || groupes.some((g) => /bowling/.test(g.texte) && /laser/.test(g.texte));
+  return { titre: tourne ? `${groupes.length} groupes qui tournent` : `${groupes.length} groupes, l’un après l’autre`, groupes };
+}
+
+function joindreListe(elements) {
+  const liste = elements.map(String);
+  return liste.length > 1 ? `${liste.slice(0, -1).join(', ')} et ${liste[liste.length - 1]}` : (liste[0] || '');
 }
 
 // « 1, 2 », « 1 à 4 » : des pistes qui se suivent se lisent en plage.
@@ -29556,8 +29839,8 @@ function renderGroupeActions(r, moment) {
       ${GROUPE_MOYENS.map(m => `<button type="button" class="gc-btn is-primary" onclick="encaisserReservation(${r.id}, '${m.valeur}', event)">${m.mot}</button>`).join('')}
     </span>`);
   }
-  if (moment && moment.late && r.phone) {
-    boutons.push(`<a class="gc-call" href="tel:${escapeHtml(String(r.phone).replace(/\s+/g, ''))}" onclick="event.stopPropagation()">Appeler ${escapeHtml(r.phone)}</a>`);
+  if (moment && moment.late && rvTelephoneEnvoyable(r.phone)) {
+    boutons.push(`<a class="gc-call" href="tel:${escapeHtml(rvTelephoneEnvoyable(r.phone))}" onclick="event.stopPropagation()">Appeler ${escapeHtml(r.phone)}</a>`);
   }
   if (!boutons.length) return '';
   return `<div class="gc-actions" onclick="event.stopPropagation()">${boutons.join('')}</div>`;
@@ -30431,13 +30714,15 @@ function ficheEditionModifiee() {
   const es = state.editState;
   if (state.activeTab !== 'modifier' || !es || !state.selectedRes) return false;
   if (editProgramAChange()) return true;
+  // Une activite en plus ajoutee, reglee ou retiree, pas enregistree (2026-11-22).
+  if (enPlusEditionChange()) return true;
   // Une heure d activite changee et pas enregistree (2026-11-18).
   if (Object.keys(heuresChangeesEdition()).length) return true;
   const edition = departsEdition().get(es);
   if (edition && edition.formulaire) return empreinteFormulaireEdition(es) !== edition.formulaire;
   // Apres un conflit, la reference est le dossier d origine.
   const origine = (edition && edition.origine) || state.selectedRes;
-  return empreinteFormulaireEdition(es) !== empreinteFormulaireEdition({ ...origine, lanesStr: (origine.lanes || []).join(', ') });
+  return empreinteFormulaireEdition(es) !== empreinteFormulaireEdition({ ...origine, lanesStr: pistesDeLaFormuleSeule(origine).join(', ') });
 }
 
 function confirmerAbandonEdition() {
@@ -30839,8 +31124,9 @@ function fichePhraseMoment(r, moment, droits = ficheDroits()) {
 }
 
 function ficheAppeler(r) {
-  if (!r.phone) return '';
-  return `<a class="fx-appel" href="tel:${escapeHtml(String(r.phone).replace(/[^0-9+]/g, ''))}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span>Appeler</span></a>`;
+  const tel = rvTelephoneEnvoyable(r.phone);
+  if (!tel) return '';
+  return `<a class="fx-appel" href="tel:${escapeHtml(tel)}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span>Appeler</span></a>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -31080,11 +31366,15 @@ function ficheParcours(r, moment, droits) {
   // L ACCES ILLIMITE SE DIT EN UNE PHRASE (2026-11-19) : la visite, ce qui est garde, ce qui se joue
   // une fois a son heure, lus sur le plan du dossier (assets/pinlane-a-volonte.js).
   const acces = accesIllimiteDuDossier(r);
+  // UN GRAND GROUPE SE DIT GROUPE PAR GROUPE (2026-11-22) : qui joue quoi et quand, lu sur le plan du
+  // dossier (sousGroupesDuDossier) ; les etapes en dessous portent leur « groupe N ».
+  const groupes = r.status === 'cancelled' ? null : sousGroupesDuDossier(r);
   // (chaque activite du groupe en retard porte le rouge, retardDuGroupe)
   const rt = retardDuGroupe(r, moment);
   return `<section class="info-block gc-sheet-block fx-programme fz-carte${rt ? ` is-retard-${rt.etat}` : ''}" aria-label="Programme">
       <div class="gc-sheet-head"><h4 class="fx-titre">Programme</h4>${jauge}${renderGroupeTerminer(r)}</div>
       ${acces ? `<p class="fz-acces" id="ficheAcces"><b>Accès illimité</b> ${escapeHtml(acces.texte)}</p>` : ''}
+      ${groupes ? `<div class="fz-groupes" id="ficheGroupes"><b>${escapeHtml(groupes.titre)}</b><ul>${groupes.groupes.map(g => `<li><b>Groupe ${g.n}</b>${g.joueurs ? `, ${g.joueurs} joueur${g.joueurs > 1 ? 's' : ''}` : ''} : ${escapeHtml(g.texte)}</li>`).join('')}</ul></div>` : ''}
       ${ficheArrivee(r, moment, droits)}
       ${renderGroupeEtapes(r, moment, { coches: true }) || '<p class="pos-note">Aucune activité au programme.</p>'}
     </section>`;
@@ -31143,16 +31433,19 @@ function ficheClient(r) {
   const valide = quand && !Number.isNaN(quand.getTime());
   const creee = valide ? quand.toLocaleDateString('fr-BE', { day: 'numeric', month: 'long', ...(quand.getFullYear() !== new Date().getFullYear() ? { year: 'numeric' } : {}) }) : '';
   const origine = { staff: 'Saisie par l’équipe', public: 'Réservée en ligne' }[String(r.channel || '').toLowerCase()] || 'Créée';
-  const tel = String(r.phone || '').replace(/[^0-9+]/g, '');
+  // 2026-11-22 : le telephone peut etre un mot (« par mail ») : il s affiche tel quel, sans lien d appel ;
+  // « / » dit « pas de numero » et compte comme un telephone absent.
+  const telTexte = rvTelephoneSaisiTexte(r.phone);
+  const tel = rvTelephoneEnvoyable(r.phone);
   const contacts = [
-    r.phone ? `<li>${STAFF_TERRAIN_PHONE_ICON}<a href="tel:${escapeHtml(tel)}">${escapeHtml(r.phone)}</a></li>` : '',
+    telTexte ? `<li>${STAFF_TERRAIN_PHONE_ICON}${tel ? `<a href="tel:${escapeHtml(tel)}">${escapeHtml(telTexte)}</a>` : `<span class="fx-tel-texte">${escapeHtml(telTexte)}</span>`}</li>` : '',
     r.email ? `<li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg><a href="mailto:${escapeHtml(r.email)}">${escapeHtml(r.email)}</a></li>` : '',
   ].join('');
-  const manque = !r.phone && !r.email ? 'Ni téléphone ni e-mail' : !r.phone ? 'Pas de téléphone' : !r.email ? 'Pas d’e-mail' : '';
+  const manque = !telTexte && !r.email ? 'Ni téléphone ni e-mail' : !telTexte ? 'Pas de téléphone' : !r.email ? 'Pas d’e-mail' : '';
   return `<section class="fx-bloc fx-client fz-carte" aria-label="Client">
       <h4 class="fx-titre">Client</h4>
       ${contacts ? `<ul class="fx-contact">${contacts}</ul>` : ''}
-      ${manque ? `<p class="fx-vide"><span>${manque}</span>${!r.phone && r.status !== 'cancelled' && ficheDroits(r).modifier ? `<button type="button" class="fz-bouton fz-ajouter-contact" data-pl-focus="fiche.contact.ajouter" onclick="modifierDepuisFiche('telephone', event)">Ajouter</button>` : ''}</p>` : ''}
+      ${manque ? `<p class="fx-vide"><span>${manque}</span>${!telTexte && r.status !== 'cancelled' && ficheDroits(r).modifier ? `<button type="button" class="fz-bouton fz-ajouter-contact" data-pl-focus="fiche.contact.ajouter" onclick="modifierDepuisFiche('telephone', event)">Ajouter</button>` : ''}</p>` : ''}
       ${valide || origine !== 'Créée' ? `<p class="fx-origine">${escapeHtml(origine)}${creee ? ` le ${escapeHtml(creee)}` : ''}.</p>` : ''}
     </section>`;
 }
@@ -31608,7 +31901,22 @@ function additionDuGroupe(r) {
     // son prix, « 26 € × 6 joueurs », et chaque activite ajoutee le sien, comme le serveur les a
     // ecrits. Une formule adaptee « au même prix » se lit comme avant.
     const ajouts = ajoutsDeLaFormuleAdaptee(r, base);
-    if (ajouts) {
+    // LES ACTIVITES EN PLUS D UNE FORMULE TELLE QUELLE (2026-11-22, lib/formule-en-plus.js) : la formule a son
+    // prix, « 26 € × 6 joueurs », et chaque activite en plus le sien, a son heure, comme le serveur les a ecrits.
+    const enPlus = !ajouts && r.opsPlan && r.opsPlan.enPlus && Array.isArray(r.opsPlan.enPlus.items) && r.opsPlan.enPlus.items.length ? r.opsPlan.enPlus : null;
+    if (enPlus) {
+      const prixFormule = Math.max(0, Math.round((base - (Number(enPlus.prix) || 0)) * 100) / 100);
+      const carte = formule && formule.price && typeof formule.price === 'object' ? formule.price : { type: formule && formule.type, value: formule && formule.price };
+      const parJoueur = Number(carte.value) || 0;
+      const detailFormule = carte.type !== 'per_lane' && parJoueur > 0 && joueurs > 0 && Math.abs(parJoueur * joueurs - prixFormule) < 0.5
+        ? `${formatMoneyCentimes(parJoueur)} × ${joueurs} joueur${joueurs > 1 ? 's' : ''}` : '';
+      lignes.push({ nom, detail: detailFormule, montant: formatMoneyCentimes(prixFormule) });
+      enPlus.items.forEach(item => lignes.push({
+        nom: nomActivite(item),
+        detail: [item.heure ? `en plus, à ${item.heure}` : 'en plus', item.activityId === 'bowling' && Number(item.laneCount) > 0 ? `${Number(item.laneCount)} piste${Number(item.laneCount) > 1 ? 's' : ''}` : ''].filter(Boolean).join(', '),
+        montant: item.price !== null && item.price !== undefined && Number.isFinite(Number(item.price)) ? formatMoneyCentimes(item.price) : 'au comptoir',
+      }));
+    } else if (ajouts) {
       const prixCarte = formule.price && typeof formule.price === 'object' ? formule.price : { type: formule.type, value: formule.price };
       const parJoueur = Number(prixCarte.value) || 0;
       const detailFormule = prixCarte.type !== 'per_lane' && parJoueur > 0 && joueurs > 0 && Math.abs(parJoueur * joueurs - ajouts.prixFormule) < 0.5
@@ -32829,8 +33137,10 @@ function estimerFormuleEdition(r, e) {
   const comprises = activitesDeLaFormuleEdition(applyReservationFormulaChoice(formule, r));
   const ajoutees = editProgramAChange() ? getEditProgramItems().filter((item) => !comprises.has(String(item.activityId || ''))) : [];
   const ajouts = ajoutees.length ? estimerPrixProgramme(ajoutees, e.pax, e.date || r.date, e.startTime || r.startTime) : null;
-  const total = Math.round((prixFormule + (ajouts ? ajouts.total : 0)) * 100) / 100;
-  return { total, complet: !ajouts || ajouts.complet, utilisable: true, lignes: [...lignes, ...(ajouts ? ajouts.lignes : [])], parPersonne: Math.round(total / pax) };
+  // (ses activites en plus, chacune a son prix du catalogue, sur sa ligne : lib/formule-en-plus.js)
+  const enPlus = enPlusEdition().length ? estimationEnPlusEdition() : null;
+  const total = Math.round((prixFormule + (ajouts ? ajouts.total : 0) + (enPlus ? enPlus.total : 0)) * 100) / 100;
+  return { total, complet: (!ajouts || ajouts.complet) && (!enPlus || enPlus.complet), utilisable: true, lignes: [...lignes, ...(ajouts ? ajouts.lignes : []), ...(enPlus ? enPlus.lignes : [])], parPersonne: Math.round(total / pax) };
 }
 
 // CE QUE LA FORMULE COMPREND (2026-11-20) : ses activites, lues sur sa carte
@@ -32935,8 +33245,9 @@ function editionChangeLePrix() {
   const e = state.editState;
   const r = state.selectedRes;
   if (!e || !r) return false;
-  // Une autre formule, un autre tarif (un acces illimite redevenu un programme normal aussi).
-  if (formuleChangeeEdition() || poseEditionChange() || e.versProgrammeNormal) return true;
+  // Une autre formule, un autre tarif (un acces illimite redevenu un programme normal aussi), et une activite en
+  // plus retiree ou changee.
+  if (formuleChangeeEdition() || poseEditionChange() || e.versProgrammeNormal || enPlusEditionChange()) return true;
   if (r.formuleId && editProgramAChange() && Number(e.pax) === Number(r.pax)) {
     const sansEffectif = value => JSON.stringify(JSON.parse(value), (key, entry) => key === 'participants' ? undefined : entry);
     if (sansEffectif(JSON.stringify(e.programmeEdite)) === sansEffectif(e.programmeEditeInitial)) return false;
@@ -33543,7 +33854,7 @@ function sortirDeLIllimiteEdition() {
     delete e.programmeEdite;
     delete e.programmeEditeInitial;
     ensureEditProgram(r);
-    e.lanesStr = (origine.lanes || []).join(', ');
+    e.lanesStr = pistesDeLaFormuleSeule(origine).join(', ');
     renderPos();
     return;
   }
@@ -33670,7 +33981,7 @@ function changerFormuleEdition(id) {
   ensureEditProgram(dossierPourFormule(r));
   // Au retour, les pistes du dossier telles qu a l ouverture ; une autre
   // formule recoit celles qu il lui faut (aucune sans bowling).
-  if (retour) e.lanesStr = (origine.lanes || []).join(', ');
+  if (retour) e.lanesStr = pistesDeLaFormuleSeule(origine).join(', ');
   else syncEditLaneAssignment();
   renderPos();
 }
@@ -33680,7 +33991,8 @@ function changerFormuleEdition(id) {
 function heuresDuProgrammeEnregistre(r) {
   const heures = new Map();
   getGroupeProgramme(r).forEach(etape => {
-    if (!etape.activityId) return;
+    // (une activite en plus d une formule a sa rangee a elle, rangeeEnPlusEditionHtml : jamais une partie de la formule)
+    if (!etape.activityId || etape.enPlus) return;
     heures.set(etape.activityId, [...(heures.get(etape.activityId) || []), etape]);
   });
   return heures;
@@ -33871,6 +34183,372 @@ function setEditArene(valeur) {
 // ou l heure de ses parties. Les activites qu on peut ajouter sont des
 // boutons sous la liste, plus un pli a ouvrir. Les permissions et les setters
 // metier restent les memes.
+// ---------------------------------------------------------------------------
+// LES ACTIVITES EN PLUS DANS MODIFIER (2026-11-22, suite : « Modifier doit lister tous les ajouts en plus, pas
+// seulement un bowling posé sur la ligne de la formule. Un laser en plus, une petite activité en plus : chacun a
+// sa propre ligne, avec son heure, ses joueurs et Retirer »). Chaque activite en plus d une formule prise telle
+// quelle (lib/formule-en-plus.js) a sa rangee au Programme, a son heure, parmi celles de la formule. Elle se
+// regle comme dans Reserver (rvEnPlus) : son heure, ses joueurs, la duree du bowling ou les parties du laser,
+// « Retirer ». « Enregistrer » envoie la liste voulue (enPlus) : le serveur la juge avec la formule, par le meme
+// moteur que la creation, a son prix du catalogue, sans replanifier la formule quand seules elles changent
+// (api/staff-reservations.js, calculerLaModification). Le verdict avant le clic dit celle qui ne tient pas, a sa
+// rangee. Adapter la formule ici les y fait entrer, chacune a son heure.
+// ---------------------------------------------------------------------------
+let heureEnPlusOuverteEdition = '';
+
+// Les activites en plus d un dossier, dans la forme de Reserver : { id, variante, heure, joueurs } (joueurs null =
+// tout le groupe), l heure lue sur le plan (un glisser au planning compris).
+function enPlusDuDossierEdition(r) {
+  const plan = r && r.opsPlan;
+  const items = plan && plan.enPlus && Array.isArray(plan.enPlus.items) ? plan.enPlus.items : [];
+  if (!items.length || String(r.type || '') !== 'formule') return [];
+  const blocs = [...(Array.isArray(plan.resourceBlocks) ? plan.resourceBlocks : []), ...(Array.isArray(plan.timeline) ? plan.timeline : [])]
+    .filter((bloc) => bloc && bloc.enPlus && bloc.flexible !== true);
+  const pax = Math.max(1, Math.trunc(Number(r.pax) || 1));
+  return items.map((item) => {
+    const id = String((item && item.activityId) || '');
+    const departs = blocs.filter((bloc) => String(bloc.activityId || '') === id).map((bloc) => String(bloc.startTime || '').slice(0, 5)).filter((h) => /^\d{2}:\d{2}$/.test(h)).sort();
+    const joueurs = Math.trunc(Number(item.participants) || pax);
+    return {
+      id,
+      variante: id === 'bowling' ? Number(item.duration) || 1 : id === 'laser_game' ? Math.max(1, Math.trunc(Number(item.games) || 1)) : null,
+      heure: departs[0] || (/^\d{2}:\d{2}$/.test(String(item.heure || '')) ? String(item.heure) : ''),
+      joueurs: joueurs < pax ? joueurs : null,
+    };
+  }).filter((x) => x.id);
+}
+
+function enPlusEdition() {
+  const e = state.editState;
+  const r = state.selectedRes;
+  if (!e || !r) return [];
+  if (!Array.isArray(e.enPlusEdite)) {
+    e.enPlusEdite = enPlusDuDossierEdition(r);
+    e.enPlusEditeInitial = JSON.stringify(e.enPlusEdite);
+    heureEnPlusOuverteEdition = '';
+  }
+  return e.enPlusEdite;
+}
+
+function enPlusEditionChange() {
+  const e = state.editState;
+  return Boolean(e && Array.isArray(e.enPlusEdite) && typeof e.enPlusEditeInitial === 'string' && JSON.stringify(e.enPlusEdite) !== e.enPlusEditeInitial);
+}
+
+function enPlusEditeDe(id) {
+  return enPlusEdition().find((x) => x.id === id) || null;
+}
+
+function joueursEnPlusEdition(x) {
+  const pax = Math.max(1, Math.trunc(Number(state.editState && state.editState.pax) || 1));
+  return Number(x && x.joueurs) >= 1 ? Math.min(pax, Math.trunc(Number(x.joueurs))) : pax;
+}
+
+// Ce que « Enregistrer » envoie : la liste voulue, dans la forme de la creation (lib/formule-en-plus.js lireEnPlus).
+function enPlusEnvoyesEdition() {
+  const pax = Math.max(1, Math.trunc(Number(state.editState && state.editState.pax) || 1));
+  return enPlusEdition().map((x) => ({
+    activityId: x.id,
+    heure: x.heure || '',
+    ...(x.id === 'bowling' ? { duration: Number(x.variante) || 1 } : {}),
+    ...(x.id === 'laser_game' ? { games: Math.max(1, Math.trunc(Number(x.variante) || 1)) } : {}),
+    ...(Number(x.joueurs) >= 1 && Number(x.joueurs) < pax ? { participants: Math.trunc(Number(x.joueurs)) } : {}),
+  }));
+}
+
+function changerEnPlusEdition(id, changer) {
+  const e = state.editState;
+  if (!e || !enPlusEditeDe(id)) return;
+  e.enPlusEdite = enPlusEdition().map((x) => (x.id === id ? { ...x, ...changer(x) } : x));
+  if (state.editError) setEditError('');
+}
+
+function retirerEnPlusEdition(id) {
+  const e = state.editState;
+  if (!e || !enPlusEditeDe(id)) return;
+  e.enPlusEdite = enPlusEdition().filter((x) => x.id !== id);
+  if (heureEnPlusOuverteEdition === id) heureEnPlusOuverteEdition = '';
+  if (state.editError) setEditError('');
+  renderPos();
+}
+
+function setEnPlusJoueursEdition(id, nombre) {
+  const e = state.editState;
+  if (!e) return;
+  const bornes = activityParticipantsBounds(id, e.pax);
+  const joueurs = Math.min(bornes.max, Math.max(bornes.min, Math.trunc(Number(nombre) || bornes.min)));
+  changerEnPlusEdition(id, () => ({ joueurs: joueurs >= Math.max(1, Math.trunc(Number(e.pax) || 1)) ? null : joueurs }));
+  renderPos();
+}
+
+function setEnPlusVarianteEdition(id, valeur) {
+  const v = Number(valeur);
+  if (!(v > 0)) return;
+  changerEnPlusEdition(id, () => ({ variante: id === 'laser_game' ? Math.max(1, Math.trunc(v)) : v }));
+  renderPos();
+}
+
+// Toucher l heure ouvre son champ (et le referme au second toucher), comme les autres heures de Modifier.
+function ouvrirHeureEnPlusEdition(id) {
+  if (!state.editState || !enPlusEditeDe(id)) return;
+  heureEnPlusOuverteEdition = heureEnPlusOuverteEdition === id ? '' : String(id);
+  renderPos();
+  const champ = heureEnPlusOuverteEdition ? Array.from(document.querySelectorAll('#posOverlay [data-en-plus-champ]')).find((n) => n.getAttribute('data-en-plus-champ') === id) : null;
+  if (champ) champ.focus();
+}
+
+// La frappe : l heure se lit a gauche et dans la barre du bas, sans re-rendu, et le serveur la juge.
+function poserHeureEnPlusEdition(id, valeur) {
+  if (!Number.isFinite(minutesHeureEdition(valeur))) return;
+  changerEnPlusEdition(id, () => ({ heure: String(valeur) }));
+  peindreRangeesEnPlusEdition();
+  majModifsEdition();
+}
+
+// « Libre » : une activite qui n est ni le bowling ni le laser se joue librement pendant la visite.
+function rendreLibreEnPlusEdition(id) {
+  if (id === 'bowling' || id === 'laser_game') return;
+  changerEnPlusEdition(id, (x) => ({ heure: x.heure ? '' : x.heure }));
+  renderPos();
+}
+
+// « AJOUTER » MET L ACTIVITE EN PLUS DE LA FORMULE (2026-11-22, le coordinateur : « dans Modifier, sur un dossier en
+// formule, Ajouter crée un ajout en plus (sa ligne, son heure, son prix catalogue), comme dans Réserver. Il n adapte
+// plus la formule. Seul Adapter à ce groupe adapte »). Une formule prise telle quelle reste entiere : l activite
+// ajoutee est sa rangee, a son heure et a son prix. « Adapter à ce groupe » (ou une formule deja adaptee, changee
+// ici, dont une activite a deja ete retiree ou reglee, ou un acces illimite qui redevient un programme normal) la
+// prend dans son programme, comme avant.
+function formuleTelleQuelleEdition(r = state.selectedRes) {
+  const e = state.editState;
+  if (!e || !r || !peutAdapterLeProgramme(r)) return false;
+  if (String(r.type || '') !== 'formule' || !r.formuleId || !resolveDisplayFormule(r.formuleId)) return false;
+  if (/\(adapt[ée]e\)/i.test(String(r.label || '')) && Array.isArray(r.program?.items) && r.program.items.length) return false;
+  return !formuleChangeeEdition() && !e.versProgrammeNormal && !editProgramAChange();
+}
+
+function enPlusPossibleEdition(r = state.selectedRes) {
+  return formuleTelleQuelleEdition(r) && !state.editState.adapterLaFormule;
+}
+
+// L heure proposee a une activite en plus ajoutee ici, comme Reserver (rvHeureEnPlusProposee) : la premiere
+// demi-heure apres ce que la formule fait a heure fixe (son bowling, chaque partie de son laser, ses etapes a heure),
+// sans la chevaucher, avant la fermeture ; un acces illimite se joue des l arrivee. Le verdict la juge.
+function heureEnPlusProposeeEdition(id, variante) {
+  const e = state.editState;
+  const r = state.selectedRes;
+  const ecrit = dossierEcritDuVerdict();
+  const plan = ((ecrit || r) && (ecrit || r).opsPlan) || {};
+  const min = (h) => minutesHeureEdition(String(h || '').slice(0, 5));
+  // (sans verdict a jour, le plan du dossier, decale de l arrivee changee ici)
+  const decalage = ecrit ? 0 : (min(e.startTime) - min(r.startTime)) || 0;
+  const plages = [];
+  (Array.isArray(plan.resourceBlocks) ? plan.resourceBlocks : []).forEach((b) => {
+    if (!b || b.enPlus || b.aVolonte || (b.resourceType !== 'bowling_lane' && b.resourceType !== 'laser_arena')) return;
+    const debut = min(b.startTime);
+    if (!Number.isFinite(debut)) return;
+    const fin = b.resourceType === 'laser_arena' ? debut + 25 : min(b.endTime);
+    plages.push({ debut: debut + decalage, fin: (Number.isFinite(fin) && fin > debut ? fin : debut + 60) + decalage });
+  });
+  const illimite = estFormuleIllimitee(resolveDisplayFormule(r.formuleId));
+  if (!illimite) {
+    (Array.isArray(plan.timeline) ? plan.timeline : []).forEach((s) => {
+      if (!s || s.type !== 'activity' || s.enPlus || s.flexible === true || RV_ANCRABLES.includes(s.activityId) || /^service/.test(String(s.activityId || '')) || ['party_table', 'arcade_credit', 'playground'].includes(s.activityId)) return;
+      const debut = min(s.startTime);
+      const fin = min(s.endTime);
+      if (Number.isFinite(debut) && Number.isFinite(fin) && fin > debut) plages.push({ debut: debut + decalage, fin: fin + decalage });
+    });
+  }
+  const arrivee = min(e.startTime || r.startTime);
+  const fin = plages.length ? Math.max(...plages.map((p) => p.fin)) : illimite ? arrivee : arrivee + Math.round((Number(e.totalDuration || r.totalDuration || e.duration || r.duration) || 0) * 60);
+  if (!Number.isFinite(fin)) return '';
+  const duree = id === 'laser_game' ? 30 * (Math.max(1, Number(variante) || 1) - 1) + 25 : Math.round((Number(variante) || 1) * 60);
+  const horaire = typeof getSchedule === 'function' ? getSchedule(e.date || r.date, state.isHolidayMode) : null;
+  const fermeture = horaire && Number.isFinite(Number(horaire.close)) ? Math.round(Number(horaire.close) * 60) : 24 * 60;
+  const enHeure = (t) => `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
+  const premiere = Math.ceil(fin / 30) * 30;
+  for (let t = premiere; t + duree <= fermeture; t += 30) {
+    if (!plages.some((p) => t < p.fin && p.debut < t + duree)) return enHeure(t);
+  }
+  return enHeure(premiere);
+}
+
+// Une activite en plus ajoutee ici : le bowling et le laser a l heure qui suit la formule (une heure, une partie),
+// une autre libre pendant la visite tant qu on ne lui en pose pas.
+function ajouterEnPlusEdition(id) {
+  const e = state.editState;
+  if (!e || !id || !enPlusPossibleEdition() || enPlusEditeDe(id)) return;
+  const ancre = RV_ANCRABLES.includes(id);
+  const variante = ancre ? 1 : null;
+  e.enPlusEdite = [...enPlusEdition(), { id, variante, heure: ancre ? heureEnPlusProposeeEdition(id, variante) : '', joueurs: null }];
+  heureEnPlusOuverteEdition = '';
+  if (state.editError) setEditError('');
+  renderPos();
+}
+
+// « Ajouter » d une activite : dans l acces illimite qui la comprend, en plus d une formule prise telle quelle, sinon
+// dans le programme (une visite, une formule adaptee).
+function ajouterActiviteEdition(id) {
+  const acces = typeof choixIllimiteEdition === 'function' && choixIllimiteEdition() ? resolveDisplayFormule(state.editState.formuleId) : null;
+  if (acces && activitesDeLIllimite(acces).includes(String(id))) { basculerIllimiteEdition(id); return; }
+  if (enPlusPossibleEdition()) { ajouterEnPlusEdition(id); return; }
+  toggleEditActivity(id);
+}
+
+// « Adapter à ce groupe » : ce qu on ajoute ensuite entre dans la formule, chacune a son prix ; un second toucher
+// la rend telle quelle, tant que rien n y est entre.
+function basculerAdapterEdition() {
+  const e = state.editState;
+  if (!e || !formuleTelleQuelleEdition()) return;
+  e.adapterLaFormule = !e.adapterLaFormule;
+  renderPos();
+}
+
+function adapterEditionHtml(r) {
+  const e = state.editState;
+  if (!e || !formuleTelleQuelleEdition(r) || estFormuleIllimitee(resolveDisplayFormule(r.formuleId))) return '';
+  const on = Boolean(e.adapterLaFormule);
+  return `<div class="fm-adapter" id="editAdapter"><button type="button" class="qb-dur-btn dossier-option${on ? ' active' : ''}" aria-pressed="${on}" aria-describedby="editAdapterAide" onclick="basculerAdapterEdition()">Adapter à ce groupe</button><span class="fm-adapter-aide" id="editAdapterAide">${on ? 'Les activités ajoutées entrent dans la formule, chacune à son prix.' : '« Ajouter » met l’activité en plus de la formule, à son prix.'}</span></div>`;
+}
+
+// L heure qu une activite en plus aura : celle du verdict a jour (le dossier que le serveur ecrirait), sinon la
+// sienne.
+function heureEnPlusAfficheeEdition(x) {
+  const ecrit = dossierEcritDuVerdict();
+  if (ecrit) {
+    const lue = enPlusDuDossierEdition(ecrit).find((y) => y.id === x.id);
+    if (lue) return lue.heure;
+  }
+  return x.heure || '';
+}
+
+// Celle qui ne tient pas, selon le verdict : sa phrase (rien pendant le calcul).
+function refusEnPlusEdition(id) {
+  const v = verdictEdition();
+  if (!state.editState || v.pour !== state.editState || v.enCours || !v.resultat || !v.resultat.enPlusRefuse) return '';
+  return v.resultat.enPlusRefuse.id === id ? v.resultat.enPlusRefuse.phrase : '';
+}
+
+// Son prix : celui du dossier tant qu elle n a pas change, sinon le catalogue, comme le serveur le chiffrera.
+function prixEnPlusEdition(x) {
+  const e = state.editState;
+  const r = state.selectedRes;
+  if (!e || !r) return null;
+  // (le verdict a jour dit le prix que le serveur ecrira)
+  const verdict = dossierEcritDuVerdict();
+  const juge = verdict && verdict.opsPlan && verdict.opsPlan.enPlus && Array.isArray(verdict.opsPlan.enPlus.items) ? verdict.opsPlan.enPlus.items.find((item) => item && item.activityId === x.id) : null;
+  if (juge) return juge.priceKnown === true && Number.isFinite(Number(juge.price)) ? Number(juge.price) : null;
+  const ecrit = r.opsPlan && r.opsPlan.enPlus && Array.isArray(r.opsPlan.enPlus.items) ? r.opsPlan.enPlus.items.find((item) => item && item.activityId === x.id) : null;
+  const depart = JSON.parse(e.enPlusEditeInitial || '[]').find((y) => y.id === x.id);
+  const memes = depart && ecrit && Number(e.pax) === Number(r.pax) && (depart.joueurs || null) === (x.joueurs || null) && Number(depart.variante || 0) === Number(x.variante || 0);
+  if (memes) return ecrit.priceKnown === true && Number.isFinite(Number(ecrit.price)) ? Number(ecrit.price) : null;
+  const item = { activityId: x.id, pax: Math.max(1, Number(e.pax) || 1), participants: joueursEnPlusEdition(x), ...(x.id === 'bowling' ? { duration: Number(x.variante) || 1 } : {}), ...(x.id === 'laser_game' ? { games: Math.max(1, Number(x.variante) || 1) } : {}) };
+  const estime = estimerPrixProgramme([item], e.pax, e.date || r.date, x.heure || e.startTime || r.startTime);
+  return estime && estime.lignes[0] && estime.lignes[0].montant !== null ? Number(estime.lignes[0].montant) : null;
+}
+
+// Les activites en plus dans l estimation de Modifier : une ligne chacune, a son prix.
+function estimationEnPlusEdition() {
+  const lignes = enPlusEdition().map((x) => {
+    const montant = prixEnPlusEdition(x);
+    return { nom: `${nomActiviteHeureEdition(x.id)} en plus`, detail: x.heure ? `à ${x.heure}` : 'libre', montant };
+  });
+  return { lignes, total: Math.round(lignes.reduce((t, l) => t + (Number(l.montant) || 0), 0) * 100) / 100, complet: lignes.every((l) => l.montant !== null) };
+}
+
+// « Retrait : Laser Game en plus », « Laser Game en plus 18:00 → 18:30 », dans la barre du bas.
+function modifsEnPlusEdition() {
+  const e = state.editState;
+  if (!e || !enPlusEditionChange()) return [];
+  const avant = JSON.parse(e.enPlusEditeInitial || '[]');
+  const apres = enPlusEdition();
+  const nom = (id) => `${nomActiviteHeureEdition(id)} en plus`;
+  const lignes = [];
+  avant.filter((x) => !apres.some((y) => y.id === x.id)).forEach((x) => lignes.push(`Retrait : ${nom(x.id)}`));
+  apres.forEach((y) => {
+    const x = avant.find((z) => z.id === y.id);
+    if (!x) { lignes.push(`Ajout : ${nom(y.id)}${y.heure ? ` à ${y.heure}` : ''}`); return; }
+    if ((x.heure || '') !== (y.heure || '')) lignes.push(`${nom(y.id)} ${x.heure || 'Libre'} → ${y.heure || 'Libre'}`);
+    if ((x.joueurs || null) !== (y.joueurs || null)) lignes.push(`${nom(y.id)} : ${joueursEnPlusEdition(y)} joueurs`);
+    if (y.variante !== null && Number(x.variante) !== Number(y.variante)) lignes.push(y.id === 'bowling' ? `${nom(y.id)} ${formatDurationLabel(Number(y.variante))}` : `${nom(y.id)} : ${y.variante} partie${Number(y.variante) > 1 ? 's' : ''}`);
+  });
+  return lignes;
+}
+
+// « en plus de la formule · 60 € » ; « entre dans la formule adaptée » quand Modifier l adapte, « entre dans le programme » quand il quitte l accès illimité.
+function detailEnPlusEdition(x) {
+  const e = state.editState;
+  const prix = prixEnPlusEdition(x);
+  const repli = editProgramAChange() || Boolean(e && e.versProgrammeNormal);
+  return [repli ? (e && e.versProgrammeNormal ? 'entre dans le programme' : 'entre dans la formule adaptée') : 'en plus de la formule', !montantsMasques() && prix !== null ? formatMoneyCentimes(prix) : ''].filter(Boolean).join(' · ');
+}
+
+// La rangee d une activite en plus : son heure a gauche, son nom, « en plus de la formule » et son prix, « Retirer »,
+// puis son heure a taper, ses joueurs et sa duree ou ses parties.
+function rangeeEnPlusEditionHtml(r, x, rang) {
+  const e = state.editState;
+  const nom = nomActiviteHeureEdition(x.id);
+  const ancre = x.id === 'bowling' || x.id === 'laser_game';
+  const heure = heureEnPlusAfficheeEdition(x);
+  const depart = JSON.parse(e.enPlusEditeInitial || '[]').find((y) => y.id === x.id);
+  const changee = !depart || (depart.heure || '') !== (heure || '');
+  const ouverte = heureEnPlusOuverteEdition === x.id;
+  const refus = refusEnPlusEdition(x.id);
+  const detail = detailEnPlusEdition(x);
+  const sid = escapeHtml(x.id);
+  const touche = `<button type="button" class="fm-heure fm-heure-touche${changee && heure ? ' is-changee' : ''}${heure ? '' : ' is-vide'}${ouverte ? ' is-ouverte' : ''}" data-en-plus-heure="${sid}" aria-expanded="${ouverte ? 'true' : 'false'}" aria-label="${escapeHtml(`Changer l’heure de ${nom} en plus, ${heure || 'libre'}`)}" onclick="ouvrirHeureEnPlusEdition(this.dataset.enPlusHeure)">${escapeHtml(heure || 'Libre')}</button>`;
+  const champId = `editEnPlusHeure-${x.id.replace(/[^a-z0-9]/gi, '-')}`;
+  const libre = !ancre ? `<button type="button" class="fm-heure-libre${x.heure ? '' : ' is-on'}" aria-pressed="${x.heure ? 'false' : 'true'}" data-en-plus-libre="${sid}" onclick="rendreLibreEnPlusEdition(this.dataset.enPlusLibre)">Libre</button>` : '';
+  const champ = ouverte ? `<div class="fm-champ fm-heure-champ${refus ? ' is-refus' : ''}${libre ? ' a-libre' : ''}" data-en-plus-zone="${sid}">
+            <label class="lbl" for="${champId}">Heure</label>
+            <div class="fm-heure-saisie"><input id="${champId}" class="input" type="time" step="${ancre ? 1800 : 300}" value="${escapeHtml(x.heure || '')}" data-en-plus-champ="${sid}" data-pl-focus="fiche.edit.en-plus.${sid}"${refus ? ' aria-invalid="true"' : ''} aria-describedby="${champId}-refus" oninput="poserHeureEnPlusEdition(this.dataset.enPlusChamp, this.value)">${libre}</div>
+          </div>` : '';
+  const phrase = `<div class="fm-heure-refus" id="${champId}-refus" data-en-plus-refus="${sid}" aria-live="polite"${refus ? '' : ' hidden'}>${refus ? `<p class="fm-heure-phrase">${escapeHtml(refus)}</p>` : ''}</div>`;
+  const bornes = activityParticipantsBounds(x.id, e.pax);
+  const joueurs = joueursEnPlusEdition(x);
+  const moins = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg>';
+  const plus = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg>';
+  const compteur = `<div class="qb-visit-options qb-visit-compteur dossier-activity-count" role="group" aria-label="${escapeHtml(`${nom} en plus : joueurs`)}"><span class="qb-opt-legend">Joueurs</span><span class="staff-stepper"><button type="button" class="qb-step-btn staff-stepper-btn" aria-label="${escapeHtml(`${nom} en plus : retirer un joueur`)}" data-en-plus="${sid}" ${joueurs <= bornes.min ? 'disabled' : ''} onclick="setEnPlusJoueursEdition(this.dataset.enPlus, ${joueurs - 1})">${moins}</button><span class="qb-step-valeur staff-stepper-value" data-en-plus-joueurs="${sid}">${joueurs}</span><button type="button" class="qb-step-btn staff-stepper-btn" aria-label="${escapeHtml(`${nom} en plus : ajouter un joueur`)}" data-en-plus="${sid}" ${joueurs >= bornes.max ? 'disabled' : ''} onclick="setEnPlusJoueursEdition(this.dataset.enPlus, ${joueurs + 1})">${plus}</button></span>${joueurs < Math.max(1, Math.trunc(Number(e.pax) || 1)) ? `<span class="dossier-participants-explanation">${joueurs} joueur${joueurs > 1 ? 's' : ''} sur ${Math.trunc(Number(e.pax) || 1)} participants</span>` : ''}</div>`;
+  const choix = (mot, options) => `<div class="dossier-activity-setting"><span class="lbl">${escapeHtml(mot)}</span><div class="dossier-options" role="group" aria-label="${escapeHtml(`${mot}, ${nom} en plus`)}">${options.map(([valeur, texte]) => `<button type="button" class="qb-dur-btn dossier-option ${Number(x.variante) === Number(valeur) ? 'active' : ''}" aria-pressed="${Number(x.variante) === Number(valeur)}" data-en-plus="${sid}" data-valeur="${escapeHtml(String(valeur))}" onclick="setEnPlusVarianteEdition(this.dataset.enPlus, this.dataset.valeur)">${escapeHtml(texte)}</button>`).join('')}</div></div>`;
+  const variante = x.id === 'bowling' ? choix('Durée', DURATION_OPTIONS.map((o) => [o.value, o.label])) : x.id === 'laser_game' ? choix('Parties', [1, 2, 3].map((n) => [n, `${n} partie${n > 1 ? 's' : ''}`])) : '';
+  const minutes = minutesHeureEdition(heure);
+  const html = `<section class="fm-act dossier-activity is-on is-en-plus${refus ? ' is-refus' : ''}" data-edit-en-plus="${sid}" aria-label="${escapeHtml(`${nom}, en plus de la formule`)}">
+      <div class="fm-act-heure"><span class="visually-hidden">Heure prévue : </span><span class="fm-heures">${touche}</span>${ficheVisuelActivite(r, { activityId: x.id, nom })}</div>
+      <div class="fm-act-corps">
+        <div class="fm-act-tete"><h5>${escapeHtml(nom)}</h5><span class="fm-act-detail" data-en-plus-detail="${sid}">${escapeHtml(detail)}</span><button type="button" class="dossier-remove-activity fm-retirer" aria-label="${escapeHtml(`Retirer ${nom}, en plus de la formule`)}" data-en-plus="${sid}" onclick="retirerEnPlusEdition(this.dataset.enPlus)">Retirer</button></div>
+        <div class="fm-act-reglages">${champ}${phrase}${compteur}${variante}</div>
+      </div>
+    </section>`;
+  return { html, ordre: Number.isFinite(minutes) ? minutes : Infinity, rang: 1000 + rang };
+}
+
+// L heure et la phrase de chaque activite en plus, en place (la frappe et le verdict ne redessinent pas la fiche).
+function peindreRangeesEnPlusEdition() {
+  document.querySelectorAll('#posOverlay .fm-act[data-edit-en-plus]').forEach((rangee) => {
+    const id = rangee.getAttribute('data-edit-en-plus');
+    const x = enPlusEditeDe(id);
+    if (!x) return;
+    const heure = heureEnPlusAfficheeEdition(x);
+    const depart = JSON.parse((state.editState && state.editState.enPlusEditeInitial) || '[]').find((y) => y.id === id);
+    const bouton = rangee.querySelector('[data-en-plus-heure]');
+    if (bouton) {
+      bouton.textContent = heure || 'Libre';
+      bouton.classList.toggle('is-vide', !heure);
+      bouton.classList.toggle('is-changee', Boolean(heure) && (!depart || (depart.heure || '') !== heure));
+    }
+    const detail = rangee.querySelector('[data-en-plus-detail]');
+    if (detail) detail.textContent = detailEnPlusEdition(x);
+    const refus = refusEnPlusEdition(id);
+    rangee.classList.toggle('is-refus', Boolean(refus));
+    const zone = rangee.querySelector('[data-en-plus-refus]');
+    if (zone) {
+      zone.innerHTML = refus ? `<p class="fm-heure-phrase">${escapeHtml(refus)}</p>` : '';
+      zone.hidden = !refus;
+    }
+    const champ = rangee.querySelector('[data-en-plus-champ]');
+    if (champ) { if (refus) champ.setAttribute('aria-invalid', 'true'); else champ.removeAttribute('aria-invalid'); }
+  });
+}
+
 function renderEditFormuleBloc(r, formule, lignes, controls = {}) {
   if (!peutAdapterLeProgramme(r)) {
     const items = Array.isArray(r.program?.items) ? r.program.items : [];
@@ -33878,6 +34556,7 @@ function renderEditFormuleBloc(r, formule, lignes, controls = {}) {
       ${peutAdapterFormule() && typeof niveauStaff === 'function' && niveauStaff('formule') !== 'oui' ? droitManquantHtml('formule', ' pour changer le programme', 'fmDroitFormule') : ''}
       ${formule?.name ? `<p class="dossier-formula-origin">Formule <strong>${escapeHtml(formule.name)}</strong></p>` : ''}
       ${items.length ? `<ul class="dossier-program-summary">${items.map(item => `<li><span>${escapeHtml(nomActivite(item))}</span><strong>${participantsLigneProgramme(item, r.pax)} ${getCenterActivity(item.activityId) && activityCountsChildren(getCenterActivity(item.activityId)) ? 'enfants' : 'joueurs'}</strong></li>`).join('')}</ul>` : lignes.length ? `<ul class="edit-formule-list">${lignes.map(ligne => `<li>${escapeHtml(String(ligne))}</li>`).join('')}</ul>` : `<p class="field-hint">${escapeHtml(getReservationLabel(r))} · ${Number(r.pax) || 0} participants</p>`}
+      ${enPlusEdition().length ? `<ul class="dossier-program-summary" data-en-plus-lecture>${enPlusEdition().map(x => `<li><span>${escapeHtml(`${nomActiviteHeureEdition(x.id)} en plus${x.heure ? `, à ${x.heure}` : ''}`)}</span><strong>${joueursEnPlusEdition(x)} joueurs</strong></li>`).join('')}</ul>` : ''}
     </div>`;
   }
   const programme = ensureEditProgram(r);
@@ -33887,7 +34566,9 @@ function renderEditFormuleBloc(r, formule, lignes, controls = {}) {
   // affichee : on ne fait pas disparaitre en silence ce que le client a paye.
   const supplement = Object.keys(programme.others || {})
     .filter((id) => !connus.has(id))
-    .map((id) => ({ id, label: (typeof getCenterActivity === 'function' && getCenterActivity(id)?.name) || ACTIVITY_LABELS[id] || (typeof FORMULA_ACTIVITY_LABELS !== 'undefined' && FORMULA_ACTIVITY_LABELS[id]) || id }));
+    .map((id) => ({ id, label: (typeof getCenterActivity === 'function' && getCenterActivity(id)?.name) || ACTIVITY_LABELS[id] || (typeof FORMULA_ACTIVITY_LABELS !== 'undefined' && FORMULA_ACTIVITY_LABELS[id]) || id }))
+    // (chaque activite en plus d une formule a sa rangee a elle, a son heure parmi celles de la formule)
+    .concat(enPlusEdition().map((x) => ({ id: x.id, label: nomActiviteHeureEdition(x.id), enPlus: x })));
   // Une formule changee n a pas encore d heures : le serveur la place a
   // l enregistrement, celles de l ancienne ne disent rien d elle.
   const formuleChangee = formuleChangeeEdition();
@@ -33901,13 +34582,17 @@ function renderEditFormuleBloc(r, formule, lignes, controls = {}) {
   const ajouts = [];
   const volonte = gardeAVolonteEdition(r);
   const rangees = [...choix, ...supplement].map((choice, rang) => {
+    if (choice.enPlus) return rangeeEnPlusEditionHtml(r, choice.enPlus, rang);
     const estBowling = choice.id === 'bowling';
     const estLaser = choice.id === 'laser_game';
     const actif = estBowling ? !!programme.bowling.on : estLaser ? !!programme.laser_game.on : !!(programme.others || {})[choice.id];
     if (!actif) {
-      ajouts.push(`<button type="button" class="fm-ajout" onclick="toggleEditActivity('${escapeJsString(choice.id)}')">${plus}${escapeHtml(choice.label)}</button>`);
+      // (une activite deja en plus de la formule a sa rangee : elle ne s ajoute pas une deuxieme fois)
+      if (!enPlusEditeDe(choice.id)) ajouts.push(`<button type="button" class="fm-ajout" onclick="ajouterActiviteEdition('${escapeJsString(choice.id)}')">${plus}${escapeHtml(choice.label)}</button>`);
       return '';
     }
+    // (le bowling ou le laser que la formule a deja se reprend en plus, a l heure qui la suit, comme dans Reserver)
+    if (RV_ANCRABLES.includes(choice.id) && enPlusPossibleEdition(r) && !enPlusEditeDe(choice.id)) ajouts.push(`<button type="button" class="fm-ajout" data-ajout-en-plus="${escapeHtml(choice.id)}" onclick="ajouterEnPlusEdition('${escapeJsString(choice.id)}')">${plus}${escapeHtml(choice.label)} en plus</button>`);
     let options = '';
     if ((estBowling || estLaser) && volonte && volonte[choice.id]) {
       options = `<p class="fm-act-volonte" data-a-volonte="${escapeHtml(choice.id)}">${escapeHtml(volonte[choice.id])}</p>`;
@@ -33924,7 +34609,7 @@ function renderEditFormuleBloc(r, formule, lignes, controls = {}) {
       if (Number(programme.laser_game.games) > 1) options += renderDossierJoueursDesParties(programme.laser_game, state.editState.pax);
       // LES VAGUES DU LASER, EN UNE LIGNE (2026-11-20) : elles suivent le groupe en place
       // (peindreVaguesLaserEdition), sans carte ni bouton.
-      options += `<p class="fm-act-vagues" data-laser-vagues>${escapeHtml(vaguesLaserEnMots(joueursLaserEdition(state.editState, r)))}</p>`;
+      options += `<p class="fm-act-vagues" data-laser-vagues>${escapeHtml(vaguesLaserEditionEnMots(state.editState, r))}</p>`;
     }
     const item = !estBowling && !estLaser && choice.id !== 'arcade_time' ? getEditProgramItems().find(line => line.activityId === choice.id) : null;
     // Readonly presentation retains stored units/day metadata that is not edited here.
@@ -33969,7 +34654,7 @@ function renderEditFormuleBloc(r, formule, lignes, controls = {}) {
   return `${choixAcces}${versNormal}${renderEditFormuleChoix() || (formule?.name && !versNormal && !estFormuleIllimitee(formule) ? `<p class="dossier-formula-origin">Formule <strong>${escapeHtml(formule.name)}</strong> · les changements ne valent que pour cette visite.</p>` : '')}
     <p class="fm-replan" role="status">Les heures seront recalculées à l’enregistrement.</p>
     <div class="fm-acts">${rangees || sansActivite}</div>
-    ${ajouts.length ? `<div class="fm-ajouts" role="group" aria-labelledby="fmAjoutsTitre"><span class="fm-ajouts-titre" id="fmAjoutsTitre">Ajouter</span>${ajouts.join('')}</div>` : ''}`;
+    ${ajouts.length ? `<div class="fm-ajouts" role="group" aria-labelledby="fmAjoutsTitre"><span class="fm-ajouts-titre" id="fmAjoutsTitre">Ajouter</span>${ajouts.join('')}</div>` : ''}${adapterEditionHtml(r)}`;
 }
 
 // D OU VIENT LE MONTANT, EN UNE PHRASE (2026-10-27). Les deux champs disent
@@ -34373,13 +35058,16 @@ function peindreExtrasEdition() {
 }
 
 // Des arcades vendues a tout le groupe suivent le groupe, comme une activite
-// (suivreLeGroupe) ; vendues a une partie, elles gardent leur nombre.
+// (suivreLeGroupe) ; vendues a une partie, elles gardent leur nombre. Comme pour
+// une activite, cela se decide une fois, avant la premiere frappe (2026-11-22) :
+// « 5 » tape en chemin vers 56 ne fait pas suivre des arcades vendues a 5.
 function suivreLeGroupeExtras(valeur, reference) {
   const e = state.editState;
   const groupe = Math.trunc(Number(valeur));
   if (!e || !(groupe > 0)) return;
   const arcades = e.extrasEdites && e.extrasEdites.arcades;
-  if (arcades && Math.trunc(Number(reference)) > 0 && Math.trunc(Number(arcades.joueurs)) === Math.trunc(Number(reference))) arcades.joueurs = groupe;
+  if (arcades && e.arcadesSuiventLeGroupe === undefined && Math.trunc(Number(reference)) > 0 && Math.trunc(Number(reference)) !== groupe) e.arcadesSuiventLeGroupe = Math.trunc(Number(arcades.joueurs)) === Math.trunc(Number(reference));
+  if (arcades && e.arcadesSuiventLeGroupe === true) arcades.joueurs = groupe;
   // Sans programme, suivreLeGroupe ne tient pas la reference : on la tient ici.
   if (!e.programmeEdite) e.groupeSuivi = groupe;
 }
@@ -34476,7 +35164,7 @@ function notesEquipeEditionHtml(r) {
 function refusTelephoneEdition(valeur, avant) {
   const tape = String(valeur || '').trim();
   if (!tape) return String(avant || '').trim() ? 'Le téléphone du client ne peut pas être vidé.' : '';
-  return rvTelephoneValide(tape) ? '' : 'Ce numéro de téléphone n’est pas valide, 8 chiffres au moins.';
+  return rvTelephoneValide(tape) ? '' : (rvRessembleAUnNumero(tape) ? 'Ce numéro de téléphone n’est pas valide, 8 chiffres au moins.' : 'Ce téléphone est trop long, 40 caractères au plus.');
 }
 
 // Sous le champ, une ligne : elle se montre en quittant le champ (ou a l enregistrement), et part des
@@ -34574,10 +35262,11 @@ function resumeModifsEdition() {
   // (« Accès illimité : sans Minigolf, Bowling 1 fois », le choix touche ici)
   modifs.push(...modifsIllimiteEdition());
   if (!formuleChangee && e.duration != null && Number(e.duration) > 0 && Number(e.duration) !== Number(origine.duration)) modifs.push(`Durée ${formatDurationLabel(Number(origine.duration) || 0)} → ${formatDurationLabel(Number(e.duration))}`);
-  const pistesAvant = parseLaneInput((origine.lanes || []).join(','));
+  const pistesAvant = parseLaneInput(pistesDeLaFormuleSeule(origine).join(','));
   const pistesApres = parseLaneInput(e.lanesStr);
   if (pistesApres.length && JSON.stringify(pistesAvant) !== JSON.stringify(pistesApres)) modifs.push(`Pistes ${pistesAvant.length ? joindrePistes(pistesAvant) : 'aucune'} → ${joindrePistes(pistesApres)}`);
   modifs.push(...modifsProgrammeEdition());
+  modifs.push(...modifsEnPlusEdition());
   // (une heure donnee a un bowling que le programme portait sans que le plan le place, le dossier
   // 1953 : « Bowling à 18:30 » ; une activite ajoutee dit deja la sienne dans « Ajout »)
   const auDossier = new Set((Array.isArray(r.program) ? r.program : (r.program && r.program.items) || []).map((item) => item && item.activityId));
@@ -34769,7 +35458,9 @@ function lireVerdictEdition(reponse, envoi) {
   if (reponse.refus) {
     // Un collegue a change le dossier : « Enregistrer » sait rejouer dessus.
     if (reponse.refus.code === 'reservation_modifiee') return null;
-    return { refus: String(reponse.refus.message || 'le serveur n’a pas donné de motif.'), lignes: [], ecrit: null, prixSuivi: false };
+    // (une activite en plus qui ne tient pas se dit aussi a sa rangee, rangeeEnPlusEditionHtml)
+    const enPlus = reponse.refus.enPlus ? { enPlusRefuse: { id: String(reponse.refus.enPlus), phrase: String(reponse.refus.message || '').replace(/\s*Rien n’a changé\.\s*$/, '') } } : {};
+    return { refus: String(reponse.refus.message || 'le serveur n’a pas donné de motif.').replace(/\s*Rien n’a changé\.\s*$/, ''), lignes: [], ecrit: null, prixSuivi: false, ...enPlus };
   }
   const ecrit = reponse.reservation;
   const r = state.selectedRes;
@@ -34778,7 +35469,8 @@ function lireVerdictEdition(reponse, envoi) {
   if (reponse.planNonRefait) lignes.push(`Le planning ne suivra pas : ${String(reponse.planNonRefait).replace(/\.$/, '')}.`);
   else if (ecrit.validationStatus === 'staff_review' && r.validationStatus !== 'staff_review') lignes.push('Le planning ne sait pas placer ce créneau : la réservation passera en « à surveiller ».');
   const voulues = envoi.lanesVoulues.join(', ');
-  const obtenues = (ecrit.lanes || []).join(', ');
+  // (les pistes du bowling de la formule : celles d un bowling en plus sont a lui, a son heure)
+  const obtenues = pistesDeLaFormuleSeule(ecrit).join(', ');
   if (!envoi.jourChange && envoi.requiresLanes && voulues && voulues !== obtenues) {
     lignes.push(obtenues ? `Ce sera piste${(ecrit.lanes || []).length > 1 ? 's' : ''} ${obtenues}, pas ${voulues} : le créneau ne les laisse pas libres.` : 'Aucune piste ne sera attribuée.');
   } else if (!envoi.jourChange && envoi.requiresLanes && obtenues && (ecrit.lanes || []).length < (r.lanes || []).length
@@ -34790,6 +35482,7 @@ function lireVerdictEdition(reponse, envoi) {
   }
   const aPlacer = partiesLaserAPlacer(ecrit) - partiesLaserAPlacer(r);
   if (aPlacer > 0) lignes.push(`${aPlacer} partie${aPlacer > 1 ? 's' : ''} de laser à placer au planning.`);
+  lignes.push(...phrasesPartageLaser(ecrit, r));
   if (r.formuleId && !ecrit.formuleId) lignes.push('La formule devient une visite à la carte.');
   // UN DOSSIER DEJA ENCAISSE DONT LE PRIX CHANGE : la caisse doit le savoir.
   const prix = Number(ecrit.price);
@@ -34905,10 +35598,68 @@ function eclairerPastillesEdition() {
 // Les vagues du laser, en place : le groupe tape ne redessine pas la fiche.
 function peindreVaguesLaserEdition() {
   const ligne = document.querySelector('#posOverlay .fm [data-laser-vagues]');
-  const joueurs = ligne ? joueursLaserEdition(state.editState, state.selectedRes) : null;
-  if (joueurs === null) return;
-  const texte = vaguesLaserEnMots(joueurs);
+  const texte = ligne ? vaguesLaserEditionEnMots(state.editState, state.selectedRes) : '';
+  if (!texte) return;
   if (ligne.textContent !== texte) ligne.textContent = texte;
+}
+
+// LA PARTIE COMMUNE SE LIT (2026-11-22, Libramont, dossier « Radelet » : un groupe « Auto, partagée si
+// besoin » rejoint la partie d un autre groupe, lib/database.js rejoindreLesParties). Les autres groupes
+// du jour dont la partie a le meme depart et la meme fin : la fiche les nomme (« avec Boucquiaux »), et
+// la vague de Modifier compte leurs armes avec celles du groupe (« 1 vague de 11 armes »).
+// ELLE N EST COMMUNE QUE QUAND TOUS TIENNENT (2026-11-22, la regle d Ansar : la partie se partage seulement
+// quand les armes qui restent suffisent, « pas un manque de place »). Le groupe (`joueurs` : le nombre tape
+// dans Modifier, sinon les joueurs de sa partie) et ses partenaires, en une vague sur les armes du centre ;
+// sinon pas de partie commune, ni « avec … » : la ligne dit les vagues du groupe seul (attribution-visible
+// [A7] : 14 puis 24 joueurs au meme depart que les 10 de Sacha, sur 20 armes).
+function partenairesLaser(r, fenetre, joueurs = null) {
+  if (!r || !fenetre || typeof state === 'undefined' || !Array.isArray(state.reservations)) return [];
+  const meme = (a, b) => Math.abs(Number(a) - Number(b)) < 1 / 120;
+  const partenaires = state.reservations
+    .filter(autre => autre && Number(autre.id) !== Number(r.id) && autre.date === r.date && autre.status !== 'cancelled' && !autre.absentAt)
+    .flatMap(autre => getStaffResourceWindows(autre, 'all')
+      .filter(f => f.resourceType === 'laser_arena' && meme(f.start, fenetre.start) && meme(f.end, fenetre.end))
+      .map(f => ({ nom: String(autre.name || '').trim() || 'un autre groupe', joueurs: Number(f.joueursReels ?? f.players) || Number(autre.pax) || 0 })));
+  if (!partenaires.length || typeof getLaserWaveCount !== 'function') return partenaires;
+  const groupe = joueurs !== null ? Number(joueurs) || 0 : Number(fenetre.joueursReels ?? fenetre.players) || Number(r.pax) || 0;
+  return getLaserWaveCount(groupe + partenaires.reduce((total, p) => total + p.joueurs, 0)) === 1 ? partenaires : [];
+}
+
+function partenairesEnMots(partenaires) {
+  const noms = [...new Set(partenaires.map(p => p.nom))];
+  return noms.length ? `avec ${enEnumeration(noms)}` : '';
+}
+
+// « 1 vague de 7 armes », ou, la partie partagee, « 1 vague de 11 armes, avec Boucquiaux ».
+function vaguesLaserEditionEnMots(e, r) {
+  const joueurs = joueursLaserEdition(e, r);
+  if (joueurs === null) return '';
+  const premiere = r ? getStaffResourceWindows(r, 'all').filter(f => f.resourceType === 'laser_arena' && !f.aVolonte).sort((a, b) => a.start - b.start)[0] : null;
+  const partenaires = premiere && Math.max(1, Number(premiere.groupWaveCount) || 1) === 1 ? partenairesLaser(r, premiere, joueurs) : [];
+  if (!partenaires.length) return vaguesLaserEnMots(joueurs);
+  return `${vaguesLaserEnMots(joueurs + partenaires.reduce((total, p) => total + p.joueurs, 0))}, ${partenairesEnMots(partenaires)}`;
+}
+
+// La partie de ce deplacement, calee par le serveur sur celle d un autre groupe (partageAvec, a son depart)
+// a quelques minutes de l heure demandee : l heure tient, c est celle de la partie commune.
+function partieCaleeEdition(dossier, d, apres) {
+  const unite = String((d && d.point && d.point.unite) || '1.1');
+  const blocs = dossier && dossier.opsPlan && Array.isArray(dossier.opsPlan.resourceBlocks) ? dossier.opsPlan.resourceBlocks : [];
+  const bloc = blocs.find(b => b && b.resourceType === 'laser_arena' && `${Number(b.countIndex || 1)}.${Number(b.groupWaveIndex || 1)}` === unite);
+  const debut = bloc ? String(bloc.startTime || '').slice(0, 5) : '';
+  return Boolean(bloc && bloc.partageAvec && bloc.partageAvec.heure === debut && apres
+    && Math.abs(Math.round(apres.start * 60) - minutesHeureEdition(d.heure)) <= 15);
+}
+
+// « Joue avec Boucquiaux à 17:30. » : une partie que le serveur vient de caler sur celle d un autre groupe
+// (partageAvec), et que le dossier a l ecran n avait pas encore.
+function phrasesPartageLaser(ecrit, r) {
+  const blocs = (dossier) => (dossier && dossier.opsPlan && Array.isArray(dossier.opsPlan.resourceBlocks) ? dossier.opsPlan.resourceBlocks : [])
+    .filter(b => b && b.resourceType === 'laser_arena' && b.partageAvec && b.partageAvec.heure && b.partageAvec.heure === String(b.startTime || '').slice(0, 5));
+  const deja = new Set(blocs(r).map(b => `${b.partageAvec.heure}|${String(b.startTime || '').slice(0, 5)}`));
+  return [...new Set(blocs(ecrit)
+    .filter(b => !deja.has(`${b.partageAvec.heure}|${String(b.startTime || '').slice(0, 5)}`))
+    .map(b => `Joue avec ${enEnumeration((b.partageAvec.noms || []).length ? b.partageAvec.noms : ['un autre groupe'])} à ${b.partageAvec.heure}.`))];
 }
 
 function eclatPastille(bouton, arrive) {
@@ -34967,6 +35718,8 @@ function peindreVerdictEdition() {
   }
   // Le refus d une heure se lit a son activite (son champ en rouge, la phrase dessous).
   peindreRefusHeuresEdition();
+  // (celui d une activite en plus, a sa rangee ; son heure et son prix, ceux que le serveur ecrirait)
+  peindreRangeesEnPlusEdition();
   if (ton === 'calcul') return;
   const programme = document.querySelector('#posOverlay .fm-programme');
   const r = state.selectedRes;
@@ -35154,7 +35907,8 @@ function libellePointHeure(etape, etapes) {
 function pointsHeureEdition(r) {
   const points = new Map();
   if (!r) return points;
-  const programme = getGroupeProgramme(r);
+  // (l heure d une activite en plus d une formule se regle a sa rangee, jamais par le glisser d une partie)
+  const programme = getGroupeProgramme(r).filter(etape => !etape.enPlus);
   const etapes = programme.filter(etape => etape.start !== null && etape.start !== undefined && !etape.libre && !etape.aPlacer && etape.activityId);
   etapes.forEach((etape) => {
     const cle = cleHeureEtape(etape);
@@ -35165,7 +35919,8 @@ function pointsHeureEdition(r) {
   // une heure sans valeur, qu on donne ici ; ni le bowling ni le laser (ils tiennent toujours une heure).
   // (ni les jetons d arcades remis au bar, ni la table d anniversaire, ni les boissons : rien ne s y joue a une heure ;
   // ni la plaine de jeux, libre toute la journee, 2026-11-21)
-  programme.filter(etape => etape.libre && etape.activityId && !['bowling', 'laser_game', 'party_table', 'arcade_credit', 'playground'].includes(etape.activityId) && !/^service_/.test(etape.activityId)).forEach((etape) => {
+  // (ni des arcades vendues en argent : le montant, jamais une heure, 2026-11-22)
+  programme.filter(etape => etape.libre && etape.activityId && !['bowling', 'laser_game', 'party_table', 'arcade_credit', 'playground'].includes(etape.activityId) && !/^service_/.test(etape.activityId) && !arcadesEnArgentDuDossier(r, etape)).forEach((etape) => {
     if (points.has(etape.activityId)) return;
     points.set(etape.activityId, { cle: etape.activityId, activityId: etape.activityId, unite: '', start: null, fin: null, libre: true, nom: etape.nom || nomActiviteHeureEdition(etape.activityId) });
   });
@@ -35216,7 +35971,10 @@ function peutChangerHeureEdition(r, activityId) {
 }
 
 // Les champs d heure de la rangee : celui qu on vient de toucher, et chaque
-// heure deja changee (son refus s y lit, juste dessous).
+// heure deja changee (son refus s y lit, juste dessous). A la minute, bowling
+// compris (2026-11-22, Ansar : « l'heure qu'on veut [...] à la minute ») : le
+// serveur juge 18:05 sur ses vraies plages (lib/reservation-activity-move.js,
+// aLaMinute) ; un pas de 30 min rendait ce champ invalide.
 function champHeureEditionHtml(activityId) {
   const r = state.selectedRes;
   if (!peutChangerHeureEdition(r, activityId)) return '';
@@ -35238,7 +35996,7 @@ function champHeureEditionHtml(activityId) {
     const refus = refusHeureDe(cle);
     return `<div class="fm-champ fm-heure-champ${refus ? ' is-refus' : ''}${boutonLibre ? ' a-libre' : ''}" data-heure-zone="${escapeHtml(cle)}">
             <label class="lbl" for="${id}">${escapeHtml(libelle)}</label>
-            <div class="fm-heure-saisie"><input id="${id}" class="input" type="time" step="${activityId === 'bowling' ? 1800 : 300}" value="${escapeHtml(valeur)}" data-heure-champ="${escapeHtml(cle)}" data-pl-focus="fiche.edit.heure-champ.${escapeHtml(cle)}" aria-describedby="${id}-refus"${refus ? ' aria-invalid="true"' : ''} oninput="poserHeureActivite('${escapeJsString(cle)}', this.value)" onkeydown="toucheHeureActivite(event, '${escapeJsString(cle)}')">${boutonLibre}</div>
+            <div class="fm-heure-saisie"><input id="${id}" class="input" type="time" step="60" value="${escapeHtml(valeur)}" data-heure-champ="${escapeHtml(cle)}" data-pl-focus="fiche.edit.heure-champ.${escapeHtml(cle)}" aria-describedby="${id}-refus"${refus ? ' aria-invalid="true"' : ''} oninput="poserHeureActivite('${escapeJsString(cle)}', this.value)" onkeydown="toucheHeureActivite(event, '${escapeJsString(cle)}')">${boutonLibre}</div>
           </div>
           <div class="fm-heure-refus" id="${id}-refus" data-heure-refus="${escapeHtml(cle)}" aria-live="polite"${refus ? '' : ' hidden'}>${refus ? refusHeureHtml(cle, refus) : ''}</div>`;
   }).join('');
@@ -35268,11 +36026,13 @@ function champHeureNouvelleHtml(activityId) {
   const r = state.selectedRes;
   const e = state.editState;
   if (!e || !activiteAjouteeEdition(r, activityId) || !peutChangerHeureEdition(r, activityId)) return '';
+  // (des arcades en argent ajoutees ici : le montant, pas d heure, 2026-11-22)
+  if (activityId === 'arcade_time' && ((ensureEditProgram(r).othersOptions || {}).arcade_time || {}).arcadeMode === 'credit') return '';
   const valeur = (e.heuresNouvelles || {})[activityId] || '';
   const id = `editHeureNouvelle-${activityId.replace(/[^a-z0-9]/gi, '-')}`;
   return `<div class="fm-champ fm-heure-champ" data-heure-nouvelle-zone="${escapeHtml(activityId)}">
             <label class="lbl" for="${id}">Heure</label>
-            <div class="fm-heure-saisie"><input id="${id}" class="input" type="time" step="${activityId === 'bowling' ? 1800 : 300}" value="${escapeHtml(valeur)}" data-heure-nouvelle="${escapeHtml(activityId)}" data-pl-focus="fiche.edit.heure-nouvelle.${escapeHtml(activityId)}" oninput="poserHeureNouvelle('${escapeJsString(activityId)}', this.value)"></div>
+            <div class="fm-heure-saisie"><input id="${id}" class="input" type="time" step="60" value="${escapeHtml(valeur)}" data-heure-nouvelle="${escapeHtml(activityId)}" data-pl-focus="fiche.edit.heure-nouvelle.${escapeHtml(activityId)}" oninput="poserHeureNouvelle('${escapeJsString(activityId)}', this.value)"></div>
           </div>`;
 }
 
@@ -35525,6 +36285,8 @@ function lireVerdictDeplacement(reponse, envoi) {
         if (!lignes.includes(phrase)) lignes.push(phrase);
       });
   });
+  // (une partie calee sur celle d un autre groupe : « Joue avec Boucquiaux à 17:30. »)
+  lignes.push(...phrasesPartageLaser(ecrit, state.selectedRes));
   return { refus: '', lignes, ecrit, prixSuivi: false, silencieux: true };
 }
 
@@ -35585,7 +36347,12 @@ async function enregistrerHeuresEdition() {
   // (une heure rendue libre se confirme libre, une heure par son heure)
   const tenue = (dossier, d) => {
     const apres = pointsHeureEdition(dossier).get(d.cle);
-    return d.move && d.move.libre ? Boolean(apres && apres.libre) : Boolean(apres) && Math.round(apres.start * 60) === minutesHeureEdition(d.heure);
+    if (d.move && d.move.libre) return Boolean(apres && apres.libre);
+    if (!apres) return false;
+    if (Math.round(apres.start * 60) === minutesHeureEdition(d.heure)) return true;
+    // (une partie calee par le serveur sur celle d un autre groupe, a quelques minutes pres, tient aussi :
+    // lib/database.js rejoindreLesParties, « Joue avec … »)
+    return d.point.activityId === 'laser_game' && partieCaleeEdition(dossier, d, apres);
   };
   try {
     for (const d of deplacements) {
@@ -35622,7 +36389,9 @@ async function enregistrerHeuresEdition() {
     // Le planning, la liste et les cartes suivent tout de suite.
     renderStaffData();
     // (le reste se dit avec ses mots, et un planning qui n a pas suivi le nombre de joueurs aussi)
-    const phrase = `${faits.length > 1 ? 'Heures changées' : 'Heure changée'} : ${dit(faits)}.${resteEnMots ? ` ${resteEnMots} : enregistré${planNonRefait ? `, mais le planning n’a pas suivi : ${String(planNonRefait).replace(/\.$/, '')}` : ''}.` : ''}`;
+    // (une partie calee sur celle d un autre groupe le dit : « Joue avec Boucquiaux à 17:30. »)
+    const partage = phrasesPartageLaser(derniere, versionDeBase).join(' ');
+    const phrase = `${faits.length > 1 ? 'Heures changées' : 'Heure changée'} : ${dit(faits)}.${partage ? ` ${partage}` : ''}${resteEnMots ? ` ${resteEnMots} : enregistré${planNonRefait ? `, mais le planning n’a pas suivi : ${String(planNonRefait).replace(/\.$/, '')}` : ''}.` : ''}`;
     toast(changeEntreTemps ? `${phrase} Modifié entre-temps et conservé : ${changeEntreTemps}.` : phrase);
   } catch (error) {
     if (derniere) {
@@ -35835,14 +36604,14 @@ function renderPosEdit(r) {
             </div>
             <div class="fm-champ fm-arrivee">
               <label class="lbl" for="editStartInput">Arrivée</label>
-              <input id="editStartInput" class="input" type="time" value="${e.startTime}" oninput="setEditField('startTime', this.value, true)" required>
+              <input id="editStartInput" class="input" type="time" value="${e.startTime}" oninput="setEditField('startTime', this.value, true)" onkeydown="gardeArriveeEdition(event)" onwheel="if (document.activeElement === this) this.blur()" required>
             </div>
 ${!adapte || (!isLaserRes && !editNeedsLanes && String(rf.type || '') !== 'formule') ? durationControl : ''}
             <div class="fm-champ fm-joueurs">
               <label class="lbl" for="editPaxInput">Joueurs</label>
               <div class="es-stepper staff-stepper fm-stepper">
                 <button type="button" class="es-step staff-stepper-btn" aria-label="Un joueur de moins" onclick="editPaxPas(-1)">${signe(false)}</button>
-                <input id="editPaxInput" class="input" type="number" min="1" max="240" inputmode="numeric" value="${e.pax}" oninput="setEditField('pax', this.value, true)" required>
+                <input id="editPaxInput" class="input" type="number" min="1" max="240" inputmode="numeric" value="${e.pax}" oninput="setEditField('pax', this.value, true)" onfocus="noterGroupeEdition(this)" onkeydown="toucheGroupeEdition(event, this)" onblur="groupeEditionPris()" required>
                 <button type="button" class="es-step staff-stepper-btn" aria-label="Un joueur de plus" onclick="editPaxPas(1)">${signe(true)}</button>
               </div>
             </div>
@@ -35868,7 +36637,7 @@ ${!adapte || (!isLaserRes && !editNeedsLanes && String(rf.type || '') !== 'formu
               <div class="fm-pli-corps">
                 <div class="fm-champ">
                   <label class="lbl" for="editPhoneInput">Téléphone</label>
-                  <input id="editPhoneInput" class="input" type="tel" value="${escapeHtml(e.phone)}" autocomplete="off" aria-describedby="editPhoneHint" oninput="setEditField('phone', this.value); peindreTelephoneEdition(false)" onblur="peindreTelephoneEdition(true)"${String(r.phone || '').trim() ? '' : ' placeholder="Facultatif"'}>
+                  <input id="editPhoneInput" class="input" type="text" maxlength="40" value="${escapeHtml(e.phone)}" autocomplete="off" aria-describedby="editPhoneHint" oninput="setEditField('phone', this.value); peindreTelephoneEdition(false)" onblur="peindreTelephoneEdition(true)"${String(r.phone || '').trim() ? '' : ' placeholder="Facultatif"'}>
                   <p class="field-hint is-hors" id="editPhoneHint" hidden></p>
                 </div>
                 <div class="fm-champ">
@@ -35926,6 +36695,46 @@ function changerJourEdition(valeur) {
   renderPos();
 }
 
+// LE NOMBRE DU GROUPE, TAPE (2026-11-22) : tout le nombre se selectionne au toucher, et Echap le rend tel
+// qu il etait a l entree dans le champ, avec ce qu il avait fait suivre pendant la frappe (les activites
+// qui suivent le groupe, les arcades, les pistes) : la photo se prend a l entree. La sortie du champ garde
+// le nombre ; Entree enregistre la fiche, comme dans ses autres champs. Un Echap sans rien de tape ferme
+// la fiche, comme avant.
+const CHAMPS_GROUPE_EDITION = ['pax', 'lanesStr', 'programmeEdite', 'extrasEdites', 'groupeSuivi', 'suiventLeGroupe', 'arcadesSuiventLeGroupe', 'pistesDeLHeure'];
+function noterGroupeEdition(champ) {
+  const e = state.editState;
+  if (!e) return;
+  if (!e.groupeAvantSaisie) {
+    const photo = {};
+    CHAMPS_GROUPE_EDITION.forEach((cle) => { if (e[cle] !== undefined) photo[cle] = e[cle]; });
+    e.groupeAvantSaisie = JSON.stringify(photo);
+  }
+  if (champ) rvSelectionnerAuFocus(champ);
+}
+
+function groupeEditionPris() {
+  if (state.editState) state.editState.groupeAvantSaisie = null;
+}
+
+function toucheGroupeEdition(event, champ) {
+  const e = state.editState;
+  if (event.key !== 'Escape' || !e || !e.groupeAvantSaisie || !champ) return;
+  const photo = JSON.parse(e.groupeAvantSaisie);
+  if (String(photo.pax) === String(e.pax) && String(champ.value) === String(photo.pax)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  CHAMPS_GROUPE_EDITION.forEach((cle) => {
+    if (Object.prototype.hasOwnProperty.call(photo, cle)) e[cle] = photo[cle];
+    else delete e[cle];
+  });
+  champ.value = String(e.pax);
+  if (state.editError) setEditError('');
+  document.querySelectorAll('#posOverlay .dossier-activity[data-edit-activity]').forEach((row) => repeindreCompteurEdition(row.dataset.editActivity));
+  refreshEditPreview();
+  if (typeof repartirDIciEdition === 'function') repartirDIciEdition();
+  champ.select();
+}
+
 // Les joueurs en + / − : le meme chemin que la saisie (pistes resynchronisees).
 function editPaxPas(delta) {
   if (!state.editState) return;
@@ -35974,6 +36783,28 @@ function failEdit(message) {
 // (envoyerModificationReservation). saveEdit et le compte a l arrivee
 // (preparerCompte) partent d ici : un seul calcul, un seul chemin serveur.
 // Un controle qui echoue rend { erreur }.
+// UNE ARRIVEE DEJA PASSEE SE DIT D ABORD (2026-11-22, Libramont a 11:55 : la barre disait « Arrivée
+// 14:30 → 10:30 » et le bandeau ne parlait que du laser). Changee aujourd hui pour une heure deja
+// passee, l arrivee se refuse avec cette phrase, avant le calcul du planning. '' sinon.
+function arriveeDejaPasseeEdition(es, origine) {
+  const voulue = String((es && es.startTime) || '').slice(0, 5);
+  if (!/^\d{2}:\d{2}$/.test(voulue) || voulue === String((origine && origine.startTime) || '').slice(0, 5)) return '';
+  const jour = (es && es.date) || (state.selectedRes && state.selectedRes.date);
+  if (jour !== todayStr() || typeof currentTimeDecimal !== 'function') return '';
+  const maintenant = Math.ceil(currentTimeDecimal() * 60);
+  return minutesHeureEdition(voulue) < maintenant ? `${voulue} est déjà passé : il est ${formatClockDisplay(maintenant / 60)}.` : '';
+}
+
+// L ARRIVEE NE BOUGE PAS AUX FLECHES (2026-11-22, la meme fiche : personne n avait change l arrivee). Le
+// champ prend le focus quand on touche l heure en tete de fiche (modifierDepuisFiche) ; une fleche pour
+// descendre dans la fiche reculait alors l heure d arrivee d une heure, et tout le dossier avec elle :
+// quatre fleches, 14:30 devenait 10:30. L arrivee se tape ; les fleches et les pages font defiler la fiche.
+function gardeArriveeEdition(event) {
+  if (!['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown'].includes(event.key)) return;
+  event.preventDefault();
+  event.currentTarget.blur();
+}
+
 function preparerModificationEdition(options = {}) {
   const es = state.editState;
   // DEUX POSTES, UNE RESERVATION : ce que la personne a CHANGE se mesure contre
@@ -36004,6 +36835,9 @@ function preparerModificationEdition(options = {}) {
   const jourChange = Boolean(es.date) && es.date !== state.selectedRes.date;
   const jourLong = jourChange ? jourLongEdition(es.date) : '';
   if (jourChange && es.date < todayStr()) return { erreur: 'Choisissez aujourd’hui ou un jour à venir pour déplacer ce dossier.' };
+  // (une arrivee changee pour une heure deja passee se dit d abord, avant tout autre calcul)
+  const arriveePassee = arriveeDejaPasseeEdition(es, origine);
+  if (arriveePassee) return { erreur: arriveePassee };
   const slotCheck = validateSlotWindow(jourChange ? es.date : state.selectedRes.date, es.startTime, duration, { allowPastStart: true });
   if (!slotCheck.ok) return { erreur: slotCheck.message };
   // Un autre jour part avec les pistes du dossier, inchangees : le serveur les
@@ -36054,7 +36888,8 @@ function preparerModificationEdition(options = {}) {
   // son plan (calculerLaModification) et la base les garde (lib/formule-adaptee.js).
   const pistesTenues = !requiresLanes && pistesTenuesParLaFormuleAdaptee(dossierFormule);
   const lanesFinales = requiresLanes ? lanes : pistesTenues ? (origine.lanes || []).map(Number) : [];
-  const pistesTouchees = valeurReservationComparable(lanesFinales) !== valeurReservationComparable(origine.lanes || []);
+  // (un bowling en plus garde ses pistes : seules celles de la formule se comparent, le serveur reprend les siennes)
+  const pistesTouchees = valeurReservationComparable(lanesFinales) !== valeurReservationComparable(pistesDeLaFormuleSeule(origine));
 
   // FORMULE ADAPTEE A CE DOSSIER : on envoie un PROGRAMME. Le serveur le
   // renormalise et replanifie (program est dans REPLAN_FIELDS) ; le catalogue
@@ -36096,8 +36931,11 @@ function preparerModificationEdition(options = {}) {
   // (prixQuiSuit, lib/droits-reservation). Un horaire d arcades deplace seul
   // reste chiffre ici : pour le serveur, une heure n est pas du contenu.
   const estimeEcran = getEditPrixEstime();
+  // LES ACTIVITES EN PLUS REGLEES ICI (2026-11-22) partent telles quelles, la liste entiere ; le serveur les juge
+  // avec la formule et pose leur prix du catalogue (calculerLaModification). Sans geste, rien ne part.
+  const enPlusEnvoyes = peutAdapterLeProgramme(state.selectedRes) && enPlusEditionChange() ? enPlusEnvoyesEdition() : null;
   const prixSuivi = !es.prixFige && Boolean(estimeEcran && estimeEcran.utilisable) && editionChangeLePrix()
-    && (formuleChangee || versProgrammeNormal || poseEditionChange() || editProgramAChange() || Number(es.pax) !== Number(state.selectedRes.pax));
+    && (formuleChangee || versProgrammeNormal || poseEditionChange() || editProgramAChange() || Boolean(enPlusEnvoyes) || Number(es.pax) !== Number(state.selectedRes.pax));
   // Les extras partent s ils ont change (nourriture, boissons, le reste).
   const extrasNouveaux = peutAdapterFormule() && editExtrasAChange() ? extrasDepuisLignes(es.extrasEdites, es.pax) : null;
   // L heure tapee sur une activite ajoutee part avec le programme (heuresNouvellesEnvoyees), et
@@ -36120,6 +36958,8 @@ function preparerModificationEdition(options = {}) {
     else if (pistesALaMainDuDossier(origine)) updated.pistesALaMain = 0;
     if (extrasNouveaux) updated.extras = extrasNouveaux;
     if (heuresPoseesNouvelles) updated.heuresPosees = heuresPoseesNouvelles;
+    if (enPlusEnvoyes) updated.enPlus = enPlusEnvoyes.map((ligne) => ({ ...ligne }));
+    else delete updated.enPlus;
     // (les notes de l equipe changees ici, posees sur la version ou l action se joue)
     const notesChangees = notesEnvoyeesEdition(dossier.notes);
     if (notesChangees !== null) updated.notes = notesChangees;
@@ -36144,8 +36984,8 @@ function preparerModificationEdition(options = {}) {
     // plein tarif en silence. La REFERENCE, elle, suit la nouvelle configuration.
     const ecartPrix = getReservationPriceGap(dossier);
     const programmeArcades=(dossier.program?.items || []).some(item=>item.activityId === 'arcade_time' && item.arcadeOfferId);
-    const pistesEnNombre=lanesFinales.length !== (dossier.lanes || []).length;
-    const changementOperationnel=Boolean(programme) || Boolean(nouvelleFormule) || touches.some(champ=>['pax','duration','date'].includes(champ)) || (pistesTouchees && pistesEnNombre) || (programmeArcades && touches.includes('startTime'));
+    const pistesEnNombre=lanesFinales.length !== pistesDeLaFormuleSeule(dossier).length;
+    const changementOperationnel=Boolean(programme) || Boolean(nouvelleFormule) || Boolean(enPlusEnvoyes) || touches.some(champ=>['pax','duration','date'].includes(champ)) || (pistesTouchees && pistesEnNombre) || (programmeArcades && touches.includes('startTime'));
     // RIEN DE CE QUI FAIT LE TARIF N A BOUGE (un nom, une heure, un telephone, une
     // occasion, des extras) : la reference reste celle du dossier, et le prix
     // ne bouge que de ses extras. La recalculer ici reecrivait celle d une
@@ -36253,7 +37093,7 @@ async function saveEdit(e) {
     // coche la 5 est un mensonge tranquille : il repart au comptoir avec la
     // mauvaise piste en tete.
     const voulues = lanesVoulues.join(', ');
-    const obtenues = ((payload.reservation && payload.reservation.lanes) || []).join(', ');
+    const obtenues = pistesDeLaFormuleSeule(payload.reservation || {}).join(', ');
     // ENREGISTRE N'EST PAS FORCEMENT PLACE. Quand le moteur n'a pas su
     // reconstruire le creneau (combinaison d'ancres refusee, plus rien de libre),
     // la reservation est bien ecrite mais elle part en « à surveiller » : le
@@ -37189,16 +38029,148 @@ function renderActivityParticipantsControl(id, mode = 'quick', explicit = false)
   // a effectif egal, elle redisait le compteur juste a cote.
   const explique = explicit === 'ecart' ? Number(courant) !== Number(pax) : Boolean(explicit);
   const nom = (activite && activite.name) || id;
+  // LE NOMBRE SE TAPE AUSSI DANS MODIFIER (2026-11-22, la regle de Reserver, rsNombreHtml) : le nombre
+  // se touche et devient un champ (ouvrirJoueursEdition) ; le « − » et le « + » comptent depuis l etat au
+  // moment du toucher (pasJoueursEdition). Un refus se lit sous le compteur (refusJoueursEdition).
+  const edition = mode === 'edit' && state.editState ? state.editState : null;
+  const saisie = edition && edition.saisieJoueurs && edition.saisieJoueurs.id === id ? edition.saisieJoueurs : null;
+  const dit = edition && edition.saisieJoueursDit && edition.saisieJoueursDit.id === id ? edition.saisieJoueursDit.texte : '';
+  const sid = escapeJsString(id);
+  const valeur = explicit ? courant : `${courant} / ${plafond}`;
+  const nombre = !edition ? `<span class="qb-step-valeur staff-stepper-value">${valeur}</span>`
+    : saisie ? `<input class="staff-stepper-champ" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="3" enterkeyhint="done" autocomplete="off" spellcheck="false" value="${escapeHtml(saisie.texte)}" data-saisie-joueurs="${escapeHtml(id)}" data-pl-focus="fiche.edit.joueurs.${escapeHtml(id)}" aria-label="${escapeHtml(`${nom} : ${unite}s, tapez le nombre`)}" oninput="saisieJoueursEdition('${sid}', this.value)" onkeydown="toucheJoueursEdition(event, '${sid}', this)" onblur="validerJoueursEdition('${sid}', this)">`
+      : `<span class="qb-step-valeur staff-stepper-value" role="button" tabindex="0" data-saisie-joueurs="${escapeHtml(id)}" data-pl-focus="fiche.edit.joueurs.${escapeHtml(id)}" aria-label="${escapeHtml(`${nom} : ${courant} ${unite}${courant > 1 ? 's' : ''}, taper un autre nombre`)}" title="Taper le nombre" onclick="ouvrirJoueursEdition('${sid}')" onkeydown="toucheNombreEdition(event, '${sid}')">${valeur}</span>`;
+  const moins = edition ? `pasJoueursEdition('${sid}',-1)` : `${setter}('${sid}',${courant - 1})`;
+  const plus = edition ? `pasJoueursEdition('${sid}',1)` : `${setter}('${sid}',${courant + 1})`;
   return `<div class="qb-visit-options qb-visit-compteur dossier-activity-count" role="group" aria-label="${escapeHtml(nom)} : ${unite}s">`
     + `<span class="qb-opt-legend">${enfants ? 'Enfants' : 'Joueurs'}</span>`
-    + `<span class="staff-stepper"><button type="button" class="qb-step-btn staff-stepper-btn" aria-label="${escapeHtml(nom)} : retirer un ${unite}" ${courant <= bornes.min ? 'disabled' : ''} onclick="${setter}('${escapeJsString(id)}',${courant - 1})"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg></button>`
-    + `<span class="qb-step-valeur staff-stepper-value">${explicit ? courant : `${courant} / ${plafond}`}</span>`
-    + `<button type="button" class="qb-step-btn staff-stepper-btn" aria-label="${escapeHtml(nom)} : ajouter un ${unite}" ${courant >= plafond ? 'disabled' : ''} onclick="${setter}('${escapeJsString(id)}',${courant + 1})"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg></button></span>${explique ? `<span class="dossier-participants-explanation">${courant} ${unite}${courant > 1 ? 's' : ''}${id === 'laser_game' ? ' au Laser' : ''} sur ${pax} participant${Number(pax) > 1 ? 's' : ''}</span>` : ''}</div>`;
+    + `<span class="staff-stepper"><button type="button" class="qb-step-btn staff-stepper-btn" aria-label="${escapeHtml(nom)} : retirer un ${unite}" ${courant <= bornes.min ? 'disabled' : ''} onclick="${moins}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg></button>`
+    + nombre
+    + `<button type="button" class="qb-step-btn staff-stepper-btn" aria-label="${escapeHtml(nom)} : ajouter un ${unite}" ${courant >= plafond ? 'disabled' : ''} onclick="${plus}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg></button></span>${explique ? `<span class="dossier-participants-explanation">${courant} ${unite}${courant > 1 ? 's' : ''}${id === 'laser_game' ? ' au Laser' : ''} sur ${pax} participant${Number(pax) > 1 ? 's' : ''}</span>` : ''}${dit ? `<span class="dossier-saisie-dit" role="alert" data-saisie-dit="${escapeHtml(id)}">${escapeHtml(dit)}</span>` : ''}</div>`;
 }
 
-function setEditActivityParticipants(id, nombre) {
+// Les options d une activite du programme en cours de modification.
+function optionsJoueursEdition(id) {
+  const p = state.editState && state.editState.programmeEdite;
+  if (!p) return null;
+  return id === 'bowling' || id === 'laser_game' ? p[id] : ((p.othersOptions || {})[id] || {});
+}
+
+// Le compteur d une activite (et, pour le laser, les joueurs de ses parties) repeint en place : la fiche
+// n est pas redessinee, un toucher en cours ailleurs (« Enregistrer ») n est pas perdu.
+function repeindreCompteurEdition(id) {
+  const e = state.editState;
+  if (!e) return;
+  const row = Array.from(document.querySelectorAll('#posOverlay .dossier-activity[data-edit-activity]')).find((r) => r.dataset.editActivity === id);
+  const counter = row ? row.querySelector('.dossier-activity-count') : null;
+  if (counter) counter.outerHTML = renderActivityParticipantsControl(id, 'edit', 'ecart');
+  const parties = row && id === 'laser_game' ? row.querySelector('.dossier-joueurs-parties') : null;
+  if (parties && e.programmeEdite && e.programmeEdite.laser_game) parties.outerHTML = renderDossierJoueursDesParties(e.programmeEdite.laser_game, e.pax);
+}
+
+function champJoueursEdition(id, selecteur = 'input[data-saisie-joueurs]') {
+  return Array.from(document.querySelectorAll(`#posOverlay ${selecteur}`)).find((n) => n.dataset.saisieJoueurs === id) || null;
+}
+
+function ouvrirJoueursEdition(id, premier = '') {
   const e = state.editState;
   if (!e || !e.programmeEdite) return;
+  e.saisieJoueurs = { id, texte: premier || String(participantsLigneProgramme(optionsJoueursEdition(id), e.pax)) };
+  e.saisieJoueursDit = null;
+  repeindreCompteurEdition(id);
+  const champ = champJoueursEdition(id);
+  if (!champ) return;
+  champ.focus({ preventScroll: true });
+  if (premier) champ.setSelectionRange(premier.length, premier.length); else champ.select();
+}
+
+// La frappe ne repeint rien : le texte vit dans l etat, un rendu de la fiche le retrouve.
+function saisieJoueursEdition(id, texte) {
+  const e = state.editState;
+  if (e && e.saisieJoueurs && e.saisieJoueurs.id === id) e.saisieJoueurs.texte = String(texte == null ? '' : texte);
+}
+
+// Au clavier, le nombre s ouvre comme un bouton (Entree, Espace) ; un chiffre l ouvre deja tape. Entree
+// ne doit pas enregistrer la fiche, Echap ne doit pas la fermer.
+function toucheNombreEdition(event, id) {
+  if (event.ctrlKey || event.metaKey || event.altKey) return;
+  const chiffre = /^\d$/.test(event.key) ? event.key : '';
+  if (event.key !== 'Enter' && event.key !== ' ' && !chiffre) return;
+  event.preventDefault();
+  event.stopPropagation();
+  ouvrirJoueursEdition(id, chiffre);
+}
+
+function toucheJoueursEdition(event, id, champ) {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    event.stopPropagation();
+    validerJoueursEdition(id, champ, { clavier: true });
+  } else if (event.key === 'Escape') {
+    event.preventDefault();
+    event.stopPropagation();
+    const e = state.editState;
+    if (!e || !e.saisieJoueurs || e.saisieJoueurs.id !== id) return;
+    e.saisieJoueurs = null;
+    repeindreCompteurEdition(id);
+    const nombre = champJoueursEdition(id, '[data-saisie-joueurs]');
+    if (nombre) nombre.focus({ preventScroll: true });
+  }
+}
+
+// Entree ou la sortie du champ : le nombre se prend s il est possible, sinon le compteur garde le sien
+// et le dit. Rien d autre ne bouge que ce que ce nombre change (les pistes du bowling, le prix).
+function validerJoueursEdition(id, champ, { clavier = false } = {}) {
+  const e = state.editState;
+  if (!e || !e.saisieJoueurs || e.saisieJoueurs.id !== id) return;
+  // (un rendu de la fiche a remplace le champ : son texte est dans l etat, le nouveau champ le reprend)
+  if (champ && !champ.isConnected) return;
+  const brut = String(champ ? champ.value : e.saisieJoueurs.texte).trim();
+  e.saisieJoueurs = null;
+  const actuel = participantsLigneProgramme(optionsJoueursEdition(id), e.pax);
+  const pareil = brut === '' || (/^\d+$/.test(brut) && Number(brut) === actuel);
+  const refus = pareil ? '' : refusJoueursEdition(id, brut);
+  e.saisieJoueursDit = refus ? { id, texte: refus } : null;
+  if (!pareil && !refus) setEditActivityParticipants(id, Number(brut), { sansRendu: true });
+  repeindreCompteurEdition(id);
+  if (clavier) {
+    const nombre = champJoueursEdition(id, '[data-saisie-joueurs]');
+    if (nombre) nombre.focus({ preventScroll: true });
+  }
+}
+
+// La phrase de Reserver (rsRefusDuNombre) : au moins le minimum de l activite, au plus le groupe, au plus
+// ce que l activite accueille.
+function refusJoueursEdition(id, brut) {
+  const e = state.editState;
+  const activite = typeof getCenterActivity === 'function' ? getCenterActivity(id) : null;
+  const unite = activite && typeof activityCountsChildren === 'function' && activityCountsChildren(activite) ? 'enfant' : 'joueur';
+  const nom = (activite && activite.name) || nomActiviteHeureEdition(id);
+  if (!/^\d{1,3}$/.test(brut)) return `${nom} : tapez un nombre, par exemple 20.`;
+  const n = Number(brut);
+  const groupe = Math.max(1, Math.trunc(Number(e && e.pax)) || 1);
+  const bornes = activityParticipantsBounds(id, groupe);
+  const pluriel = (k, mot) => `${k} ${mot}${k > 1 ? 's' : ''}`;
+  if (n < bornes.min) return `${nom} : ${pluriel(bornes.min, unite)} au moins.`;
+  if (n > groupe) return `${nom} : ${groupe} au plus, le groupe compte ${pluriel(groupe, 'personne')}. Changez d’abord le nombre de joueurs en haut.`;
+  if (n > bornes.max) return `${nom} : ${pluriel(bornes.max, unite)} au plus.`;
+  return '';
+}
+
+function pasJoueursEdition(id, delta) {
+  const e = state.editState;
+  if (!e || !e.programmeEdite) return;
+  e.saisieJoueurs = null;
+  e.saisieJoueursDit = null;
+  setEditActivityParticipants(id, participantsLigneProgramme(optionsJoueursEdition(id), e.pax) + (Math.trunc(Number(delta)) || 0));
+}
+
+function setEditActivityParticipants(id, nombre, { sansRendu = false } = {}) {
+  const e = state.editState;
+  if (!e || !e.programmeEdite) return;
+  // (reglee a la main, l activite ne suit plus le groupe : suivreLeGroupe)
+  e.joueursRegles = [...new Set([...(Array.isArray(e.joueursRegles) ? e.joueursRegles : []), id])];
+  if (Array.isArray(e.suiventLeGroupe)) e.suiventLeGroupe = e.suiventLeGroupe.filter((x) => x !== id);
   const p = e.programmeEdite;
   const options = id === 'bowling' || id === 'laser_game' ? p[id] : (p.othersOptions[id] ||= {});
   const bornes = activityParticipantsBounds(id, e.pax);
@@ -37213,7 +38185,7 @@ function setEditActivityParticipants(id, nombre) {
   // montrent (les vagues du laser, leur ligne). Avant : « complétée à
   // l’enregistrement ».
   if (typeof suivrePistesEdition === 'function') suivrePistesEdition();
-  renderPos();
+  if (!sansRendu) renderPos();
 }
 
 // LES JOUEURS DE CHAQUE PARTIE, dans le dossier (meme regle que la fenetre Reserver, rsJoueursDesParties).
@@ -37777,9 +38749,20 @@ function setQuickFormule(id) {
   renderQuickBook();
 }
 
+// LE TELEPHONE PEUT ETRE UN MOT (Ansar, 2026-11-22 : « côté staff on peut écrire autre que des chiffres,
+// des fois c par mail, ou / quand y a pas »). Seul un texte fait de chiffres et de ponctuation de numero
+// prend l indicatif belge ; « par mail » et « / » restent tels quels et ne valent JAMAIS un numero
+// (rvTelephoneEnvoyable : aucun appel, aucun SMS n en part). Le serveur redit la regle
+// (lib/telephone-du-client.js : telephoneAccepte, telephoneEnvoyable).
+function rvRessembleAUnNumero(valeur) {
+  const brut = String(valeur || '').trim();
+  return /^[+\d\s().\/-]+$/.test(brut) && /\d/.test(brut);
+}
+
 function normalizePhoneInput(value = '') {
   const raw = String(value || '').replace(/\s+/g, ' ').trim();
   if (!raw) return '+32 ';
+  if (!rvRessembleAUnNumero(raw)) return raw;
   if (raw.startsWith('+')) return raw;
   if (raw.startsWith('00')) return `+${raw.slice(2)}`;
   if (raw.startsWith('0')) return `+32 ${raw.slice(1)}`.trim();
@@ -38173,9 +39156,11 @@ function getQuickBookSummaryActivites() {
   const laneCount = quickBookState.autoAssign ? getQuickBookLaneNeed().requiredCount : quickBookState.lanes.length;
   const total = getBasePrice(quickBookState.type, quickBookState.duration, laneCount, quickBookState.pax, quickBookState.formuleId, quickBookState.date);
   const detail = laneCount ? `${laneCount} piste${laneCount > 1 ? 's' : ''} prévue${laneCount > 1 ? 's' : ''}` : 'Sans piste';
-  // (une formule adaptee : ce que sa carte n a pas s y ajoute, a son prix, rvAjoutsALaFormule)
+  // (une formule adaptee : ce que sa carte n a pas s y ajoute, a son prix, rvAjoutsALaFormule ; une formule
+  // telle quelle : ses activites en plus, a leur prix, rvMontantDesEnPlus)
   const ajouts = quickBookState.type === 'formule' ? rvAjoutsALaFormule() : null;
-  return { total: ajouts ? Math.round((ajouts.prixFormule + ajouts.montant) * 100) / 100 : total, detail };
+  const enPlus = quickBookState.type === 'formule' && rvEnPlus().length ? rvMontantDesEnPlus().montant : 0;
+  return { total: ajouts ? Math.round((ajouts.prixFormule + ajouts.montant) * 100) / 100 : Math.round(((Number(total) || 0) + enPlus) * 100) / 100, detail };
 }
 
 // UNE ACTIVITE AJOUTEE A LA FORMULE SE PAIE (2026-11-21, la regle de Modifier, lib/formule-adaptee.js).
@@ -38205,6 +39190,463 @@ function rvAjoutsALaFormule() {
   const prixFormule = ligneFormule && ligneFormule.prix != null ? Number(ligneFormule.prix) : Number(getBasePrice('formule', s.duration, pistes, s.pax, s.formuleId, s.date)) || 0;
   const connues = ajoutees.filter((a) => a.montant != null);
   return { prixFormule, ajoutees, montant: Math.round(connues.reduce((somme, a) => somme + a.montant, 0) * 100) / 100, complet: connues.length === ajoutees.length };
+}
+
+// ── LES ACTIVITES EN PLUS D UNE FORMULE (2026-11-22) ─────────────────────────
+// Ansar, au comptoir : « quand on prend une formule [...] on veut ajouter genre activité après la formule
+// ou en plus, bah ça déplie la formule [...] surtout pour quand c illimité ça fait nimp et on arrive pas à
+// choisir les heures qu'on veut, ça marque impossible partout ». Chaque geste qui ajoutait une activite a
+// une formule l adaptait (rvAdapterFormule) : la formule devenait une visite, chacune de ses activites une
+// ligne, le planning la replanifiait derriere l ajout (le laser de la Formule 5 passait de 16:00 a 17:00),
+// les heures de l ajout se jugeaient comme une ligne de cette visite, et un acces illimite perdait son
+// choix. Une formule prise telle quelle, ou un acces illimite, reste entiere ; une activite en plus est sa
+// ligne, a son prix et a son heure (s.enPlus), et le serveur la juge avec la formule comme un seul ensemble
+// (lib/formule-en-plus.js). La meme activite que la formule se reprend en plus (un deuxieme bowling apres
+// la Formule 1) ; une activite que l acces comprend s y reprend, sans prix. « Adapter à ce groupe » reste le
+// seul geste qui adapte une formule.
+function rvEnPlusPossible() {
+  const s = quickBookState;
+  return Boolean(s) && s.type === 'formule' && !s.adaptee && Boolean(s.formuleId) && Boolean(rvFormule());
+}
+
+function rvEnPlus() {
+  const s = quickBookState;
+  return rvEnPlusPossible() && Array.isArray(s.enPlus) ? s.enPlus : [];
+}
+
+function rvEnPlusDe(id) {
+  return rvEnPlus().find((x) => x.id === id) || null;
+}
+
+// Une activite que l acces illimite comprend (prise ou retiree de son choix) : elle s y reprend, sans prix.
+function rvDansLAcces(id) {
+  const f = rvFormuleIllimitee();
+  return Boolean(f) && activitesDeLIllimite(f).includes(id);
+}
+
+function rvPrisDansLAcces(id) {
+  const f = rvFormuleIllimitee();
+  const choix = f ? rsChoixIllimite(f) : null;
+  return Boolean(choix) && choix.activites.includes(id);
+}
+
+function rvNomEnPlus(x) {
+  if (x.id === 'bowling') return `Bowling ${rvHeuresLabel(Number(x.variante) || 1)}`;
+  if (x.id === 'laser_game') return `Laser, ${rvPluriel(Math.max(1, Number(x.variante) || 1), 'partie')}`;
+  return rvNomActivite(x.id);
+}
+
+// Combien de minutes l activite en plus occupe le groupe : le bowling sa duree, chaque partie du laser sa
+// demi-heure, une autre activite son catalogue.
+function rvMinutesEnPlus(x) {
+  if (!x) return 30;
+  if (x.id === 'bowling') return Math.round((Number(x.variante) || 1) * 60);
+  if (x.id === 'laser_game') return 30 * Math.max(1, Number(x.variante) || 1);
+  const activite = typeof getCenterActivity === 'function' ? getCenterActivity(x.id) : null;
+  return Number(activite && activite.defaultMinutes) || 30;
+}
+
+// Les heures ou l activite en plus peut partir : de la seance en cours (ou de l ouverture) a la derniere qui
+// finit avant la fermeture. Le serveur dit ensuite pour chacune si elle tient (rsVerifierEnPlus).
+function rvHeuresEnPlus(id) {
+  const s = quickBookState;
+  const schedule = s ? getSchedule(s.date, state.isHolidayMode) : null;
+  if (!schedule) return [];
+  const plancher = rvPlancherDuJour(s.date);
+  const debut = plancher !== null ? Math.max(schedule.open, plancher) : schedule.open;
+  const x = rvEnPlusDe(id) || { id, variante: rsVariante(id) };
+  const fin = schedule.close - rvMinutesEnPlus(x) / 60;
+  const heures = [];
+  for (let t = Math.ceil(debut * 2) / 2; t <= fin + 1e-9; t += 0.5) heures.push(numToTime(t));
+  return heures;
+}
+
+// CE QUE LA FORMULE FAIT A HEURE FIXE, lu sur le plan du serveur : son bowling, chaque partie de son laser
+// (25 min), et pour une formule du catalogue chaque etape a heure (les 30 min d arcades, le minigolf). Ce
+// qui est a volonte, libre, la plaine, le bar, la table et les activites en plus ne comptent pas
+// (lib/formule-en-plus.js jeuAHeureDuPlan, le meme tri).
+function rsPlagesDeLaFormule() {
+  const plan = rvPlanCourant();
+  if (!plan || !rvEnPlusPossible()) return [];
+  const illimite = Boolean(rvFormuleIllimitee());
+  const plages = [];
+  (plan.blocs || []).forEach((b) => {
+    if (b.enPlus || b.aVolonte || !b.debut || (b.activite !== 'bowling' && b.activite !== 'laser_game')) return;
+    const debut = timeToNum(b.debut);
+    const fin = b.activite === 'laser_game' ? Math.min(b.fin ? timeToNum(b.fin) : debut + 25 / 60, debut + 25 / 60) : (b.fin ? timeToNum(b.fin) : debut + 1);
+    plages.push({ activite: b.activite, debut, fin });
+  });
+  if (!illimite) {
+    (plan.etapes || []).forEach((e) => {
+      if (e.enPlus || e.libre || !e.debut || !e.fin || RV_ANCRABLES.includes(e.activite) || /^service/.test(e.activite) || ['party_table', 'arcade_credit', 'playground'].includes(e.activite)) return;
+      plages.push({ activite: e.activite, debut: timeToNum(e.debut), fin: timeToNum(e.fin) });
+    });
+  }
+  return plages;
+}
+
+// Une heure de l activite en plus pendant ce que la formule fait a heure fixe : { activite, debut, fin }.
+function rsPendantDeLaFormule(id, heure, plages = rsPlagesDeLaFormule(), x = rvEnPlusDe(id) || { id, variante: rsVariante(id) }) {
+  if (!heure || !plages.length) return null;
+  const debut = timeToNum(heure);
+  const fin = debut + (x.id === 'laser_game' ? (30 * (Math.max(1, Number(x.variante) || 1) - 1) + 25) / 60 : rvMinutesEnPlus(x) / 60);
+  const p = plages.find((q) => debut < q.fin - 1e-9 && q.debut < fin - 1e-9);
+  return p ? { activite: p.activite, debut: numToTime(p.debut), fin: numToTime(p.fin) } : null;
+}
+
+// L heure proposee a l activite en plus : juste apres ce que la formule fait a heure fixe (elle s ajoute
+// « après la formule »), sinon l arrivee du groupe (un acces illimite se joue a volonte des l arrivee). Le
+// serveur la juge ; si elle coince, la ligne le dit et une autre heure se touche.
+function rvHeureEnPlusProposee(id, variante) {
+  const s = quickBookState;
+  const heures = rvHeuresEnPlus(id);
+  if (!heures.length) return '';
+  const fixes = rsPlagesDeLaFormule();
+  const plan = rvPlanCourant();
+  const fin = fixes.length ? Math.max(...fixes.map((p) => p.fin))
+    : rvFormuleIllimitee() ? timeToNum(s.startTime || heures[0])
+      : plan && plan.formule && plan.formule.fin ? timeToNum(plan.formule.fin)
+        : timeToNum(s.startTime || heures[0]) + (Number(s.totalDuration || s.duration) || 0);
+  const voulue = numToTime(Math.ceil((fin - 1e-9) * 2) / 2);
+  const x = { id, variante };
+  const tient = heures.find((h) => timeToNum(h) >= timeToNum(voulue) - 1e-9 && !rsPendantDeLaFormule(id, h, fixes, x));
+  return tient || heures[heures.length - 1];
+}
+
+// Ajouter (ou regler) une activite en plus. Le bowling et le laser ont toujours une heure (le moteur n en
+// place pas sans) ; une autre activite part libre pendant la visite tant qu on ne lui en pose pas.
+function rvAjouterEnPlus(id, { variante, heure, joueurs } = {}) {
+  const s = quickBookState;
+  if (!rvEnPlusPossible() || !id) return false;
+  const liste = Array.isArray(s.enPlus) ? s.enPlus.slice() : [];
+  const avant = liste.find((x) => x.id === id) || null;
+  const ancre = RV_ANCRABLES.includes(id);
+  const v = variante != null ? Number(variante) : avant ? avant.variante : ancre ? Number((rsEtat() && rsEtat().variantes[id]) || 1) : null;
+  const h = heure !== undefined ? String(heure || '') : avant ? avant.heure : ancre ? rvHeureEnPlusProposee(id, v) : '';
+  const x = { id, variante: v, heure: ancre && !h ? rvHeureEnPlusProposee(id, v) : h, joueurs: joueurs != null ? joueurs : avant ? avant.joueurs : null };
+  s.enPlus = avant ? liste.map((y) => (y.id === id ? x : y)) : [...liste, x];
+  s.forcer = false;
+  return true;
+}
+
+function rvRetirerEnPlus(id) {
+  const s = quickBookState;
+  if (!s || !Array.isArray(s.enPlus)) return;
+  s.enPlus = s.enPlus.filter((x) => x.id !== id);
+  s.forcer = false;
+}
+
+// Ce qui part au serveur (lib/formule-en-plus.js lireEnPlus) : l activite, son heure, sa duree ou ses
+// parties, et ses joueurs quand ce n est pas tout le groupe.
+function rvEnPlusEnvoyes() {
+  const s = quickBookState;
+  const groupe = Math.max(1, Number(s && s.pax) || 1);
+  return rvEnPlus().map((x) => {
+    const ligne = { activityId: x.id };
+    if (x.heure) ligne.heure = x.heure;
+    if (x.id === 'bowling') ligne.duration = Number(x.variante) || 1;
+    if (x.id === 'laser_game') ligne.games = Math.max(1, Math.trunc(Number(x.variante) || 1));
+    const joueurs = Math.trunc(Number(x.joueurs) || 0);
+    if (joueurs >= 1 && joueurs < groupe) ligne.participants = joueurs;
+    return ligne;
+  });
+}
+
+// Le montant d une activite en plus tant que le serveur ne l a pas dit : le catalogue de ce poste.
+function rvMontantEnPlus(x) {
+  const s = quickBookState;
+  const joueurs = Math.max(1, Number(x.joueurs) || Number(s.pax) || 1);
+  const item = { activityId: x.id, pax: Number(s.pax) || 1, participants: joueurs };
+  if (x.id === 'bowling') item.duration = Number(x.variante) || 1;
+  if (x.id === 'laser_game') item.games = Math.max(1, Number(x.variante) || 1);
+  try {
+    const ligne = estimerPrixProgramme([item], s.pax, s.date, x.heure || s.startTime).lignes[0];
+    return ligne && ligne.montant != null ? Number(ligne.montant) : null;
+  } catch (e) { return null; }
+}
+
+// Le prix de chaque activite en plus : celui du plan du serveur, sinon l estimation de ce poste ; null
+// quand le centre n a pas de tarif (elle se regle sur place).
+function rvPrixEnPlus(x) {
+  const plan = rvPlanCourant();
+  const ligne = plan && Array.isArray(plan.lignesPrix) ? plan.lignesPrix.find((l) => l && l.enPlus && l.activite === x.id) : null;
+  if (ligne) return ligne.prix == null ? null : Number(ligne.prix);
+  return rvMontantEnPlus(x);
+}
+
+function rvMontantDesEnPlus() {
+  const liste = rvEnPlus();
+  const prix = liste.map(rvPrixEnPlus);
+  return { montant: Math.round(prix.reduce((somme, p) => somme + (p == null ? 0 : p), 0) * 100) / 100, complet: prix.every((p) => p != null) };
+}
+
+// Ce que la ligne d une activite en plus dit sous son nom : quand, sur le plan du serveur, et ou.
+function rsDetailEnPlus(x) {
+  const plan = rvPlanCourant();
+  const blocs = plan ? (plan.blocs || []).filter((b) => b.enPlus && b.activite === x.id && b.debut).sort((a, b) => timeToNum(a.debut) - timeToNum(b.debut)) : [];
+  const etape = plan ? (plan.etapes || []).find((e) => e.enPlus && e.activite === x.id) : null;
+  if (x.id === 'bowling' && blocs.length) {
+    const pistes = [...new Set(blocs.flatMap((b) => b.pistes || []))];
+    return `${blocs[0].debut} à ${blocs[blocs.length - 1].fin}${pistes.length ? `, ${pistes.length > 1 ? 'pistes' : 'piste'} ${rvListePistes(pistes)}` : ''}`;
+  }
+  if (x.id === 'laser_game' && blocs.length) {
+    const departs = [...new Set(blocs.map((b) => b.debut))];
+    return departs.length > 1 ? `${departs[0]}, puis ${rvListe(departs.slice(1))}` : departs[0];
+  }
+  if (etape && !etape.libre) return `${etape.debut}${etape.fin ? ` à ${etape.fin}` : ''}`;
+  if (!x.heure) return 'en plus, libre pendant la visite';
+  return x.heure;
+}
+
+// Les lignes du ticket des activites en plus, sous la formule : leur nom, leur heure, leur prix, et la
+// phrase du serveur quand leur heure coince.
+function rsLignesEnPlus() {
+  const plan = rvPlanCourant();
+  const combien = rsEtat().faits.combien;
+  return rvEnPlus().map((x) => {
+    const nom = rvNomEnPlus(x);
+    const refus = Boolean(plan && !plan.disponible && plan.heureRefusee && plan.heureRefusee.enPlus && plan.heureRefusee.activite === x.id);
+    const detail = refus ? rsPhrase(plan.refus) : rsDetailEnPlus(x);
+    const montant = rvPrixEnPlus(x);
+    const prix = !combien ? '' : montant != null ? rsEuros(montant) : 'sur place';
+    return rsLigne({ cle: `p-${x.id}`, action: 'rsOuvrirEnPlus(this.dataset.activite)', data: `data-activite="${escapeHtml(x.id)}"`, icone: rsIcone(x.id), nom, detail, ko: refus, prix, aria: rsAriaLigne(`${nom}, en plus de la formule`, detail, prix), retirer: 'rsRetirerEnPlus(this.dataset.activite)' });
+  }).join('');
+}
+
+// Toucher la ligne : la page des activites, ou ses heures se choisissent.
+function rsOuvrirEnPlus(id) {
+  const b = rsEtat();
+  if (!b || !rvEnPlusDe(id)) return;
+  rsGeste(() => {
+    rsVersQuestion('activites');
+    if (!RV_ANCRABLES.includes(id)) b.heureAct = id;
+  });
+}
+
+// Sa croix : elle quitte le ticket, la formule reste telle quelle.
+function rsRetirerEnPlus(id) {
+  if (!rsEtat()) return;
+  rsGeste(() => {
+    quickBookState.error = '';
+    rvRetirerEnPlus(id);
+    const b = rsEtat();
+    if (b.heureAct === id) { b.heureAct = ''; b.heureActDit = null; }
+  });
+}
+
+// UN TOUCHER QUI AJOUTE A UNE FORMULE (tuile, « Ajouter », une heure de bloc, la page Sur mesure). Une
+// activite que l acces illimite comprend s y reprend (ou en sort) ; une activite deja dans la formule le
+// dit, sans rien changer (« Adapter à ce groupe » la retire) ; une autre devient une activite en plus, ou
+// la quitte d un deuxieme toucher. Rend true quand le toucher a ete pris ici.
+function rsToucherEnPlus(id, { variante, heure, basculer = true } = {}) {
+  const s = quickBookState;
+  if (!rvEnPlusPossible()) return false;
+  s.error = '';
+  if (rvDansLAcces(id)) {
+    const f = rvFormuleIllimitee();
+    const choix = rsChoixIllimite(f);
+    if (rvPrisDansLAcces(id) && !basculer) return true;
+    const suite = choixIllimiteBascule(f, choix, id);
+    if (!suite) { s.error = 'Gardez au moins une activité dans l’accès.'; return true; }
+    s.illimite = suite;
+    s.forcer = false;
+    return true;
+  }
+  if (rvActivites().includes(id) && !RV_ANCRABLES.includes(id)) {
+    const nom = rsLeNom(id);
+    s.error = `${nom.charAt(0).toUpperCase()}${nom.slice(1)} ${/^les /.test(nom) ? 'sont' : 'est'} déjà dans la formule. Pour la changer : touchez la formule, puis « Adapter à ce groupe ».`;
+    return true;
+  }
+  // (le meme droit que pour adapter une formule, le serveur le redit : exigerAdaptationDeFormule)
+  if (!rsPeutChanger()) { s.error = 'Votre rôle ne permet pas d’ajouter une activité à une formule. Pour réserver à la carte, retirez la formule du ticket.'; return true; }
+  const deja = rvEnPlusDe(id);
+  if (deja && basculer && heure === undefined) { rvRetirerEnPlus(id); return true; }
+  rvAjouterEnPlus(id, { ...(variante != null ? { variante } : {}), ...(heure !== undefined ? { heure } : {}) });
+  return true;
+}
+
+// « Pendant le laser de la formule, de 16:00 à 16:25. » : une heure en plus sur ce que la formule fait a
+// heure fixe (rsPendantDeLaFormule). Le nom court de la tuile, avec son article : « le minigolf », « les
+// arcades », jamais « le Minigolf Blacklight » coupe sur la touche.
+function rsLeNomDeLaTuile(id) {
+  const nom = id === 'laser_game' ? 'laser' : String(rsNomTuile(id) || '').toLowerCase();
+  return `${/s$/.test(nom) ? 'les ' : /^[aeéiouyh]/.test(nom) ? 'l’' : 'le '}${nom}`;
+}
+
+function rsMotPendantFormule(autre) {
+  return `pendant ${rsLeNomDeLaTuile(autre)}`;
+}
+
+function rsPhrasePendantFormule(p) {
+  return `Pendant ${rsLeNomDeLaTuile(p.activite)} de la formule, de ${p.debut} à ${p.fin}.`;
+}
+
+// Pourquoi cette heure ne se prend pas pour l activite en plus, en une phrase ; '' quand elle se prend.
+// Pendant ce que la formule fait a heure fixe, ou refusee par le serveur (une piste prise, une arme qui
+// manque). Une heure que le serveur n a pas encore jugee se prend : le plan la juge juste apres.
+function rsRefusEnPlus(id, heure) {
+  const pendant = rsPendantDeLaFormule(id, heure);
+  if (pendant) return rsPhrasePendantFormule(pendant);
+  const v = rsVerdictDuBloc(id, heure);
+  return v && v.statut === 'ko' ? rsPhrase(v.raison) : '';
+}
+
+// UNE HEURE TOUCHEE sur le bloc d une activite en plus : elle se prend si elle tient ; sinon rien ne
+// change et le ticket dit pourquoi. Sa propre heure touchee une deuxieme fois la retire.
+function rsHeureEnPlus(id, heure) {
+  const s = quickBookState;
+  if (!s || !rsEtat()) return;
+  const x = rvEnPlusDe(id);
+  const refus = x && x.heure === heure ? '' : rsRefusEnPlus(id, heure);
+  rsToucheDe = id;
+  rsGeste(() => {
+    s.error = '';
+    if (x && x.heure === heure) { rvRetirerEnPlus(id); return; }
+    if (refus) { s.error = `${heure} ne tient pas. ${refus}`; return; }
+    rsToucherEnPlus(id, { heure, variante: rsVariante(id), basculer: false });
+    if (!x) rsDemanderLesJoueurs();
+  });
+}
+
+// L heure que « Ajouter » pose au bowling ou au laser en plus : la premiere qui tient a partir de celle
+// proposee (juste apres ce que la formule fait a heure fixe), selon le serveur quand il a juge le bloc.
+function rsHeureEnPlusQuiTient(id) {
+  if (!RV_ANCRABLES.includes(id)) return undefined;
+  const variante = rsVariante(id);
+  const voulue = rvHeureEnPlusProposee(id, variante);
+  if (!voulue) return undefined;
+  const v = rsVerifs.get(rsCleBloc(id));
+  if (!v || v.etat !== 'ok') return voulue;
+  const heures = rvHeuresEnPlus(id);
+  const plages = rsPlagesDeLaFormule();
+  const x = { id, variante };
+  const tient = (h) => { const r = v.resultats.get(h); return !(r && r.statut === 'ko') && !rsPendantDeLaFormule(id, h, plages, x); };
+  return heures.find((h) => timeToNum(h) >= timeToNum(voulue) - 1e-9 && tient(h)) || heures.find(tient) || voulue;
+}
+
+// LES HEURES D UNE ACTIVITE EN PLUS, sur son bloc : toute la journee, chacune avec le verdict du serveur
+// sur la formule et ses activites en plus jugees ensemble (rsVerifierEnPlus). Celle qui tombe pendant ce
+// que la formule fait a heure fixe le dit (« pendant le laser »), celle que le serveur refuse dit son mot
+// (« complet ») ; les autres se prennent, pendant l a volonte et le libre compris, et disent ce qui
+// restera (« reste 6 »).
+function rsHeuresEnPlusHtml(id) {
+  const x = rvEnPlusDe(id);
+  const choisie = x ? x.heure || '' : '';
+  const v = rsVerifs.get(rsCleBloc(id));
+  const lue = Boolean(v && v.etat === 'ok');
+  const plages = rsPlagesDeLaFormule();
+  const plan = rvPlanCourant();
+  const refuse = Boolean(plan && !plan.disponible && plan.heureRefusee && plan.heureRefusee.enPlus && plan.heureRefusee.activite === id);
+  const coche = `<i class="rs-coche" aria-hidden="true">${RV_I.ok}</i>`;
+  const sid = escapeJsString(id);
+  const essai = x || { id, variante: rsVariante(id) };
+  const liste = rsFenetre(rvHeuresEnPlus(id).map((heure) => ({ heure })), choisie);
+  const cles = liste.map(({ heure }) => {
+    const on = heure === choisie;
+    const verdict = lue ? v.resultats.get(heure) || null : null;
+    const refus = verdict && verdict.statut === 'ko' ? verdict : null;
+    const pendant = rsPendantDeLaFormule(id, heure, plages, essai);
+    const coince = Boolean(refus) || Boolean(pendant);
+    const reste = !coince && verdict ? rsResteEnPlus(verdict) : '';
+    const mot = pendant ? rsMotPendantFormule(pendant.activite) : refus ? rsMotCoince(id, refus) : on ? 'en plus' : reste;
+    const phrase = pendant ? rsPhrasePendantFormule(pendant) : refus ? rsPhrase(refus.raison) : '';
+    const aria = `${heure}${coince ? `, ne tient pas, ${phrase}` : on ? ', en plus de la formule' : reste ? `, ${reste}` : ''}`;
+    return `<button type="button" class="rs-h${on ? ' is-on' : ''}${on && (coince || refuse) ? ' is-ko' : ''}${coince && !on ? ' is-coince' : ''}"${on ? ` id="rvHeure-${escapeHtml(id)}"` : ''} data-activite="${escapeHtml(id)}" data-heure="${heure}" data-tient="${coince ? '0' : '1'}"${phrase ? ` title="${escapeHtml(phrase)}"` : ''} aria-label="${escapeHtml(aria)}" aria-pressed="${on}" onclick="rsHeure('${sid}','${heure}')">${coche}<b>${heure}</b>${mot ? `<small>${escapeHtml(mot)}</small>` : ''}</button>`;
+  }).join('');
+  const vide = liste.length ? '' : '<p class="rs-texte">Plus de séance ce jour-là.</p>';
+  return `<div class="rs-s-l" data-verifie="${lue ? '1' : '0'}">${cles}${vide}</div>`;
+}
+
+// Ce qui restera a cette heure pour l activite en plus : le serveur dit ce que son plan y prend
+// (verdict.prend, les blocs de l activite en plus marques), la journee se compte comme sur les autres
+// blocs (rsResteDuPlan). « reste 6 », l unite est celle du bloc.
+function rsResteEnPlus(verdict) {
+  const prend = Array.isArray(verdict && verdict.prend) ? verdict.prend.filter((b) => b && b.p) : [];
+  const [premier] = rsResteDuPlan(prend);
+  const n = premier ? Number(String(premier).split(' ')[0]) : NaN;
+  return Number.isFinite(n) && n >= 0 ? `reste ${n}` : '';
+}
+
+// LES HEURES D UNE PETITE ACTIVITE EN PLUS, sous sa ligne : « Libre » (pendant la visite), puis les
+// demi-heures de la journee, jugees comme celles d un bloc.
+function rsHeuresEnPlusActHtml(id) {
+  const x = rvEnPlusDe(id);
+  const sid = escapeHtml(id);
+  const coche = `<i class="rs-coche" aria-hidden="true">${RV_I.ok}</i>`;
+  const posee = x && x.heure ? x.heure : '';
+  const v = rsVerifs.get(rsCleBloc(id));
+  const lue = Boolean(v && v.etat === 'ok');
+  const plages = rsPlagesDeLaFormule();
+  const cles = [`<button type="button" class="rs-h${posee ? '' : ' is-on'}" data-activite="${sid}" data-heure-l="" data-tient="1" aria-pressed="${!posee}" aria-label="Libre, pendant la visite" onclick="rsHeureAct(this.dataset.activite, '')">${coche}<b>Libre</b><small>pendant la visite</small></button>`];
+  rsFenetre(rvHeuresEnPlus(id).map((heure) => ({ heure })), posee).forEach(({ heure }) => {
+    const on = heure === posee;
+    const verdict = lue ? v.resultats.get(heure) || null : null;
+    const refus = verdict && verdict.statut === 'ko' ? verdict : null;
+    const pendant = rsPendantDeLaFormule(id, heure, plages, x || { id });
+    const coince = Boolean(refus) || Boolean(pendant);
+    const phrase = pendant ? rsPhrasePendantFormule(pendant) : refus ? rsPhrase(refus.raison) : '';
+    const mot = pendant ? rsMotPendantFormule(pendant.activite) : refus ? rsMotCoince(id, refus) : on ? 'en plus' : '';
+    const aria = `${heure}${coince ? `, ne tient pas, ${phrase}` : on ? ', en plus de la formule' : ''}`;
+    cles.push(`<button type="button" class="rs-h${on ? ' is-on' : ''}${on && coince ? ' is-ko' : ''}${!on && coince ? ' is-coince' : ''}" data-activite="${sid}" data-heure-l="${heure}" data-tient="${coince ? '0' : '1'}" aria-pressed="${on}"${phrase ? ` title="${escapeHtml(phrase)}"` : ''} aria-label="${escapeHtml(aria)}" onclick="rsHeureAct(this.dataset.activite, this.dataset.heureL)">${coche}<b>${heure}</b>${mot ? `<small>${escapeHtml(mot)}</small>` : ''}</button>`);
+  });
+  return `<div class="rs-ha" id="rsHA-${sid}" role="group" aria-label="${escapeHtml(`Heures, ${rsNomTuile(id)} en plus`)}"><div class="rs-s-l" data-heures-act="${sid}" data-verifie="${lue ? '1' : '0'}">${cles.join('')}</div>${rsDitDesHeuresAct(id, 'enplus', {})}</div>`;
+}
+
+// Les joueurs d une activite en plus : tout le groupe d office, moins si certains n y vont pas.
+function rsCompteurJoueursEnPlusHtml(id, mot = 'Joueurs', aria = `Joueurs, ${rsNomCourt(id)} en plus`) {
+  const s = quickBookState;
+  const x = rvEnPlusDe(id);
+  const groupe = Math.max(1, Number(s.pax) || 1);
+  const n = Math.min(groupe, Math.max(1, Number(x && x.joueurs) || groupe));
+  return rsCompteurHtml(mot, n, n > 1 ? `rsJoueursBloc(this.dataset.activite,${n - 1})` : '', n < groupe ? `rsJoueursBloc(this.dataset.activite,${n + 1})` : '', `data-activite="${escapeHtml(id)}"`, aria);
+}
+
+// Dans une formule telle quelle, le bloc du bowling ou du laser vend l activite en plus : son prix, et ce
+// que la formule ou l acces en a deja (« dans la formule », « dans l’accès »).
+function rsInfoBlocEnPlus(id, tarif) {
+  if (rvDansLAcces(id)) return rvPrisDansLAcces(id) ? 'dans l’accès' : 'hors accès';
+  const x = rvEnPlusDe(id);
+  const armes = id === 'laser_game' && rsEtat().faits.combien ? `, ${rvPluriel(Math.max(1, Number(x && x.joueurs) || Number(quickBookState.pax) || 1), 'arme')}` : '';
+  return `${rvActivites().includes(id) ? 'dans la formule, ' : ''}${tarif} en plus${armes}`;
+}
+
+// LE SERVEUR JUGE CHAQUE HEURE DE L ACTIVITE EN PLUS, avec la formule et les autres activites en plus,
+// comme « Créer » enverrait le dossier (lib/formule-en-plus.js) : la variante change son heure, rien
+// d autre.
+function rvVarianteEnPlus(id, heure) {
+  const variante = rsVariante(id);
+  return rsSurUneCopie((copie) => {
+    const liste = Array.isArray(copie.enPlus) ? copie.enPlus : [];
+    // (pas encore prise : elle s essaie avec la duree ou les parties choisies sur son bloc)
+    copie.enPlus = liste.some((x) => x.id === id) ? liste.map((x) => (x.id === id ? { ...x, heure } : x)) : [...liste, { id, variante: RV_ANCRABLES.includes(id) ? variante : null, heure, joueurs: null }];
+    const corps = rvCorpsDeSimulation();
+    if (!corps || !Array.isArray(corps.enPlus)) return null;
+    const essai = { heure, startTime: corps.startTime, enPlus: corps.enPlus };
+    if (corps.preference) essai.preference = corps.preference;
+    if (corps.heuresPosees) essai.heuresPosees = corps.heuresPosees;
+    if (Array.isArray(corps.lanes)) essai.lanes = corps.lanes;
+    if (corps.laneCount != null) essai.laneCount = corps.laneCount;
+    return essai;
+  });
+}
+
+async function rsVerifierEnPlus(id, cle) {
+  if (!cle || rsVerifs.has(cle)) return false;
+  const base = rvCorpsDeSimulation();
+  if (!base) return false;
+  const variantes = rvHeuresEnPlus(id).slice(0, 48).map((heure) => rvVarianteEnPlus(id, heure)).filter(Boolean);
+  if (!variantes.length) { rsVerifs.set(cle, { etat: 'ok', resultats: new Map() }); return true; }
+  rsVerifs.set(cle, { etat: 'calcul' });
+  try {
+    const payload = await apiRequest(API_ENDPOINTS.staffReservations, { method: 'POST', body: JSON.stringify({ ...base, dryRun: true, candidats: variantes }) });
+    const lus = payload && Array.isArray(payload.candidats) ? payload.candidats : [];
+    rsVerifs.set(cle, { etat: 'ok', resultats: new Map(lus.map((r) => [r.heure, r])) });
+  } catch (error) {
+    rsVerifs.delete(cle);
+    return false;
+  }
+  if (rsVerifs.size > 60) rsVerifs.delete(rsVerifs.keys().next().value);
+  return true;
 }
 
 function toggleQuickBookMore() {
@@ -38279,6 +39721,7 @@ const RV_I = {
   cal: rvSvg('<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M8 3v4M16 3v4M3 10h18"/>', 2),
   arene: rvSvg('<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>', 2),
   info: rvSvg('<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h.01"/>'),
+  groupes: rvSvg('<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>', 2),
 };
 
 // Plusieurs resas pour un meme client, un seul envoi (Movsar, 2026-10-08) :
@@ -38429,7 +39872,10 @@ function rvDepartsLaser(heure) {
 // arcades vendues en argent (« 8 crédits d'arcade (8€) par enfant ») n ont pas de duree : { argent: true }.
 // null quand la carte ne le dit pas : le catalogue decide.
 function rvDureeDuContenu(id) {
-  const f = rvFormule();
+  return dureeDuContenuDeLaFormule(rvFormule(), id);
+}
+
+function dureeDuContenuDeLaFormule(f, id) {
   const ligne = f && Array.isArray(f.desc) ? f.desc.find((texte) => getFormulaActivityIds({ desc: [texte] }).includes(id)) : '';
   if (!ligne) return null;
   const t = formulaActivityToken(ligne);
@@ -38444,7 +39890,10 @@ function rvDureeDuContenu(id) {
 // chevauchent rien (le serveur ne leur en donne pas non plus, lib/reservation-activity-move.js jeuAHeure).
 function rvArcadesEnArgent(id) {
   const contenu = /^arcade/.test(id) ? rvDureeDuContenu(id) : null;
-  return Boolean(contenu && contenu.argent);
+  if (contenu && contenu.argent) return true;
+  // (2026-11-22) des cartes d arcades en credits, choisies a la carte : de l argent, sans heure non plus
+  if (id === 'arcade_time' && quickBookState && quickActiviteRetenue(id)) return getQuickVisitOptions(id).arcadeMode === 'credit';
+  return false;
 }
 
 // Combien de minutes la ligne occupe le groupe : les memes regles que
@@ -38497,14 +39946,15 @@ function rvActualiserCle() {
 function rvBlocsPlan(id) {
   const plan = rvPlanCourant();
   if (!plan) return [];
-  return (plan.blocs || []).filter((b) => b.activite === id && b.debut).sort((a, b) => timeToNum(a.debut) - timeToNum(b.debut));
+  // (les blocs d une activite en plus sont a elle, pas a la ligne de la formule : rsDetailEnPlus)
+  return (plan.blocs || []).filter((b) => b.activite === id && b.debut && !b.enPlus).sort((a, b) => timeToNum(a.debut) - timeToNum(b.debut));
 }
 
 function rvHeurePlanifiee(id) {
   const bloc = rvBlocsPlan(id)[0];
   if (bloc) return bloc.debut;
   const plan = rvPlanCourant();
-  const etape = plan ? (plan.etapes || []).find((e) => e.activite === id && e.debut) : null;
+  const etape = plan ? (plan.etapes || []).find((e) => e.activite === id && e.debut && !e.enPlus) : null;
   return etape ? etape.debut : '';
 }
 
@@ -39214,7 +40664,7 @@ function rvAvertissement() {
   if (!schedule) return 'Centre fermé à cette date.';
   if (!s.startTime) return 'Choisissez une heure.';
   syncQuickBookDuration();
-  const slotCheck = validateSlotWindow(s.date, s.startTime, rvDureeDuCreneau(s.totalDuration), { allowPastStart: quickBookAllowsPastSelectedTime() });
+  const slotCheck = validateSlotWindow(s.date, s.startTime, rvDureeAJuger(s.totalDuration), { allowPastStart: quickBookAllowsPastSelectedTime() });
   if (!slotCheck.ok) return slotCheck.message;
   const formule = rvFormule();
   if (formule) {
@@ -39244,10 +40694,21 @@ function rvRefusDuPlan() {
   const parType = conflits.find((c) => c.type === 'bowling_conflict' || c.type === 'laser_conflict');
   const parPhrase = /^bowling|pistes?\b/i.test(raison) ? 'bowling' : /^laser|arène/i.test(raison) ? 'laser_game' : '';
   const posee = plan.heureRefusee && plan.heureRefusee.activite ? plan.heureRefusee : null;
+  // UNE ACTIVITE EN PLUS QUI COINCE (2026-11-22) le dit sur sa ligne a elle : la formule, ses activites et
+  // leurs heures ne sont pas en cause (le bowling en plus de la Formule 1 n est pas celui de la formule).
+  if (posee && posee.enPlus) {
+    const x = rvEnPlusDe(posee.activite);
+    const nom = x ? rvNomEnPlus(x) : rvNomCourt(posee.activite);
+    return { activite: '', enPlus: posee.activite, heure: posee.heure || '', raison, titre: `${nom} en plus à ${posee.heure} impossible`, court: `${nom} en plus ne tient pas à ${posee.heure}`, bloque: `${nom} en plus bloque`, conflits: conflits.filter((c) => c.message !== raison) };
+  }
   const candidate = posee ? posee.activite : nomme ? (nomme.type === 'arene' ? 'laser_game' : 'bowling') : parType ? (parType.type === 'bowling_conflict' ? 'bowling' : 'laser_game') : parPhrase || (ids.length === 1 ? ids[0] : '');
   const activite = ids.includes(candidate) ? candidate : '';
   const ligne = activite ? rvHeuresDesLignes(ids)[activite] : null;
-  const heure = (nomme && nomme.heure) || (ligne && ligne.heure) || s.startTime || '';
+  // (un grand groupe : chaque sous-groupe a ses heures, la ligne n en a pas une ; l heure qui coince
+  // est celle que dit le refus, sinon le depart du groupe)
+  const grand = rvGrandGroupe();
+  const heureDuGrand = rvGroupesEnJeu(grand) ? ((/\b(\d{2}:\d{2})\b/.exec(raison) || [])[1] || s.startTime || '') : '';
+  const heure = (nomme && nomme.heure) || heureDuGrand || (ligne && ligne.heure) || s.startTime || '';
   const nom = activite ? rvNomCourt(activite) : '';
   return {
     activite,
@@ -39347,7 +40808,7 @@ function rvEtapesDuBillet() {
       if (debut) etapes.push({ id, h: debut, debut: timeToNum(debut), fin: fin ? timeToNum(fin) : timeToNum(debut) + 1, q: `Bowling · ${rvHeuresLabel(rvBowlingDuree())}`, d: pistesDites });
       return;
     }
-    const etape = plan ? (plan.etapes || []).find((e) => e.activite === id) : null;
+    const etape = plan ? (plan.etapes || []).find((e) => e.activite === id && !e.enPlus) : null;
     const debut = etape && etape.debut ? etape.debut : ligne.heure;
     if (ligne.libre || (etape && etape.libre)) { etapes.push({ id, h: '', debut: null, fin: null, q: nom, d: 'accès libre pendant la visite' }); return; }
     if (debut) etapes.push({ id, h: debut, debut: timeToNum(debut), fin: etape && etape.fin ? timeToNum(etape.fin) : timeToNum(debut) + rvMinutesActivite(id) / 60, q: nom, d: rvHeuresLabel(rvMinutesActivite(id) / 60) });
@@ -39409,8 +40870,24 @@ function rvNaitArrive(s = quickBookState) {
 // un numero etranger compte son indicatif. Le serveur redit la meme regle
 // (telephoneDuComptoirValide, api/staff-reservations.js).
 function rvTelephoneValide(valeur) {
-  const chiffres = String(normalizePhoneInput(valeur || '')).replace(/\D/g, '');
+  const brut = String(valeur || '').replace(/\s+/g, ' ').trim();
+  if (!brut || brut === '+32' || brut.length > 40) return false;
+  if (!rvRessembleAUnNumero(brut)) return true;
+  const chiffres = String(normalizePhoneInput(brut)).replace(/\D/g, '');
   return chiffres.length <= 15 && chiffres.replace(/^32/, '').length >= 8;
+}
+
+// Ce que le client a laisse comme telephone, a afficher : un numero, un mot (« par mail »), ou rien
+// (« / » dit « pas de numero »).
+function rvTelephoneSaisiTexte(valeur) {
+  const brut = String(valeur || '').replace(/\s+/g, ' ').trim();
+  return brut === '/' ? '' : brut;
+}
+
+// Le numero qui peut servir a appeler : un vrai numero, jamais un mot ni un « / ».
+function rvTelephoneEnvoyable(valeur) {
+  const brut = String(valeur || '').trim();
+  return rvRessembleAUnNumero(brut) && rvTelephoneValide(brut) ? brut.replace(/[^0-9+]/g, '') : '';
 }
 
 // LE NOM SUIT LE NUMERO (repris du champ unique, 2026-10-12). Changer de numero
@@ -39471,7 +40948,8 @@ function rsVersLeTelephone() {
 
 // Ce que dit le champ du telephone quand il manque : vide, ou trop court.
 function rsTelephoneDit(s = quickBookState) {
-  return String(s.phone || '').replace(/\D/g, '').length > 2 ? 'Numéro incomplet : il faut au moins 8 chiffres après l’indicatif.' : 'Le téléphone du client est obligatoire.';
+  const tape = String(s.phone || '').trim();
+  return rvRessembleAUnNumero(tape) && tape.replace(/\D/g, '').length > 2 ? 'Numéro incomplet : il faut au moins 8 chiffres après l’indicatif.' : 'Écrivez un numéro, ou « par mail », ou « / » s’il n’y en a pas.';
 }
 
 // LE NOM D UN CLIENT RECONNU SE REMPLACE D UN COUP (2026-10-12). Le numero
@@ -39549,7 +41027,7 @@ function rvPiedHtml() {
   const bloque = Boolean(chevauche) || (refuse && !s.forcer && !lot && !proche) || vide || Boolean(prixBloque);
   const pret = Boolean(b.faits.combien && plan && plan.disponible && !chevauche && !cherche && !rvPlanEnCalcul() && !prixBloque);
   const heure = s.startTime ? rsHeureDite() : '';
-  const motRefus = (rvRefusDuPlan() || {}).activite ? 'Voir les heures' : 'Créer';
+  const motRefus = (rvRefusDuPlan() || {}).activite || (rvRefusDuPlan() || {}).enPlus ? 'Voir les heures' : 'Créer';
   const libelle = s.submitting ? 'Création…' : attente ? 'Combien de joueurs ?' : chevauche ? 'Deux heures se chevauchent' : lot ? `Créer les ${rvResas.length}` : prixBloque === 'raison' ? 'Raison du prix ?' : prixBloque ? 'Prix à revoir' : refuse && s.forcer ? `Créer quand même à ${heure}` : proche ? `Prendre ${proche}` : vide ? 'Créer' : cherche ? 'Recherche…' : bloque ? motRefus : heure ? `Créer à ${heure}` : 'Créer';
   const occupe = s.submitting ? ' aria-disabled="true" aria-busy="true"' : '';
   const payable = rvPeutEncaisserEnCreant() && !refuse && !chevauche && !attente && !prixBloque;
@@ -39566,7 +41044,9 @@ function rvPiedHtml() {
   // encore toucher « Prendre 22:00 ».
   const reprise = refuse && !lot && s.forcer ? rsHeureProche() : '';
   const motForcer = !s.forcer ? 'Créer quand même, à placer' : reprise ? `Prendre ${reprise} à la place` : 'Ne pas créer quand même';
-  const forcer = refuse && !lot && rsNiveau('forcer') === 'oui' ? `<button type="button" class="rs-lien${s.forcer ? ' is-fort' : ''}" id="rvForcer" aria-pressed="${Boolean(s.forcer)}"${reprise ? ` data-reprise="${reprise}"` : ''} onclick="rsForcer()">${escapeHtml(motForcer)}</button>` : '';
+  // (une activite en plus qui coince : son heure se change sur son bloc, elle ne part pas « à placer »)
+  const refusEnPlus = Boolean((rvRefusDuPlan() || {}).enPlus);
+  const forcer = refuse && !lot && rsNiveau('forcer') === 'oui' ? refusEnPlus ? '' : `<button type="button" class="rs-lien${s.forcer ? ' is-fort' : ''}" id="rvForcer" aria-pressed="${Boolean(s.forcer)}"${reprise ? ` data-reprise="${reprise}"` : ''} onclick="rsForcer()">${escapeHtml(motForcer)}</button>` : '';
   const entree = !(s.submitting || bloque || attente) && !(refuse && s.forcer && !lot);
   const jour = rsJourMot(s.date);
   const resume = `${b.faits.combien ? rvPluriel(joueurs, 'joueur') : 'Joueurs à choisir'}, ${jour.charAt(0).toLowerCase()}${jour.slice(1)}`;
@@ -40062,6 +41542,7 @@ function rvRepeindre({ sauf = [] } = {}) {
   rvPlacerHorloge();
   rsChercherLaProche();
   rvChargerAutreOrdre();
+  rvChargerAutrePlanDesGroupes();
   rsArmerCompteurs();
   // (apres la peinture : lire la hauteur maintenant forcerait la mise en page de la fenetre)
   requestAnimationFrame(rsOmbreDuTicket);
@@ -40107,7 +41588,7 @@ function renderQuickBookInner() {
   if (rsLeger) return;
   rvPlanifierSimulation();
   rsPlanifierVerif();
-  if (b.q === 'activites') rsPlanifierPrixTuiles();
+  if (b.q === 'activites' || (b.q === 'mesure' && rvEnPlusPossible())) rsPlanifierPrixTuiles();
   const formule = s.type === 'formule' && rvActivites().length && (b.q === 'formules' || b.q === 'illimite' || (b.q === 'autres' && b.quandDe === 'formule'));
   if (s.horloge) rvChargerCandidats(s.horloge.id, s.horloge.partie);
   else if (formule) rvChargerCandidats(rvActivites()[0], 0);
@@ -40507,6 +41988,7 @@ function rvAdapterFormule(on) {
       delete posees[id];
     });
     s.heuresPosees = posees;
+    rvEnPlusDansLaVisite();
   } else {
     s.adaptee = false;
     s.visit = null;
@@ -40515,6 +41997,34 @@ function rvAdapterFormule(on) {
   s.forcer = false;
   syncQuickBookDuration();
   renderQuickBook();
+}
+
+// « ADAPTER À CE GROUPE » AVEC DES ACTIVITES EN PLUS (2026-11-22) : elles entrent dans la formule adaptee,
+// chacune a son heure et avec ses joueurs. Une activite que la formule a deja (un deuxieme bowling) ne se
+// double pas dans une visite : elle part, et la fenetre le dit.
+function rvEnPlusDansLaVisite() {
+  const s = quickBookState;
+  const liste = Array.isArray(s.enPlus) ? s.enPlus : [];
+  s.enPlus = [];
+  if (!liste.length || !s.visit) return;
+  const v = s.visit;
+  const doubles = [];
+  // (elles viennent apres les activites de la formule : leur heure est la leur, la formule garde son arrivee)
+  const ajoutees = liste.map((x) => x.id).filter((id) => !rvIdsDeComposition(v).includes(id));
+  s.ordre = [...(Array.isArray(s.ordre) ? s.ordre : []).filter((id) => !ajoutees.includes(id)), ...ajoutees];
+  liste.forEach((x) => {
+    if (rvIdsDeComposition(v).includes(x.id)) { doubles.push(x.id); return; }
+    if (x.id === 'bowling') v.bowling = { ...(v.bowling || {}), on: true, duration: Number(x.variante) || 1 };
+    else if (x.id === 'laser_game') v.laser_game = { ...(v.laser_game || {}), on: true, games: Math.max(1, Number(x.variante) || 1) };
+    else v.others = { ...(v.others || {}), [x.id]: true };
+    if (x.heure && RV_ANCRABLES.includes(x.id)) s.heures = { ...(s.heures || {}), [x.id]: x.heure };
+    else if (x.heure) s.heuresPosees = { ...(s.heuresPosees || {}), [x.id]: x.heure };
+    if (Number(x.joueurs) >= 1) setQuickVisitParticipants(x.id, Number(x.joueurs));
+  });
+  if (doubles.length) {
+    const noms = doubles.map((id) => rsLeNom(id));
+    s.error = `${rvListe(noms).replace(/^./, (c) => c.toUpperCase())} en plus ${doubles.length > 1 ? 'sont retirés' : 'est retiré'} : la formule adaptée en a déjà. Réglez sa durée sur sa ligne.`;
+  }
 }
 
 function rvBasculerDansFormule(id) {
@@ -40544,6 +42054,71 @@ function rvFormuleVraimentAdaptee() {
   return cle(base) !== cle(s.visit) || reglages || Object.keys(s.heures || {}).length > 0;
 }
 
+// L HEURE A LA MINUTE (2026-11-22, Ansar : « possibilité de mettre l'heure qu'on veut pour chaque
+// activité [...] à la minute [...] uniquement côté staff »). Une ligne a 15:10 part au moteur a 15:10,
+// et son heure part aussi posee (heuresPosees) : c est ce qui dit au serveur qu une heure du comptoir se
+// juge a sa minute (lib/reservation-ops.js aLaMinute), pistes et armes sur la vraie plage. Partie a la
+// demi-heure d avant (la premiere passe du 22/11), une piste prise de 15:00 a 15:10 faisait refuser
+// 15:10. Un bowling ou un laser seul a la minute part en visite de cette seule activite, au meme prix :
+// le moteur refuserait ce bowling et poserait ce laser a la demi-heure suivante. Les parties suivantes du
+// laser gardent leur ecart avec la premiere. Rend '' ou ce qui empeche d envoyer le dossier.
+function rvMinutesDe(heure) {
+  const lu = /^(\d{2}):(\d{2})$/.exec(String(heure || ''));
+  return lu ? Number(lu[1]) * 60 + Number(lu[2]) : NaN;
+}
+
+function rvEnHeure(minutes) {
+  return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+}
+
+function rvHorsGrille(heure) {
+  const m = rvMinutesDe(heure);
+  return Number.isFinite(m) && m % 30 !== 0;
+}
+
+function rvALaMinute(reservation, programme) {
+  const s = quickBookState;
+  // UN DEPART VERROUILLE N EST JAMAIS UNE HEURE A LA MINUTE (2026-11-22, comptoir-reserver [R2]). La porte du
+  // laser (openQuickBookForLaserSession) pose l arrivee quelques minutes avant la partie touchee (15:25 pour
+  // 15:30) et la verrouille : prise ici pour un laser a 15:25, elle partait au moteur a la minute et le
+  // dossier quittait la partie choisie. Le depart reste celui de la partie.
+  if (s && s.lockStartTime) return '';
+  let preference = reservation.preference ? JSON.parse(JSON.stringify(reservation.preference)) : null;
+  if (!programme) {
+    if (!((s.type === 'bowling' || s.type === 'laser') && rvHorsGrille(reservation.startTime))) return '';
+    const id = s.type === 'bowling' ? 'bowling' : 'laser_game';
+    reservation.type = 'visite';
+    reservation.program = [id === 'bowling' ? { ...ligneProgrammeQuick('bowling'), duration: rvBowlingDuree() } : { ...ligneProgrammeQuick('laser_game'), games: rvPartiesLaser() }];
+    reservation.label = undefined;
+    reservation.laserGames = 0;
+    preference = { ...(preference || {}), activityOrder: [id], preferredTimes: { [id]: reservation.startTime } };
+    if (id === 'laser_game') {
+      preference.laserGameTimes = rvDepartsLaser(reservation.startTime);
+      preference.laserPlacement = 'scheduled';
+    }
+  }
+  const voulues = preference && preference.preferredTimes;
+  if (!voulues) return '';
+  const posees = { ...(reservation.heuresPosees || {}) };
+  let aLaMinute = false;
+  for (const id of RV_ANCRABLES) {
+    const heure = voulues[id];
+    if (!rvHorsGrille(heure)) continue;
+    const ecart = rvMinutesDe(heure) % 30;
+    posees[id] = heure;
+    aLaMinute = true;
+    if (id === 'laser_game' && Array.isArray(preference.laserGameTimes)) {
+      const departs = preference.laserGameTimes.map((h) => (h ? rvMinutesDe(h) - ecart : NaN));
+      const k = preference.laserGameTimes.findIndex((h, i) => h && (!Number.isFinite(departs[i]) || departs[i] % 30 !== 0));
+      if (k > 0) return `Laser à ${heure} : ses autres parties suivent toutes les 30 minutes (${rvEnHeure(rvMinutesDe(heure) + 30)}). Pour placer la partie ${k + 1} à part, mettez la première sur une demi-heure.`;
+    }
+  }
+  if (!aLaMinute) return '';
+  reservation.preference = preference;
+  reservation.heuresPosees = posees;
+  return '';
+}
+
 // LES HEURES ENVOYEES AU MOTEUR, et la variante d une formule. Le serveur lit
 // preference.formulaChoice (lib/formula-choice) ; le comptoir ne l envoyait pas.
 function rvPreference(ids, heures, programme) {
@@ -40571,7 +42146,299 @@ function rvPreference(ids, heures, programme) {
   }
   if (avecLaser && s.arene === 'seuls') preference.arene = 'seuls';
   if (s.type === 'formule' && !s.adaptee && s.formuleChoix) preference.formulaChoice = s.formuleChoix;
+  // UN GRAND GROUPE (rvGrandGroupe). Ses sous-groupes imposes (un bowling seul trop grand pour un
+  // service, ou « Faire tourner » touche) partent tous a l heure de sa premiere activite a heure, et
+  // le moteur pose chacun. Sinon la demande garde les heures de toujours : le moteur garde le plan
+  // d avant tant qu il tient, et ne fait tourner les groupes d office que quand il ne tient pas.
+  const grand = programme ? rvGrandGroupe() : null;
+  if (grand) {
+    const demande = rvDemandeGrandGroupe(grand);
+    if (demande.impose) {
+      const depart = (heures[grand.ids[0]] && heures[grand.ids[0]].heure) || s.startTime;
+      const preferredTimes = {};
+      grand.ids.forEach((id) => { preferredTimes[id] = depart; });
+      delete preference.laserGameTimes;
+      delete preference.laserPlacement;
+      preference.preferredTimes = preferredTimes;
+    }
+    preference.grandGroupe = demande;
+  }
   return Object.keys(preference).length ? preference : undefined;
+}
+
+// ── UN GRAND GROUPE (2026-11-22) ─────────────────────────────────────────────
+// Ansar : « Quand ya grand groupe et qu on réserve sur côté staff logiciel avec réservation par
+// exemple 60 personne pour bowling il gère pas dutout genre il est comme l autre qui sait diviser
+// groupe etc pour multi activité en plus etc ». La fenetre envoyait le bowling de 60 joueurs comme
+// un seul service : dix pistes sur huit, chaque heure refusee. Le formulaire en ligne, lui, coupe
+// le groupe sur la place du centre (splitGroupIntoBowlingServices, getLaserWaveCount : ses pistes,
+// ses joueurs par piste, ses armes, lus dans sa configuration). Un grand groupe part donc en
+// programme, le chemin du formulaire, et le moteur le coupe (lib/grand-groupe.js) : un bowling seul
+// en services l un apres l autre, le bowling et le laser en sous-groupes qui tournent (le groupe 1
+// au bowling pendant que le groupe 2 joue au laser, puis ils échangent). La fenetre ne recalcule
+// aucun plan : elle lit celui du serveur. Une formule et un laser seul gardent le leur.
+function rvGrandGroupe(s = quickBookState) {
+  if (!s || s !== quickBookState || s.type === 'formule' || s.type === 'laser' || s.type === 'activity' || rsFmActive(s)) return null;
+  const ids = rvActivites().filter((id) => RV_ANCRABLES.includes(id));
+  if (!ids.includes('bowling')) return null;
+  const parts = ids.map((id) => (id === 'bowling'
+    ? splitGroupIntoBowlingServices(getQuickVisitParticipants('bowling')).length
+    : getLaserWaveCount(getQuickVisitParticipants('laser_game'))));
+  const nombre = Math.max(1, ...parts);
+  return nombre > 1 ? { ids, nombre, tourne: ids.length > 1 } : null;
+}
+
+// Ce que le comptoir a regle pour le grand groupe : les tailles de ses sous-groupes, tant qu elles
+// font le groupe, et l activite du groupe 1. Rien de regle : le moteur fait des parts egales.
+// `impose` : les sous-groupes sont voulus. Un bowling seul trop grand pour un service n a pas de
+// plan d avant (un seul service refusait chaque heure) ; bowling et laser ne tournent d office que
+// quand le plan d avant ne tient pas, sinon seulement quand le comptoir l a choisi (rsFaireTourner).
+function rvDemandeGrandGroupe(grand = rvGrandGroupe()) {
+  const s = quickBookState;
+  const voulu = (s && s.grandGroupe) || {};
+  const pax = Math.max(1, Number(s && s.pax) || 1);
+  const tailles = grand && Array.isArray(voulu.tailles) && voulu.tailles.length === grand.nombre
+    && voulu.tailles.every((n) => Number.isInteger(n) && n >= 1) && voulu.tailles.reduce((t, n) => t + n, 0) === pax
+    ? voulu.tailles.slice() : null;
+  const premier = grand && grand.tourne && grand.ids.includes(voulu.premier) ? voulu.premier : '';
+  const impose = Boolean(grand) && (!grand.tourne || voulu.tourne === true);
+  return { ...(tailles ? { tailles } : {}), ...(premier ? { premier } : {}), ...(impose ? { impose: true } : {}) };
+}
+
+// LES GROUPES TOURNENT-ILS ? (2026-11-22, le coordinateur : « aucun changement de prix silencieux
+// pour les groupes qui passaient déjà »). Bowling et laser : oui quand le comptoir l a choisi, ou
+// quand le plan du serveur les a poses d office (le plan d avant ne tenait pas) ; pendant un calcul,
+// ce que le dernier plan disait. Un bowling seul trop grand : ses services l un apres l autre sont
+// toujours en jeu (rvGroupesEnJeu).
+function rvRotationEnJeu(grand = rvGrandGroupe()) {
+  const s = quickBookState;
+  if (!s || !grand || !grand.tourne) return false;
+  if (s.grandGroupe && s.grandGroupe.tourne === true) return true;
+  const plan = rvPlanCourant();
+  if (plan) return Boolean(plan.grandGroupe && plan.grandGroupe.tourne);
+  return Boolean(s.rotationVue);
+}
+
+function rvGroupesEnJeu(grand = rvGrandGroupe()) {
+  return Boolean(grand) && (!grand.tourne || rvRotationEnJeu(grand));
+}
+
+// Le temps d un groupe qui tourne : son bowling, puis ses parties de laser (une demi-heure chacune,
+// la grille du centre). Les groupes qui tournent durent au moins cela.
+function rvDureeDUnGroupe() {
+  const visit = (quickBookState && quickBookState.visit) || {};
+  const bowling = visit.bowling && visit.bowling.on ? Number(visit.bowling.duration || 1) : 0;
+  const parties = visit.laser_game && visit.laser_game.on ? Math.max(1, Number(visit.laser_game.games || 1)) : 0;
+  return Math.max(0.5, bowling + parties * 0.5);
+}
+
+// LA DUREE QUE LA FENETRE JUGE D AVANCE (rvAvertissement, rvConstruire) : celle de la visite. Un
+// grand groupe au bowling et au laser peut tourner, chaque groupe ne joue que son bowling et son
+// laser : le serveur pose les groupes qui tournent quand le plan d avant finirait trop tard (60
+// joueurs a 20:00, fermeture a 22:00). La fenetre ne refuse d avance que ce qu aucun ne tient.
+function rvDureeAJuger(annoncee) {
+  const grand = rvGrandGroupe();
+  const visite = rvDureeDuCreneau(annoncee);
+  return grand && grand.tourne ? Math.min(visite, rvDureeDUnGroupe()) : visite;
+}
+
+// Les tailles des sous-groupes : celles du plan du serveur quand il les dit, sinon celles reglees,
+// sinon le groupe entier (le plan les donnera).
+function rvTaillesDuGrandGroupe(grand = rvGrandGroupe(), plan = rvPlanCourant()) {
+  const duPlan = plan && plan.grandGroupe && Array.isArray(plan.grandGroupe.tailles) ? plan.grandGroupe.tailles : null;
+  if (duPlan && grand && duPlan.length === grand.nombre) return duPlan.map(Number);
+  const reglees = rvDemandeGrandGroupe(grand).tailles;
+  return reglees || [];
+}
+
+// LE PLAN PAR SOUS-GROUPE, tel que le serveur l a pose : pour chaque groupe, ses passages dans
+// l ordre de la journee. Le groupe se lit sur le bloc (`sousGroupe`), sinon son rang de service ou
+// de vague (un bowling seul en deux services, un laser seul en deux vagues).
+function rvGroupesDuPlan(plan = rvPlanCourant()) {
+  const blocs = plan && Array.isArray(plan.blocs) ? plan.blocs : [];
+  const groupes = new Map();
+  blocs.forEach((b) => {
+    if (!RV_ANCRABLES.includes(b.activite) || !b.debut) return;
+    const n = Number(b.sousGroupe) || (Number(b.vagues) > 1 ? Number(b.vague) : 0);
+    if (!n) return;
+    if (!groupes.has(n)) groupes.set(n, []);
+    groupes.get(n).push(b);
+  });
+  return [...groupes.entries()].sort((a, b) => a[0] - b[0])
+    .map(([n, passages]) => ({ n, passages: passages.sort((x, y) => timeToNum(x.debut) - timeToNum(y.debut)) }));
+}
+
+// Les pistes d un passage, dites comme au planning : « pistes 4 à 8 ».
+function rvPistesDites(pistes) {
+  const liste = (pistes || []).map(Number).filter(Number.isFinite);
+  return liste.length ? `${liste.length > 1 ? 'pistes' : 'piste'} ${joindrePistes(liste)}` : 'pistes à attribuer';
+}
+
+// La ligne du ticket d une activite d un grand groupe : quel groupe y joue a quelle heure, puis ses
+// pistes. null tant que le plan du serveur ne la coupe pas.
+function rvLigneDuGrandGroupe(id) {
+  const groupes = rvGroupesDuPlan();
+  if (groupes.length < 2) return null;
+  const parGroupe = groupes.map((g) => ({ n: g.n, passages: g.passages.filter((p) => p.activite === id) })).filter((g) => g.passages.length);
+  if (!parGroupe.length) return null;
+  parGroupe.sort((a, b) => timeToNum(a.passages[0].debut) - timeToNum(b.passages[0].debut) || a.n - b.n);
+  const detail = parGroupe.map((g, i) => `${i ? 'groupe' : 'Groupe'} ${g.n} à ${rvListe(g.passages.map((p) => p.debut))}`).join(', ');
+  if (id !== 'bowling') return { detail, apres: '' };
+  const dites = parGroupe.map((g) => rvPistesDites(g.passages[0].pistes));
+  const apres = new Set(dites).size === 1 ? dites[0] : parGroupe.map((g, i) => `groupe ${g.n} ${dites[i]}`).join(', ');
+  return { detail, apres };
+}
+
+// LA LIGNE DES SOUS-GROUPES AU TICKET : combien de groupes, de combien, et s ils tournent. Un
+// toucher ouvre leurs reglages (rsGroupesHtml).
+function rsLigneGrandGroupeHtml() {
+  const grand = rvGrandGroupe();
+  if (!rvGroupesEnJeu(grand) || !rsEtat().faits.combien) return '';
+  const tailles = rvTaillesDuGrandGroupe(grand);
+  const nom = grand.tourne ? `${grand.nombre} groupes qui tournent` : `${grand.nombre} groupes, l’un après l’autre`;
+  const detail = tailles.length ? `${rvListe(tailles)} joueurs` : `${Math.max(1, Number(quickBookState.pax) || 1)} joueurs à partager`;
+  return rsLigne({ cle: 'groupes', action: "rsOuvrir('groupes')", icone: RV_I.groupes, nom, detail, aria: rsAriaLigne(nom, detail, '') });
+}
+
+// Ce qu un groupe peut faire d un coup : les armes de l arene, les pistes du centre a leur capacite
+// de secours. Seules comptent les activites que tout le groupe joue (les autres se partagent au
+// prorata, le serveur les juge).
+function rvPlafondDUnGroupe(grand) {
+  const pax = Math.max(1, Number(quickBookState.pax) || 1);
+  const plafonds = grand.ids.filter((id) => getQuickVisitParticipants(id) >= pax).map((id) => (id === 'laser_game'
+    ? getLaserArenaCapacity()
+    : (getAvailabilityLaneCount() || getTotalLanes()) * Math.max(getMaxPerLane(), getEmergencyMaxPerLane())));
+  return plafonds.length ? Math.min(...plafonds) : pax;
+}
+
+// « Le groupe 1 au bowling pendant que le groupe 2 joue au laser, puis ils échangent. »
+function rvPhraseDesGroupes(grand, groupes, plan) {
+  const fin = plan && plan.disponible && plan.fin ? ` Fin vers ${plan.fin}.` : '';
+  if (!grand.tourne) return `Les groupes jouent l’un après l’autre.${fin}`;
+  const premiers = groupes.map((g) => g.passages[0]).filter(Boolean);
+  const depart = premiers.length ? premiers[0].debut : '';
+  const ensemble = premiers.filter((p) => p.debut === depart);
+  if (grand.nombre === 2 && ensemble.length === 2 && ensemble[0].activite !== ensemble[1].activite) {
+    const au = (id) => (id === 'laser_game' ? 'au laser' : `au ${rvMinuscule(rsNomCourt(id))}`);
+    return `Le groupe 1 ${au(ensemble[0].activite)} pendant que le groupe 2 joue ${au(ensemble[1].activite)}, puis ils échangent.${fin}`;
+  }
+  return `Chaque groupe joue au bowling et au laser, à tour de rôle.${fin}`;
+}
+
+// LE PLAN D UN COUP D OEIL : une rangee par groupe, une colonne par depart, ce que chacun y joue.
+// Les passages qui se suivent sur la meme activite (les parties de laser d un groupe) font une case.
+function rsGrilleDesGroupesHtml(groupes, tailles) {
+  if (!groupes.length) {
+    return `<p class="rs-texte" id="rsGgCalcul">${escapeHtml(rvPlanEnCalcul() ? 'Le planning partage le groupe…' : 'Le planning dira qui joue où dès qu’une heure tient.')}</p>`;
+  }
+  const lignes = groupes.map((g) => {
+    const cases = [];
+    g.passages.forEach((p) => {
+      const derniere = cases[cases.length - 1];
+      if (derniere && derniere.activite === p.activite && derniere.fin && timeToNum(p.debut) - timeToNum(derniere.fin) < 0.1) {
+        derniere.fin = p.fin;
+        derniere.parties += 1;
+        return;
+      }
+      cases.push({ activite: p.activite, debut: p.debut, fin: p.fin, pistes: p.pistes, parties: 1 });
+    });
+    return { n: g.n, cases };
+  });
+  const departs = [...new Set(lignes.flatMap((l) => l.cases.map((c) => c.debut)))].sort((a, b) => timeToNum(a) - timeToNum(b));
+  const tete = `<div class="rs-gg-r is-tete" role="row"><span role="columnheader" class="rs-gg-q">Groupe</span>${departs.map((h) => `<span role="columnheader">${escapeHtml(h)}</span>`).join('')}</div>`;
+  const rangees = lignes.map((l) => {
+    const taille = Number(tailles[l.n - 1]) || 0;
+    const cellules = departs.map((h) => {
+      const c = l.cases.find((x) => x.debut === h);
+      if (!c) return '<span role="cell" class="rs-gg-c is-vide"></span>';
+      const quoi = c.activite === 'bowling' ? rvPistesDites(c.pistes) : c.parties > 1 ? `${c.parties} parties` : `jusqu’à ${c.fin}`;
+      return `<span role="cell" class="rs-gg-c is-${c.activite === 'bowling' ? 'bowling' : 'laser'}" data-groupe="${l.n}" data-activite="${escapeHtml(c.activite)}" data-heure="${escapeHtml(h)}"><b>${escapeHtml(rsNomCourt(c.activite))}</b><small>${escapeHtml(quoi)}</small></span>`;
+    }).join('');
+    return `<div class="rs-gg-r" role="row"><span role="rowheader" class="rs-gg-q"><b>Groupe ${l.n}</b>${taille ? `<small>${escapeHtml(rvPluriel(taille, 'joueur'))}</small>` : ''}</span>${cellules}</div>`;
+  }).join('');
+  return `<div class="rs-gg-grille" id="rsGgGrille" role="table" aria-label="Qui joue où, groupe par groupe" style="--gg-cols:${departs.length}">${tete}${rangees}</div>`;
+}
+
+// LA TAILLE DE CHAQUE GROUPE (« nombre par sous-groupe ») : un de plus, un de moins, le dernier
+// groupe prend le reste. Jamais plus que ce que le centre prend d un coup : la touche s arrete la.
+function rsTaillesDesGroupesHtml(grand, tailles) {
+  if (tailles.length !== grand.nombre) return '';
+  const plafond = rvPlafondDUnGroupe(grand);
+  const dernier = tailles.length - 1;
+  const cases = tailles.map((n, rang) => {
+    if (rang === dernier) return `<span class="rs-cpt rs-gg-t" data-groupe="${rang + 1}"><span class="rs-cpt-l">Groupe ${rang + 1}</span><b class="rs-gg-reste" aria-label="${escapeHtml(`Groupe ${rang + 1}, ${rvPluriel(n, 'joueur')}, le reste du groupe`)}">${n}</b></span>`;
+    const reste = tailles[dernier];
+    const moins = n > 1 && reste + 1 <= plafond ? `rsFixer(() => rsTailleGroupe(${rang}, ${n - 1}))` : '';
+    const plus = n + 1 <= plafond && reste > 1 ? `rsFixer(() => rsTailleGroupe(${rang}, ${n + 1}))` : '';
+    return rsCompteurHtml(`Groupe ${rang + 1}`, n, moins, plus, `data-groupe="${rang + 1}"`, `Joueurs du groupe ${rang + 1}`);
+  });
+  return `<div class="rs-rangee rs-gg-tailles"><span class="rs-lbl">Joueurs</span><div class="rs-gg-ts" role="group" aria-label="Joueurs par groupe">${cases.join('')}</div></div>`;
+}
+
+// L ACTIVITE DU GROUPE 1 quand ils tournent : l autre groupe commence par l autre.
+function rsPremierDesGroupesHtml(grand, plan) {
+  const actuel = (plan && plan.grandGroupe && grand.ids.includes(plan.grandGroupe.premier) && plan.grandGroupe.premier) || rvDemandeGrandGroupe(grand).premier || grand.ids[0];
+  const cles = grand.ids.map((id) => `<button type="button" class="${id === actuel ? 'is-on' : ''}" id="rsGgPremier-${escapeHtml(id)}" data-premier="${escapeHtml(id)}" aria-pressed="${id === actuel}" onclick="rsFixer(() => rsPremierGroupe(this.dataset.premier))">${escapeHtml(rsNomCourt(id))}</button>`).join('');
+  return `<div class="rs-rangee rs-gg-premier"><span class="rs-lbl" id="rsGgPremierT">Groupe 1</span><div class="rs-seg" role="group" aria-labelledby="rsGgPremierT">${cles}</div><small class="rs-gg-dit">commence par cette activité</small></div>`;
+}
+
+function rsTailleGroupe(rang, n) {
+  const s = quickBookState;
+  const grand = rvGrandGroupe();
+  if (!s || !grand) return;
+  const tailles = rvTaillesDuGrandGroupe(grand).slice();
+  const dernier = tailles.length - 1;
+  if (tailles.length !== grand.nombre || rang < 0 || rang >= dernier) return;
+  tailles[rang] = Math.max(1, Math.trunc(Number(n)) || 1);
+  tailles[dernier] = Math.max(1, Number(s.pax) || 1) - tailles.slice(0, dernier).reduce((t, x) => t + x, 0);
+  if (tailles[dernier] < 1) return;
+  s.grandGroupe = { ...(s.grandGroupe || {}), tailles };
+  s.forcer = false;
+  s.error = '';
+}
+
+function rsPremierGroupe(id) {
+  const s = quickBookState;
+  const grand = rvGrandGroupe();
+  if (!s || !grand || !grand.ids.includes(id)) return;
+  s.grandGroupe = { ...(s.grandGroupe || {}), premier: id };
+  s.forcer = false;
+  s.error = '';
+}
+
+// LA PAGE DES SOUS-GROUPES (2026-11-22). Le plan du serveur d un coup d oeil (qui joue ou, a quelle
+// heure, sur quelles pistes), puis ce qui se regle : la taille de chaque groupe et, quand ils
+// tournent, l activite du groupe 1. Chaque reglage repart au serveur, qui recalcule tout.
+function rsGroupesHtml() {
+  const s = quickBookState;
+  const grand = rvGrandGroupe();
+  const pax = Math.max(1, Number(s.pax) || 1);
+  if (!rvGroupesEnJeu(grand)) {
+    return `${rsRetourHtml()}
+    <section class="rs-seance is-page rs-gg" aria-labelledby="rsQ"><div class="rs-s-t"><div class="rs-s-n"><h2 class="rs-q" id="rsQ" tabindex="-1">${escapeHtml(`${rvPluriel(pax, 'joueur')}, un seul groupe`)}</h2><small>Les pistes et l’arène prennent tout le groupe d’un coup : il n’est pas partagé.</small></div></div></section>`;
+  }
+  const plan = rvPlanCourant();
+  const groupes = rvGroupesDuPlan(plan);
+  const tailles = rvTaillesDuGrandGroupe(grand, plan);
+  return `${rsRetourHtml()}
+    <section class="rs-seance is-page rs-gg" aria-labelledby="rsQ">
+      <div class="rs-s-t"><div class="rs-s-n"><h2 class="rs-q" id="rsQ" tabindex="-1">${escapeHtml(`${pax} joueurs en ${grand.nombre} groupes`)}</h2><small id="rsGgPhrase">${escapeHtml(rvPhraseDesGroupes(grand, groupes, plan))}</small></div></div>
+      ${rsGrilleDesGroupesHtml(groupes, tailles)}
+      ${rsTaillesDesGroupesHtml(grand, tailles)}
+      ${grand.tourne ? rsPremierDesGroupesHtml(grand, plan) : ''}
+    </section>`;
+}
+
+// UNE ACTIVITE QUI TOURNE AVEC LA PREMIERE (un grand groupe) : elle part a la meme heure, un
+// sous-groupe a chacune. Son bloc dit quel groupe y joue a quelle heure au lieu de ses propres
+// heures, et mene aux reglages des groupes.
+function rsTourneAvecHtml(id) {
+  const grand = rvGrandGroupe();
+  if (!rvRotationEnJeu(grand) || id === grand.ids[0] || !grand.ids.includes(id)) return '';
+  const ligne = rvLigneDuGrandGroupe(id);
+  const tete = grand.ids[0] === 'laser_game' ? 'le laser' : `le ${rvMinuscule(rsNomCourt(grand.ids[0]))}`;
+  const phrase = ligne ? `${ligne.detail}.` : `Part avec ${tete}, un groupe à chacun.`;
+  return `<div class="rs-gg-tourne" id="rsTourne-${escapeHtml(id)}"><p>${escapeHtml(phrase)}</p><button type="button" class="attr-b" id="rsTourneRegler-${escapeHtml(id)}" onclick="rsOuvrir('groupes')">Régler les groupes</button></div>`;
 }
 
 // ── LE DOSSIER QUE LA FENETRE CREE ───────────────────────────────────────────
@@ -40589,7 +42456,8 @@ function rvConstruire({ simulation = false } = {}) {
   const formule = s.type === 'formule' ? resolveDisplayFormule(s.formuleId) : null;
   if (s.type === 'formule' && !formule) return { erreur: 'Sélectionnez une formule.' };
   const adaptee = Boolean(formule) && rvFormuleVraimentAdaptee();
-  const programme = s.type === 'visite' || adaptee || rsFmActive(s);
+  // (un grand groupe part en programme, comme au formulaire en ligne : rvGrandGroupe)
+  const programme = s.type === 'visite' || adaptee || rsFmActive(s) || Boolean(rvGrandGroupe());
   syncQuickBookDuration();
   const ids = rvActivites();
   const heures = rvHeuresDesLignes(ids);
@@ -40615,7 +42483,7 @@ function rvConstruire({ simulation = false } = {}) {
   const forcer = !simulation && Boolean(s.forcer) && Boolean(planActuel && !planActuel.disponible);
   const duration = Number(s.duration);
   const totalDuration = Number(s.totalDuration || duration);
-  const slotCheck = validateSlotWindow(s.date, s.startTime, rvDureeDuCreneau(totalDuration), { allowPastStart: quickBookAllowsPastSelectedTime() });
+  const slotCheck = validateSlotWindow(s.date, s.startTime, rvDureeAJuger(totalDuration), { allowPastStart: quickBookAllowsPastSelectedTime() });
   if (!slotCheck.ok && !forcer) return { erreur: slotCheck.message };
   // Une formule hors regles part quand meme (choix du comptoir) : la raison
   // s ecrit dans la note du dossier, pour que la caisse la comprenne.
@@ -40661,6 +42529,8 @@ function rvConstruire({ simulation = false } = {}) {
   // activite seule : getBasePrice('activity') vaut 0).
   // LE SERVEUR TARIFE TOUT (2026-11-03) : la reference ne voyage plus, il la
   // calcule, et un prix qui s en ecarte exige sa raison, qui part avec lui.
+  // (une ligne libre restee en cours de saisie, nom ecrit sans ligne au ticket, est prise ici)
+  if (!simulation && rsEtat() && String(rsEtat().mesure.nom || '').trim() && !rsLibreEnCours()) rsLibreSynchro('', { peindre: false });
   const extras = quickExtrasLignes();
   const price = prixSaisi != null ? prixSaisi : undefined;
   const raisonPrix = rsRaisonPrix();
@@ -40712,17 +42582,23 @@ function rvConstruire({ simulation = false } = {}) {
     // L ACCES ILLIMITE CHOISI ACTIVITE PAR ACTIVITE (2026-11-20, le soir) : les activites prises et ce
     // qui est garde ; le serveur le relit contre l acces et le centre (lib/formule-comptoir.js).
     ...(formule && !adaptee && estFormuleIllimitee(formule) ? { illimite: choixIllimiteEnvoye(rsChoixIllimite(formule)) } : {}),
+    // LES ACTIVITES EN PLUS DE LA FORMULE (2026-11-22, lib/formule-en-plus.js) : chacune a son heure, a son prix.
+    ...(formule && !adaptee && rvEnPlus().length ? { enPlus: rvEnPlusEnvoyes() } : {}),
     // « Réserver pour Dupont » : le dossier du groupe prive, que le serveur rattache a sa privatisation.
     ...(s.privatisation ? { privatisation: s.privatisation } : {}),
   };
   if (forcer) reservation.forcer = true;
   const varianteArrivee = programme ? rvOrdreVarianteActive(ids) : null;
   if (varianteArrivee && varianteArrivee.parArrivee) reservation.preference = { ...(reservation.preference || {}), arrivalTime: s.startTime };
+  const minute = rvALaMinute(reservation, programme);
+  if (minute) return { erreur: minute };
   return { reservation, needsLanes, requiredCount: programme ? requiredCount : Math.max(requiredCount, lanes.length) };
 }
 
 function rvTelephoneEnvoye() {
-  const chiffres = quickBookState.phone.replace(/\D/g, '');
+  const brut = String(quickBookState.phone || '').trim();
+  if (brut && !rvRessembleAUnNumero(brut)) return brut;
+  const chiffres = brut.replace(/\D/g, '');
   return chiffres && chiffres !== '32' ? normalizePhoneInput(quickBookState.phone) : '';
 }
 
@@ -40828,6 +42704,8 @@ async function rvSimuler() {
   }
   const plan = rvPlanCourant();
   if (plan && plan.disponible) quickBookState.heureArretee = true;
+  // (ce que le plan a pose pour un grand groupe : ses groupes tournent-ils, rvRotationEnJeu)
+  if (plan) quickBookState.rotationVue = Boolean(plan.grandGroupe && plan.grandGroupe.tourne);
   // (une fermeture ou une privatisation ne se force pas : le serveur la refuserait aussi « à placer »)
   if (plan && plan.fermeture) quickBookState.forcer = false;
   // Un refus : on cherche tout de suite les heures ou TOUT tient.
@@ -41089,7 +42967,7 @@ function rsDepart(s) {
     ticket: false,
     barre: null,
     variantes: {},
-    mesure: { categorie: '', ligne: '', nom: '', prix: '' },
+    mesure: { categorie: '', ligne: '', nom: '', prix: '', libreId: '' },
     faits: { combien: Number(s.pax) !== 4 },
     // L activite dont les heures sont ouvertes sous sa ligne, et ce que le panneau dit d une heure refusee.
     heureAct: '',
@@ -41102,6 +42980,8 @@ function rsDepart(s) {
 // toucher se sentent. Ce qu il demande pendant le geste attend la fin du geste.
 function rsGeste(faire, { focus = true } = {}) {
   const avant = rsRetenu ? null : rsHeuresAvantLeGeste();
+  // (le refus d un nombre tape se lit jusqu au geste suivant, rsSaisieDitHtml)
+  if (!rsRetenu && rsEtat()) rsEtat().saisieDit = null;
   rsRetenu += 1;
   try { faire(); } finally { rsRetenu -= 1; }
   if (rsRetenu) return;
@@ -41188,8 +43068,10 @@ function rsVersQuestion(q) {
   b.retourLigne = '';
   if (b.ticket) b.cachable = true;
   b.ticket = false;
+  // (l heure tapee a la minute ne vit que sur sa page, rsMinuteHtml)
+  b.minute = null;
   // (les heures ouvertes sous une activite ne vivent que sur la page des activites)
-  if (q !== 'activites') { b.heureAct = ''; b.heureActDit = null; }
+  if (q !== 'activites') { b.heureAct = ''; b.heureActDit = null; b.colonneAvant = null; }
 }
 
 // Toucher une ligne du ticket ouvre sa question.
@@ -41295,7 +43177,12 @@ function rsMontantTouche(id, quantite) {
 // comprend reste dans son prix, une activite ajoutee dit le sien au ticket, celui du
 // serveur (rvAjoutsALaFormule).
 function rsPrixTouche(id, quantite) {
-  if (quickBookState.type === 'formule') return '';
+  if (quickBookState.type === 'formule') {
+    // (une formule telle quelle : une activite en plus se paie a son prix, la touche le dit, « + 39 € »)
+    if (!rvEnPlusPossible() || rvDansLAcces(id) || (rvActivites().includes(id) && !RV_ANCRABLES.includes(id))) return '';
+    const prix = rvMontantEnPlus({ id, variante: RV_ANCRABLES.includes(id) ? (quantite != null ? quantite : rsVariante(id)) : null });
+    return prix != null ? rsEuros(prix) : 'sur place';
+  }
   if (rsTarifInconnu(id)) return 'sur place';
   const prix = rsMontantTouche(id, quantite);
   return prix != null ? rsEuros(prix) : 'sur place';
@@ -41341,9 +43228,11 @@ function rsTotalTicket() {
     const ids = !rvFormule() && !plan ? rvActivites() : [];
     const inconnues = ids.filter((id) => rsSansTarif.has(id) || rsMontantLigne(id) == null);
     const retire = inconnues.reduce((somme, id) => somme + (Number(rsMontantLigne(id)) || 0), 0);
-    // (une activite ajoutee a la formule sans tarif se regle sur place, rvAjoutsALaFormule)
+    // (une activite ajoutee a la formule sans tarif se regle sur place, rvAjoutsALaFormule ; une activite en
+    // plus aussi, rvMontantDesEnPlus)
     const ajouts = rvFormule() ? rvAjoutsALaFormule() : null;
-    return { total: Math.round((rvTotalReference() - retire) * 100) / 100, complet: !inconnues.length && (!ajouts || ajouts.complet) };
+    const enPlus = rvFormule() && rvEnPlus().length ? rvMontantDesEnPlus() : null;
+    return { total: Math.round((rvTotalReference() - retire) * 100) / 100, complet: !inconnues.length && (!ajouts || ajouts.complet) && (!enPlus || enPlus.complet) };
   }
   const complet = plan.lignesPrix.every((l) => !l || l.prix != null);
   return { total: Math.round((Number(plan.prix) || 0) * 100) / 100, complet };
@@ -41477,6 +43366,11 @@ function rsCochee(id) {
 }
 
 function rsVariante(id) {
+  // (dans une formule telle quelle, le bloc regle l activite en plus, jamais celle de la formule)
+  if (rvEnPlusPossible()) {
+    const x = rvEnPlusDe(id);
+    return x && x.variante != null ? Number(x.variante) : rsEtat().variantes[id] || 1;
+  }
   if (rsAuTicket(id)) return id === 'bowling' ? rvBowlingDuree() : rvPartiesLaser();
   return rsEtat().variantes[id] || 1;
 }
@@ -41504,6 +43398,8 @@ function rsInfoBloc(id) {
   const s = quickBookState;
   const prix = rsPrixUnite(id, rsVariante(id));
   const tarif = prix == null ? 'sur place' : `${rsEuros(prix)} ${id === 'bowling' ? 'la piste' : 'par joueur'}`;
+  // (dans une formule, le bloc vend l activite en plus : il dit son prix, et ce que la formule en a deja)
+  if (rvEnPlusPossible()) return rsInfoBlocEnPlus(id, tarif);
   if (id !== 'bowling') return rsEtat().faits.combien ? `${tarif}, ${rvPluriel(getQuickVisitParticipants(id), 'arme')}` : tarif;
   // Le groupe connu, l entete porte ses compteurs : ce qui reste se lit sur les heures.
   if (rsEtat().faits.combien) return rvPistesVoulues() < rvPistesConseillees() ? `${tarif}, à la main` : tarif;
@@ -41521,6 +43417,16 @@ function rsJoueursBloc(id, n) {
   const s = quickBookState;
   if (!s || !rsEtat()) return;
   const voulu = Math.max(1, Math.trunc(Number(n)) || 1);
+  // (une formule telle quelle : les joueurs de l activite en plus, jamais plus que le groupe ; la formule
+  // garde les siens)
+  if (rvEnPlusPossible()) {
+    if (!rvEnPlusDe(id)) return;
+    rsGeste(() => {
+      s.error = '';
+      rvAjouterEnPlus(id, { joueurs: Math.min(voulu, Math.max(1, Number(s.pax) || 1)) });
+    });
+    return;
+  }
   rsGeste(() => {
     s.error = '';
     s.forcer = false;
@@ -41638,7 +43544,7 @@ function rsRangJoueursDesParties() {
   const liste = rsJoueursDesParties();
   const bornes = activityParticipantsBounds('laser_game', quickBookState.pax);
   // (les touches pleine taille de la page : 44 px au doigt, comme ses autres compteurs)
-  const cles = liste.map((n, k) => `<span class="rs-partie-cpt"><span class="rs-cpt-l">Partie ${k + 1}</span>${rsPasHtml(n > bornes.min ? `rsJoueursPartie(${k},${n - 1})` : '', n < bornes.max ? `rsJoueursPartie(${k},${n + 1})` : '', n, `Joueurs de la partie ${k + 1}`, `data-partie-joueurs="${k + 1}"`)}</span>`);
+  const cles = liste.map((n, k) => `<span class="rs-partie-cpt"><span class="rs-cpt-l">Partie ${k + 1}</span>${rsPasHtml(n > bornes.min ? `rsJoueursPartiePas(${k},-1)` : '', n < bornes.max ? `rsJoueursPartiePas(${k},1)` : '', n, `Joueurs de la partie ${k + 1}`, `data-partie-joueurs="${k + 1}"`, `p:${k}`)}</span>`);
   // (une rangee qui passe a la ligne : au telephone, une partie par ligne, rien hors de l ecran)
   return `<div class="rs-rang"><span class="rs-lbl">Par partie</span><div class="rs-choix rs-parties-joueurs">${cles.join('')}</div></div>`;
 }
@@ -41662,20 +43568,177 @@ function rsFixerPistes(n) {
   renderQuickBook();
 }
 
-function rsCompteurHtml(mot, valeur, moins, plus, attributs = '', aria = mot) {
-  return `<span class="rs-cpt"><span class="rs-cpt-l">${escapeHtml(mot)}</span>${rsPasHtml(moins, plus, valeur, aria, attributs)}</span>`;
+function rsCompteurHtml(mot, valeur, moins, plus, attributs = '', aria = mot, saisie = '') {
+  return `<span class="rs-cpt"><span class="rs-cpt-l">${escapeHtml(mot)}</span>${rsPasHtml(moins, plus, valeur, aria, attributs, saisie)}</span>`;
 }
 
+// (le « − » et le « + » comptent depuis le nombre de l activite au moment du toucher, rsJoueursPas)
 function rsCompteurJoueursHtml(id, mot, aria) {
   const n = getQuickVisitParticipants(id);
   const bornes = activityParticipantsBounds(id, quickBookState.pax);
   const peutMonter = n < bornes.max || (bornes.max === Math.max(1, Number(quickBookState.pax) || 1) && n < RS_JOUEURS_MAX);
-  return rsCompteurHtml(mot, n, n > bornes.min ? `rsJoueursBloc(this.dataset.activite,${n - 1})` : '', peutMonter ? `rsJoueursBloc(this.dataset.activite,${n + 1})` : '', `data-activite="${escapeHtml(id)}"`, aria);
+  return rsCompteurHtml(mot, n, n > bornes.min ? 'rsJoueursPas(this.dataset.activite,-1)' : '', peutMonter ? 'rsJoueursPas(this.dataset.activite,1)' : '', `data-activite="${escapeHtml(id)}"`, aria, `j:${id}`);
+}
+
+// LE NOMBRE SE TAPE (2026-11-22, Ansar au comptoir : « Pouvoir mettre nombre écrire direct dessus sans
+// que ça change direct partout pour une resa [...] quand on a genre 60 pers et qu'on veut mettre 20
+// bowling 30 laser Game on peut pas écrire dessus direct on doit jouer avec les plus + et - c trop
+// long »). Le nombre d un compteur de joueurs se touche : il devient un champ, tout le nombre
+// selectionne, le clavier des chiffres au telephone. Entree ou la sortie du champ le valident, Echap le
+// laisse tel quel (rsEchap). Le nombre d une activite ne change que le sien : jamais le groupe, jamais
+// une autre activite. Un nombre impossible (0, plus que le groupe, plus que l activite n accueille) se
+// dit sous le compteur, et rien ne bouge (rsRefusDuNombre). Le « − » et le « + » restent ; ils comptent
+// depuis le nombre de l etat au moment du toucher, jamais depuis celui du rendu d avant : un nombre
+// tape puis un « + » touche donnent ce nombre plus un, pas le groupe plus un.
+// Cles : `j:<activite>` (une activite), `p:<k>` (la partie k du laser).
+function rsNombreHtml(cle, valeur, aria) {
+  const b = rsEtat();
+  if (b && b.saisie === cle) {
+    return `<input class="rs-pas-champ" id="rsSaisie" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="3" enterkeyhint="done" autocomplete="off" spellcheck="false" value="${escapeHtml(String(valeur))}" aria-label="${escapeHtml(`${aria}, tapez le nombre`)}" data-saisie="${escapeHtml(cle)}" onkeydown="rsSaisieTouche(event, this)" onblur="rsSaisieSortie(this)">`;
+  }
+  return `<b class="rs-pas-n" role="button" tabindex="0" data-saisie="${escapeHtml(cle)}" aria-label="${escapeHtml(`${aria}, ${valeur}, taper un autre nombre`)}" title="Taper le nombre" onclick="rsOuvrirSaisie(this.dataset.saisie)" onkeydown="rsToucheNombre(event, this)">${valeur}</b>`;
+}
+
+// Le refus d un nombre tape, sous son compteur, jusqu au geste suivant (rsGeste l efface).
+function rsSaisieDitHtml(cle) {
+  const b = rsEtat();
+  const dit = b && b.saisieDit && b.saisieDit.cle === cle ? b.saisieDit.texte : '';
+  return dit ? `<span class="rs-pas-dit" role="alert" data-saisie-dit="${escapeHtml(cle)}">${escapeHtml(dit)}</span>` : '';
+}
+
+function rsOuvrirSaisie(cle, premier = '') {
+  const s = quickBookState;
+  const b = rsEtat();
+  if (!s || !b || !cle) return;
+  const [sorte, quoi] = String(cle).split(':');
+  // (ce que les « − » et « + » ne peuvent pas changer ne se tape pas non plus)
+  if (sorte === 'j' && rsAuTicket(quoi) && !rsPeutChanger()) return;
+  if (sorte === 'p' && rsAuTicket('laser_game') && !rsPeutChanger()) return;
+  rsGeste(() => { b.saisie = String(cle); }, { focus: false });
+  const champ = document.getElementById('rsSaisie');
+  if (!champ) return;
+  champ.focus({ preventScroll: true });
+  if (premier) { champ.value = premier; champ.setSelectionRange(premier.length, premier.length); } else champ.select();
+}
+
+// Au clavier, le nombre s ouvre comme un bouton (Entree, Espace) ; un chiffre l ouvre deja tape.
+function rsToucheNombre(event, el) {
+  if (!el || event.ctrlKey || event.metaKey || event.altKey) return;
+  const chiffre = /^\d$/.test(event.key) ? event.key : '';
+  if (event.key !== 'Enter' && event.key !== ' ' && !chiffre) return;
+  event.preventDefault();
+  event.stopPropagation();
+  rsOuvrirSaisie(el.dataset.saisie, chiffre);
+}
+
+function rsSaisieTouche(event, champ) {
+  if (event.key !== 'Enter' || !champ) return;
+  event.preventDefault();
+  event.stopPropagation();
+  rsSaisieValider(champ.dataset.saisie, champ.value, { clavier: true });
+}
+
+// La sortie du champ valide, comme Entree (le geste suivant voit le nombre tape).
+function rsSaisieSortie(champ) {
+  const b = rsEtat();
+  if (!b || !champ || b.saisie !== champ.dataset.saisie) return;
+  rsSaisieValider(champ.dataset.saisie, champ.value);
+}
+
+// Echap : le nombre reste celui d avant, le focus revient au nombre.
+function rsSaisieAnnuler() {
+  const b = rsEtat();
+  if (!b || !b.saisie) return false;
+  const cle = b.saisie;
+  rsFermerSaisie();
+  rsGeste(() => {}, { focus: false });
+  rsRendreLeNombre(cle);
+  return true;
+}
+
+// Le champ qui garde le focus retient sa zone (rsPoser) : il rend la main avant le repeint, sinon
+// le nombre resterait un champ. Sa sortie ne revalide rien, la saisie est deja fermee (rsSaisieSortie).
+function rsFermerSaisie() {
+  const b = rsEtat();
+  if (b) b.saisie = '';
+  const champ = document.getElementById('rsSaisie');
+  if (champ && document.activeElement === champ) champ.blur();
+}
+
+function rsRendreLeNombre(cle) {
+  const el = Array.from(document.querySelectorAll('#quickBookOverlay [data-saisie]')).find((n) => n.dataset.saisie === cle);
+  if (el) el.focus({ preventScroll: true });
+}
+
+function rsSaisieValider(cle, texte, { clavier = false } = {}) {
+  const s = quickBookState;
+  const b = rsEtat();
+  if (!s || !b || b.saisie !== cle) return;
+  const [sorte, quoi] = String(cle).split(':');
+  const brut = String(texte == null ? '' : texte).trim();
+  const actuel = sorte === 'p' ? rsJoueursDesParties()[Number(quoi)] : getQuickVisitParticipants(quoi);
+  const pareil = brut === '' || (/^\d+$/.test(brut) && Number(brut) === actuel);
+  const refus = pareil ? '' : rsRefusDuNombre(sorte, quoi, brut);
+  rsFermerSaisie();
+  rsGeste(() => {
+    if (refus) b.saisieDit = { cle, texte: refus };
+    else if (pareil) return;
+    else if (sorte === 'p') rsJoueursPartie(Number(quoi), Number(brut));
+    else rsJoueursBloc(quoi, Number(brut));
+  }, { focus: false });
+  if (clavier) { rsRendreLeNombre(cle); return; }
+  // (sortie au pointeur ou a Tab : le focus va ou la main l envoie ; si le repeint a retire sa
+  // cible, il revient au nombre, jamais au document derriere la fenetre)
+  setTimeout(() => {
+    const actif = document.activeElement;
+    if (quickBookState && (!actif || actif === document.body)) rsRendreLeNombre(cle);
+  }, 0);
+}
+
+// Ce qui empeche ce nombre, en une phrase, ou '' quand il se prend. Le groupe ne grandit jamais par un
+// nombre tape : il se change en haut, ou d un « + ».
+function rsRefusDuNombre(sorte, quoi, brut) {
+  const s = quickBookState;
+  const id = sorte === 'p' ? 'laser_game' : quoi;
+  const activite = getCenterActivity(id);
+  const unite = activite && activityCountsChildren(activite) ? 'enfant' : 'joueur';
+  const nom = sorte === 'p' ? `Partie ${Number(quoi) + 1}` : rsNomCourt(id);
+  if (!/^\d{1,3}$/.test(brut)) return `${nom} : tapez un nombre, par exemple 20.`;
+  const n = Number(brut);
+  const groupe = Math.max(1, Number(s.pax) || 1);
+  const bornes = activityParticipantsBounds(id, s.pax);
+  if (n < bornes.min) return `${nom} : ${rvPluriel(bornes.min, unite)} au moins.`;
+  if (n > groupe) return `${nom} : ${groupe} au plus, le groupe compte ${rvPluriel(groupe, 'personne')}. Changez d’abord le nombre du groupe, en haut.`;
+  if (n > bornes.max) return `${nom} : ${rvPluriel(bornes.max, unite)} au plus.`;
+  return '';
+}
+
+// LE NOMBRE DU GROUPE, TAPE DANS « AUTRE » : Echap le rend tel qu il etait (le champ ne valide qu a
+// Entree ou a sa sortie, rsNombre) et le champ rend la main.
+function rsAnnulerAutreGroupe() {
+  const s = quickBookState;
+  const champ = document.activeElement;
+  if (!s || !champ || champ.id !== 'qbPax' || !champ.closest('#quickBookOverlay')) return false;
+  const b = rsEtat();
+  champ.value = b && b.faits.combien && !RS_NOMBRES.includes(Number(s.pax)) ? String(s.pax) : '';
+  champ.blur();
+  return true;
+}
+
+function rsJoueursPas(id, delta) {
+  if (!quickBookState || !rsEtat()) return;
+  rsJoueursBloc(id, getQuickVisitParticipants(id) + (Math.trunc(Number(delta)) || 0));
+}
+
+function rsJoueursPartiePas(k, delta) {
+  if (!quickBookState || !rsEtat()) return;
+  rsJoueursPartie(k, (rsJoueursDesParties()[k] || 0) + (Math.trunc(Number(delta)) || 0));
 }
 
 // Les reglages d un bloc, une fois le groupe connu : ses joueurs, et les pistes du bowling.
 function rsReglagesBlocHtml(id) {
   if (!rsEtat().faits.combien) return '';
+  if (rvEnPlusPossible()) return rvEnPlusDe(id) ? rsCompteurJoueursEnPlusHtml(id) : '';
   const joueurs = rsCompteurJoueursHtml(id, 'Joueurs', `Joueurs, ${rsNomCourt(id)}`);
   return id === 'bowling' ? `${joueurs}${rsCompteurPistesHtml()}` : joueurs;
 }
@@ -41758,6 +43821,8 @@ function rsTicCompteurs() {
 // activite choisie, « Choisir » quand le ticket n a que le bowling propose au depart (il cede
 // sa place, rsPrendre). Prise, ses heures s ouvrent.
 function rsBlocReplie(id) {
+  // (une formule telle quelle : le bloc s ouvre sur l activite en plus, jamais sur celle de la formule)
+  if (rvEnPlusPossible()) return !rvEnPlusDe(id);
   return !rsAuTicket(id);
 }
 
@@ -41771,6 +43836,17 @@ function rsBlocReplie(id) {
 function rsAjouterBloc(id) {
   const s = quickBookState;
   if (!s || !rsEtat()) return;
+  // DANS UNE FORMULE TELLE QUELLE (2026-11-22), « Ajouter » prend l activite EN PLUS : la formule reste
+  // entiere, l ajout est sa ligne, a son prix, a la premiere heure qui tient apres la formule.
+  if (rvEnPlusPossible()) {
+    const heure = rsHeureEnPlusQuiTient(id);
+    rsGeste(() => {
+      s.error = '';
+      rsToucherEnPlus(id, { variante: rsVariante(id), basculer: false, ...(heure ? { heure } : {}) });
+      if (rvEnPlusDe(id)) rsDemanderLesJoueurs();
+    });
+    return;
+  }
   const remplace = id !== 'bowling' && rvBowlingProposeIntact();
   const { liste, suite } = remplace ? { liste: [], suite: '' } : rsListeBloc(id, { frais: true });
   const bonne = liste.find((x) => (x.verdict ? x.verdict.statut !== 'ko' : x.tient !== false));
@@ -41790,18 +43866,24 @@ function rsBlocHtml(id) {
   const replie = rsBlocReplie(id);
   const seg = rsVariantesDe(id).map((v) => `<button type="button" class="${v.valeur === courante ? 'is-on' : ''}" id="rsV-${escapeHtml(id)}-${String(v.valeur).replace('.', '-')}" data-quoi="${escapeHtml(id)}" data-var="${v.valeur}" aria-pressed="${v.valeur === courante}" onclick="rsVarianteTouche(this.dataset.quoi, this.dataset.var)">${escapeHtml(v.mot)}</button>`).join('');
   const segment = `<div class="rs-seg" role="group" aria-label="${escapeHtml(id === 'bowling' ? 'Durée du bowling' : 'Parties de laser')}">${seg}</div>`;
+  const enPlus = rvEnPlusPossible();
   if (replie) {
-    const choisir = id !== 'bowling' && rvBowlingProposeIntact();
-    const mot = choisir ? 'Choisir' : 'Ajouter';
-    const aria = choisir ? `Choisir ${rvMinuscule(nom)}, à la place du bowling proposé` : `Ajouter ${rvMinuscule(nom)} à la réservation`;
+    const choisir = !enPlus && id !== 'bowling' && rvBowlingProposeIntact();
+    // (dans un acces illimite : une activite qu il comprend s y reprend ; prise, il n y a rien a ajouter)
+    const acces = enPlus && rvDansLAcces(id);
+    const mot = choisir ? 'Choisir' : acces ? 'Reprendre' : 'Ajouter';
+    const aria = choisir ? `Choisir ${rvMinuscule(nom)}, à la place du bowling proposé` : acces ? `Reprendre ${rvMinuscule(nom)} dans l’accès` : enPlus ? `Ajouter ${rvMinuscule(nom)} en plus de la formule` : `Ajouter ${rvMinuscule(nom)} à la réservation`;
+    const bouton = acces && rvPrisDansLAcces(id) ? '' : `<button type="button" class="rs-ajout" id="rsAjout-${escapeHtml(id)}" data-quoi="${escapeHtml(id)}" aria-label="${escapeHtml(aria)}" onclick="rsAjouterBloc(this.dataset.quoi)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg>${mot}</button>`;
     return `<section class="rs-seance is-replie" aria-label="${escapeHtml(nom)}">
-    <div class="rs-s-t"><span class="rs-ic">${rsIcone(id)}</span><div class="rs-s-n"><b>${escapeHtml(nom)}</b><small>${escapeHtml(rsInfoBloc(id))}</small></div>${segment}<button type="button" class="rs-ajout" id="rsAjout-${escapeHtml(id)}" data-quoi="${escapeHtml(id)}" aria-label="${escapeHtml(aria)}" onclick="rsAjouterBloc(this.dataset.quoi)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg>${mot}</button></div>${rsRetenuesHtml(id)}
+    <div class="rs-s-t"><span class="rs-ic">${rsIcone(id)}</span><div class="rs-s-n"><b>${escapeHtml(nom)}</b><small>${escapeHtml(rsInfoBloc(id))}</small></div>${acces ? '' : segment}${bouton}</div>${rsRetenuesHtml(id)}
   </section>`;
   }
-  return `<section class="rs-seance${rsAuTicket(id) ? ' is-on' : ''}" aria-label="${escapeHtml(nom)}">
+  // (un grand groupe qui tourne : la deuxieme activite part avec la premiere, rsTourneAvecHtml)
+  const tourne = rsTourneAvecHtml(id);
+  return `<section class="rs-seance${(enPlus ? Boolean(rvEnPlusDe(id)) : rsAuTicket(id)) ? ' is-on' : ''}" aria-label="${escapeHtml(enPlus ? `${nom} en plus` : nom)}">
     <div class="rs-s-t"><span class="rs-ic">${rsIcone(id)}</span><div class="rs-s-n"><b>${escapeHtml(nom)}</b><small>${escapeHtml(rsInfoBloc(id))}</small></div>${rsReglagesBlocHtml(id)}${segment}</div>
-    <div class="rs-s-h" role="group" aria-label="${escapeHtml(`Heures, ${nom}`)}">${rsHeuresHtml(id)}</div>
-    ${id === 'laser_game' ? rsPartiesHtml() : ''}
+    ${tourne || `<div class="rs-s-h" role="group" aria-label="${escapeHtml(`Heures, ${nom}${enPlus ? ' en plus' : ''}`)}">${rsHeuresHtml(id)}</div>
+    ${id === 'laser_game' && !enPlus ? rsPartiesHtml() : ''}`}
     ${rsRetenuesHtml(id)}
   </section>`;
 }
@@ -41819,11 +43901,14 @@ function rsBlocHtml(id) {
 // dans une formule telle quelle, la ligne n a que le nom de l activite et son heure.
 function rsJoueursPetitsHtml(petites) {
   const compteurs = rsEtat().faits.combien && rvModifiable();
-  const lignes = petites.filter((c) => rsAuTicket(c.id)).map((c) => {
+  // (une activite en plus d une formule a sa ligne aussi : ses joueurs et son heure)
+  const enPlus = (id) => (rvEnPlusPossible() ? rvEnPlusDe(id) : null);
+  const lignes = petites.filter((c) => rsAuTicket(c.id) || enPlus(c.id)).map((c) => {
     const nom = rsNomTuile(c.id);
     const activite = getCenterActivity(c.id);
     const enfants = Boolean(activite && activityCountsChildren(activite));
-    const joueurs = compteurs ? rsCompteurJoueursHtml(c.id, `${nom}${enfants ? ', enfants' : ''}`, `${enfants ? 'Enfants' : 'Joueurs'}, ${nom}`) : '';
+    const joueurs = enPlus(c.id) ? (rsEtat().faits.combien ? rsCompteurJoueursEnPlusHtml(c.id, `${nom}${enfants ? ', enfants' : ''}`, `${enfants ? 'Enfants' : 'Joueurs'}, ${nom} en plus`) : '')
+      : compteurs ? rsCompteurJoueursHtml(c.id, `${nom}${enfants ? ', enfants' : ''}`, `${enfants ? 'Enfants' : 'Joueurs'}, ${nom}`) : '';
     const heure = rsBoutonHeureHtml(c.id);
     if (!joueurs && !heure) return '';
     const tete = joueurs || `<span class="rs-cpt"><span class="rs-cpt-l">${escapeHtml(nom)}</span></span>`;
@@ -41839,6 +43924,9 @@ function rsJoueursPetitsHtml(petites) {
 // telle quelle, le bowling et le laser se posent comme le reste, depuis la case de leur contenu.
 function rsModeHeureAct(id) {
   if (!quickBookState || (RV_ANCRABLES.includes(id) && rvModifiable())) return '';
+  // (une petite activite en plus d une formule : 'enplus', son heure se pose ici ; le bowling et le laser
+  // en plus ont la leur sur leur bloc)
+  if (rvEnPlusPossible() && rvEnPlusDe(id)) return RV_ANCRABLES.includes(id) ? '' : 'enplus';
   const ids = rvActivites();
   const i = ids.indexOf(id);
   if (i < 0) return '';
@@ -41853,12 +43941,13 @@ function rsBoutonHeureHtml(id) {
   if (!mode) return '';
   const ligne = rvHeuresDesLignes()[id] || {};
   const auto = mode === 'posee' && !rvModifiable();
-  const heure = mode === 'arrivee' ? ligne.heure || quickBookState.startTime || '' : ligne.posee ? ligne.heure : '';
+  const x = mode === 'enplus' ? rvEnPlusDe(id) : null;
+  const heure = x ? x.heure || '' : mode === 'arrivee' ? ligne.heure || quickBookState.startTime || '' : ligne.posee ? ligne.heure : '';
   const ouvert = rsEtat().heureAct === id;
   const refus = heure ? rvRefusDuPlan() : null;
-  const ko = Boolean(refus && refus.activite === id) || rvChevauchements().has(id);
+  const ko = x ? Boolean(refus && refus.enPlus === id) : Boolean(refus && refus.activite === id) || rvChevauchements().has(id);
   const sid = escapeHtml(id);
-  const dit = heure ? `${heure}, ${mode === 'arrivee' ? 'l’heure d’arrivée' : 'posée à la main'}` : auto ? 'l’heure du planning' : 'libre pendant la visite';
+  const dit = heure ? `${heure}, ${x ? 'en plus de la formule' : mode === 'arrivee' ? 'l’heure d’arrivée' : 'posée à la main'}` : auto ? 'l’heure du planning' : 'libre pendant la visite';
   return `<button type="button" class="rs-ha-b${ko ? ' is-ko' : ''}" id="rsHB-${sid}" data-heure-bouton="${sid}" aria-expanded="${ouvert}"${ouvert ? ` aria-controls="rsHA-${sid}"` : ''} aria-label="${escapeHtml(`Heure, ${rsNomTuile(id)}, ${dit}`)}" onclick="rsBasculerHeureAct(this.dataset.heureBouton)">${RV_I.horloge}<b>${escapeHtml(heure || (auto ? 'Auto' : 'Libre'))}</b></button>`;
 }
 
@@ -41872,6 +43961,7 @@ function rsHeuresActiviteHtml(id) {
   const b = rsEtat();
   const mode = b.heureAct === id ? rsModeHeureAct(id) : '';
   if (!mode) return '';
+  if (mode === 'enplus') return rsHeuresEnPlusActHtml(id);
   const sid = escapeHtml(id);
   const coche = `<i class="rs-coche" aria-hidden="true">${RV_I.ok}</i>`;
   const ligne = rvHeuresDesLignes()[id] || {};
@@ -41912,7 +44002,95 @@ function rsHeuresActiviteHtml(id) {
       cles.push(`<button type="button" class="rs-h${on ? ' is-on' : ''}${on && coince ? ' is-ko' : ''}${!on && coince ? ' is-coince' : ''}" data-activite="${sid}" data-heure-l="${heure}" data-tient="${impossible ? '0' : '1'}" aria-pressed="${on}"${phrase ? ` title="${escapeHtml(phrase)}"` : ''} aria-label="${escapeHtml(aria)}" onclick="rsHeureAct(this.dataset.activite, this.dataset.heureL)">${coche}<b>${heure}</b>${mot ? `<small>${escapeHtml(mot)}</small>` : ''}</button>`);
     });
   }
-  return `<div class="rs-ha" id="rsHA-${sid}" role="group" aria-label="${escapeHtml(`Heures, ${rsNomTuile(id)}`)}"><div class="rs-s-l" data-heures-act="${sid}" data-verifie="${lue ? '1' : '0'}">${cles.join('')}</div>${rsDitDesHeuresAct(id, mode, ligne)}</div>`;
+  const minute = rsMinuteHtml(id, mode === 'arrivee' ? ligne.heure || s.startTime : ligne.posee ? ligne.heure : '');
+  return `<div class="rs-ha" id="rsHA-${sid}" role="group" aria-label="${escapeHtml(`Heures, ${rsNomTuile(id)}`)}"><div class="rs-s-l" data-heures-act="${sid}" data-verifie="${lue ? '1' : '0'}">${cles.join('')}</div>${minute}${rsDitDesHeuresAct(id, mode, ligne)}</div>`;
+}
+
+// « AUTRE HEURE », A LA MINUTE (2026-11-22, Ansar : « possibilité de mettre l'heure qu'on veut pour
+// chaque activité [...] à la minute [...] dans réservation »). En plus de ses demi-heures, chaque
+// activite prend une heure tapee : 15:10. Avant de la prendre, le serveur juge le dossier avec elle, a
+// blanc, par le moteur de « Créer » (rvALaMinute, puis lib/heures-posees.js : pistes, armes, horaires,
+// chevauchement du groupe sur les vraies plages). Elle se prend si elle tient ; sinon le champ dit
+// pourquoi et rien ne bouge. Une demi-heure tapee se prend comme sa touche.
+function rsMinuteHtml(id, courante) {
+  const b = rsEtat();
+  const m = b && b.minute && b.minute.id === id ? b.minute : null;
+  const sid = escapeHtml(id);
+  const calcul = Boolean(m && m.etat === 'calcul');
+  const valeur = m ? m.heure : rvHorsGrille(courante) ? courante : '';
+  return `<form class="rs-minute" data-minute="${sid}" novalidate onsubmit="event.preventDefault(); rsPrendreLaMinute(this.dataset.minute)"><label class="rs-minute-l" for="rsMin-${sid}">Autre heure</label><input class="rs-minute-c" id="rsMin-${sid}" type="time" step="60" value="${escapeHtml(valeur)}" aria-describedby="rsMinDit-${sid}" oninput="rsNoterLaMinute(this)"><button type="submit" class="rs-minute-ok"${calcul ? ' aria-busy="true"' : ''}>${calcul ? 'Vérification' : 'Prendre'}</button><span class="rs-minute-dit" id="rsMinDit-${sid}" role="status">${escapeHtml(m && m.dit ? m.dit : '')}</span></form>`;
+}
+
+function rsNoterLaMinute(champ) {
+  const b = rsEtat();
+  const zone = champ && champ.closest('[data-minute]');
+  if (!b || !zone) return;
+  b.minute = { id: zone.dataset.minute, heure: String(champ.value || '').slice(0, 5), etat: '', dit: '' };
+  const dit = document.getElementById(`rsMinDit-${zone.dataset.minute}`);
+  if (dit) dit.textContent = '';
+}
+
+// Ce que l heure change ici : 'bloc' (le bowling ou le laser, depuis leurs heures), sinon le mode du
+// panneau d une activite (rsModeHeureAct : 'arrivee' ou 'posee').
+function rsModeDeLaMinute(id) {
+  return RV_ANCRABLES.includes(id) && rvModifiable() ? 'bloc' : rsModeHeureAct(id);
+}
+
+// Le corps que « Créer » enverrait avec cette heure, sur une copie : le meme geste que le toucher.
+function rsCorpsALaMinute(id, heure, mode) {
+  const construire = () => {
+    const construit = rvConstruire({ simulation: true });
+    return construit.erreur ? { erreur: construit.erreur } : rvCorpsDeSimulation();
+  };
+  if (mode === 'bloc') return rsDansLaCopie(id, () => rvDansLaVariante(id, 0, heure, construire));
+  return rsSurUneCopie((copie) => {
+    if (mode === 'arrivee') rvChoisirHeure(id, 0, heure, { seule: true });
+    else if (!rvHeureSansSuivre(id, heure)) {
+      copie.heuresPosees = { ...(copie.heuresPosees || {}), [id]: heure };
+      rvArriveeALaPremiere();
+    }
+    return construire();
+  });
+}
+
+function rsPrendreHeureALaMinute(id, heure, mode) {
+  if (mode === 'bloc') rsHeure(id, heure);
+  else rsHeureAct(id, heure);
+}
+
+let rsMinuteSeq = 0;
+async function rsPrendreLaMinute(id) {
+  const s = quickBookState;
+  const b = rsEtat();
+  const mode = s && b && id ? rsModeDeLaMinute(id) : '';
+  if (!mode || (b.minute && b.minute.id === id && b.minute.etat === 'calcul')) return;
+  const champ = document.getElementById(`rsMin-${id}`);
+  const heure = String(champ ? champ.value : '').slice(0, 5);
+  const dire = (texte, etat = '') => {
+    b.minute = { id, heure, etat, dit: texte };
+    rvRepeindre();
+  };
+  if (!/^\d{2}:\d{2}$/.test(heure)) { dire('Tapez une heure, par exemple 15:10.'); return; }
+  if (!rvHorsGrille(heure)) { b.minute = null; rsPrendreHeureALaMinute(id, heure, mode); return; }
+  const corps = rsCorpsALaMinute(id, heure, mode);
+  if (!corps || corps.erreur) { dire(`${heure} ne tient pas. ${corps && corps.erreur ? corps.erreur : rvRefusDeLaVariante(id, 0, heure).raison}`); return; }
+  const seq = ++rsMinuteSeq;
+  dire('', 'calcul');
+  let plan = null;
+  try {
+    const payload = await apiRequest(API_ENDPOINTS.staffReservations, { method: 'POST', body: JSON.stringify({ ...corps, dryRun: true }) });
+    plan = payload && payload.plan;
+  } catch (error) {
+    if (seq === rsMinuteSeq && quickBookState === s) dire(`${heure} n’a pas pu être vérifiée : ${String((error && error.message) || 'le serveur ne répond pas')}. Réessayez.`);
+    return;
+  }
+  if (seq !== rsMinuteSeq || quickBookState !== s || !b.minute || b.minute.id !== id || b.minute.heure !== heure) return;
+  if (plan && plan.disponible === true) {
+    b.minute = null;
+    rsPrendreHeureALaMinute(id, heure, mode);
+    return;
+  }
+  dire(`${heure} ne tient pas. ${rsPhrase(String((plan && plan.refus) || 'Pas de plan possible à cette heure.'))}`);
 }
 
 // Sous les heures, une phrase : pourquoi l heure touchee ne se prend pas, ou le refus du plan pour
@@ -41936,7 +44114,10 @@ function rsBasculerHeureAct(id) {
   const b = rsEtat();
   if (!b || !rsModeHeureAct(id)) return;
   if (b.heureAct === id) { rsFermerHeureAct(); return; }
-  rsGeste(() => { b.heureAct = id; b.heureActDit = null; }, { focus: false });
+  // (la colonne d avant le panneau : refermee, elle y revient, rsRemettreLaColonne)
+  const colonne = document.getElementById('rsCol');
+  if (b.colonneAvant == null && colonne) b.colonneAvant = colonne.scrollTop;
+  rsGeste(() => { b.heureAct = id; b.heureActDit = null; b.minute = null; }, { focus: false });
   const montrer = () => {
     const panneau = document.getElementById(`rsHA-${id}`);
     if (panneau) panneau.scrollIntoView({ block: 'nearest' });
@@ -41955,10 +44136,25 @@ function rsFermerHeureAct() {
   const b = rsEtat();
   const id = b ? b.heureAct : '';
   if (!id) return false;
-  rsGeste(() => { b.heureAct = ''; b.heureActDit = null; }, { focus: false });
+  rsGeste(() => { b.heureAct = ''; b.heureActDit = null; b.minute = null; }, { focus: false });
+  rsRemettreLaColonne(b);
   const bouton = document.getElementById(`rsHB-${id}`);
   if (bouton) bouton.focus({ preventScroll: true });
   return true;
+}
+
+// LA COLONNE REVIENT EN PLACE (2026-11-22, a 1366 x 768). Le panneau des heures d une activite se
+// montre en faisant defiler la colonne (rsBasculerHeureAct) : apres l heure d une 3e activite, elle
+// restait defilee, le haut de la fenetre (le groupe, le jour) cache. Le panneau referme (heure prise,
+// Echap, son bouton), la colonne reprend la position qu elle avait avant lui.
+function rsRemettreLaColonne(b) {
+  if (!b || b.colonneAvant == null) return;
+  const avant = b.colonneAvant;
+  b.colonneAvant = null;
+  const remettre = () => { const colonne = document.getElementById('rsCol'); if (colonne) colonne.scrollTop = avant; };
+  remettre();
+  // (la peinture complete suit la premiere, comme a l ouverture du panneau)
+  requestAnimationFrame(() => setTimeout(remettre, 0));
 }
 
 // UNE HEURE TOUCHEE DANS LE PANNEAU se prend tout de suite : le ticket, le prix et le resume suivent
@@ -41973,6 +44169,21 @@ function rsHeureAct(id, heure) {
   if (!mode) return;
   const voulue = String(heure || '').slice(0, 5);
   if ((voulue && !/^\d{2}:\d{2}$/.test(voulue)) || (mode === 'arrivee' && !voulue)) return;
+  // (une petite activite en plus : son heure se prend si elle tient, « Libre » la rend a la visite)
+  if (mode === 'enplus') {
+    const non = voulue ? rsRefusEnPlus(id, voulue) : '';
+    rsToucheDe = id;
+    rsGeste(() => {
+      s.error = '';
+      if (non) { b.heureActDit = { id, heure: voulue, phrase: non }; return; }
+      b.heureAct = '';
+      b.heureActDit = null;
+      rvAjouterEnPlus(id, { heure: voulue });
+    }, { focus: false });
+    const bouton = non ? null : document.getElementById(`rsHB-${id}`);
+    if (bouton) bouton.focus({ preventScroll: true });
+    return;
+  }
   const refus = voulue ? rsRefusDeLHeureAct(id, voulue, mode) : '';
   rsToucheDe = id;
   rsGeste(() => {
@@ -41994,6 +44205,7 @@ function rsHeureAct(id, heure) {
     }
     rsDemanderLesJoueurs();
   }, { focus: false });
+  if (!refus) rsRemettreLaColonne(b);
   const bouton = refus ? null : document.getElementById(`rsHB-${id}`);
   if (bouton) bouton.focus({ preventScroll: true });
 }
@@ -42099,6 +44311,11 @@ function rsPageAHeures(b = rsEtat()) {
 async function rsVerifierHeuresPosees(seq) {
   const b = rsEtat();
   const id = rsPageAHeures(b) ? b.heureAct : '';
+  // (une petite activite en plus : ses heures se jugent comme celles d un bloc en plus)
+  if (id && rsModeHeureAct(id) === 'enplus') {
+    if (await rsVerifierEnPlus(id, rsCleBloc(id)) && quickBookState && seq === rsVerifSeq) rvRepeindre();
+    return;
+  }
   if (!id || rsModeHeureAct(id) !== 'posee') return;
   const base = rsBaseDesPosees(id);
   const cle = rsCleDesPosees(id, base);
@@ -42121,15 +44338,24 @@ async function rsVerifierHeuresPosees(seq) {
 
 function rsTuileHtml(id, etapes) {
   const s = quickBookState;
-  const pris = rsAuTicket(id);
   const telle = s.type === 'formule' && !s.adaptee;
+  // (une formule telle quelle : une activite en plus est cochee et dit son heure ; une activite de l acces
+  // illimite dit si l acces la prend)
+  const enPlus = rvEnPlusPossible() ? rvEnPlusDe(id) : null;
+  const acces = rvEnPlusPossible() && rvDansLAcces(id);
+  // (le bowling et le laser en tuile, sur la page Sur mesure : la tuile est celle de l activite en plus)
+  const pris = RV_ANCRABLES.includes(id) && rvEnPlusPossible() && !acces ? Boolean(enPlus) : rsAuTicket(id) || Boolean(enPlus);
   let mot = '';
-  if (pris) {
+  if (enPlus) mot = enPlus.heure || 'en plus';
+  else if (acces) mot = pris ? 'dans l’accès' : 'hors accès';
+  else if (pris) {
     const e = etapes.find((x) => x.id === id);
     const ligne = rvHeuresDesLignes()[id] || {};
     mot = telle ? 'dans la formule' : e && e.h ? e.h : e || ligne.index > 0 ? 'accès libre' : ligne.heure || '';
   } else if (telle && rsNiveau('formule') !== 'oui') mot = 'hors formule';
   else if (rsEtat().faits.combien) mot = rsPrixTuile(id);
+  // (en plus d une formule : « + 10 € », ce que le toucher ajoute au total)
+  if (telle && !pris && !acces && rvEnPlusPossible() && /\d/.test(mot)) mot = `+ ${mot}`;
   const classe = `rs-pt${pris ? ' is-on' : ''}${!pris && mot === 'hors formule' ? ' is-hors' : ''}`;
   return `<button type="button" class="${classe}" id="rsT-${escapeHtml(id)}" data-quoi="${escapeHtml(id)}" aria-pressed="${pris}" onclick="rsTuile(this.dataset.quoi)"><i class="rs-coche" aria-hidden="true">${RV_I.ok}</i><span class="rs-ic2">${rsIcone(id)}</span><b>${escapeHtml(rsNomTuile(id))}</b><small>${escapeHtml(mot)}</small></button>`;
 }
@@ -42142,7 +44368,7 @@ function rsPrixTuile(id) {
   const cle = JSON.stringify([s.pax, s.date, s.startTime, s.type, [...rsSansTarif], lu ? lu.etat : '']);
   if (rsPrixTuilesMemo.cle !== cle) rsPrixTuilesMemo = { cle, prix: new Map() };
   if (!rsPrixTuilesMemo.prix.has(id)) {
-    const serveur = lu && lu.etat === 'ok' && s.type !== 'formule' && lu.prix.has(id) ? lu.prix.get(id) : undefined;
+    const serveur = lu && lu.etat === 'ok' && (s.type !== 'formule' || rvEnPlusPossible()) && lu.prix.has(id) ? lu.prix.get(id) : undefined;
     rsPrixTuilesMemo.prix.set(id, serveur === undefined ? rsPrixTouche(id) : serveur == null ? 'sur place' : rsEuros(serveur));
   }
   return rsPrixTuilesMemo.prix.get(id);
@@ -42167,8 +44393,9 @@ function rsPlanifierPrixTuiles() {
 
 async function rsChiffrerTuiles() {
   const s = quickBookState;
-  // Une formule ne vend pas ses activites a la piece : ses tuiles ne disent pas de prix.
-  if (!s || s.submitting || s.type === 'formule' || !rsEtat().faits.combien || rsEtat().q !== 'activites') return;
+  // Une formule ne vend pas ses activites a la piece : ses tuiles ne disent pas de prix. Prise telle quelle,
+  // une activite en plus se paie a son prix : le serveur le dit, comme a la carte (2026-11-22).
+  if (!s || s.submitting || (s.type === 'formule' && !rvEnPlusPossible()) || !rsEtat().faits.combien || !['activites', 'mesure'].includes(rsEtat().q)) return;
   if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('reservations.create')) return;
   const cle = rsClePrixTuiles();
   if (rsPrixServeur.has(cle)) return;
@@ -42203,7 +44430,7 @@ async function rsChiffrerTuiles() {
     rsPrixServeur.set(cle, { etat: 'erreur', prix: new Map() });
     return;
   }
-  if (quickBookState && rsEtat().q === 'activites') rvRepeindre();
+  if (quickBookState && ['activites', 'mesure'].includes(rsEtat().q)) rvRepeindre();
 }
 
 // Les formules valables ce jour, ou que le groupe trop petit retient seul. Les autres
@@ -42308,6 +44535,13 @@ function rsModeBloc(id) {
 
 function rsCleBloc(id) {
   const s = quickBookState;
+  // (une formule telle quelle : le bloc juge l activite en plus ; sa cle porte la formule, son acces, ses
+  // heures posees et les autres activites en plus, pas l heure de celle-ci)
+  if (rvEnPlusPossible()) {
+    const x = rvEnPlusDe(id);
+    const autres = rvEnPlus().filter((y) => y.id !== id).map((y) => `${y.id}@${y.heure || ''}:${y.variante}:${y.joueurs || ''}`);
+    return JSON.stringify([id, 'enplus', s.date, s.pax, rsVariante(id), x ? x.joueurs || null : null, rvRevisionDuJour(s.date), state.reservations.length, getBlocagesEnLigne(s.date).map((b) => b.id).join(), Math.floor(currentTimeDecimal() * 60), s.privatisation || 0, s.formuleId, s.formuleChoix || '', s.startTime, s.illimite || null, s.heuresPosees || null, s.pistesNombre || null, rvPistesALaMain(), autres]);
+  }
   const mode = rsModeBloc(id);
   const base = [id, mode, s.date, s.pax, getQuickVisitParticipants(id), rvPistesALaMain(), rsVariante(id), rvRevisionDuJour(s.date), state.reservations.length, getBlocagesEnLigne(s.date).map((b) => b.id).join(), Math.floor(currentTimeDecimal() * 60), s.privatisation || 0];
   // (une heure posee a la main change ce que le serveur dit des autres heures : elle compte)
@@ -42623,6 +44857,10 @@ function rsCoince(x, id) {
   if (!v || v.statut !== 'ko') return null;
   // (un refus de la fenetre elle-meme, « trop tard », est celui de CETTE heure : il se dit toujours)
   if (v.local) return v;
+  // (un grand groupe qui tourne part tout entier a l heure de sa premiere activite, et l autre n a
+  // pas de rangee : celle-ci dit le verdict de tout le groupe, quelle que soit l activite qui coince)
+  const grand = rvGrandGroupe();
+  if (rvRotationEnJeu(grand) && id === grand.ids[0]) return v;
   const refus = rvRefusDuPlan();
   const deja = refus && refus.activite && refus.activite !== id ? refus.activite : '';
   if (!deja) return v;
@@ -42694,10 +44932,13 @@ function rsPendant(id, heure, plages = rsPlagesDuTicket()) {
   const { ids, lignes, minutes } = plages;
   const debut = timeToNum(heure);
   const fin = debut + (minutes[id] ?? rvMinutesActivite(id)) / 60;
+  // (un grand groupe qui tourne : ses activites a heure partent ensemble, un sous-groupe a chacune)
+  const grand = rvGrandGroupe();
+  const ensemble = rvRotationEnJeu(grand) && grand.ids.includes(id) ? grand.ids : [];
   for (const autre of ids) {
     const l = lignes[autre];
     // (une activite libre posee a la main a son heure aussi : le groupe y est)
-    if (autre === id || !l || !l.heure || !(RV_ANCRABLES.includes(autre) || l.posee)) continue;
+    if (autre === id || ensemble.includes(autre) || !l || !l.heure || !(RV_ANCRABLES.includes(autre) || l.posee)) continue;
     const debutAutre = timeToNum(l.heure);
     const finAutre = debutAutre + minutes[autre] / 60;
     if (debut < finAutre - 1e-9 && debutAutre < fin - 1e-9) {
@@ -42804,6 +45045,7 @@ function rsFenetre(liste, choisie) {
 function rsHeuresHtml(id) {
   const s = quickBookState;
   if (!getSchedule(s.date, state.isHolidayMode)) return '<p class="rs-texte">Centre fermé ce jour-là.</p>';
+  if (rvEnPlusPossible()) return rsHeuresEnPlusHtml(id);
   const pris = rsAuTicket(id);
   const choisie = pris ? (rvHeuresDesLignes()[id] || {}).heure || '' : '';
   // L heure prise porte sa coche ; celle du bowling propose au depart, non.
@@ -42835,7 +45077,8 @@ function rsHeuresHtml(id) {
     return `<button type="button" class="rs-h${on ? ' is-on' : ''}${on && propose ? ' is-propose' : ''}${ko ? ' is-ko' : ''}${coince && !on ? ' is-coince' : ''}${pendant ? ' is-coince' : ''}${gris ? ' is-efface' : ''}"${on ? ` id="rvHeure-${escapeHtml(id)}"` : ''} data-activite="${escapeHtml(id)}" data-heure="${heure}"${rsDitLHeure(dite, x, mot, id, plages)} aria-pressed="${on}" onclick="rsHeure('${sid}','${heure}')">${coche}${rsDedansHeure(x, dite, mot)}</button>`;
   }).join('');
   const vide = vues.length ? '' : '<p class="rs-texte">Plus de séance ce jour-là.</p>';
-  return `<div class="rs-s-l" data-verifie="${lue ? '1' : '0'}">${cles}${vide}<button type="button" class="rs-h rs-h-autres" data-activite="${escapeHtml(id)}" onclick="rsAutres('${sid}')">Autres</button></div>`;
+  // (« Autre heure » : toute la journee, et l heure a la minute, rsMinuteHtml)
+  return `<div class="rs-s-l" data-verifie="${lue ? '1' : '0'}">${cles}${vide}<button type="button" class="rs-h rs-h-autres" data-activite="${escapeHtml(id)}" aria-label="${escapeHtml(`Autre heure, ${rsNomCourt(id)} : une autre demi-heure, ou une heure à la minute`)}" onclick="rsAutres('${sid}')">Autre heure</button></div>`;
 }
 
 // LE SERVEUR RELIT LES SEANCES. Ce poste ne voit pas tout : le serveur essaie chaque heure
@@ -42856,6 +45099,8 @@ function rsBlocsAffiches() {
   if (b.q === 'autres') return b.quandDe && b.quandDe !== 'formule' && !b.quandPartie ? [b.quandDe] : [];
   if (b.q === 'ligne') return rvModifiable() && rvActivites().includes(b.ligne) ? [b.ligne] : [];
   if (b.q !== 'activites') return [];
+  // (une formule telle quelle : le bowling et le laser en plus, replies compris ; pas ceux que l acces joue)
+  if (rvEnPlusPossible()) return getQuickBookActivityChoices().map((c) => c.id).filter((id) => RV_ANCRABLES.includes(id) && !rvDansLAcces(id));
   const blocs = getQuickBookActivityChoices().map((c) => c.id).filter((id) => RV_ANCRABLES.includes(id));
   // (l heure d arrivee ouverte sous sa ligne se relit comme celles d un bloc : rsHeuresActiviteHtml)
   return b.heureAct && rsModeHeureAct(b.heureAct) === 'arrivee' ? [...blocs, b.heureAct] : blocs;
@@ -42868,6 +45113,13 @@ async function rsVerifier() {
   const seq = ++rsVerifSeq;
   for (const id of rsBlocsAffiches()) {
     const cle = rsCleBloc(id);
+    // (une formule telle quelle : chaque heure de l activite en plus, avec la formule, rsVerifierEnPlus)
+    if (rvEnPlusPossible()) {
+      if (!(await rsVerifierEnPlus(id, cle))) continue;
+      if (!quickBookState || seq !== rsVerifSeq) return;
+      rvRepeindre();
+      continue;
+    }
     const brut = rsSeancesMemo.get(cle);
     if (!brut || rsVerifs.has(cle)) continue;
     // (une heure sans dossier possible ne part pas : elle garde le refus de la fenetre, rvRefusDeLaVariante)
@@ -43024,7 +45276,7 @@ function rsPartiesHtml() {
       return `<button type="button" class="rs-h${on ? ' is-on' : ''}${ton}${gris ? ' is-efface' : ''}" data-partie="${k}" data-heure-p="${heure}" aria-pressed="${on}"${titre ? ` title="${escapeHtml(titre)}"` : ''} aria-label="${escapeHtml(`Partie ${k + 1} à ${heure}${x.tag ? `, ${x.tag}` : ''}${mot ? `, ${mot}` : ''}`)}" onclick="rsHeurePartieBloc(${k}, '${heure}')">${coche}${rsDedansHeure(x, heure, mot)}</button>`;
     }).join('');
     const n = joueursParPartie[k] || bornesJoueurs.max;
-    const joueurs = `<span class="rs-partie-j">${rsPasHtml(n > bornesJoueurs.min ? `rsJoueursPartie(${k},${n - 1})` : '', n < bornesJoueurs.max ? `rsJoueursPartie(${k},${n + 1})` : '', n, `Joueurs de la partie ${k + 1}`, `data-partie-bloc="${k + 1}"`)}<small>joueurs</small></span>`;
+    const joueurs = `<span class="rs-partie-j">${rsPasHtml(n > bornesJoueurs.min ? `rsJoueursPartiePas(${k},-1)` : '', n < bornesJoueurs.max ? `rsJoueursPartiePas(${k},1)` : '', n, `Joueurs de la partie ${k + 1}`, `data-partie-bloc="${k + 1}"`, `p:${k}`)}<small>joueurs</small></span>`;
     return `<div class="rs-partie" role="group" aria-label="${escapeHtml(`Partie ${k + 1}`)}"><span class="rs-partie-tete"><span class="rs-partie-l">Partie ${k + 1}</span>${joueurs}</span><div class="rs-s-l" data-verifie="${lues ? '1' : '0'}">${cles}</div></div>`;
   });
   return `<div class="rs-parties">${rangees.join('')}</div>`;
@@ -43094,9 +45346,10 @@ function rsAutresHtml() {
   // Cinq colonnes tant que la journee tient : les touches grandissent au lieu de laisser
   // le bas de la page vide.
   const colonnes = heures.length > 20 ? 6 : 5;
+  const minute = !partie && !formule ? rsMinuteHtml(id, choisie) : '';
   return `${rsRetourHtml(plusTot)}
     <section class="rs-seance is-page" aria-labelledby="rsQ">
-      <div class="rs-s-t"><div class="rs-s-n"><h2 class="rs-q" id="rsQ" tabindex="-1">${escapeHtml(`${nom}, à quelle heure ?`)}</h2><small>${escapeHtml(compte)}</small></div></div>
+      <div class="rs-s-t"><div class="rs-s-n"><h2 class="rs-q" id="rsQ" tabindex="-1">${escapeHtml(`${nom}, à quelle heure ?`)}</h2><small>${escapeHtml(compte)}</small></div>${minute}</div>
       <div class="rs-heures" style="--rs-n:${colonnes};--rs-r:${Math.ceil(heures.length / colonnes)}" role="group" aria-labelledby="rsQ">${cles}</div>
     </section>`;
 }
@@ -43207,8 +45460,10 @@ function rsBlocFormuleHtml() {
 // Le ticket. Le detail d une ligne : quand, et ce qui compte pour elle.
 function rsDetailFormule(etapes) {
   const plan = rvPlanCourant();
-  // (le ticket dit l heure du bouton, « Créer à 16:00 » : jamais l accueil d avant)
-  const quand = plan && plan.debut && plan.fin ? `${rsHeureDite() || plan.debut} à ${plan.fin}` : quickBookState.startTime || '';
+  // (le ticket dit l heure du bouton, « Créer à 16:00 » : jamais l accueil d avant ; avec des activites en
+  // plus, la plage de la formule seule, lib/reserver-fenetre.js plageDeLaFormule)
+  const fin = plan && plan.formule && plan.formule.fin ? plan.formule.fin : plan && plan.fin;
+  const quand = plan && plan.debut && fin ? `${rsHeureDite() || plan.debut} à ${fin}` : quickBookState.startTime || '';
   const bowling = etapes.find((e) => e.id === 'bowling');
   return [quand, bowling ? String(bowling.d).split(',')[0] : ''].filter(Boolean).join(', ');
 }
@@ -43246,11 +45501,11 @@ function rsDetailLigne(id, etapes, ligne, ids) {
 // Client), puis la note pour l equipe. L e-mail et l occasion restent a un toucher.
 function rsClientHtml() {
   const s = quickBookState;
-  const tel = String(s.phone || '').replace(/\D/g, '').length > 2 ? s.phone : '';
+  const tel = rvRessembleAUnNumero(s.phone) ? (String(s.phone || '').replace(/\D/g, '').length > 2 ? s.phone : '') : String(s.phone || '').trim();
   const reconnu = Boolean(s.clientConnu && s.clientConnu.etat === 'ok' && s.clientConnu.resultat);
   const manque = Boolean(s.telDemande) && !rvTelephoneValide(s.phone);
   const dit = rsTelephoneDit(s);
-  return `<label class="rs-tk-champ is-tel${manque ? ' is-manque' : ''}${reconnu ? ' a-tag' : ''}"><span class="rs-tk-lbl">Téléphone<em>obligatoire</em></span><input id="qbPhone" type="tel" inputmode="tel" value="${escapeHtml(tel)}" placeholder="Ex. 0470 12 34 56" autocomplete="off" required aria-required="true" aria-invalid="${manque}"${manque ? ' aria-describedby="rsTelDit"' : ''} aria-label="Téléphone du client, obligatoire" oninput="rvTelephoneSaisi(this.value); rsMajTicket()" onblur="rsTelFini(this)">${reconnu ? '<span class="rv-tag">reconnu</span>' : ''}</label>
+  return `<label class="rs-tk-champ is-tel${manque ? ' is-manque' : ''}${reconnu ? ' a-tag' : ''}"><span class="rs-tk-lbl">Téléphone<em>obligatoire</em></span><input id="qbPhone" type="text" inputmode="text" value="${escapeHtml(tel)}" placeholder="0470 12 34 56, par mail, /" maxlength="40" autocomplete="off" required aria-required="true" aria-invalid="${manque}"${manque ? ' aria-describedby="rsTelDit"' : ''} aria-label="Téléphone du client, obligatoire" oninput="rvTelephoneSaisi(this.value); rsMajTicket()" onblur="rsTelFini(this)">${reconnu ? '<span class="rv-tag">reconnu</span>' : ''}</label>
     ${manque ? `<p class="rs-tk-dit" id="rsTelDit" role="alert">${escapeHtml(dit)}</p>` : ''}
     <div class="rv-connu rs-connu" id="rvClientConnu" role="status">${rvClientConnuHtml()}</div>
     <label class="rs-tk-champ"><span class="rs-tk-lbl">Nom</span><input id="qbName" value="${escapeHtml(s.name)}" placeholder="Nom du client" autocomplete="off" aria-label="Nom du client" onfocus="rvNomAuFocus(this)" oninput="quickBookState.name=this.value; rsMajTicket()"></label>
@@ -43270,6 +45525,7 @@ function rsRemplacer(id, variante) {
   const s = quickBookState;
   s.forcer = false;
   s.adaptee = false;
+  s.enPlus = [];
   s.formuleChoix = '';
   s.heures = {};
   s.partiesEcarts = null;
@@ -43376,6 +45632,15 @@ function rsTuile(id) {
   const b = rsEtat();
   if (!s || !b) return;
   const ids = rvActivites();
+  // (une formule telle quelle : la tuile prend l activite en plus, ou la rend ; la formule reste entiere)
+  if (rvEnPlusPossible()) {
+    rsGeste(() => {
+      const avant = Boolean(rvEnPlusDe(id));
+      rsToucherEnPlus(id);
+      if (!avant && rvEnPlusDe(id)) rsDemanderLesJoueurs();
+    });
+    return;
+  }
   if (ids.length === 1 && ids[0] === id && rvModifiable()) { rsOuvrirLigne(id); return; }
   rsGeste(() => {
     s.error = '';
@@ -43394,6 +45659,12 @@ function rsVarianteTouche(id, valeur) {
   if (!s || !b) return;
   rsGeste(() => {
     s.error = '';
+    // (une formule telle quelle : la duree ou les parties de l activite en plus, ou celles du bloc replie)
+    if (rvEnPlusPossible()) {
+      if (rvEnPlusDe(id)) rvAjouterEnPlus(id, { variante: Number(valeur) });
+      else b.variantes[id] = Number(valeur);
+      return;
+    }
     if (!rsAuTicket(id)) { b.variantes[id] = Number(valeur); return; }
     if (Number(valeur) === rsVariante(id) || !rsPeutChanger()) return;
     if (s.type === 'formule' && !s.adaptee) rvAdapterFormule(true);
@@ -43446,6 +45717,7 @@ function rsSansFormule() {
     s.formuleId = '';
     s.formuleChoix = '';
     s.adaptee = false;
+    s.enPlus = [];
     s.heures = {};
     s.forcer = false;
     s.activitesAvantFormule = null;
@@ -43502,7 +45774,11 @@ function rsHeureProche() {
   const c = s.candidats;
   if (!c || c.etat !== 'ok' || c.base !== s.cleCourante) return '';
   const refus = rvRefusDuPlan();
-  if (refus && rvActivites().includes(refus.activite) && c.id !== refus.activite) return '';
+  // (l activite en plus coince : c est son heure qui change, sur son bloc, jamais l arrivee de la formule)
+  if (refus && refus.enPlus) return '';
+  // (un grand groupe : les heures de sa premiere activite jugent tout le groupe, rsChercherLaProche)
+  const grand = rvGrandGroupe();
+  if (rvGroupesEnJeu(grand) ? c.id !== grand.ids[0] || c.partie : refus && rvActivites().includes(refus.activite) && c.id !== refus.activite) return '';
   const depart = timeToNum((c.id && rvHeureReglee(c.id, c.partie || 0)) || s.startTime || '00:00');
   const bonnes = rvHeuresDuPlanning(c, s).sort((x, y) => Math.abs(timeToNum(x.heure) - depart) - Math.abs(timeToNum(y.heure) - depart) || (x.statut === 'ok' ? 0 : 1) - (y.statut === 'ok' ? 0 : 1));
   return bonnes.length ? bonnes[0].heure : '';
@@ -43532,6 +45808,8 @@ function rsHeure(id, heure) {
   const s = quickBookState;
   const b = rsEtat();
   if (!s || !b) return;
+  // (une formule telle quelle : une heure du bloc est celle de l activite en plus)
+  if (rvEnPlusPossible()) { rsHeureEnPlus(id, heure); return; }
   const variante = rsVariante(id);
   const retour = b.retourLigne;
   const { suite } = rsSeancesBrutes(id);
@@ -43584,9 +45862,11 @@ function rsChercherLaProche() {
   const b = rsEtat();
   if (rsLeger || !b.faits.combien) return;
   const refus = rvRefusDuPlan();
-  if (!refus) return;
+  if (!refus || refus.enPlus) return;
   const ids = rvActivites();
-  const id = ids.includes(refus.activite) ? refus.activite : ids[0];
+  // (un grand groupe se deplace tout entier par l heure de sa premiere activite)
+  const grand = rvGrandGroupe();
+  const id = rvGroupesEnJeu(grand) ? grand.ids[0] : ids.includes(refus.activite) ? refus.activite : ids[0];
   if (!id) return;
   // Une recherche en panne ne se relance pas d elle-meme : chaque repeint la relancait
   // (512 requetes en 4 s, « Recherche… » sans fin). Le refus se dit ; un geste qui change
@@ -43746,7 +46026,7 @@ function rsTelFini(champ) {
   const s = quickBookState;
   if (!s || !champ) return;
   const chiffres = String(champ.value || '').replace(/\D/g, '');
-  if (!chiffres) { s.phone = '+32 '; return; }
+  if (!chiffres && !String(champ.value || '').trim()) { s.phone = '+32 '; return; }
   s.phone = normalizePhoneInput(champ.value);
   champ.value = s.phone;
 }
@@ -43805,7 +46085,7 @@ function rsRangHeures(id, ligne) {
     const mot = rsMotDeLHeure(id, x, plages);
     return `<button type="button" class="rs-p${on ? ' is-on' : ''}${on && coince ? ' is-ko' : ''}${coince && !on ? ' is-coince' : ''}${pendant ? ' is-coince' : ''}${gris ? ' is-efface' : ''}"${on ? ` id="rvHeure-${sid}"` : ''} data-activite="${sid}" data-heure-l="${heure}" aria-pressed="${on}"${rsDitLHeure(heure, x, mot, id, plages)} onclick="rsHeureLigne(this.dataset.activite, this.dataset.heureL)">${rsDedansHeure(x, heure, mot)}</button>`;
   });
-  cles.push(`<button type="button" class="rs-p is-plus" id="rsAutreHeure" data-activite="${sid}" aria-label="Toutes les heures" onclick="rsAutres(this.dataset.activite)"><b>Autres</b></button>`);
+  cles.push(`<button type="button" class="rs-p is-plus" id="rsAutreHeure" data-activite="${sid}" aria-label="Autre heure : toutes les heures, ou une heure à la minute" onclick="rsAutres(this.dataset.activite)"><b>Autre heure</b></button>`);
   // (toute la journee, comme le bloc : les touches se rangent a la largeur)
   // LES HEURES PRENNENT LEUR HAUTEUR (2026-11-13, Ansar : « les heures partent dans des
   // boutons en dessous »). La rangee, bornee a 120 px et compressible comme les autres,
@@ -43864,7 +46144,7 @@ function rvHeureDuMoteur(id) {
   const plan = rvPlanCourant();
   if (!plan) return '';
   if (id === 'bowling' || id === 'laser_game') return rvHeurePlanifiee(id);
-  const etape = (plan.etapes || []).find((e) => e.activite === id && e.debut && !e.libre);
+  const etape = (plan.etapes || []).find((e) => e.activite === id && e.debut && !e.libre && !e.enPlus);
   return etape ? etape.debut : '';
 }
 
@@ -43975,9 +46255,9 @@ function rsRangJoueurs(id) {
   const enfants = Boolean(activite && activityCountsChildren(activite));
   const bornes = activityParticipantsBounds(id, quickBookState.pax);
   const n = getQuickVisitParticipants(id);
-  const pas = (x) => `rsJoueursBloc(this.dataset.activite,${x})`;
+  const pas = (x) => `rsJoueursPas(this.dataset.activite,${x})`;
   const attr = `data-activite="${escapeHtml(id)}"`;
-  return rsRang(enfants ? 'Enfants' : 'Joueurs', `${rsPasHtml(n > bornes.min ? pas(n - 1) : '', n < bornes.max ? pas(n + 1) : '', n, enfants ? 'Enfants' : 'Joueurs', attr)}<span class="rs-note">sur ${rvPluriel(Math.max(1, Number(quickBookState.pax) || 1), 'personne')}</span>`);
+  return rsRang(enfants ? 'Enfants' : 'Joueurs', `${rsPasHtml(n > bornes.min ? pas(-1) : '', n < bornes.max ? pas(1) : '', n, enfants ? 'Enfants' : 'Joueurs', attr, `j:${id}`)}<span class="rs-note">sur ${rvPluriel(Math.max(1, Number(quickBookState.pax) || 1), 'personne')}</span>`);
 }
 
 function rsLigneBowlingHtml(ligne) {
@@ -44009,8 +46289,9 @@ function rsLigneBowlingHtml(ligne) {
   return rangs;
 }
 
-function rsPasHtml(moins, plus, valeur, aria, attributs = '') {
-  return `<span class="rs-pas" role="group" aria-label="${escapeHtml(aria)}"><button type="button" aria-label="${escapeHtml(`${aria}, un de moins`)}" ${attributs} ${moins ? `onclick="${moins}"` : 'disabled'}>−</button><b>${valeur}</b><button type="button" aria-label="${escapeHtml(`${aria}, un de plus`)}" ${attributs} ${plus ? `onclick="${plus}"` : 'disabled'}>+</button></span>`;
+// `saisie` : la cle d un compteur de joueurs dont le nombre se tape (rsNombreHtml).
+function rsPasHtml(moins, plus, valeur, aria, attributs = '', saisie = '') {
+  return `<span class="rs-pas" role="group" aria-label="${escapeHtml(aria)}"><button type="button" aria-label="${escapeHtml(`${aria}, un de moins`)}" ${attributs} ${moins ? `onclick="${moins}"` : 'disabled'}>−</button>${saisie ? rsNombreHtml(saisie, valeur, aria) : `<b>${valeur}</b>`}<button type="button" aria-label="${escapeHtml(`${aria}, un de plus`)}" ${attributs} ${plus ? `onclick="${plus}"` : 'disabled'}>+</button>${saisie ? rsSaisieDitHtml(saisie) : ''}</span>`;
 }
 
 function rsLigneLaserHtml(ligne) {
@@ -44368,10 +46649,17 @@ function rsRecuHtml() {
     const quantite = f.type === 'per_lane' ? '' : `${rvPluriel(joueurs, 'joueur')} × ${formatMoneyCentimes(f.price)}`;
     // (une formule adaptee : la formule a son prix, puis chaque activite ajoutee au sien, rvAjoutsALaFormule)
     const ajouts = rvAjoutsALaFormule();
-    lignes.push([`${rvNomFormule(f)}${s.adaptee ? ', adaptée' : ''}`, quantite, rsEuros(ajouts ? ajouts.prixFormule : rvTotalReference() - extras)]);
+    // (une formule telle quelle et ses activites en plus : la formule a son prix, chacune le sien)
+    const enPlus = rvEnPlus();
+    const montantEnPlus = enPlus.length ? rvMontantDesEnPlus().montant : 0;
+    lignes.push([`${rvNomFormule(f)}${s.adaptee ? ', adaptée' : ''}`, quantite, rsEuros(ajouts ? ajouts.prixFormule : rvTotalReference() - extras - montantEnPlus)]);
     (ajouts ? ajouts.ajoutees : []).forEach(({ id, montant }) => {
       const prix = montant != null ? rsEuros(montant) : 'sur place';
       lignes.push([id === 'bowling' ? `Bowling ${rvHeuresLabel(rvBowlingDuree())}` : id === 'laser_game' ? `Laser, ${rvPluriel(rvPartiesLaser(), 'partie')}` : rvNomActivite(id), montant != null ? rsCalculLigne(id, prix) : '', prix]);
+    });
+    enPlus.forEach((x) => {
+      const montant = rvPrixEnPlus(x);
+      lignes.push([rvNomEnPlus(x), x.heure ? `en plus, à ${x.heure}` : 'en plus', montant != null ? rsEuros(montant) : 'sur place']);
     });
   } else {
     rvActivites().forEach((id) => {
@@ -44473,6 +46761,10 @@ function rvChevauchements(ids = rvActivites()) {
   if (!quickBookState || ids.length < 2 || !rvModifiable()) return res;
   const lignes = rvHeuresDesLignes(ids);
   const plages = [];
+  // (un grand groupe qui tourne est au bowling et au laser en meme temps, un sous-groupe a chacun :
+  // le serveur juge chaque sous-groupe, lib/grand-groupe.js)
+  const grand = rvGrandGroupe();
+  if (rvRotationEnJeu(grand)) return res;
   ids.forEach((id) => {
     const l = lignes[id];
     if (!l || !l.heure || !(RV_ANCRABLES.includes(id) || l.posee)) return;
@@ -44519,13 +46811,16 @@ function rsLignesActivites() {
   // (une formule adaptee : la formule a son prix, chaque activite que sa carte n a pas le sien, rvAjoutsALaFormule)
   const ajouts = formule ? rvAjoutsALaFormule() : null;
   if (formule) {
-    const montant = ajouts ? ajouts.prixFormule : rvTotalReference() - quickExtrasTotal();
+    // (les activites en plus ont leurs lignes a elles, sous la formule : la formule garde son prix)
+    const enPlus = rvEnPlus().length ? rvMontantDesEnPlus() : null;
+    const montant = ajouts ? ajouts.prixFormule : rvTotalReference() - quickExtrasTotal() - (enPlus ? enPlus.montant : 0);
     const joueursF = Math.max(1, Number(s.pax) || 1);
     const calculF = ajouts && formule.type !== 'per_lane' && Math.abs(Number(formule.price) * joueursF - ajouts.prixFormule) < 0.5 ? `${rvPluriel(joueursF, 'joueur')} × ${formatMoneyCentimes(formule.price)}` : '';
     const nomF = `${rvNomFormule(formule)}${s.adaptee ? ', adaptée' : ''}`;
     const choix = !s.adaptee && s.formuleChoix && Array.isArray(formule.choices) ? formule.choices.find((c) => c.id === s.formuleChoix) : null;
     const refus = rvRefusDuPlan();
-    const ko = !s.adaptee && (etapes.find((x) => x.ko) || (refus ? { d: refus.raison } : null));
+    // (le refus d une activite en plus se dit sur sa ligne, pas sur celle de la formule)
+    const ko = !s.adaptee && (etapes.find((x) => x.ko) || (refus && !refus.enPlus ? { d: refus.raison } : null));
     // L ACCES ILLIMITE SE DIT EN CLAIR AU TICKET : la meme phrase que partout (« Tout à volonté de
     // 15:30 à 18:30 »), puis ce qui est garde et ce qui se joue une fois a son heure, une ligne
     // chacun. Le plan du serveur fait foi. Ce qui est compris se voit en photos a gauche : le ticket
@@ -44548,7 +46843,7 @@ function rsLignesActivites() {
     const apresF = rsIlRestera(resteF);
     // (l acces illimite n a pas l icone de sa premiere activite : il les comprend toutes)
     lignes.push(rsLigne({ cle: 'a-formule', action: "rsOuvrirLigne('formule')", icone: illimite ? '' : rsIcone(ids[0] || ''), nom: nomF, detail, lignes: detailsAcces, apres: apresF, ko: Boolean(ko), prix: prixF, aria: rsAriaLigne(nomF, [detail, ...detailsAcces, apresF].filter(Boolean).join(', '), prixF), retirer: 'rsSansFormule()' }));
-    if (!s.adaptee) return lignes.join('');
+    if (!s.adaptee) return `${lignes.join('')}${rsLignesEnPlus()}`;
   }
   // La formule du comptoir en tete : son nom, son prix. Les lignes dessous sont ce qu elle comprend.
   const prixFormule = rsFmPrix();
@@ -44559,6 +46854,8 @@ function rsLignesActivites() {
   }
   // La derniere activite ne se retire pas : il faut bien reserver quelque chose.
   const retirable = ids.length > 1;
+  // Un grand groupe dit d abord ses sous-groupes, une ligne qui ouvre leurs reglages (rsGroupesHtml).
+  lignes.push(rsLigneGrandGroupeHtml());
   ids.forEach((id) => {
     const e = etapes.filter((x) => x.id === id);
     const nom = id === 'bowling' ? `Bowling ${rvHeuresLabel(rvBowlingDuree())}` : id === 'laser_game' ? `Laser, ${rvPluriel(rvPartiesLaser(), 'partie')}` : rvNomActivite(id);
@@ -44567,9 +46864,13 @@ function rsLignesActivites() {
     const plan = rvPlanCourant();
     const meme = plan && plan.heureRefusee && plan.heureRefusee.activite === id && e.some((x) => x.ko) ? null : chevauche.get(id);
     const ko = Boolean(meme) || e.some((x) => x.ko);
-    const detail = meme ? rsPhraseChevauche(heures[id].heure, meme) : ko ? rsPhrase(e.find((x) => x.ko).d) : rsDetailLigne(id, e, heures[id], ids);
+    // (un grand groupe : quel sous-groupe joue a quelle heure, puis ses pistes, lus sur le plan du serveur)
+    const enGroupes = ko ? null : rvLigneDuGrandGroupe(id);
+    const detail = meme ? rsPhraseChevauche(heures[id].heure, meme) : ko ? rsPhrase(e.find((x) => x.ko).d) : enGroupes ? enGroupes.detail : rsDetailLigne(id, e, heures[id], ids);
     const plus = ko ? '' : rsPartage(id, e);
-    const apres = ko ? '' : rsPlusDuTicket(id, heures[id]);
+    const joueursAct = getQuickVisitParticipants(id);
+    const surLeGroupe = joueursAct < Math.max(1, Number(s.pax) || 1) ? `${rvPluriel(joueursAct, 'joueur')} sur ${Math.max(1, Number(s.pax) || 1)}` : '';
+    const apres = ko ? '' : enGroupes ? [enGroupes.apres, surLeGroupe].filter(Boolean).join(', ') : rsPlusDuTicket(id, heures[id]);
     // (dans une formule adaptee, ce qu elle comprend est dans son prix ; une activite ajoutee dit le sien)
     const ajout = ajouts ? ajouts.ajoutees.find((a) => a.id === id) : null;
     const prix = !combien ? '' : ajout ? (ajout.montant != null ? rsEuros(ajout.montant) : 'sur place') : s.adaptee ? '' : prixFormule != null ? 'compris' : rsPrixDeLigne(id);
@@ -44577,7 +46878,89 @@ function rsLignesActivites() {
     const bouge = s.deplace && s.deplace.id === id && heures[id] && heures[id].heure === s.deplace.apres ? `Déplacé de ${s.deplace.avant} à ${s.deplace.apres}` : '';
     lignes.push(rsLigne({ cle: `a-${id}`, action: 'rsOuvrirLigne(this.dataset.activite)', data: `data-activite="${escapeHtml(id)}"`, icone: rsIcone(id), nom, detail, plus, apres, ko, prix, bouge, aria: rsAriaLigne(nom, [bouge, detail, plus, apres].filter(Boolean).join(', '), prix), retirer: retirable ? 'rsRetirer(this.dataset.activite)' : '' }));
   });
+  // (un grand groupe dont le plan d avant tient : faire tourner ses groupes est une option, qui dit
+  // ce qu elle change, rsOptionDesGroupesHtml)
+  lignes.push(rsOptionDesGroupesHtml());
   return lignes.join('');
+}
+
+// FAIRE TOURNER LES GROUPES, AU CHOIX DU COMPTOIR (2026-11-22, le coordinateur : « aucun changement
+// de prix silencieux pour les groupes qui passaient déjà [...] Le staff choisit, rien ne bascule
+// seul »). Un grand groupe au bowling et au laser dont le plan d avant tient (40 joueurs a 15:30 :
+// tout le bowling, puis le laser en deux vagues, 673 €, fin 17:25) le garde. Le ticket propose les
+// groupes qui tournent, avec ce qu ils changent, lus sur le plan que le serveur a joue a blanc :
+// « Faire tourner 2 groupes : fin à 17:00, 712 € ». Choisis, il propose l inverse. Quand le plan
+// d avant ne tient pas, les groupes tournent d office : rien a proposer.
+let rvAutrePlanSeq = 0;
+function rvAutrePlanDesGroupesPossible() {
+  const s = quickBookState;
+  const grand = rvGrandGroupe();
+  const plan = rvPlanCourant();
+  if (!s || !grand || !grand.tourne || !plan || s.forcer || rvResas.length > 1) return false;
+  const choisie = Boolean(s.grandGroupe && s.grandGroupe.tourne === true);
+  // (choisis, les groupes qui tournent se defont toujours, meme a une heure ou ils ne tiennent pas)
+  if (!plan.disponible && !choisie) return false;
+  return choisie || !rvRotationEnJeu(grand);
+}
+
+async function rvChargerAutrePlanDesGroupes() {
+  const s = quickBookState;
+  if (rsLeger || !s || !rvAutrePlanDesGroupesPossible()) return;
+  const cle = s.cleCourante;
+  if (!cle || (s.autrePlanGroupes && s.autrePlanGroupes.base === cle)) return;
+  const tourne = !(s.grandGroupe && s.grandGroupe.tourne === true);
+  // (le corps de l autre choix, construit sur une copie : la fenetre ne bouge pas)
+  const garde = quickBookState;
+  let corps = null;
+  try {
+    quickBookState = JSON.parse(JSON.stringify(garde));
+    quickBookState.grandGroupe = { ...(quickBookState.grandGroupe || {}), tourne };
+    corps = rvCorpsDeSimulation();
+  } catch (error) {
+    corps = null;
+  } finally {
+    quickBookState = garde;
+  }
+  if (!corps) return;
+  const seq = ++rvAutrePlanSeq;
+  s.autrePlanGroupes = { base: cle, etat: 'calcul', tourne };
+  let suite;
+  try {
+    const payload = await apiRequest(API_ENDPOINTS.staffReservations, { method: 'POST', body: JSON.stringify({ ...corps, dryRun: true }) });
+    suite = { base: cle, etat: 'ok', tourne, plan: (payload && payload.dryRun && payload.plan) || null };
+  } catch (error) {
+    suite = { base: cle, etat: 'erreur', tourne };
+  }
+  if (seq !== rvAutrePlanSeq || quickBookState !== s) return;
+  s.autrePlanGroupes = suite;
+  rvRepeindre();
+}
+
+// L autre plan, quand il tient et qu il change bien quelque chose (les groupes tournent ou non).
+function rvAutrePlanDesGroupes() {
+  const s = quickBookState;
+  const a = s && s.autrePlanGroupes;
+  if (!rvAutrePlanDesGroupesPossible() || !a || a.base !== s.cleCourante || a.etat !== 'ok' || !a.plan || !a.plan.disponible) return null;
+  const tournent = Boolean(a.plan.grandGroupe && a.plan.grandGroupe.tourne);
+  return tournent === a.tourne ? a : null;
+}
+
+function rsOptionDesGroupesHtml() {
+  const a = rvAutrePlanDesGroupes();
+  if (!a) return '';
+  const nombre = (a.plan.grandGroupe && a.plan.grandGroupe.nombre) || (rvGrandGroupe() || {}).nombre || 2;
+  const prix = Number.isFinite(Number(a.plan.prix)) && a.plan.prix !== null ? rsEuros(Number(a.plan.prix)) : '';
+  const ce = [a.plan.fin ? `fin à ${a.plan.fin}` : '', prix].filter(Boolean).join(', ');
+  const mot = `${a.tourne ? `Faire tourner ${nombre} groupes` : 'Ne pas faire tourner'}${ce ? ` : ${ce}` : ''}`;
+  return `<button type="button" class="rs-ajout-ligne rs-gg-option" id="rsGgOption" data-tourne="${a.tourne ? '1' : '0'}" data-prix="${escapeHtml(String(a.plan.prix ?? ''))}" data-fin="${escapeHtml(a.plan.fin || '')}" onclick="rsFixer(() => rsFaireTourner(this.dataset.tourne === '1'))">${RV_I.groupes}<span>${escapeHtml(mot)}</span></button>`;
+}
+
+function rsFaireTourner(oui) {
+  const s = quickBookState;
+  if (!s || !rvGrandGroupe()) return;
+  s.grandGroupe = { ...(s.grandGroupe || {}), tourne: Boolean(oui) };
+  s.forcer = false;
+  s.error = '';
 }
 
 // Sous une ligne du ticket : ses joueurs quand ce n est pas tout le groupe, et ce qui restera
@@ -44780,7 +47163,7 @@ function rsCreer() {
 // ── LA COQUILLE ET LA PEINTURE ───────────────────────────────────────────────
 function rsCorpsHtml() {
   const b = rsEtat();
-  const pages = { formules: rsFormulesHtml, illimite: rsIllimiteHtml, mesure: rsMesureHtml, autres: rsAutresHtml, ligne: rsLigneHtml, total: rsTotalHtml, client: rsQuiHtml };
+  const pages = { formules: rsFormulesHtml, illimite: rsIllimiteHtml, mesure: rsMesureHtml, autres: rsAutresHtml, ligne: rsLigneHtml, total: rsTotalHtml, client: rsQuiHtml, groupes: rsGroupesHtml };
   return (pages[b.q] || rsActivitesHtml)();
 }
 
@@ -45010,8 +47393,49 @@ function rsArticleChamp(cle, valeur) {
   rsMajTicket();
 }
 
+// LA LIGNE LIBRE S AJOUTE D ELLE-MEME (2026-11-22, Ansar : « quand on ajoute une boisson ou quoi on doit
+// appuyer sur ajouter, c pas clair et ils oublient tous d appuyer dessus »). Des que son nom est ecrit,
+// la ligne est au ticket ; le nom et le prix qu on continue de taper la mettent a jour, jamais une
+// seconde ligne ; sa quantite se regle ensuite. Le nom efface la retire. « Ajouter » ne fait plus
+// que preparer la suivante, et la creation reprend une ligne restee en cours (rsLibreSynchro).
+function rsLibreEnCours() {
+  const b = rsEtat();
+  return Boolean(b && b.mesure.libreId && rsPanier().some((l) => l.id === b.mesure.libreId));
+}
+
+function rsLibreSynchro(cle = '', { peindre = true } = {}) {
+  const b = rsEtat();
+  if (!b || !quickBookState) return null;
+  const m = b.mesure;
+  const nom = String(m.nom || '').trim().slice(0, 80);
+  const panier = rsPanier();
+  let ligne = m.libreId ? panier.find((l) => l.id === m.libreId) : null;
+  const prix = Number(String(m.prix).replace(',', '.'));
+  // (sans prix tape, ou au niveau catalogue, la ligne est « à payer »)
+  const prixUnitaire = () => (rsNiveau('surmesure') === 'libre' && Number.isFinite(prix) && String(m.prix).trim() !== '' ? Math.max(0, prix) : null);
+  if (!nom) {
+    if (ligne) { panier.splice(panier.indexOf(ligne), 1); if (m.ligne === ligne.id) m.ligne = ''; }
+    m.libreId = '';
+    ligne = null;
+  } else if (!ligne) {
+    rsCompteur += 1;
+    ligne = { id: `libre-${rsCompteur}`, articleId: '', categorie: m.categorie || 'autre', name: nom, qte: 1, suit: false, prixUnitaire: prixUnitaire(), heure: '', note: '' };
+    panier.push(ligne);
+    m.libreId = ligne.id;
+    m.ligne = ligne.id;
+  } else {
+    if (cle === 'nom') ligne.name = nom;
+    if (cle === 'prix') ligne.prixUnitaire = prixUnitaire();
+  }
+  const bouton = document.querySelector('#rsLibreAjouter b');
+  if (bouton) bouton.textContent = ligne ? 'Ajouter un autre' : 'Ajouter';
+  if (peindre) rsMajTicket();
+  return ligne;
+}
+
 function rsLibreChamp(cle, valeur) {
   rsEtat().mesure[cle] = valeur;
+  rsLibreSynchro(cle);
 }
 
 function rsLibreAjouter() {
@@ -45019,15 +47443,12 @@ function rsLibreAjouter() {
   if (!b) return;
   const nom = String(b.mesure.nom || '').trim().slice(0, 80);
   if (!nom) { const champ = document.getElementById('rsLibreNom'); if (champ) champ.focus(); return; }
-  const prix = Number(String(b.mesure.prix).replace(',', '.'));
   rsGeste(() => {
-    rsCompteur += 1;
-    // (sans prix tape, ou au niveau catalogue, la ligne est « à payer »)
-    const ligne = { id: `libre-${rsCompteur}`, articleId: '', categorie: b.mesure.categorie || 'autre', name: nom, qte: 1, suit: false, prixUnitaire: rsNiveau('surmesure') === 'libre' && Number.isFinite(prix) && String(b.mesure.prix).trim() !== '' ? Math.max(0, prix) : null, heure: '', note: '' };
-    rsPanier().push(ligne);
-    b.mesure.ligne = ligne.id;
+    const ligne = rsLibreSynchro('', { peindre: false });
+    if (ligne) b.mesure.ligne = ligne.id;
     b.mesure.nom = '';
     b.mesure.prix = '';
+    b.mesure.libreId = '';
     rsLacherChamp();
   }, { focus: false });
 }
@@ -45293,6 +47714,11 @@ function rsMesureHtml() {
   const onglets = categories.filter((c) => articles.some((a) => a.categorie === c.id)).map((c) => [c.id, c.nom]);
   if (niveau === 'libre' && !quickHasPaidArcades()) onglets.push(['arcades', 'Arcades']);
   if (rsFmPermise()) onglets.push(['formule', 'Créer une formule']);
+  // UNE FORMULE AU TICKET (2026-11-22) : « Ajouter une activité ou une boisson » ouvre aussi les activites du
+  // centre, en premier. Chacune s ajoute EN PLUS de la formule, a son prix (rsTuile, rsToucherEnPlus) ; son
+  // heure se regle sur la page des activites, ou sa ligne du ticket mene.
+  const activites = rvEnPlusPossible() ? getQuickBookActivityChoices().map((c) => c.id) : [];
+  if (activites.length) onglets.unshift(['activites', 'Activités']);
   const courante = onglets.some(([id]) => id === b.mesure.categorie) ? b.mesure.categorie : (onglets[0] || [''])[0];
   const lignes = quickExtrasLignes();
   const somme = lignes.reduce((t, l) => t + (Number(l.price) || 0), 0);
@@ -45305,7 +47731,8 @@ function rsMesureHtml() {
   const prixLibre = niveau === 'libre'
     ? `<label class="rs-champ"><span>Prix</span><input id="rsLibrePrix" type="number" min="0" step="0.5" inputmode="decimal" placeholder="À payer" value="${escapeHtml(String(b.mesure.prix ?? ''))}" aria-label="Prix de l’article libre en ${nomsMonnaie()}, vide pour à payer" oninput="rsLibreChamp('prix',this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();rsLibreAjouter();}"></label>`
     : '<span class="rs-champ rs-libre-apayer"><span>Prix</span><b class="pl-a-payer" id="rsLibreAPayer">À payer</b></span>';
-  const libre = niveau === 'libre' || niveau === 'catalogue' ? `<div class="rs-libre"><label class="rs-champ"><span>Ajouter ce que vous voulez</span><input id="rsLibreNom" maxlength="80" autocomplete="off" value="${escapeHtml(b.mesure.nom || '')}" placeholder="Karaoké, open bar, gâteau…" aria-label="Nom de l’article libre" oninput="rsLibreChamp('nom',this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();rsLibreAjouter();}"></label>${prixLibre}<button type="button" class="rs-p" id="rsLibreAjouter" onclick="rsLibreAjouter()"><b>Ajouter</b></button></div>` : '';
+  const libre = niveau === 'libre' || niveau === 'catalogue' ? `<div class="rs-libre"><label class="rs-champ"><span>Ajouter ce que vous voulez</span><input id="rsLibreNom" maxlength="80" autocomplete="off" value="${escapeHtml(b.mesure.nom || '')}" placeholder="Karaoké, open bar, gâteau…" aria-label="Nom de l’article libre" oninput="rsLibreChamp('nom',this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();rsLibreAjouter();}"></label>${prixLibre}<button type="button" class="rs-p" id="rsLibreAjouter" onclick="rsLibreAjouter()" title="La ligne est déjà au ticket dès que vous écrivez son nom : ce bouton en prépare une autre."><b>${rsLibreEnCours() ? 'Ajouter un autre' : 'Ajouter'}</b></button></div>` : '';
+  if (courante === 'activites') return `${rsRetourHtml(droite)}${tabs}<div class="rs-petits rs-petits-mesure" role="group" aria-label="Activités en plus de la formule">${activites.map((id) => rsTuileHtml(id, [])).join('')}</div>${libre}`;
   if (courante === 'arcades') return `${rsRetourHtml(droite)}${tabs}${rsMesureArcadesHtml()}${libre}`;
   if (courante === 'formule') return `${rsRetourHtml(rsFmActive() ? '<button type="button" class="rs-discret is-retirer" id="rsFmRetirer" onclick="rsFmRetirer()">Retirer la formule</button>' : droite)}${tabs}${rsFormuleMesureHtml()}`;
   if (!articles.length) {
@@ -45499,6 +47926,10 @@ function rsIllimiteHtml() {
 function rsEchap() {
   const b = rsEtat();
   if (!b) return false;
+  // (un nombre en cours de frappe reste celui d avant : rsSaisieAnnuler, puis le nombre du groupe tape
+  // dans « Autre », rendu tel qu il etait)
+  if (b.saisie) return rsSaisieAnnuler();
+  if (rsAnnulerAutreGroupe()) return true;
   if (b.demandeJoueurs && !b.faits.combien) { rsFermerQuestionJoueurs(); return true; }
   if (b.barre) { rsBarreAnnuler(); return true; }
   if (b.ticket) { rsBasculerTicket(); return true; }

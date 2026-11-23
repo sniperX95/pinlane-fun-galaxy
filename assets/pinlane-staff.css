@@ -9717,7 +9717,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv.rs .rs-col:focus { outline: none; }
 .qb-modal.rv.rs .rs-rangee, .qb-modal.rv.rs .rs-seance, .qb-modal.rv.rs .rs-petits, .qb-modal.rv.rs .rs-portes, .qb-modal.rv.rs .rs-fs-e, .qb-modal.rv.rs .rs-fs-g, .qb-modal.rv.rs .rs-heures, .qb-modal.rv.rs .rs-tabs { flex-shrink: 0; }
 .qb-modal.rv.rs .rs-haut, .qb-modal.rv.rs .rs-corps, .qb-modal.rv.rs .rs-z { display: contents; }
-.qb-modal.rv.rs.is-q-ligne .rs-col, .qb-modal.rv.rs.is-q-autres .rs-col, .qb-modal.rv.rs.is-q-mesure .rs-col, .qb-modal.rv.rs.is-q-total .rs-col, .qb-modal.rv.rs.is-q-client .rs-col { justify-content: flex-start; gap: 14px; }
+.qb-modal.rv.rs.is-q-ligne .rs-col, .qb-modal.rv.rs.is-q-autres .rs-col, .qb-modal.rv.rs.is-q-mesure .rs-col, .qb-modal.rv.rs.is-q-total .rs-col, .qb-modal.rv.rs.is-q-client .rs-col, .qb-modal.rv.rs.is-q-groupes .rs-col { justify-content: flex-start; gap: 14px; }
 
 .qb-modal.rv.rs .rs-rangee { display: grid; grid-template-columns: 64px minmax(0, 1fr); align-items: center; gap: 10px; }
 .qb-modal.rv.rs .rs-rangee > .rs-seg { justify-self: start; }
@@ -9924,6 +9924,8 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv.rs .rs-petits-l { flex-shrink: 0; display: flex; align-items: center; gap: 12px; }
 .qb-modal.rv.rs .rs-petits-l > .rs-petits { flex: 1 1 auto; min-width: 0; }
 .qb-modal.rv.rs .rs-petits-l > .rs-toutes { flex: none; }
+/* Les activites en plus d une formule, sur la page Sur mesure (2026-11-22) : quatre par rangee, leur mot entier. */
+.qb-modal.rv.rs .rs-petits-mesure { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .qb-modal.rv.rs .rs-toutes { display: inline-flex; align-items: center; height: 40px; padding: 0 14px; border: 1px solid var(--control-border); border-radius: 10px; background: var(--surface); color: var(--text); font-size: 14px; font-weight: 600; line-height: 1; white-space: nowrap; }
 .qb-modal.rv.rs .rs-toutes.is-on { border-color: var(--rs-ligne); background: transparent; color: var(--muted); font-weight: 500; cursor: default; }
 .qb-modal.rv.rs .rs-porte { display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 50px; padding: 0 14px 0 9px; border: 0; border-radius: 12px; background: transparent; box-shadow: inset 0 0 0 1px var(--rs-ligne); color: var(--text); text-align: left; }
@@ -10179,6 +10181,34 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv.rs .rs-texte { margin: 0; font-size: 15px; line-height: 1.4; color: var(--muted); }
 /* (2026-11-19) Une heure posee a la main qui ne tient pas : la phrase de Modifier, en rouge, sous la rangee. */
 .qb-modal.rv.rs .rs-texte.rs-heure-refus { color: var(--danger); font-weight: 600; }
+/* UN GRAND GROUPE (2026-11-22) : une rangee par groupe, une colonne par depart, ce que chacun y
+   joue (rsGrilleDesGroupesHtml). Le bowling et le laser gardent les teintes de leurs blocs. */
+.qb-modal.rv.rs .rs-gg-grille { display: flex; flex-direction: column; gap: 6px; }
+.qb-modal.rv.rs .rs-gg-r { display: grid; grid-template-columns: 110px repeat(var(--gg-cols, 2), minmax(0, 1fr)); gap: 6px; align-items: stretch; }
+.qb-modal.rv.rs .rs-gg-r.is-tete > span { padding: 0 4px; font-size: 13px; font-weight: 600; line-height: 1.2; color: var(--muted); font-variant-numeric: tabular-nums; }
+.qb-modal.rv.rs .rs-gg-q { display: flex; flex-direction: column; justify-content: center; min-width: 0; }
+.qb-modal.rv.rs .rs-gg-q b { font-size: 15px; font-weight: 600; line-height: 1.2; color: var(--text); }
+.qb-modal.rv.rs .rs-gg-q small { font-size: 13px; line-height: 1.3; color: var(--muted); }
+.qb-modal.rv.rs .rs-gg-c { display: flex; flex-direction: column; justify-content: center; gap: 1px; min-width: 0; min-height: 52px; padding: 6px 10px; border-radius: 10px; background: var(--rs-touche); }
+.qb-modal.rv.rs .rs-gg-c b { font-size: 15px; font-weight: 600; line-height: 1.2; color: var(--text); }
+.qb-modal.rv.rs .rs-gg-c small { font-size: 13px; line-height: 1.3; color: var(--muted); overflow-wrap: anywhere; }
+.qb-modal.rv.rs .rs-gg-c.is-bowling { box-shadow: inset 3px 0 0 var(--act-bowling, var(--console-selected)); }
+.qb-modal.rv.rs .rs-gg-c.is-laser { box-shadow: inset 3px 0 0 var(--act-laser, var(--console-selected)); }
+.qb-modal.rv.rs .rs-gg-c.is-vide { background: transparent; box-shadow: inset 0 0 0 1px var(--rs-ligne); }
+.qb-modal.rv.rs .rs-gg-ts { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 22px; }
+.qb-modal.rv.rs .rs-gg-reste { min-width: 44px; font-size: 17px; font-weight: 600; text-align: center; }
+.qb-modal.rv.rs .rs-gg-premier { grid-template-columns: 64px auto minmax(0, 1fr); }
+.qb-modal.rv.rs .rs-gg-dit { font-size: 13px; line-height: 1.3; color: var(--muted); }
+.qb-modal.rv.rs .rs-gg-tourne { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.qb-modal.rv.rs .rs-gg-tourne p { flex: 1 1 220px; margin: 0; font-size: 15px; line-height: 1.4; color: var(--text); }
+/* L option du ticket (« Faire tourner 2 groupes : fin à 17:00, 712 € ») : le second bouton de la
+   console, sur la largeur du ticket, son icone a la taille du « + ». */
+.qb-modal.rv.rs .rs-ajout-ligne.rs-gg-option { align-self: stretch; text-align: left; padding: 6px 16px 6px 12px; line-height: 1.35; }
+.qb-modal.rv.rs .rs-gg-option svg { width: 18px; height: 18px; }
+@media (max-width: 700px) {
+  .qb-modal.rv.rs .rs-gg-r { grid-template-columns: 76px repeat(var(--gg-cols, 2), minmax(0, 1fr)); }
+  .qb-modal.rv.rs .rs-gg-premier { grid-template-columns: minmax(0, 1fr); }
+}
 .qb-modal.rv.rs .rs-rangs { flex: 1 1 auto; display: flex; flex-direction: column; gap: 10px; }
 /* UNE RANGEE N EST JAMAIS PLUS PETITE QUE SES TOUCHES (2026-11-13, Ansar : « les heures partent
    dans des boutons en dessous »). `flex: 1 1 52px` avec un min-height pose a la main laissait la
@@ -10213,6 +10243,30 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv.rs .rs-pas button { width: 56px; min-height: 44px; padding: 0; border: 0; border-radius: 10px; background: var(--rs-touche); font-size: 20px; font-weight: 550; line-height: 1; color: var(--text); }
 .qb-modal.rv.rs .rs-pas button:disabled { background: transparent; color: var(--faint); box-shadow: inset 0 0 0 1px var(--rs-ligne); cursor: default; }
 .qb-modal.rv.rs .rs-pas b { align-self: center; min-width: 48px; text-align: center; font-size: 18px; font-weight: 600; }
+/* LE NOMBRE SE TAPE (2026-11-22, rsNombreHtml). Le chiffre d un compteur de joueurs se touche : il devient
+   un champ cerne de bleu a sa place. Un nombre impossible se dit juste dessous, par-dessus ce qui suit :
+   rien ne bouge, la fenetre tient toujours sans defiler. */
+.qb-modal.rv.rs .rs-pas { position: relative; }
+.qb-modal.rv.rs .rs-pas-n { border-radius: 8px; cursor: text; }
+.qb-modal.rv.rs .rs-pas-n:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.qb-modal.rv.rs .rs-pas-champ { align-self: center; box-sizing: border-box; width: 56px; height: 40px; margin: 0; padding: 0 4px; border: 0; border-radius: 8px; background: var(--surface); box-shadow: inset 0 0 0 2px var(--accent); color: var(--text); font: inherit; font-size: 18px; font-weight: 600; line-height: 1; text-align: center; font-variant-numeric: tabular-nums; }
+.qb-modal.rv.rs .rs-pas-champ:focus { outline: none; }
+.qb-modal.rv.rs :is(.rs-cpt, .rs-partie-j) .rs-pas-champ { width: 44px; height: 32px; font-size: 15px; }
+.qb-modal.rv.rs .rs-pas-dit { position: absolute; top: calc(100% + 6px); left: 0; z-index: 8; width: max-content; max-width: min(300px, 80vw); padding: 7px 10px; border-radius: 9px; background: var(--surface); box-shadow: inset 0 0 0 1.5px var(--danger), 0 8px 22px rgba(15, 23, 42, .14); color: var(--danger); font-size: 13px; font-weight: 550; line-height: 1.35; white-space: normal; text-align: left; }
+@media (hover: hover) { .qb-modal.rv.rs .rs-pas-n:hover { background: var(--rs-survol); } }
+/* « Autre heure », a la minute (2026-11-22) : une heure tapee (15:10), jugee par le serveur avant de se
+   prendre ; son refus se lit dessous. Dans la page des heures, a droite de la question ; sous une
+   activite, apres ses demi-heures. « Prendre » : le bouton plein de la fenetre. */
+.qb-modal.rv.rs .rs-minute { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; max-width: 360px; margin: 0 0 0 auto; }
+.qb-modal.rv.rs .rs-ha .rs-minute { margin: 0; }
+.qb-modal.rv.rs .rs-minute-l { font-size: 14px; font-weight: 550; color: var(--muted); }
+.qb-modal.rv.rs .rs-minute-c { box-sizing: border-box; flex: 0 0 auto; width: 128px; height: 40px; min-width: 0; margin: 0; padding: 0 10px; border: 0; border-radius: 10px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--rs-ligne-forte); color: var(--text); font: inherit; font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.qb-modal.rv.rs .rs-minute-c:focus { outline: none; box-shadow: inset 0 0 0 2px var(--accent); }
+.qb-modal.rv.rs .rs-minute-ok { height: 40px; padding: 0 16px; border: 0; border-radius: 10px; background: var(--accent); color: var(--accent-contrast); font-size: 15px; font-weight: 600; line-height: 1; white-space: nowrap; }
+.qb-modal.rv.rs .rs-minute-ok[aria-busy="true"] { background: var(--rs-survol); color: var(--text); cursor: progress; }
+.qb-modal.rv.rs .rs-minute-ok:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.qb-modal.rv.rs .rs-minute-dit { flex: 1 1 100%; font-size: 14px; font-weight: 600; line-height: 1.35; color: var(--danger); }
+.qb-modal.rv.rs .rs-minute-dit:empty { display: none; }
 .qb-modal.rv.rs .rs-note { align-self: center; padding-left: 8px; font-size: 13px; line-height: 1.3; color: var(--muted); }
 .qb-modal.rv.rs .rs-contenu { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(var(--rs-n, 4), minmax(0, 1fr)); grid-auto-rows: 1fr; gap: 6px; }
 .qb-modal.rv.rs .rs-contenu li { display: flex; align-items: center; justify-content: center; min-width: 0; padding: 6px 10px; border-radius: 10px; box-shadow: inset 0 0 0 1px var(--rs-ligne); font-size: 14px; font-weight: 550; line-height: 1.25; text-align: center; color: var(--text); }
@@ -17996,15 +18050,44 @@ body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme.is-retard-encours .gc-
 .rt-fermer { flex: none; }
 .rt-sous { margin: 6px 20px 0; color: var(--muted); font-size: 14px; line-height: 20px; }
 .rt-etapes { display: grid; gap: 8px; margin: 14px 0 0; padding: 0 20px; list-style: none; }
-.rt-etape { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: baseline; column-gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; font-size: 14px; line-height: 20px; }
+/* (2026-11-22) Une activite : son nom et son verdict, puis son heure a la minute (le champ, les pas de
+   5 min), ses places a cette heure, et quand elle ne passe pas la raison et les heures libres proches. */
+.rt-etape { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; font-size: 14px; line-height: 20px; }
 .rt-etape__nom { min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
-.rt-etape__heures { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rt-etape__heures { display: inline-flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .rt-etape__heures s { color: var(--muted); }
 .rt-etape__mot { color: var(--muted); font-size: 13px; font-weight: 700; white-space: nowrap; }
 .rt-etape.is-passe .rt-etape__mot { color: var(--success); }
 .rt-etape.is-bloque { border-color: var(--danger); }
 .rt-etape.is-bloque .rt-etape__mot { color: var(--danger); }
-.rt-etape__raison { grid-column: 1 / -1; margin: 6px 0 0; color: var(--text); font-size: 13px; line-height: 18px; }
+.rt-etape__reglage, .rt-etape__places, .rt-etape__suite { grid-column: 1 / -1; min-width: 0; }
+.rt-etape__reglage { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.rt-etape__places { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; color: var(--muted); font-size: 13px; line-height: 18px; font-variant-numeric: tabular-nums; }
+.rt-etape__places:empty, .rt-etape__suite:empty { display: none; }
+.rt-etape__suite { display: grid; gap: 8px; }
+.rt-etape__raison { margin: 0; color: var(--text); font-size: 13px; line-height: 18px; }
+.rt-heure { box-sizing: border-box; width: 112px; min-height: 36px; padding: 0 8px; border: 1px solid var(--control-border); border-radius: var(--radius-md); background: var(--surface); color: var(--text); font: 600 15px/1 var(--font-ui); font-variant-numeric: tabular-nums; }
+.rt-heure:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 1px; }
+.rt-etape.is-posee .rt-heure { border-color: var(--console-selected); box-shadow: 0 0 0 1px var(--console-selected); }
+.rt-etape.is-bloque .rt-heure { border-color: var(--danger); box-shadow: 0 0 0 1px var(--danger); }
+.rt-pas-groupe, .rt-libres { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.rt-pas, .rt-libre { min-width: 44px; min-height: 36px; padding: 0 10px; border: 1px solid var(--control-border); border-radius: var(--radius-md); background: var(--surface); color: var(--text); font: 600 14px/1 var(--font-ui); font-variant-numeric: tabular-nums; cursor: pointer; transition: border-color 150ms ease, color 150ms ease; }
+.rt-libre { min-width: 64px; }
+.rt-pas:hover, .rt-libre:hover { border-color: var(--console-selected); color: var(--console-selected); }
+.rt-pas:focus-visible, .rt-libre:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 2px; }
+.rt-libres__titre { color: var(--muted); font-size: 13px; }
+/* Les pistes du centre a la nouvelle heure : celles du groupe en bleu plein, les libres encadrees, les
+   prises sur fond pale, hors service barrees. Les armes : une barre, les autres groupes puis le groupe. */
+.rt-pistes { display: inline-flex; flex-wrap: wrap; gap: 3px; }
+.rt-piste { box-sizing: border-box; display: inline-grid; place-items: center; width: 22px; height: 22px; border: 1px solid var(--control-border); border-radius: 5px; background: var(--surface); color: var(--text); font: 700 12px/1 var(--font-ui); }
+.rt-piste.is-prise, .rt-piste.is-hors { border-color: transparent; background: var(--subtle); color: var(--muted); }
+.rt-piste.is-hors { text-decoration: line-through; }
+.rt-piste.is-groupe { border-color: var(--console-selected); background: var(--console-selected); color: #fff; }
+.rt-piste.is-groupe:not(.is-libre) { border-color: var(--danger); background: var(--surface); color: var(--danger); }
+.rt-armes { display: inline-flex; width: 132px; height: 8px; overflow: hidden; border-radius: 4px; background: var(--subtle); box-shadow: inset 0 0 0 1px var(--line); }
+.rt-armes__prises { background: var(--faint); }
+.rt-armes__groupe { background: var(--console-selected); }
+.rt-armes.is-court .rt-armes__groupe { background: var(--danger); }
 .rt-etat { margin: 12px 20px 0; color: var(--muted); font-size: 13px; line-height: 18px; }
 .rt-pied { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; margin-top: 18px; padding: 14px 20px; border-top: 1px solid var(--line); border-radius: 0 0 14px 14px; background: var(--subtle); }
 .rt-bouton { min-height: 40px; padding: 0 16px; border: 1px solid var(--control-border); border-radius: var(--radius-md); background: var(--surface); color: var(--text); font: 600 14px/1 var(--font-ui); cursor: pointer; }
@@ -18017,11 +18100,12 @@ body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme.is-retard-encours .gc-
   .rt-tete { padding: 16px 16px 0; }
   .rt-sous, .rt-etat { margin-inline: 16px; }
   .rt-etapes { padding: 0 16px; }
-  .rt-etape { grid-template-columns: minmax(0, 1fr) auto; }
-  .rt-etape__heures { grid-column: 1; }
-  .rt-etape__mot { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
   .rt-pied { flex-direction: column; padding: 12px 16px; border-radius: 0; }
   .rt-bouton { width: 100%; min-height: 44px; }
+}
+/* Au doigt : le champ, les pas et les heures proposees se touchent sans viser. */
+@media (max-width: 560px), (pointer: coarse) {
+  .rt-heure, .rt-pas, .rt-libre { min-height: 44px; }
 }
 .gc-retard-btn:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 2px; }
 @media (max-width: 560px) { .gc-retard-btn { min-height: 44px; } }
@@ -18259,6 +18343,13 @@ body:is(.staff-mode, .admin-mode) :is(.staff-stepper-value, .dossier-partie-vale
 body:is(.staff-mode, .admin-mode) .staff-stepper-value small { font-size: 12px; font-weight: 400; color: var(--muted); margin-left: 3px; }
 body:is(.staff-mode, .admin-mode) .staff-stepper:focus-within { outline: 2px solid var(--console-focus); outline-offset: 3px; }
 body:is(.staff-mode, .admin-mode) .staff-stepper :focus-visible { outline-offset: -3px; }
+/* LE NOMBRE SE TAPE DANS MODIFIER (2026-11-22, renderActivityParticipantsControl) : le chiffre se touche et
+   devient un champ ; un nombre impossible se dit sous le compteur. */
+body:is(.staff-mode, .admin-mode) .staff-stepper-value[role="button"] { cursor: text; }
+body:is(.staff-mode, .admin-mode) .staff-stepper-champ { box-sizing: border-box; width: 100%; min-width: 0; height: 44px; margin: 0; padding: 0 4px; border: 0; border-inline: 1px solid var(--line); border-radius: 0; background: var(--console-input); box-shadow: inset 0 0 0 2px var(--accent); color: var(--text); font: inherit; font-size: 14px; font-weight: 600; line-height: 1; text-align: center; font-variant-numeric: tabular-nums; }
+body:is(.staff-mode, .admin-mode) .staff-stepper-champ:focus { outline: none; }
+body:is(.staff-mode, .admin-mode) .dossier-saisie-dit { display: block; flex-basis: 100%; margin-top: 4px; color: var(--danger); font-size: 12.5px; font-weight: 550; line-height: 1.4; }
+@media (hover: hover) { body:is(.staff-mode, .admin-mode) .staff-stepper-value[role="button"]:hover { background: var(--subtle); } }
 
 body:is(.staff-mode, .admin-mode) :is(.qb-visit-grid, .dossier-options) { gap: 10px; }
 body:is(.staff-mode, .admin-mode) .dossier-activities { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
@@ -20011,6 +20102,11 @@ body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme :is(.gc-finish, .gc-do
 /* L acces illimite, en une phrase sous le titre (2026-11-19) : ce qui est compris et garde. */
 body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .fz-acces { margin: 6px 0 8px; padding: 8px 12px; border-radius: 10px; box-shadow: inset 0 0 0 1.5px var(--accent); font-size: 13.5px; line-height: 1.45; color: var(--text); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .fz-acces b { color: var(--accent-strong); font-weight: 600; }
+/* Un grand groupe : ses sous-groupes, une ligne chacun, sur le meme cadre que l acces illimite. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .fz-groupes { margin: 6px 0 8px; padding: 8px 12px; border-radius: 10px; box-shadow: inset 0 0 0 1.5px var(--accent); font-size: 13.5px; line-height: 1.45; color: var(--text); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .fz-groupes > b { color: var(--accent-strong); font-weight: 600; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .fz-groupes ul { margin: 2px 0 0; padding: 0; list-style: none; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .fz-groupes li b { font-weight: 600; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .gc-finish { white-space: nowrap; min-height: 32px; padding: 0 12px; border: 1px solid var(--control-border); border-radius: 8px; background: var(--surface); color: var(--text); font-size: 13.5px; font-weight: 600; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fx-programme .gc-finish:hover { background: var(--subtle); opacity: 1; }
 
@@ -20337,6 +20433,9 @@ body:is(.staff-mode, .admin-mode) .fx-modal .fm-ajout { display: inline-flex; al
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-ajout svg { flex: none; color: var(--muted); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-ajout:hover { background: var(--subtle); border-color: var(--control-border); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-ajout:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 2px; }
+/* « Adapter à ce groupe » (2026-11-22) : sous les ajouts, son effet en une ligne. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-adapter { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 10px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-adapter-aide { font-size: 12px; color: var(--muted); }
 
 /* NOURRITURE ET EXTRAS (2026-10-27, Movsar : « tout modifiable, ajoute le
    genre nourriture autre »). Les lignes de la creation (Sur mesure) : le

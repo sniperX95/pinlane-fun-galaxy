@@ -1212,7 +1212,7 @@ const MUTATIONS = [
   // D1
   { nom: 'telephone-exige', cote: 'serveur', vise: ['D1'], serveurSeul: true, edits: [e('lib/database.js', "{ required: channel === 'public', champ: 'téléphone' }", "{ required: true, champ: 'téléphone' }")] },
   // Le serveur exige le telephone a la creation (2026-11-11) : sans sa garde, le comptoir creerait sans.
-  { nom: 'telephone-libre-au-serveur', cote: 'serveur', vise: ['D1'], serveurSeul: true, edits: [e('api/staff-reservations.js', "  if (require('../lib/telephone-du-client').telephoneValide(corps && corps.phone)) return;", '  return;')] },
+  { nom: 'telephone-libre-au-serveur', cote: 'serveur', vise: ['D1'], serveurSeul: true, edits: [e('api/staff-reservations.js', "  if (T.telephoneAccepte(corps && corps.phone)) return;", '  return;')] },
   { nom: 'champ-sans-nom', cote: 'serveur', vise: ['D1'], serveurSeul: true, edits: [e('lib/database.js', '    const error = new Error(`Champ requis manquant : ${champ}.`);', "    const error = new Error('Champ requis manquant.');")] },
   { nom: 'refus-masque-en-ligne', cote: 'serveur', vise: ['D1'], serveurSeul: true, edits: [e('lib/database.js', '    error.statusCode = 422;\n    error.expose = true;\n    throw error;\n  }\n  return normalized;', '    error.expose = true;\n    throw error;\n  }\n  return normalized;')] },
   { nom: 'anonyme-client', cote: 'serveur', vise: ['D1'], serveurSeul: true, edits: [e('lib/donnees-clients.js', "  return String(nom || '').trim().toLowerCase() === NOM_ANONYME;", '  return false;')] },
@@ -1221,7 +1221,9 @@ const MUTATIONS = [
   // D2 (la page « Autres » et la sortie d un refus partent du creneau en cours ;
   // les seances viennent des creneaux proposes, getQuickBookAvailableSlots)
   { nom: 'plancher-du-jour', cote: 'front', vise: ['D2'], edits: [
-    e(APP, '  const debut = plancher !== null ? Math.max(schedule.open, plancher) : schedule.open;', '  const debut = schedule.open;'),
+    // (l ancre porte la ligne qui suit : les heures d une activite en plus, rvHeuresEnPlus, partent du meme
+    // plancher depuis le 2026-11-22 ; celle-ci est l horloge de la fenetre)
+    e(APP, '  const debut = plancher !== null ? Math.max(schedule.open, plancher) : schedule.open;\n  const minutes = id && rvActivites().includes(id) ? rvMinutesActivite(id) : 30;', '  const debut = schedule.open;\n  const minutes = id && rvActivites().includes(id) ? rvMinutesActivite(id) : 30;'),
     e(APP, ' && r.heure !== s.startTime && !rvHeurePassee(s.date, r.heure))', ' && r.heure !== s.startTime)'),
     e(APP, '  if (plancher !== null) minTime = Math.max(minTime, plancher);', '  void plancher;'),
   ] },

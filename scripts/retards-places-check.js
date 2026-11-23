@@ -319,7 +319,7 @@ const MUTATIONS = [
   { nom: 'regle-qui-garde-tout', lettre: 'A', fichier: REGLE, de: '  return !(reservation.absentAt && reservation.status !== \'arrived\' && reservation.status !== \'paid\');', vers: '  return true;' },
   { nom: 'annuler-sans-garde', lettre: 'B', fichier: DB, de: '    if (avecAbsence && !input.absent) await refuserSiPlacesReprises(client, current, verrou);\n', vers: '' },
   { nom: 'arrive-sans-garde', lettre: 'B', fichier: DB, de: '    if (rendSesPlaces(current, prochain)) await refuserSiPlacesReprises(client, current, verrou);\n', vers: '' },
-  { nom: 'laser-sans-garde', lettre: 'B', fichier: DB, de: '    ensureLaserCapacity(current, autres);\n  } catch (error) {\n    throw refus(', vers: '    void autres;\n  } catch (error) {\n    throw refus(' },
+  { nom: 'laser-sans-garde', lettre: 'B', fichier: DB, de: '    ensureLaserCapacity(current, autres, [], \'\', { equipe: false });\n  } catch (error) {\n    throw refus(', vers: '    void autres;\n  } catch (error) {\n    throw refus(' },
   { nom: 'refus-muet', lettre: 'B', fichier: DB, de: '    throw refus(`${communes.length > 1 ? \'pistes\' : \'piste\'} ${communes.join(\' et \')} par ${nom} à ${String(qui.startTime || \'\').slice(0, 5)}`);', vers: '    throw refus(\'une autre réservation\');' },
   { nom: 'arrive-ordinaire-verrouille', lettre: 'B', fichier: DB, de: '  if (!rendSesPlaces(dossier, changement)) return false;\n', vers: '' },
   // (le statut seul d une annulee, sans la garde : l ancien chemin de la remise)

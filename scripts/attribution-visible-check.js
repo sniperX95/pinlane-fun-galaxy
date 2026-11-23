@@ -570,13 +570,27 @@ async function scenarioLaserBaisse(browser) {
   ok(!v.erreurs.length, '[J1] aucune erreur JS (laser a la baisse)', v.erreurs.slice(0, 3));
 }
 
+// Le laser du groupe sur sa fiche : ce que chaque partie dit de son lieu (« avec … » quand elle est commune).
+function ouDuLaser(id) {
+  const r = state.reservations.find((x) => Number(x.id) === Number(id));
+  return r ? getGroupeProgramme(r).filter((e) => e.activityId === 'laser_game').map((e) => String(e.ou || '')) : null;
+}
+
 async function scenarioLaser(browser) {
   // [A7] 14 puis 24 joueurs : 20 armes, deux vagues de 12 ; 30 armes, une seule vague.
-  const v = await jouerModifier(browser, { id: JEUNESSE, armes: 20, nom: 'modifier-laser', gestes: [champJoueurs(24), lire, attendre, lire] });
+  // LA PARTIE COMMUNE NE SE DIT QUE QUAND TOUS TIENNENT (2026-11-22, la regle d Ansar) : les 10 de Sacha partent
+  // au meme depart que les 14 de JEUNESSE ; sur 20 armes ils ne tiennent pas ensemble, sur 30 si (24), et plus
+  // a 24 joueurs (34). Les deux chemins : la fiche (la fenetre de la partie) et Modifier (le nombre tape).
+  let fiche20 = null;
+  let fiche30 = null;
+  const v = await jouerModifier(browser, { id: JEUNESSE, armes: 20, nom: 'modifier-laser', gestes: [async (pg) => { fiche20 = await pg.evaluate(ouDuLaser, JEUNESSE); }, champJoueurs(24), lire, attendre, lire] });
   ok(v.ouverture.vagues === '1 vague de 14 armes' && v.lus[0].vagues === '2 vagues de 12 armes' && v.lus[1].vagues === '2 vagues de 12 armes' && v.lus[1].cartes === 0,
     '[A7] 20 armes, 14 puis 24 joueurs : la ligne du laser dit « 2 vagues de 12 armes » tout de suite, sans carte', { ouverture: v.ouverture.vagues, aussitot: v.lus[0].vagues, lu: v.lus[1] });
-  const u = await jouerModifier(browser, { id: JEUNESSE, gestes: [champJoueurs(24), attendre, lire] });
+  const u = await jouerModifier(browser, { id: JEUNESSE, gestes: [async (pg) => { fiche30 = await pg.evaluate(ouDuLaser, JEUNESSE); }, champJoueurs(24), attendre, lire] });
   ok(u.lus[0].vagues === '1 vague de 24 armes', '[A7] 30 armes, 14 puis 24 joueurs : « 1 vague de 24 armes »', u.lus[0].vagues);
+  ok(/^1 vague de 24 armes, avec .*Sacha/.test(u.ouverture.vagues || ''), '[A7] 30 armes, a l ouverture : 14 et 10 tiennent ensemble, « 1 vague de 24 armes, avec … Sacha »', u.ouverture.vagues);
+  ok(Array.isArray(fiche20) && fiche20.length > 0 && fiche20.every((ou) => !/Sacha/.test(ou)), '[A7] 20 armes : la fiche ne dit pas « avec … Sacha », 14 et 10 ne tiennent pas en une vague', fiche20);
+  ok(Array.isArray(fiche30) && fiche30.some((ou) => /avec .*Sacha/.test(ou)), '[A7] 30 armes : la fiche dit la partie commune, « avec … Sacha »', fiche30);
   ok([v, u].every((x) => !x.erreurs.length), '[J1] aucune erreur JS (laser)', [v, u].flatMap((x) => x.erreurs).slice(0, 3));
 }
 
@@ -741,6 +755,8 @@ const MUTATIONS = [
   { nom: 'main-ignoree', lettre: 'A5', scenarios: MOD, editions: [{ fichier: JS, de: '  if (edition.pistesALaMain) {\n    const posees = Math.max(1, parseLaneInput(edition.lanesStr).length);', vers: '  if (false) {\n    const posees = Math.max(1, parseLaneInput(edition.lanesStr).length);' }] },
   // La ligne du laser reste celle de l ouverture.
   { nom: 'laser-fige', lettre: 'A7', scenarios: ['laser'], editions: [{ fichier: JS, de: '  if (ligne.textContent !== texte) ligne.textContent = texte;', vers: '' }] },
+  // (une partie commune dite meme quand les armes ne suffisent pas : « 2 vagues de 12 armes, avec Sacha », 2026-11-22)
+  { nom: 'partie-commune-sans-les-armes', lettre: 'A7', scenarios: ['laser'], editions: [{ fichier: JS, de: '  return getLaserWaveCount(groupe + partenaires.reduce((total, p) => total + p.joueurs, 0)) === 1 ? partenaires : [];', vers: '  return partenaires;' }] },
   // Une carte revient dans Reserver (le contrôle lit bien la fenetre).
   { nom: 'reserver-carte', lettre: 'A8', scenarios: ['reserver'], editions: [{ fichier: JS, de: '      <div class="rs-verdict" id="rvVerdict" aria-live="polite"></div>', vers: '      <div class="attr-carte rs-attr"><p class="attr-ligne">8 joueurs</p></div>\n      <div class="rs-verdict" id="rvVerdict" aria-live="polite"></div>' }] },
   { nom: 'rsnombre-efface', lettre: 'A9', scenarios: ['reserver'], editions: [{ fichier: JS, de: '    // mot. La main a parle, elle garde la parole.\n    setQuickPax(pax);', vers: '    // mot. La main a parle, elle garde la parole.\n    quickBookState.pistesALaMain = null;\n    setQuickPax(pax);' }] },

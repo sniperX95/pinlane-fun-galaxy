@@ -1642,15 +1642,22 @@ function laConsole() {
     'renderCardActivityTag', 'getPlanningCardOfferLabel', 'getPlanningCardLabel', 'planningLabelWidthUnits',
     // peutAdapterLeProgramme (2026-11-07) : la vraie regle, qui lit le stub
     // peutAdapterFormule ci-dessous (le comptoir, pas un manager).
-    'renderActivitesCourtes', 'formuleAcheteeDuDossier', 'peutAdapterLeProgramme', 'renderEditFormuleBloc'].forEach((nom) => {
+    'renderActivitesCourtes', 'formuleAcheteeDuDossier', 'peutAdapterLeProgramme',
+    // (renderEditFormuleBloc lit les activites en plus de la formule, 2026-11-22 : enPlusEdition, qui part du
+    // dossier par enPlusDuDossierEdition ; sans fiche en cours d edition, elle n en a aucune)
+    'enPlusDuDossierEdition', 'enPlusEdition', 'renderEditFormuleBloc',
+    // (et ses « Ajouter » d une formule prise telle quelle, 2026-11-23 : en plus d elle, ou dans elle apres
+    // « Adapter à ce groupe » ; sans fiche en cours d edition, ni l un ni l autre)
+    'formuleTelleQuelleEdition', 'enPlusPossibleEdition', 'adapterEditionHtml'].forEach((nom) => {
     const debut = app.indexOf(`\nfunction ${nom}(`);
     const fin = debut < 0 ? -1 : app.indexOf('\n}\n', debut + 1);
     if (fin < 0) { manquantes.push(nom); return; }
     vm.runInContext(app.slice(debut + 1, fin + 2), bac);
   });
   // Les constantes de la carte du planning, lues dans app-main comme ses
-  // fonctions (en `var`, que les scripts du bac partagent).
-  ['PLANNING_LABEL_NARROW', 'PLANNING_CARD_LABEL_MAX'].forEach((nom) => {
+  // fonctions (en `var`, que les scripts du bac partagent), et RV_ANCRABLES,
+  // que renderEditFormuleBloc lit.
+  ['PLANNING_LABEL_NARROW', 'PLANNING_CARD_LABEL_MAX', 'RV_ANCRABLES'].forEach((nom) => {
     const debut = app.indexOf(`\nconst ${nom} = `);
     const fin = debut < 0 ? -1 : app.indexOf(';\n', debut + 1);
     if (fin < 0) { manquantes.push(nom); return; }
@@ -2206,7 +2213,7 @@ const MUTATIONS = [
     de: '  const frise = rangerLesLibres({ debut: finAccueil, occupees: [...plagesAncres, ...suite], libres });',
     vers: '  const frise = rangerLesLibres({ debut: arrivee, occupees: [...plagesAncres, ...suite], libres });', scenarios: ['L'] },
   { nom: 'la porte de la reservation ne voit plus l heure d arcade', fichier: 'lib/ops-engine.js',
-    de: 'bowlingConfig, arcadeStart, ...(demandeArrivee ? { arrivalStart: demandeArrivee.minutes, ouverture:', vers: 'bowlingConfig, ...(demandeArrivee ? { arrivalStart: demandeArrivee.minutes, ouverture:', scenarios: ['L', 'M'] },
+    de: 'bowlingConfig, arcadeStart, aLaMinute, ...(demandeArrivee ? { arrivalStart: demandeArrivee.minutes, ouverture:', vers: 'bowlingConfig, aLaMinute, ...(demandeArrivee ? { arrivalStart: demandeArrivee.minutes, ouverture:', scenarios: ['L', 'M'] },
   { nom: 'le refus des arcades ne nomme plus l activite posee qu elles chevauchent', fichier: 'lib/ops-engine.js',
     de: '  if (!sonde.ok) return refusArrivee(time, sonde.code, sonde.reason, sonde.conflict ? { conflict: sonde.conflict } : {});', vers: '  if (!sonde.ok) return refusArrivee(time, sonde.code, sonde.reason);', scenarios: ['L'] },
   { nom: 'un refus cause par les arcades se dit « complet »', fichier: 'lib/ops-engine.js',

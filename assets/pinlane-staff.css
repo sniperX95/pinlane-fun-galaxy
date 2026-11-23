@@ -1777,6 +1777,11 @@ button.staff-date-label:focus-visible,
   display: inline-flex;
   align-items: center;
   flex: 0 0 auto;
+  /* UNE JAUGE N A PAS DE TEXTE A SERVIR (2026-11-23) : son seul texte (« 1/3 ») est masque pour la voix,
+     et la jauge fait 3 px. Depuis que le suivi se lit sur toute reservation, chaque carte en porte une :
+     la boite de 3 px d une police heritee de 11 px lisait un texte ecrase (planning-matrix-check). */
+  font-size: 0;
+  line-height: 0;
 }
 .activity-bar {
   display: block;

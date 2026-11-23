@@ -382,6 +382,8 @@ button.gf-bloc__in:focus-visible { outline: 2px solid var(--console-focus); outl
 .gf-nom__tel { flex: none; display: inline-flex; align-items: center; min-height: 32px; margin-block: -6px; font-size: 13px; font-weight: 500; color: var(--muted); text-decoration: none; white-space: nowrap; }
 .gf-nom__tel:hover { color: var(--text); text-decoration: underline; text-underline-offset: 2px; }
 .gf-nom__tel:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 1px; }
+/* Un mot tape a la place d un numero se lit, il ne s appelle pas (2026-11-23). */
+.gf-nom__tel.is-mot:hover { color: var(--muted); text-decoration: none; }
 .gf-nom__valide { flex: none; font-size: 12px; font-weight: 600; color: var(--warning); }
 .gf-nom__m { flex: none; padding: 1px 6px; font-size: 12px; font-weight: 600; line-height: 16px; color: var(--text); background: var(--subtle); border-radius: 3px; }
 .gf-nom__m--horaire { color: var(--warning); background: var(--warning-soft); }

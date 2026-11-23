@@ -435,6 +435,28 @@ function exigerLeTelephone(corps) {
   throw createHttpError('Le téléphone du client est obligatoire.', 422);
 }
 
+// LE CONTACT « PAR MAIL » (Ansar, 2026-11-23 : « on appuie dessus et c'est par mail [...] c'est optionnel »).
+// La fenetre envoie `contact: 'mail'` quand le champ du telephone est devenu celui de l e-mail : le telephone
+// n est plus exige, un numero envoye quand meme doit tenir. Une adresse tapee, par mail ou non, se nettoie et
+// doit tenir (lib/email-du-client.js) ; elle s ecrit la ou vit l e-mail du dossier. Vide, le client n en a
+// pas. Ce chemin n envoie rien : la confirmation d un dossier qui a une adresse reste celle de toujours
+// (afterReservationCreated, lib/reserver-creation.js).
+function exigerLeContact(corps) {
+  if (corps && corps.contact === 'mail') {
+    const T = require('../lib/telephone-du-client');
+    const numero = String(corps.phone ?? '').trim();
+    if (numero && !T.telephoneAccepte(numero)) throw createHttpError('Ce numéro de téléphone n’est pas valide, 8 chiffres au moins.', 422);
+  } else {
+    exigerLeTelephone(corps);
+  }
+  if (corps && typeof corps.email === 'string') {
+    const M = require('../lib/email-du-client');
+    const propre = M.emailNettoye(corps.email);
+    if (propre && !M.emailValide(propre)) throw createHttpError(M.MESSAGE_EMAIL_INVALIDE, 422);
+    corps.email = propre;
+  }
+}
+
 // Les erreurs d infrastructure (Postgres, Neon, reseau) ne s affichent jamais :
 // elles se journalisent, et le staff lit une phrase qui dit de reessayer.
 // ECONNRESET (point C6) : une connexion coupee en pleine transaction.
@@ -897,7 +919,7 @@ async function creerLeLot(body, session) {
     const corps = dossiers[index];
     try {
       if (!corps || typeof corps !== 'object' || Array.isArray(corps)) throw createHttpError('Dossier invalide.', 422);
-      exigerLeTelephone(corps);
+      exigerLeContact(corps);
       const prepare = await planifierPourLaFenetre(corps, session, { forcer: corps.forcer === true });
       const cree = await creerDepuisLaFenetre(prepare, session, { lot: { index, total: dossiers.length } });
       reservations.push({ index, reservation: cree.reservation, ops: cree.ops, aPlacer: cree.aPlacer, conflits: cree.conflits, warnings: cree.warnings });
@@ -940,6 +962,16 @@ async function calculerLaModification({ body, current, session, requestedCenterI
   if (Object.prototype.hasOwnProperty.call(patch, 'phone') && String(patch.phone ?? '').trim() !== String(current.phone ?? '').trim()) {
     const tape = String(patch.phone ?? '').trim();
     if (tape && !require('../lib/telephone-du-client').telephoneAccepte(tape)) throw createHttpError('Ce numéro de téléphone n’est pas valide, 8 chiffres au moins.', 422);
+  }
+  // L E-MAIL DU DOSSIER (2026-11-23, la regle de la creation, lib/email-du-client.js) : une adresse changee se
+  // nettoie et doit tenir ; videe, le client n en a plus. Une adresse d avant qui ne tient pas ne bloque pas les
+  // autres changements. L automatisme qu une adresse ajoutee remet en file reste celui de toujours
+  // (refreshReservationAutomation, AUTOMATION_REFRESH_FIELDS).
+  if (typeof patch.email === 'string' && patch.email.trim() !== String(current.email ?? '').trim()) {
+    const M = require('../lib/email-du-client');
+    const propre = M.emailNettoye(patch.email);
+    if (propre && !M.emailValide(propre)) throw createHttpError(M.MESSAGE_EMAIL_INVALIDE, 422);
+    patch.email = propre;
   }
   // LES DROITS DU DOSSIER (2026-11-03, lib/droits-reservation.js). La raison
   // du prix ne s ecrit pas telle quelle : elle part dans la note du serveur.
@@ -1404,10 +1436,11 @@ const traiter = async (req, res) => {
       const session = await requireStaffPermission(req, res, 'reservations.create', { centerId: body.centerId || body.center_id });
       if (!session) return;
       await warmCenterKnowledge();
-      // Côté STAFF, le TELEPHONE est obligatoire (2026-11-11, exigerLeTelephone) ;
-      // le nom et l'e-mail restent libres (sans nom, le dossier part au nom de
-      // Client). L'email obligatoire reste réservé au parcours CLIENT PUBLIC
-      // (api/public-reservations.js).
+      // Côté STAFF, le TELEPHONE est obligatoire (2026-11-11, exigerLeTelephone),
+      // sauf « Par mail » (2026-11-23, exigerLeContact) ; le nom et l'e-mail
+      // restent libres (sans nom, le dossier part au nom de Client ; une adresse
+      // tapee doit tenir). L'email obligatoire reste réservé au parcours CLIENT
+      // PUBLIC (api/public-reservations.js).
       // Le centre de la SESSION voyage avec la requete (meme discipline que
       // withCenter dans api/ops.js) : planifierPourLaFenetre le pose sur chaque
       // dossier, celui d un lot compris.
@@ -1421,7 +1454,7 @@ const traiter = async (req, res) => {
         return;
       }
       // « Créer quand même » (`forcer`) : un dossier en conflit part à placer.
-      exigerLeTelephone(body);
+      exigerLeContact(body);
       const prepare = await planifierPourLaFenetre(body, session, { forcer: body.forcer === true });
       // T5 : le journal s ecrit apres le COMMIT (creerDepuisLaFenetre). T4
       // point (c) : l echec de trace remonte dans `warnings`, jamais en

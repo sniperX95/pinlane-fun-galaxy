@@ -1131,7 +1131,12 @@
     var tete = gfPile(g) ? '' : '<b class="gf-nom__h">' + gpEsc(gpHeure(g.heure)) + '</b>';
     tete += '<span class="gf-nom__t">' + gpEsc(r.name || 'Client') + '</span>';
     window.pgMarques(r).forEach(function (x) { tete += '<span class="gf-nom__m gf-nom__m--' + x.cle + '"' + (x.bulle ? ' title="' + gpEsc(x.bulle) + '"' : '') + '>' + gpEsc(x.mot) + '</span>'; });
-    var tel = String(r.phone || '').trim();
+    // (2026-11-23 : « par mail » ou « / » ne sont pas un numero, ils ne s ecrivent pas ; un autre mot tape a la
+    // place d un numero se lit sans lien d appel, comme dans la fiche : rvTelephoneSaisiTexte, rvTelephoneEnvoyable)
+    var telDit = typeof rvTelephoneSaisiTexte === 'function' ? rvTelephoneSaisiTexte(r.phone) : String(r.phone || '').trim();
+    var telMot = telDit && typeof rvTelephoneEnvoyable === 'function' && !rvTelephoneEnvoyable(r.phone) ? telDit : '';
+    var tel = telMot ? '' : telDit;
+    if (telMot) tete += '<span class="gf-nom__tel is-mot">' + gpEsc(telMot) + '</span>';
     if (tel) tete += '<a class="gf-nom__tel" href="tel:' + gpEsc(tel.replace(/[^0-9+]/g, '')) + '">' + gpEsc(tel) + '</a>';
     // (sans le droit de gerer un retard, le retard se lit sans se toucher, 2026-11-07)
     // LE RETARD EN ROUGE, SES MINUTES ET L HEURE PREVUE (2026-11-21, retardDuGroupe) : « En retard
@@ -1317,7 +1322,8 @@
     } else if (!m.aujourdHui) {
       // UN AUTRE JOUR, IL N Y A RIEN A FAIRE SUR PLACE : le geste de ce jour-la, c est
       // d appeler (l audit du 2026-11-03 : la colonne restait vide).
-      var tel = String(r.phone || '').trim();
+      // (seul un vrai numero s appelle : « par mail », « / » ou un mot ne donnent pas de lien, 2026-11-23)
+      var tel = typeof rvTelephoneEnvoyable === 'function' && !rvTelephoneEnvoyable(r.phone) ? '' : String(r.phone || '').trim();
       if (tel) h = '<a class="gf-gb gf-gb--tel" href="tel:' + gpEsc(tel.replace(/[^0-9+]/g, '')) + '">' + gpEsc(tel) + '</a>';
     }
     return '<td class="gf-etat"><span class="gf-g">' + gfStatutHtml(g, h) + '</span></td>';

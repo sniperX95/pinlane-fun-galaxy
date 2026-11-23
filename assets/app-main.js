@@ -2603,6 +2603,11 @@ function etatEditionDepuis(reservation) {
   etat.pistesALaMain = pistesALaMainDuDossier(reservation) > 0;
   // (TVAC ou HTVA : le choix de la fiche ouverte sur ce dossier, sinon le reglage du centre, prixVuALOuverture)
   etat.prixVu = prixVuALOuverture(reservation);
+  // LE CONTACT « PAR MAIL » (2026-11-23) : un dossier qui a une adresse et aucun numero, ou dont le telephone
+  // dit « par mail », s ouvre sur le champ de l e-mail ; « par mail » ou « / » ne s ecrivent pas dans le champ
+  // du numero (ils restent en base tant que personne n y touche, telephoneEnvoyeEdition).
+  etat.contact = rvContactInitial(reservation.phone, reservation.email);
+  if (rvSansNumero(reservation.phone)) etat.phone = '';
   departsEdition().set(etat, { origine: { ...reservation }, base: { ...reservation } });
   return etat;
 }
@@ -2649,6 +2654,8 @@ function reservationRenderSignature(r) {
     paymentMethod: r.paymentMethod || '',
     name: r.name || '',
     phone: r.phone || '',
+    // (l adresse se lit dans la fiche, et dans le pli de Modifier : changee sur un autre poste, elle se repeint, 2026-11-23)
+    email: r.email || '',
     label: r.label || '',
     occasion: r.occasion || '',
     notes: r.notes || '',
@@ -31595,19 +31602,22 @@ function ficheClient(r) {
   const valide = quand && !Number.isNaN(quand.getTime());
   const creee = valide ? quand.toLocaleDateString('fr-BE', { day: 'numeric', month: 'long', ...(quand.getFullYear() !== new Date().getFullYear() ? { year: 'numeric' } : {}) }) : '';
   const origine = { staff: 'Saisie par l’équipe', public: 'Réservée en ligne' }[String(r.channel || '').toLowerCase()] || 'Créée';
-  // 2026-11-22 : le telephone peut etre un mot (« par mail ») : il s affiche tel quel, sans lien d appel ;
-  // « / » dit « pas de numero » et compte comme un telephone absent.
+  // 2026-11-22 : le telephone peut etre un mot : il s affiche tel quel, sans lien d appel ; « / » dit « pas de
+  // numero » et compte comme un telephone absent. 2026-11-23 : « par mail » dit que le client se joint par
+  // mail ; ce n est pas un numero, il ne s ecrit pas comme tel : l adresse se lit, ou « Par mail, pas
+  // d’adresse », et « Ajouter » mene alors a l e-mail.
+  const parMail = rvMotParMail(r.phone);
   const telTexte = rvTelephoneSaisiTexte(r.phone);
   const tel = rvTelephoneEnvoyable(r.phone);
   const contacts = [
     telTexte ? `<li>${STAFF_TERRAIN_PHONE_ICON}${tel ? `<a href="tel:${escapeHtml(tel)}">${escapeHtml(telTexte)}</a>` : `<span class="fx-tel-texte">${escapeHtml(telTexte)}</span>`}</li>` : '',
     r.email ? `<li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg><a href="mailto:${escapeHtml(r.email)}">${escapeHtml(r.email)}</a></li>` : '',
   ].join('');
-  const manque = !telTexte && !r.email ? 'Ni téléphone ni e-mail' : !telTexte ? 'Pas de téléphone' : !r.email ? 'Pas d’e-mail' : '';
+  const manque = parMail && !r.email ? 'Par mail, pas d’adresse' : !telTexte && !r.email ? 'Ni téléphone ni e-mail' : !telTexte ? 'Pas de téléphone' : !r.email ? 'Pas d’e-mail' : '';
   return `<section class="fx-bloc fx-client fz-carte" aria-label="Client">
       <h4 class="fx-titre">Client</h4>
       ${contacts ? `<ul class="fx-contact">${contacts}</ul>` : ''}
-      ${manque ? `<p class="fx-vide"><span>${manque}</span>${!telTexte && r.status !== 'cancelled' && ficheDroits(r).modifier ? `<button type="button" class="fz-bouton fz-ajouter-contact" data-pl-focus="fiche.contact.ajouter" onclick="modifierDepuisFiche('telephone', event)">Ajouter</button>` : ''}</p>` : ''}
+      ${manque ? `<p class="fx-vide"><span>${manque}</span>${!telTexte && r.status !== 'cancelled' && ficheDroits(r).modifier ? (parMail && !r.email ? `<button type="button" class="fz-bouton fz-ajouter-contact" data-pl-focus="fiche.contact.ajouter" onclick="modifierDepuisFiche('email', event)">Ajouter</button>` : `<button type="button" class="fz-bouton fz-ajouter-contact" data-pl-focus="fiche.contact.ajouter" onclick="modifierDepuisFiche('telephone', event)">Ajouter</button>`) : ''}</p>` : ''}
       ${valide || origine !== 'Créée' ? `<p class="fx-origine">${escapeHtml(origine)}${creee ? ` le ${escapeHtml(creee)}` : ''}.</p>` : ''}
     </section>`;
 }
@@ -31712,12 +31722,17 @@ function basculerRetardFiche(id, ev) {
 // Toucher l heure ou les joueurs en tete de fiche ouvre « Modifier » sur ce
 // champ, pret a etre retape (2026-11-14).
 const FICHE_CHAMPS_MODIFIABLES = { heure: 'editStartInput', joueurs: 'editPaxInput', telephone: 'editPhoneInput' };
+// (« Par mail, pas d’adresse » : « Ajouter » mene au champ de l e-mail, 2026-11-23)
+FICHE_CHAMPS_MODIFIABLES.email = 'editEmailInput';
 function modifierDepuisFiche(champ, ev) {
   if (ev) ev.stopPropagation();
   const cible = FICHE_CHAMPS_MODIFIABLES[champ];
   if (!cible || !ficheDroits().modifier) return;
   // Le telephone vit dans le pli du contact : il s ouvre avec l onglet.
   if (champ === 'telephone') editContactOuvert = true;
+  // (le pli s ouvre sur le champ demande : le telephone sous « Par téléphone », l e-mail sous « Par mail »)
+  if (champ === 'email') editContactOuvert = true;
+  if ((champ === 'telephone' || champ === 'email') && state.editState) state.editState.contact = champ === 'email' ? 'mail' : 'tel';
   if (state.activeTab !== 'modifier') setTab('modifier');
   const el = document.getElementById(cible);
   if (!el) return;
@@ -35635,7 +35650,8 @@ function notesEquipeEditionHtml(r) {
 // n en avait pas ; tape, il tient (8 chiffres au moins apres l indicatif, 15 au plus).
 function refusTelephoneEdition(valeur, avant) {
   const tape = String(valeur || '').trim();
-  if (!tape) return String(avant || '').trim() ? 'Le téléphone du client ne peut pas être vidé.' : '';
+  // (« par mail » ou « / » d avant ne sont pas un numero : le champ reste vide sans refus, 2026-11-23)
+  if (!tape) return String(avant || '').trim() && !rvSansNumero(avant) ? 'Le téléphone du client ne peut pas être vidé.' : '';
   return rvTelephoneValide(tape) ? '' : (rvRessembleAUnNumero(tape) ? 'Ce numéro de téléphone n’est pas valide, 8 chiffres au moins.' : 'Ce téléphone est trop long, 40 caractères au plus.');
 }
 
@@ -35657,6 +35673,103 @@ function peindreTelephoneEdition(dire) {
   champ.setAttribute('aria-invalid', 'true');
   const pli = document.getElementById('editContactPli');
   if (pli && !pli.open) { pli.open = true; editContactOuvert = true; }
+}
+
+// LE CONTACT « PAR MAIL » DANS MODIFIER (2026-11-23, le bouton de Reserver). A cote du telephone, le meme
+// bouton encadre : le champ devient celui de l e-mail, facultatif, et le telephone n est plus exige.
+// Le telephone que Modifier enverra : par mail, aucun numero (« par mail » ou « / » d avant restent tels quels :
+// rien ne change sans geste) ; au telephone, le champ tape, ou ce mot d avant quand le champ est reste vide.
+function telephoneEnvoyeEdition(es, origine) {
+  const avant = String((origine && origine.phone) || '').trim();
+  const tape = String((es && es.phone) || '').trim();
+  if (es && es.contact === 'mail') return rvSansNumero(avant) ? avant : '';
+  return !tape && rvSansNumero(avant) ? avant : tape;
+}
+
+// L adresse que Modifier enverra : nettoyee (lib/email-du-client.js) ; celle du dossier telle quelle quand
+// elle n a pas change.
+function emailEnvoyeEdition(es, origine) {
+  const avant = String((origine && origine.email) || '').trim();
+  const propre = rvEmailNettoye(es && es.email);
+  return propre === rvEmailNettoye(avant) ? avant : propre;
+}
+
+// Une adresse changee qui ne tient pas se dit sous son champ, comme le telephone ; vide, elle passe.
+function refusEmailEdition(es, origine) {
+  const envoye = emailEnvoyeEdition(es, origine);
+  return envoye && envoye !== String((origine && origine.email) || '').trim() && !rvEmailValide(envoye) ? RV_EMAIL_INVALIDE : '';
+}
+
+function peindreEmailEdition(dire) {
+  const e = state.editState;
+  const r = state.selectedRes;
+  const champ = document.getElementById('editEmailInput');
+  const ligne = document.getElementById('editEmailHint');
+  if (!e || !r || !champ || !ligne) return;
+  const refus = refusEmailEdition(e, departsEdition().get(e)?.origine || r);
+  if (!refus) { ligne.hidden = true; ligne.textContent = ''; champ.removeAttribute('aria-invalid'); return; }
+  if (!dire && ligne.hidden) return;
+  ligne.textContent = refus;
+  ligne.removeAttribute('hidden');
+  champ.setAttribute('aria-invalid', 'true');
+  const pli = document.getElementById('editContactPli');
+  if (pli && !pli.open) { pli.open = true; editContactOuvert = true; }
+}
+
+// Le champ de l e-mail, le meme au telephone (sous le numero) et par mail (a la place du numero).
+function champEmailEdition(e) {
+  const parMail = e.contact === 'mail';
+  return `<input id="editEmailInput" class="input" type="email" inputmode="email" maxlength="254" value="${escapeHtml(e.email || '')}" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="${parMail ? 'prenom@email.be' : 'Facultatif'}" aria-describedby="editEmailHint" oninput="setEditField('email', this.value); peindreEmailEdition(false)" onblur="peindreEmailEdition(true)" oninvalid="document.getElementById('editContactPli').open = true">`;
+}
+
+// Le telephone et l e-mail du pli. Par mail, un seul champ, celui de l e-mail : jamais deux fois le meme.
+// (comme dans Reserver, le bouton precede le champ et se peint a sa droite, .fm-bascule : Tab va du
+// telephone a l e-mail)
+function champsContactEdition(r, e) {
+  const bascule = `<button type="button" class="fm-bascule" id="editContactBascule" onclick="basculerContactEdition()">${e.contact === 'mail' ? 'Par téléphone' : 'Par mail'}</button>`;
+  if (e.contact === 'mail') {
+    return `<div class="fm-champ fm-contact">
+                  <label class="lbl" for="editEmailInput">E-mail <span class="fm-facultatif">facultatif</span></label>
+                  <div class="fm-saisie">${bascule}${champEmailEdition(e)}</div>
+                  <p class="field-hint is-hors" id="editEmailHint" hidden></p>
+                </div>`;
+  }
+  return `<div class="fm-champ fm-contact">
+                  <label class="lbl" for="editPhoneInput">Téléphone</label>
+                  <div class="fm-saisie">${bascule}<input id="editPhoneInput" class="input" type="text" maxlength="40" value="${escapeHtml(e.phone)}" autocomplete="off" aria-describedby="editPhoneHint" oninput="setEditField('phone', this.value); peindreTelephoneEdition(false)" onblur="peindreTelephoneEdition(true)"${String(r.phone || '').trim() ? '' : ' placeholder="Facultatif"'}></div>
+                  <p class="field-hint is-hors" id="editPhoneHint" hidden></p>
+                </div>
+                <div class="fm-champ">
+                  <label class="lbl" for="editEmailInput">E-mail</label>
+                  ${champEmailEdition(e)}
+                  <p class="field-hint is-hors" id="editEmailHint" hidden></p>
+                </div>`;
+}
+
+// Le pli replie dit ce qu il garde : le numero, l adresse (« Par mail » sans adresse) et l occasion du dossier.
+function apercuContactEdition(r) {
+  const tel = rvTelephoneSaisiTexte(r && r.phone);
+  const email = String((r && r.email) || '').trim();
+  const v = String((r && r.occasion) || '');
+  const occasion = v ? ((RV_OCCASIONS.find(([cle]) => cle === v) || [])[1] || (STAFF_OCCASION_LABELS[v] || '').split(' / ')[0]) : '';
+  return [tel, email || (rvMotParMail(r && r.phone) ? 'Par mail' : ''), occasion].filter(Boolean).join(' · ');
+}
+
+// Le bouton « Par mail », et « Par téléphone » pour revenir : le champ change sur place, le numero et
+// l adresse deja tapes restent dans la fiche ; la barre du bas dit ce qui partira (« Téléphone retiré »).
+// Rien ne part au serveur avant « Enregistrer ».
+function basculerContactEdition() {
+  const e = state.editState;
+  const r = state.selectedRes;
+  if (!e || !r) return;
+  if (state.editError) setEditError('');
+  e.contact = e.contact === 'mail' ? 'tel' : 'mail';
+  editContactOuvert = true;
+  const zone = document.getElementById('editContactChamps');
+  if (zone) zone.innerHTML = champsContactEdition(r, e);
+  const champ = document.getElementById(e.contact === 'mail' ? 'editEmailInput' : 'editPhoneInput');
+  if (champ) champ.focus({ preventScroll: true });
+  majModifsEdition();
 }
 
 // L occasion du dossier : un choix, ou aucun (un second clic le retire).
@@ -35749,8 +35862,14 @@ function resumeModifsEdition() {
   const prix = getEditPriceValue();
   if (prix != null && Math.round(prix * 100) !== Math.round((Number(origine.price) || 0) * 100)) modifs.push(`Prix ${formatMoneyCentimes(origine.price)} → ${formatMoneyCentimes(prix)}`);
   if (change('name')) modifs.push('Nom modifié');
-  if (change('phone')) modifs.push(String(origine.phone || '').trim() ? 'Téléphone modifié' : 'Téléphone ajouté');
-  if (change('email')) modifs.push(String(origine.email || '').trim() ? 'E-mail modifié' : 'E-mail ajouté');
+  // (le telephone et l adresse tels qu ils partiront : « Par mail » retire un numero, « par mail » ou « / »
+  // d avant ne changent pas sans geste, 2026-11-23)
+  const telAvant = String(origine.phone || '').trim();
+  const telApres = telephoneEnvoyeEdition(e, origine);
+  if (telApres !== telAvant) modifs.push(!telApres ? 'Téléphone retiré' : rvSansNumero(telAvant) ? 'Téléphone ajouté' : 'Téléphone modifié');
+  const mailAvant = String(origine.email || '').trim();
+  const mailApres = emailEnvoyeEdition(e, origine);
+  if (mailApres !== mailAvant) modifs.push(!mailApres ? 'E-mail retiré' : mailAvant ? 'E-mail modifié' : 'E-mail ajouté');
   if (change('occasion')) {
     const mot = (v) => (RV_OCCASIONS.find(([cle]) => cle === v) || [])[1] || (STAFF_OCCASION_LABELS[v] || '').split(' / ')[0];
     modifs.push(String(origine.occasion || '').trim() ? `Occasion ${mot(origine.occasion)} → ${mot(e.occasion) || 'aucune'}` : `Occasion : ${mot(e.occasion)}`);
@@ -37114,17 +37233,9 @@ ${!adapte || (!isLaserRes && !editNeedsLanes && String(rf.type || '') !== 'formu
               <input id="editNameInput" class="input" value="${escapeHtml(e.name)}" autocomplete="off" oninput="setEditField('name', this.value)" required>
             </div>
             <details class="fm-pli" id="editContactPli"${editContactOuvert ? ' open' : ''} ontoggle="editContactOuvert = this.open">
-              <summary>Téléphone, e-mail, occasion</summary>
+              <summary><span class="fm-pli-t">Téléphone, e-mail, occasion${apercuContactEdition(r) ? `<small class="fm-pli-apercu" id="editContactApercu">${escapeHtml(apercuContactEdition(r))}</small>` : ''}</span></summary>
               <div class="fm-pli-corps">
-                <div class="fm-champ">
-                  <label class="lbl" for="editPhoneInput">Téléphone</label>
-                  <input id="editPhoneInput" class="input" type="text" maxlength="40" value="${escapeHtml(e.phone)}" autocomplete="off" aria-describedby="editPhoneHint" oninput="setEditField('phone', this.value); peindreTelephoneEdition(false)" onblur="peindreTelephoneEdition(true)"${String(r.phone || '').trim() ? '' : ' placeholder="Facultatif"'}>
-                  <p class="field-hint is-hors" id="editPhoneHint" hidden></p>
-                </div>
-                <div class="fm-champ">
-                  <label class="lbl" for="editEmailInput">E-mail</label>
-                  <input id="editEmailInput" class="input" type="email" value="${escapeHtml(e.email || '')}" autocomplete="off" placeholder="Facultatif" oninput="setEditField('email', this.value)" oninvalid="document.getElementById('editContactPli').open = true">
-                </div>
+                <div class="fm-contacts" id="editContactChamps">${champsContactEdition(r, e)}</div>
                 <div class="fm-champ fm-occasion">
                   <span class="lbl" id="editOccasionLabel">Occasion</span>
                   <div class="dossier-options" role="group" aria-labelledby="editOccasionLabel">${RV_OCCASIONS.map(([v, mot]) => `<button type="button" class="qb-dur-btn dossier-option${e.occasion === v ? ' active' : ''}" data-occasion="${v}" aria-pressed="${e.occasion === v}" onclick="setEditOccasion('${v}')">${mot}</button>`).join('')}</div>
@@ -37701,7 +37812,8 @@ function preparerModificationEdition(options = {}) {
   // seuls ceux-la sont poses sur le dossier. Un statut qu elle n a pas touche
   // reste celui qui est en base, meme si un collegue l a change pendant
   // qu elle tapait.
-  const champsSaisis = { name: es.name, phone: es.phone, email: String(es.email || '').trim(), occasion: String(es.occasion || ''), pax, duration, startTime: es.startTime, status: es.status, date: es.date || origine.date };
+  // (le telephone et l adresse tels qu ils partiront, « Par mail » compris : telephoneEnvoyeEdition, emailEnvoyeEdition)
+  const champsSaisis = { name: es.name, phone: telephoneEnvoyeEdition(es, origine), email: emailEnvoyeEdition(es, origine), occasion: String(es.occasion || ''), pax, duration, startTime: es.startTime, status: es.status, date: es.date || origine.date };
   // Les accompagnants ne partent que si on y a touche.
   const accompagnants = Math.max(0, Math.min(500, Math.trunc(Number(es.companions) || 0)));
   if (accompagnants !== Math.trunc(Number(origine.companions) || 0)) champsSaisis.companions = accompagnants;
@@ -37710,10 +37822,20 @@ function preparerModificationEdition(options = {}) {
   // LE TELEPHONE COMME A LA CREATION (2026-11-20, rvTelephoneValide) : un numero change doit tenir,
   // et celui d un dossier ne se vide pas. Le serveur redit la regle (calculerLaModification).
   if (touches.includes('phone')) {
-    const refus = refusTelephoneEdition(es.phone, origine.phone);
+    // (« Par mail » : le telephone n est plus exige, 2026-11-23)
+    const refus = es.contact === 'mail' ? '' : refusTelephoneEdition(es.phone, origine.phone);
     if (refus) {
       if (!options.aBlanc) peindreTelephoneEdition(true);
       return { erreur: refus };
+    }
+  }
+  // L E-MAIL COMME A LA CREATION (2026-11-23, lib/email-du-client.js) : une adresse changee tient, ou rien (le
+  // client n en a pas). Le serveur redit la regle (calculerLaModification).
+  if (touches.includes('email')) {
+    const refusMail = refusEmailEdition(es, origine);
+    if (refusMail) {
+      if (!options.aBlanc) peindreEmailEdition(true);
+      return { erreur: refusMail };
     }
   }
   // LES PISTES D UNE FORMULE ADAPTEE (2026-11-20, dossier 1953) : la carte de la Formule 5 n en a pas,
@@ -38419,11 +38541,11 @@ function deriveQuickBookContext(prefill = {}) {
   return { source, known };
 }
 
-// Email obligatoire côté staff (confirmations/rappels partent par mail). Format
-// simple mais robuste : une @ entourée de texte sans espace, un point dans le
-// domaine. Réutilisé par renderQuickBook (champ essentiel) et saveQuickBook.
+// L ADRESSE TAPEE PAR L EQUIPE TIENT-ELLE (2026-11-23) : la regle du serveur
+// (lib/email-du-client.js), que rvEmailValide redit mot pour mot, sur l adresse
+// nettoyee. Vide, elle ne tient pas : saveQuickBook laisse partir un e-mail vide.
 function isValidEmail(value) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
+  return rvEmailValide(rvEmailNettoye(value));
 }
 
 function createQuickBookState(prefill = {}) {
@@ -38431,8 +38553,12 @@ function createQuickBookState(prefill = {}) {
     // (nomTape : un nom cherche sur le tableau, « Réserver pour Dupont ». Il se
     // corrige dans son champ, il n impose pas le client comme une fiche.)
     name: prefill.name || prefill.nomTape || '',
-    phone: prefill.phone ? normalizePhoneInput(prefill.phone) : '+32 ',
+    // (« par mail » ou « / » ne s ecrivent pas dans le champ du numero, 2026-11-23)
+    phone: prefill.phone && !rvSansNumero(prefill.phone) ? normalizePhoneInput(prefill.phone) : '+32 ',
     email: prefill.email || '',
+    // LE CONTACT « PAR MAIL » (2026-11-23) : une adresse sans numero, ou « par mail » tape avant, ouvre la
+    // fenetre sur le champ de l e-mail, l adresse deja dedans.
+    contact: rvContactInitial(prefill.phone, prefill.email),
     notes: prefill.notes || '',
     // Origine « demande sur mesure ». null partout ailleurs (planning,
     // fiche client, laser...) : seule la creation issue d une demande
@@ -41763,11 +41889,73 @@ function rvTelephoneValide(valeur) {
   return chiffres.length <= 15 && chiffres.replace(/^32/, '').length >= 8;
 }
 
-// Ce que le client a laisse comme telephone, a afficher : un numero, un mot (« par mail »), ou rien
-// (« / » dit « pas de numero »).
+// Ce que le client a laisse comme telephone, a afficher : un numero, un mot, ou rien (« / » dit « pas de
+// numero », « par mail » que le client se joint par mail : ni l un ni l autre n est un numero, 2026-11-23).
 function rvTelephoneSaisiTexte(valeur) {
   const brut = String(valeur || '').replace(/\s+/g, ' ').trim();
+  if (rvMotParMail(brut)) return '';
   return brut === '/' ? '' : brut;
+}
+
+// LE CONTACT « PAR MAIL » (Ansar, 2026-11-23 : « un bouton simple, rapide, efficace, qui prend pas trop de
+// place : on appuie dessus et c'est par mail, le champ se transforme en champ pour écrire le mail, mais c'est
+// optionnel [...] et si il y a déjà le mail sur la résa, ça l'affiche direct »). Avant lui, l equipe tapait
+// « par mail » ou « / » dans le champ du telephone (2026-11-22) : ces mots passent encore, et ne s affichent
+// jamais comme un numero. « par mail », « mail », « e-mail », « par e-mail », « courriel » : le client se joint
+// par mail.
+function rvMotParMail(valeur) {
+  const t = String(valeur || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[.!]+$/, '').replace(/\s+/g, ' ').trim();
+  return /^(?:(?:par|via|en) ?)?(?:e ?-? ?mail|mail|courriel)s?$/.test(t);
+}
+
+// Un telephone qui ne porte aucun numero : vide, « +32 » seul, « / », « - », ou « par mail ».
+function rvSansNumero(valeur) {
+  const brut = String(valeur || '').trim();
+  if (rvMotParMail(brut) || /^[\s\/.-]*$/.test(brut)) return true;
+  return rvRessembleAUnNumero(brut) && brut.replace(/\D/g, '').replace(/^32/, '') === '';
+}
+
+// Le dossier s ouvre « Par mail » quand il a une adresse et aucun numero, ou que son telephone dit « par mail ».
+function rvContactInitial(phone, email) {
+  return rvMotParMail(phone) || (String(email || '').trim() && rvSansNumero(phone)) ? 'mail' : 'tel';
+}
+
+function rvParMail(s = quickBookState) {
+  return Boolean(s) && s.contact === 'mail';
+}
+
+// L E-MAIL TAPE PAR L EQUIPE : la regle du serveur (lib/email-du-client.js), mot pour mot. Nettoye : sans
+// espaces ni caractere invisible, sans « mailto: », sans le nom d un en-tete copie, sans la ponctuation d une
+// fin de phrase, en minuscules. Valide : 64 caracteres au plus avant l arobase, sans point au bord ni deux
+// points de suite ; un domaine d au moins deux morceaux qui finit par deux lettres au moins ; 254 en tout.
+const RV_EMAIL_INVALIDE = 'Cette adresse e-mail n’est pas valide. Une adresse s’écrit comme prenom@email.be.';
+function rvEmailNettoye(valeur) {
+  let t = String(valeur ?? '').normalize('NFC').replace(/[​-‍⁠﻿]/g, '').replace(/\s+/g, '');
+  const entreChevrons = /<([^<>]*@[^<>]*)>/.exec(t);
+  if (entreChevrons) t = entreChevrons[1];
+  t = t.replace(/^mailto:/i, '').replace(/[.,;:]+$/, '');
+  return t.toLowerCase();
+}
+
+function rvEmailValide(valeur) {
+  const t = String(valeur ?? '');
+  if (!t || t.length > 254) return false;
+  const arobase = t.lastIndexOf('@');
+  if (arobase <= 0 || t.indexOf('@') !== arobase) return false;
+  const local = t.slice(0, arobase);
+  const morceaux = t.slice(arobase + 1).split('.');
+  if (local.length > 64 || /^\.|\.$|\.\./.test(local) || /[\s<>()[\]\\,;:"]/.test(local)) return false;
+  if (morceaux.length < 2 || !morceaux.every((m) => /^[\p{L}\p{N}](?:[\p{L}\p{N}-]{0,61}[\p{L}\p{N}])?$/u.test(m))) return false;
+  return /^(?:\p{L}{2,63}|xn--[a-z0-9-]{1,59})$/u.test(morceaux[morceaux.length - 1]);
+}
+
+// Le contact de la fenetre tient : au telephone, un numero (ou un mot) ; par mail, une adresse qui tient, ou
+// rien (le client n a pas d adresse).
+function rvContactPret(s = quickBookState) {
+  if (!s) return false;
+  if (!rvParMail(s)) return rvTelephoneValide(s.phone);
+  const propre = rvEmailNettoye(s.email);
+  return !propre || rvEmailValide(propre);
 }
 
 // Le numero qui peut servir a appeler : un vrai numero, jamais un mot ni un « / ».
@@ -41801,8 +41989,9 @@ function rvTelephoneSaisi(valeur) {
 // la zone oublie son dernier rendu pour se repeindre au prochain passage.
 function rsMajTelephoneManque() {
   const s = quickBookState;
-  const champ = document.getElementById('qbPhone');
-  if (!s || !champ || !s.telDemande || !rvTelephoneValide(s.phone)) return;
+  // (« Par mail » : le champ de l adresse, qui tient vide ou juste, 2026-11-23)
+  const champ = document.getElementById(rvParMail(s) ? 'qbEmail' : 'qbPhone');
+  if (!s || !champ || !s.telDemande || !rvContactPret(s)) return;
   const cadre = champ.closest('.rs-tk-champ');
   if (cadre) cadre.classList.remove('is-manque');
   champ.setAttribute('aria-invalid', 'false');
@@ -41821,21 +42010,61 @@ function rsVersLeTelephone() {
   if (!s || !b) return;
   rsLacherChamp();
   s.telDemande = true;
-  const visible = () => { const c = document.getElementById('qbPhone'); return c && c.getClientRects().length ? c : null; };
+  // (« Par mail » : une adresse qui ne tient pas mene a son champ, 2026-11-23)
+  const id = rvParMail(s) ? 'qbEmail' : 'qbPhone';
+  const visible = () => { const c = document.getElementById(id); return c && c.getClientRects().length ? c : null; };
   rsGeste(() => { if (!visible()) b.ticket = true; }, { focus: false });
   rvZones.delete('rsClient');
   rvPoser('rsClient', rsClientHtml());
-  const champ = visible() || document.getElementById('qbPhone');
+  const champ = visible() || document.getElementById(id);
   if (!champ) return;
   champ.focus({ preventScroll: false });
   const bout = champ.value.length;
   try { champ.setSelectionRange(bout, bout); } catch (e) { /* un champ sans selection garde son curseur */ }
 }
 
-// Ce que dit le champ du telephone quand il manque : vide, ou trop court.
+// Ce que dit le champ du telephone quand il manque : vide, ou trop court. Sans numero, le bouton « Par mail »
+// (2026-11-23) ; par mail, une adresse qui ne tient pas.
 function rsTelephoneDit(s = quickBookState) {
+  if (rvParMail(s)) return RV_EMAIL_INVALIDE;
   const tape = String(s.phone || '').trim();
-  return rvRessembleAUnNumero(tape) && tape.replace(/\D/g, '').length > 2 ? 'Numéro incomplet : il faut au moins 8 chiffres après l’indicatif.' : 'Écrivez un numéro, ou « par mail », ou « / » s’il n’y en a pas.';
+  return rvRessembleAUnNumero(tape) && tape.replace(/\D/g, '').length > 2 ? 'Numéro incomplet : il faut au moins 8 chiffres après l’indicatif.' : 'Écrivez le numéro du client, ou touchez « Par mail » s’il n’en a pas.';
+}
+
+// L ADRESSE TAPEE AU TICKET, « Par mail » (2026-11-23) : elle part telle qu elle s ecrit, le rouge s en va des
+// qu elle tient (ou qu elle est vide : le client n a pas d adresse).
+function rvEmailSaisi(valeur) {
+  const s = quickBookState;
+  if (!s) return;
+  s.email = valeur;
+  rsMajTelephoneManque();
+}
+
+// Elle se nettoie quand le champ rend la main, sur place (« Jean@Gmail.com » devient « jean@gmail.com »).
+function rsEmailFini(champ) {
+  const s = quickBookState;
+  if (!s || !champ) return;
+  s.email = rvEmailNettoye(champ.value);
+  if (champ.value !== s.email) champ.value = s.email;
+}
+
+// LE BOUTON « PAR MAIL » A COTE DU TELEPHONE, et « Par téléphone » pour revenir. Le champ change sur place ;
+// le numero ou l adresse deja tapes restent dans la fenetre, rien ne part au serveur. Le focus suit le champ.
+function rsBasculerContact() {
+  const s = quickBookState;
+  if (!s) return;
+  const actif = document.activeElement;
+  const zone = document.getElementById('rsClient');
+  if (actif && zone && zone.contains(actif) && typeof actif.blur === 'function') actif.blur();
+  s.contact = rvParMail(s) ? 'tel' : 'mail';
+  s.telDemande = false;
+  rvZones.delete('rsClient');
+  rsMajTicket();
+  const champ = document.getElementById(rvParMail(s) ? 'qbEmail' : 'qbPhone');
+  if (!champ) return;
+  champ.focus({ preventScroll: true });
+  const bout = champ.value.length;
+  try { champ.setSelectionRange(bout, bout); } catch (e) { /* un champ e-mail n a pas de selection : le curseur reste */ }
 }
 
 // LE NOM D UN CLIENT RECONNU SE REMPLACE D UN COUP (2026-10-12). Le numero
@@ -42364,6 +42593,7 @@ function rvToucheEntree(event) {
   if (!cible || typeof cible.matches !== 'function' || !cible.matches('#qbName, #qbPhone, #qbEmail, #qbNotes')) return;
   event.preventDefault();
   if (cible.id === 'qbPhone') rsTelFini(cible);
+  if (cible.id === 'qbEmail') rsEmailFini(cible);
   if (rsEntreeCree()) rsCreer();
 }
 
@@ -42467,6 +42697,10 @@ function renderQuickBookInner() {
   }
   if (!overlay.dataset.rsEcoute) {
     overlay.dataset.rsEcoute = '1';
+    // (Tab se lit sur window, a la capture : le piege a focus de la fenetre (containStaffDialog) l arrete
+    // sur document, et rsTouche ne le voyait jamais. Sans lui, Entree sur un bouton atteint a Tab
+    // creait la reservation au lieu de toucher ce bouton, 2026-11-23.)
+    window.addEventListener('keydown', (ev) => { if (ev.key === 'Tab') rsAuClavier = true; }, true);
     document.addEventListener('keydown', rsTouche);
     rsSuivreAppui(overlay);
   }
@@ -43684,8 +43918,11 @@ function rvConstruire({ simulation = false } = {}) {
     // un dossier du meme envoi par son rang (« la réservation 1 de cet envoi »),
     // jamais « Simulation ».
     name: simulation ? '' : (s.name.trim() || 'Client'),
-    phone: simulation ? '' : rvTelephoneEnvoye(),
-    email: simulation ? '' : s.email.trim(),
+    // « Par mail » (2026-11-23) : aucun numero ne part, le serveur ne l exige pas (contact), l adresse part
+    // nettoyee, ou vide (le client n en a pas).
+    phone: simulation || rvParMail(s) ? '' : rvTelephoneEnvoye(),
+    email: simulation ? '' : rvEmailNettoye(s.email),
+    ...(!simulation && rvParMail(s) ? { contact: 'mail' } : {}),
     notes: simulation ? '' : rvNotesEnvoyees({ horsRegles }),
     occasion: simulation ? '' : (s.occasion || ''),
     date: s.date,
@@ -43871,6 +44108,7 @@ function rvPartagerClient(depuis, vers) {
   vers.name = depuis.name;
   vers.phone = depuis.phone;
   vers.email = depuis.email;
+  vers.contact = depuis.contact;
   vers.clientConnu = depuis.clientConnu;
 }
 
@@ -43996,6 +44234,10 @@ async function rvChercherClientConnu() {
     const deja = champ && champ.parentElement ? champ.parentElement.querySelector('.rv-tag') : null;
     if (reconnu && champ && !deja) champ.insertAdjacentHTML('afterend', '<span class="rv-tag">reconnu</span>');
     if (!reconnu && deja) deja.remove();
+    // (« reconnu » se lit sur la ligne du libelle, a la place de « obligatoire » : le bouton « Par mail » tient
+    // la droite du champ, 2026-11-23)
+    const cadre = champ ? champ.closest('.rs-tk-champ') : null;
+    if (cadre) cadre.classList.toggle('a-tag', Boolean(reconnu && champ));
   };
   if (chiffres.length < 8) {
     if (s.clientConnu) { s.clientConnu = null; if (zone()) zone().innerHTML = ''; etiquette(false); }
@@ -44009,6 +44251,9 @@ async function rvChercherClientConnu() {
     if (!quickBookState || seq !== rvClientSeq) return;
     quickBookState.clientConnu = { cle: chiffres, etat: 'ok', resultat: payload && payload.client ? payload.client : null };
     const r = quickBookState.clientConnu.resultat;
+    // L adresse deja connue de ce client dans ce centre se pose dans le champ « Par mail », sans ecraser ce qui est tape (2026-11-23).
+    const connue = r ? rvEmailNettoye(r.email) : '';
+    if (connue && rvEmailValide(connue) && !String(quickBookState.email || '').trim()) quickBookState.email = connue;
     if (r && r.nom && !String(quickBookState.name || '').trim()) {
       quickBookState.name = r.nom;
       quickBookState.nomReconnu = r.nom;
@@ -44088,7 +44333,7 @@ let rsCompteurTimer = null;
 let rsCatalogueEssai = '';
 let rsCatalogueEnCours = false;
 // Ce que la barre de frappe touche : Echap rend tout tel quel.
-const RS_BARRE_CHAMPS = ['pax', 'type', 'activityId', 'formuleId', 'formuleChoix', 'duration', 'totalDuration', 'visit', 'ordre', 'heures', 'lanes', 'lanesALaMain', 'autoAssign', 'pistesNombre', 'startTime', 'date', 'heureProposee', 'name', 'phone', 'email', 'adaptee', 'partiesEcarts', 'bowlingParDefaut', 'forcer', 'cleProposition', 'heureArretee', 'arene', 'activitesAvantFormule', 'error'];
+const RS_BARRE_CHAMPS = ['pax', 'type', 'activityId', 'formuleId', 'formuleChoix', 'duration', 'totalDuration', 'visit', 'ordre', 'heures', 'lanes', 'lanesALaMain', 'autoAssign', 'pistesNombre', 'startTime', 'date', 'heureProposee', 'name', 'phone', 'email', 'contact', 'adaptee', 'partiesEcarts', 'bowlingParDefaut', 'forcer', 'cleProposition', 'heureArretee', 'arene', 'activitesAvantFormule', 'error'];
 
 // L etat des questions vit sur la resa : chaque resa d un meme envoi a le sien.
 function rsEtat(s = quickBookState) {
@@ -46684,18 +46929,28 @@ function rsDetailLigne(id, etapes, ligne, ids) {
 // être mis direct sur le côté droit »). Le telephone d abord : il reconnait le client
 // deja venu et ecrit son nom. Puis le nom (sans nom, le dossier part au nom de
 // Client), puis la note pour l equipe. L e-mail et l occasion restent a un toucher.
+// « PAR MAIL » (2026-11-23) : a cote du telephone, un bouton encadre change le champ en celui de l e-mail,
+// facultatif (le client n a pas toujours d adresse) ; « Par téléphone » le rend. Par mail, l e-mail est au
+// ticket et la page du client ne garde que l occasion : jamais deux fois le meme champ dans la fenetre.
 function rsClientHtml() {
   const s = quickBookState;
+  const parMail = rvParMail(s);
   const tel = rvRessembleAUnNumero(s.phone) ? (String(s.phone || '').replace(/\D/g, '').length > 2 ? s.phone : '') : String(s.phone || '').trim();
-  const reconnu = Boolean(s.clientConnu && s.clientConnu.etat === 'ok' && s.clientConnu.resultat);
-  const manque = Boolean(s.telDemande) && !rvTelephoneValide(s.phone);
+  const reconnu = !parMail && Boolean(s.clientConnu && s.clientConnu.etat === 'ok' && s.clientConnu.resultat);
+  const manque = Boolean(s.telDemande) && !rvContactPret(s);
   const dit = rsTelephoneDit(s);
-  return `<label class="rs-tk-champ is-tel${manque ? ' is-manque' : ''}${reconnu ? ' a-tag' : ''}"><span class="rs-tk-lbl">Téléphone<em>obligatoire</em></span><input id="qbPhone" type="text" inputmode="text" value="${escapeHtml(tel)}" placeholder="0470 12 34 56, par mail, /" maxlength="40" autocomplete="off" required aria-required="true" aria-invalid="${manque}"${manque ? ' aria-describedby="rsTelDit"' : ''} aria-label="Téléphone du client, obligatoire" oninput="rvTelephoneSaisi(this.value); rsMajTicket()" onblur="rsTelFini(this)">${reconnu ? '<span class="rv-tag">reconnu</span>' : ''}</label>
+  // (le bouton precede le champ dans la page et se peint a sa droite, .rs-tk-bascule : Tab va du telephone
+  // au nom comme avant, Maj+Tab atteint le bouton ; `for` garde le champ comme cible du libelle)
+  const bascule = `<button type="button" class="rs-tk-bascule" id="rsContactBascule" onclick="rsBasculerContact()" onkeydown="if(event.key==='Enter'){event.preventDefault();event.stopPropagation();rsBasculerContact();}">${parMail ? 'Par téléphone' : 'Par mail'}</button>`;
+  const contact = parMail
+    ? `<label class="rs-tk-champ is-contact is-mail${manque ? ' is-manque' : ''}" for="qbEmail"><span class="rs-tk-lbl">E-mail<em>facultatif</em></span><span class="rs-tk-saisie">${bascule}<input id="qbEmail" type="email" inputmode="email" value="${escapeHtml(s.email || '')}" placeholder="prenom@email.be" maxlength="254" autocomplete="off" autocapitalize="none" spellcheck="false" aria-invalid="${manque}"${manque ? ' aria-describedby="rsTelDit"' : ''} aria-label="E-mail du client, facultatif" oninput="rvEmailSaisi(this.value)" onblur="rsEmailFini(this)"></span></label>`
+    : `<label class="rs-tk-champ is-contact is-tel${manque ? ' is-manque' : ''}${reconnu ? ' a-tag' : ''}" for="qbPhone"><span class="rs-tk-lbl">Téléphone<em>obligatoire</em></span><span class="rs-tk-saisie">${bascule}<input id="qbPhone" type="text" inputmode="text" value="${escapeHtml(tel)}" placeholder="0470 12 34 56" maxlength="40" autocomplete="off" required aria-required="true" aria-invalid="${manque}"${manque ? ' aria-describedby="rsTelDit"' : ''} aria-label="Téléphone du client, obligatoire" oninput="rvTelephoneSaisi(this.value); rsMajTicket()" onblur="rsTelFini(this)">${reconnu ? '<span class="rv-tag">reconnu</span>' : ''}</span></label>`;
+  return `${contact}
     ${manque ? `<p class="rs-tk-dit" id="rsTelDit" role="alert">${escapeHtml(dit)}</p>` : ''}
-    <div class="rv-connu rs-connu" id="rvClientConnu" role="status">${rvClientConnuHtml()}</div>
+    <div class="rv-connu rs-connu" id="rvClientConnu" role="status">${parMail ? '' : rvClientConnuHtml()}</div>
     <label class="rs-tk-champ"><span class="rs-tk-lbl">Nom</span><input id="qbName" value="${escapeHtml(s.name)}" placeholder="Nom du client" autocomplete="off" aria-label="Nom du client" onfocus="rvNomAuFocus(this)" oninput="quickBookState.name=this.value; rsMajTicket()"></label>
     <label class="rs-tk-champ is-note"><span class="rs-tk-lbl">Note pour l’équipe<em>facultative</em></span><textarea id="qbNotes" rows="2" maxlength="500" placeholder="Jamais envoyée au client" aria-label="Note pour l’équipe, facultative, jamais envoyée au client" oninput="quickBookState.notes=this.value">${escapeHtml(s.notes || '')}</textarea></label>
-    <button type="button" class="rs-lien" id="rsL-client" onclick="rsOuvrir('client')">E-mail, occasion</button>`;
+    <button type="button" class="rs-lien" id="rsL-client" onclick="rsOuvrir('client')">${parMail ? 'Occasion' : 'E-mail, occasion'}</button>`;
 }
 
 function rsOffres() {
@@ -47163,12 +47418,16 @@ function rvPrendreAutreOrdre() {
 // se tapent au ticket (rsClientHtml), jamais deux fois le meme champ dans la fenetre.
 function rsQuiHtml() {
   const s = quickBookState;
+  // (« Par mail », 2026-11-23 : l e-mail est au ticket, la page ne garde que l occasion)
+  const parMail = rvParMail(s);
   return `${rsRetourHtml()}
     <section class="rs-seance is-page" aria-labelledby="rsQ">
-      <div class="rs-s-t"><div class="rs-s-n"><h2 class="rs-q" id="rsQ" tabindex="-1">E-mail et occasion</h2><small>L’e-mail reçoit la confirmation et le rappel. Le téléphone, le nom et la note se tapent au ticket.</small></div></div>
+      ${parMail
+        ? '<div class="rs-s-t"><div class="rs-s-n"><h2 class="rs-q" id="rsQ" tabindex="-1">Occasion</h2><small>Le client se joint par mail : l’e-mail se tape au ticket, il reçoit la confirmation et le rappel.</small></div></div>'
+        : `<div class="rs-s-t"><div class="rs-s-n"><h2 class="rs-q" id="rsQ" tabindex="-1">E-mail et occasion</h2><small>L’e-mail reçoit la confirmation et le rappel. Le téléphone, le nom et la note se tapent au ticket.</small></div></div>
       <div class="rs-qui is-un">
         <label class="rs-champ"><span>E-mail</span><input id="qbEmail" type="email" value="${escapeHtml(s.email)}" autocomplete="off" aria-label="E-mail du client, pour la confirmation et le rappel" oninput="quickBookState.email=this.value"></label>
-      </div>
+      </div>`}
       <div class="rs-occasion"><span class="rs-lbl">Occasion</span><div class="rs-occasions" role="group" aria-label="Occasion">${RV_OCCASIONS.map(([v, mot]) => `<button type="button" class="rs-p${s.occasion === v ? ' is-on' : ''}" aria-pressed="${s.occasion === v}" onclick="rsOccasion('${v}')"><b>${escapeHtml(mot)}</b></button>`).join('')}</div></div>
     </section>`;
 }
@@ -48343,8 +48602,9 @@ function rsCreer() {
     else rsOuvrir('activites');
     return;
   }
-  // Le plan tient : reste le telephone du client, obligatoire (rvTelephoneValide).
-  if (!rvTelephoneValide(s.phone)) { rsVersLeTelephone(); return; }
+  // Le plan tient : reste le telephone du client, obligatoire (rvTelephoneValide) ; « Par mail », une adresse
+  // qui tient ou rien (rvContactPret, 2026-11-23).
+  if (!rvContactPret(s)) { rsVersLeTelephone(); return; }
   saveQuickBook();
 }
 
@@ -49259,7 +49519,10 @@ function rsAppliquerLecture(l) {
   if (l.heure) rvChoisirHeure(rvActivites()[0] || 'bowling', 0, l.heure);
   if (l.nom) s.name = l.nom;
   if (l.telephone) s.phone = normalizePhoneInput(l.telephone);
-  if (l.email) s.email = l.email;
+  if (l.email) s.email = rvEmailNettoye(l.email);
+  // (une adresse tapee sans numero : le ticket passe « Par mail », l adresse dedans, 2026-11-23)
+  if (l.telephone) s.contact = 'tel';
+  else if (l.email && rvSansNumero(s.phone)) s.contact = 'mail';
 }
 
 // La barre n apparait que quand on tape. Le premier caractere n est jamais perdu : le
@@ -49491,8 +49754,9 @@ async function saveQuickBook() {
   // asynchrone (syncDateReservations/POST) : un 2e clic pendant l'envoi est ignoré.
   if (!quickBookState || quickBookState.submitting) return;
   // Le telephone d abord : rsCreer y mene deja, « Créer · Carte » arrive ici sans
-  // passer par lui. Rien ne part, pas meme « Création… ».
-  if (!rvTelephoneValide(quickBookState.phone)) { quickBookState.payNow = false; rsVersLeTelephone(); return; }
+  // passer par lui. Rien ne part, pas meme « Création… ». (« Par mail » : l adresse,
+  // ou rien, rvContactPret.)
+  if (!rvContactPret(quickBookState)) { quickBookState.payNow = false; rsVersLeTelephone(); return; }
   quickBookState.submitting = true;
   quickBookState.error = '';
   // « Création… » passe par le rendu, comme tout l ecran. Le bouton modifie
@@ -49522,12 +49786,14 @@ async function saveQuickBook() {
     const bouton = document.getElementById('rvCreer');
     if (bouton) bouton.focus({ preventScroll: true });
   };
-  const email = quickBookState.email.trim();
+  // (l adresse part nettoyee, comme le serveur la range : lib/email-du-client.js)
+  const email = rvEmailNettoye(quickBookState.email);
   quickBookState.email = email;
   if (Number(quickBookState.pax) > 240) { failQuickBook('Ce groupe dépasse 240 personnes : la réservation doit être planifiée manuellement avec l’équipe. Le devis et les effectifs de chaque activité sont conservés.'); return; }
   // Seul garde-fou email : un format invalide SI le staff a saisi quelque chose
   // (on évite d'enregistrer une adresse cassée). Un email vide reste accepté.
-  if (email && !isValidEmail(email)) { failQuickBook('Adresse email invalide. Format attendu : nom@domaine.com'); return; }
+  // L e-mail de la page du client mene a sa page, la ou il se corrige.
+  if (email && !isValidEmail(email)) { failQuickBook(RV_EMAIL_INVALIDE); if (quickBookState === etat && !rvParMail(etat)) rsOuvrir('client'); return; }
   if (!quickBookState.startTime) { failQuickBook('Choisissez une heure.'); return; }
   const lot = rvResas.length > 1 && rvResas.includes(etat);
   // Pas d'aller-retour réseau superflu sur le chemin de création : le poll

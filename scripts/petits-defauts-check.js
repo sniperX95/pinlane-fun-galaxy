@@ -5,7 +5,10 @@
 //       serveur acceptent un texte court (« par mail », « / ») ; un texte qui n est pas un numero ne declenche
 //       JAMAIS d envoi (SMS, appel) : il compte comme « pas de numero » ; la fiche (bloc Client) l affiche tel
 //       quel, « / » dit « Pas de telephone » ; un vrai numero reste verifie (8 chiffres au moins) ; le
-//       formulaire public garde sa regle (telephone obligatoire).
+//       formulaire public garde sa regle (telephone obligatoire). Depuis le bouton « Par mail » (2026-11-23,
+//       scripts/par-mail-check.js), « par mail » tape a la main ne s ecrit plus comme un numero : la fiche dit
+//       « Par mail, pas d’adresse », Modifier rouvre le dossier sur l e-mail ; un autre mot (« mail de la
+//       maman ») s affiche tel quel, sans lien d appel.
 //   [E] UNE LIGNE LIBRE S AJOUTE D ELLE-MEME. « Quand on ajoute une boisson ou quoi on doit appuyer sur
 //       ajouter, c pas clair et ils oublient tous d appuyer dessus. » Dans Reserver, « Ajouter une activite ou
 //       une boisson » : des que le nom est ecrit, la ligne est au ticket, sa quantite se regle ; « Ajouter » ne
@@ -209,6 +212,7 @@ async function scenarioT(browser) {
   const court = await creer('0470', '20:30', 4);
   const vide = await creer('', '21:00', 5);
   const long = await creer('x'.repeat(41), '21:30', 6);
+  const mot = await creer('mail de la maman', '18:30', 7);
   const phoneEnBase = (rep) => (rep.json.reservation ? (enBase(rep.json.reservation.id) || {}).phone : null);
   ok(mail.statut === 201 && phoneEnBase(mail) === 'par mail', '[T] le serveur accepte « par mail » pour une reservation du staff, et l ecrit tel quel', { statut: mail.statut, message: mail.json.message, base: phoneEnBase(mail) });
   ok(barre.statut === 201 && phoneEnBase(barre) === '/', '[T] le serveur accepte « / » (pas de numero)', { statut: barre.statut, message: barre.json.message });
@@ -216,6 +220,7 @@ async function scenarioT(browser) {
   ok(court.statut === 422 && /t[ée]l[ée]phone/i.test(String(court.json.message || '')), '[T] le serveur refuse toujours un numero trop court (« 0470 »), et le dit', { statut: court.statut, message: court.json.message });
   ok(vide.statut === 422 && /t[ée]l[ée]phone/i.test(String(vide.json.message || '')), '[T] le serveur exige encore quelque chose : un champ vide se refuse', { statut: vide.statut, message: vide.json.message });
   ok(long.statut === 422, '[T] le serveur refuse un texte de plus de 40 caracteres', { statut: long.statut });
+  ok(mot.statut === 201 && phoneEnBase(mot) === 'mail de la maman', '[T] le serveur accepte un autre mot (« mail de la maman ») et l ecrit tel quel', { statut: mot.statut, message: mot.json.message, base: phoneEnBase(mot) });
   // UN MOT NE DECLENCHE JAMAIS D ENVOI.
   // (la fonction est relue dans la source, mutee en memoire pour une contre-preuve : le module charge ne bouge pas)
   const source = lf(fs.readFileSync(path.join(ROOT, COMMS), 'utf8'));
@@ -274,26 +279,35 @@ async function scenarioT(browser) {
     ok((enBase(modifiable) || {}).phone === 'par mail', '[T] Modifier : Enregistrer ecrit « par mail » dans le dossier', { phone: (enBase(modifiable) || {}).phone });
     await ouvrirModifier(page, modifiable);
     await page.evaluate(() => { const p = document.getElementById('editContactPli'); if (p) p.open = true; });
+    // (« par mail » rouvre le dossier sur l e-mail depuis le 2026-11-23 : « Par téléphone » rend le numero)
+    const rouvert = await page.evaluate(() => ({ email: Boolean(document.getElementById('editEmailInput')), tel: Boolean(document.getElementById('editPhoneInput')), bouton: ((document.getElementById('editContactBascule') || {}).textContent || '').trim() }));
+    ok(rouvert.email && !rouvert.tel && rouvert.bouton === 'Par téléphone', '[T] Modifier : un dossier « par mail » rouvre sur l e-mail, « Par téléphone » a cote', rouvert);
+    await page.locator('#editContactBascule').click();
     await page.locator('#editPhoneInput').fill('0470');
     await page.locator('#editPhoneInput').press('Tab');
     const refus = await page.evaluate(() => { const h = document.getElementById('editPhoneHint'); return { visible: Boolean(h) && !h.hidden, texte: h ? h.textContent : '' }; });
     ok(refus.visible && /8 chiffres/.test(refus.texte), '[T] Modifier : un faux numero (« 0470 ») reste refuse, avec sa phrase', refus);
     await page.evaluate(() => { closePos(); });
 
-    // LA FICHE : « par mail » s affiche tel quel, sans lien d appel ; « / » dit « Pas de telephone » ; un numero s appelle.
+    // LA FICHE : « par mail » dit que le client se joint par mail, sans lien d appel ; un autre mot s affiche tel
+    // quel, sans lien d appel ; « / » dit « Pas de telephone » ; un numero s appelle.
     const idMail = creeMail ? creeMail.id : null;
     const idBarre = creeBarre ? creeBarre.id : null;
     const idVrai = vrai.json.reservation ? vrai.json.reservation.id : null;
+    const idMot = mot.json.reservation ? mot.json.reservation.id : null;
     const client = async (id) => {
       await ouvrirFiche(page, id);
       return page.evaluate(() => {
         const bloc = document.querySelector('#posOverlay section.fx-client');
-        return { texte: bloc ? bloc.textContent.replace(/\s+/g, ' ').trim() : '', liens: bloc ? Array.from(bloc.querySelectorAll('a[href^="tel:"]')).map((a) => a.getAttribute('href')) : [], appeler: Array.from(document.querySelectorAll('#posOverlay .fx-appel')).length };
+        const ajouter = bloc ? bloc.querySelector('.fz-ajouter-contact') : null;
+        return { texte: bloc ? bloc.textContent.replace(/\s+/g, ' ').trim() : '', liens: bloc ? Array.from(bloc.querySelectorAll('a[href^="tel:"]')).map((a) => a.getAttribute('href')) : [], appeler: Array.from(document.querySelectorAll('#posOverlay .fx-appel')).length, ajouter: ajouter ? ajouter.getAttribute('onclick') : '' };
       });
     };
     const fMail = await client(idMail);
-    ok(/par mail/.test(fMail.texte) && fMail.liens.length === 0 && fMail.appeler === 0, '[T] la fiche affiche « par mail » tel quel dans le bloc Client, sans lien pour appeler', fMail);
+    ok(/Par mail, pas d’adresse/.test(fMail.texte) && !/par mail/.test(fMail.texte) && fMail.liens.length === 0 && fMail.appeler === 0 && /modifierDepuisFiche\('email'/.test(fMail.ajouter), '[T] la fiche dit « Par mail, pas d’adresse » dans le bloc Client, sans lien pour appeler, et « Ajouter » mene a l e-mail', fMail);
     await photo(page, 'telephone-par-mail-fiche', '#posOverlay .fx-client');
+    const fMot = await client(idMot);
+    ok(/mail de la maman/.test(fMot.texte) && fMot.liens.length === 0 && fMot.appeler === 0, '[T] la fiche affiche un autre mot (« mail de la maman ») tel quel, sans lien pour appeler', fMot);
     const fBarre = await client(idBarre);
     ok(/Ni téléphone ni e-mail|Pas de téléphone/.test(fBarre.texte) && !/ \/ /.test(` ${fBarre.texte} `) && fBarre.liens.length === 0, '[T] la fiche lit « / » comme « pas de telephone » (rien d affiche, la ligne qui manque)', fBarre);
     const fVrai = await client(idVrai);

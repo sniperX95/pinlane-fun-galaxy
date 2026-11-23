@@ -178,6 +178,7 @@ async function requeteDuLot(s, p, client) {
       nom: lignes[0] ? lignes[0].name : null,
       derniere_activite: passees[0] ? passees[0].label : null,
       dernieres_personnes: passees[0] ? passees[0].pax : null,
+      email: (lignes.find((r) => String(r.email || '').trim()) || {}).email || null,
     }], rowCount: 1 };
   }
   const derniere = /^select (.+?) from reservations where center_id = \$1 and status <> 'cancelled' and right\(regexp_replace\(coalesce\(phone, ''\), '\[\^0-9\]', '', 'g'\), 9\) = \$2 and date::text < \$3 order by date desc, start_time desc limit 1;?$/.exec(s);

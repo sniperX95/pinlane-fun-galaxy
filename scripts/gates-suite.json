@@ -277,6 +277,7 @@
     "test:fiche-modifier",
     "test:extras-libres",
     "test:petits-defauts",
+    "test:par-mail",
     "test:heure-activite-dossier",
     "test:planning-heure-glisser",
     "test:decaler-groupe",

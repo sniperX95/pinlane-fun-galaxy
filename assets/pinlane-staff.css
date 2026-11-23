@@ -10157,6 +10157,18 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv.rs .rs-connu b { font-weight: 600; color: var(--text); }
 .qb-modal.rv.rs .rs-connu .rv-refaire { flex: none; margin-left: auto; white-space: nowrap; height: 32px; padding: 0 10px; border: 1px solid var(--rs-ligne-forte); border-radius: 8px; background: var(--surface); color: var(--text); font-size: 13px; font-weight: 550; }
 .qb-modal.rv.rs .rs-connu:empty { display: none; }
+/* « PAR MAIL » (2026-11-23, Ansar : « un bouton simple, rapide, efficace, qui prend pas trop de place ») : a
+   cote du champ, un bouton encadre de la hauteur du champ change le telephone en e-mail, « Par téléphone » le
+   rend. Le champ garde la place qui reste ; « reconnu » passe sur la ligne du libelle, a la place de
+   « obligatoire » (dans le champ, il coupait le numero a cote du bouton). Le bouton precede le champ dans la
+   page et `order` le peint a droite : Tab va du telephone au nom, comme avant. */
+.qb-modal.rv.rs .rs-tk-saisie { display: flex; align-items: stretch; gap: 8px; min-width: 0; }
+.qb-modal.rv.rs .rs-tk-saisie > input { flex: 1 1 auto; min-width: 0; }
+.qb-modal.rv.rs .rs-tk-bascule { flex: none; order: 1; height: 44px; padding: 0 12px; border: 1px solid var(--rs-ligne-forte); border-radius: 10px; background: var(--surface); color: var(--text); font-size: 14px; font-weight: 550; line-height: 1; white-space: nowrap; cursor: pointer; }
+@media (hover: hover) { .qb-modal.rv.rs .rs-tk-bascule:hover { background: var(--rs-survol); } }
+.qb-modal.rv.rs .rs-tk-champ.is-contact.a-tag input { padding-right: 12px; }
+.qb-modal.rv.rs .rs-tk-champ.is-contact .rv-tag { top: -2px; right: 0; bottom: auto; height: 20px; }
+.qb-modal.rv.rs .rs-tk-champ.is-contact.a-tag .rs-tk-lbl em { visibility: hidden; }
 
 .qb-modal.rv.rs .rs-verdict { flex: none; padding: 0 22px; }
 .qb-modal.rv.rs .rs-verdict:empty { display: none; }
@@ -20654,6 +20666,21 @@ body:is(.staff-mode, .admin-mode) .fx-modal .fm-pli > summary::after { content: 
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-pli[open] > summary::after { margin-top: 3px; transform: rotate(-135deg); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-pli > summary:hover { color: var(--text); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-pli-corps { display: grid; gap: 12px; padding-top: 4px; }
+/* Replie, le pli dit ce qu il garde (2026-11-23, Ansar : « si il y a déjà le mail sur la résa, ça l'affiche
+   direct ») : le numero, l adresse et l occasion du dossier, sous son titre. Ouvert, les champs le disent. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-pli-t { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-pli-apercu { font-size: 13px; font-weight: 400; line-height: 1.35; color: var(--muted); overflow-wrap: anywhere; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-pli[open] .fm-pli-apercu { display: none; }
+/* « PAR MAIL » (2026-11-23) : le bouton encadre de Reserver, a cote du telephone, de la hauteur du champ. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-contacts { display: contents; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-saisie { display: flex; align-items: stretch; gap: 8px; min-width: 0; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-saisie > .input { flex: 1 1 auto; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-bascule { flex: none; order: 1; display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 14px; border: 1px solid var(--control-border); border-radius: 8px; background: var(--surface); color: var(--text); font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer; transition: background-color 150ms ease; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-bascule:hover { background: var(--subtle); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-bascule:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 2px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .lbl .fm-facultatif { font-weight: 500; color: var(--faint); }
+/* (une adresse refusee se lit comme un numero refuse, en rouge, sous son champ) */
+body:is(.staff-mode, .admin-mode) .fx-modal #editEmailHint { font-size: 13px; font-weight: 600; color: var(--danger); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-accompagnants .fm-stepper { max-width: 200px; }
 
 /* Annuler ou supprimer : replie, en bas de la colonne. */

@@ -409,6 +409,7 @@
     "test:fiche-simple": "node scripts/fiche-simple-check.js && node scripts/fiche-simple-check.js --contre-preuves",
     "test:fiche-modifier": "node scripts/fiche-modifier-check.js && node scripts/fiche-modifier-check.js --contre-preuves",
     "test:petits-defauts": "node scripts/petits-defauts-check.js && node scripts/petits-defauts-check.js --contre-preuves",
+    "test:par-mail": "node scripts/par-mail-check.js && node scripts/par-mail-check.js --contre-preuves",
     "test:extras-libres": "node scripts/extras-libres-check.js && node scripts/extras-libres-check.js --contre-preuves",
     "test:resa-lisible": "node scripts/resa-lisible-check.js && node scripts/resa-lisible-check.js --contre-preuves",
     "test:modifier-verdict": "node scripts/modifier-verdict-check.js && node scripts/modifier-verdict-check.js --contre-preuves",

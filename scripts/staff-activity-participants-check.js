@@ -196,8 +196,9 @@ assert.equal(ctx.quickBookState.visit.bowling.duration,1.5);
   vm.runInContext(app.slice(from,app.indexOf('\nfunction ',from+1)),ctx);
   // La fenetre v5 tient la liste de ses resas (rvResas) : une seule ici.
   ctx.document={querySelector:()=>null,getElementById:()=>null};ctx.toast=()=>{};ctx.rvResas=[ctx.quickBookState];
-  // (le telephone peut etre un mot depuis le 2026-11-22 : les deux lisent rvRessembleAUnNumero)
-  for (const nom of ['rvRessembleAUnNumero', 'normalizePhoneInput', 'rvTelephoneValide']) { const de = app.indexOf(`function ${nom}(`); vm.runInContext(app.slice(de, app.indexOf('\nfunction ', de + 1)), ctx); }
+  // (le telephone peut etre un mot depuis le 2026-11-22 : les deux lisent rvRessembleAUnNumero ; « Par mail »,
+  // 2026-11-23 : saveQuickBook lit rvContactPret, l adresse passe par rvEmailNettoye et isValidEmail)
+  for (const nom of ['rvRessembleAUnNumero', 'normalizePhoneInput', 'rvTelephoneValide', 'rvParMail', 'rvEmailNettoye', 'rvEmailValide', 'rvContactPret', 'isValidEmail']) { const de = app.indexOf(`function ${nom}(`); vm.runInContext(app.slice(de, app.indexOf('\nfunction ', de + 1)), ctx); }
   ctx.quickBookState.pax=1000;ctx.quickBookState.name='Groupe';ctx.quickBookState.phone='+32470111222';ctx.quickBookState.email='';ctx.quickBookState.submitting=false;
   run('saveQuickBook()');
   assert.match(ctx.quickBookState.error,/240 personnes.*planifiée manuellement/);

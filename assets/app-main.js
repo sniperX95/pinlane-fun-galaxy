@@ -2521,6 +2521,8 @@ function etatEditionDepuis(reservation) {
   const etat = { ...reservation };
   etat.lanesStr = pistesDeLaFormuleSeule(reservation).join(', ');
   etat.pistesALaMain = pistesALaMainDuDossier(reservation) > 0;
+  // (TVAC ou HTVA : le choix de la fiche ouverte sur ce dossier, sinon le reglage du centre, prixVuALOuverture)
+  etat.prixVu = prixVuALOuverture(reservation);
   departsEdition().set(etat, { origine: { ...reservation }, base: { ...reservation } });
   return etat;
 }
@@ -3767,6 +3769,8 @@ async function syncDateReservations(dateStr, opts = {}) {
     if (payload.accueil) state.staffAccueil = payload.accueil;
     // Les taux de TVA du centre (Etablissement > Le centre > TVA), meme chemin : Modifier les lit.
     if (payload.vatRates) state.staffTva = payload.vatRates;
+    // Quand Modifier s ouvre hors TVA, meme chemin (reglageHtvaDuCentre).
+    if (payload.htvaParDefaut) state.staffHtvaParDefaut = payload.htvaParDefaut;
     // Les jours ouverts autrement pour un groupe (lib/booking-config), toute la liste.
     if (!payload.degraded) smPoserOuvertures(payload.ouvertures);
     hydrateSelectedReservation();
@@ -14999,6 +15003,7 @@ async function submitCenterConfig(centerId) {
     classification,
     accueil: { lateThresholdMinutes: Number(establishmentInputValue('estab-lateThreshold', STAFF_LATE_THRESHOLD_DEFAUT)) },
     vatRates: collectEstablishmentVatRates(),
+    htvaParDefaut: collectEstablishmentHtvaParDefaut(),
     bookingRules: { minDaysAhead: Number(establishmentInputValue('estab-book-min', 0)) || 0, horizonDays: establishmentInputValue('estab-book-horizon', '') === '' ? null : Number(establishmentInputValue('estab-book-horizon', '')) },
     customActivities: establishmentCustomActivitiesDraft.map(item => ({ id: item.id, label: item.label }))
   };
@@ -15794,11 +15799,15 @@ function ebSectionDe(k, salles) {
 function ebTvaHtml(center) {
   const taux = center.vatRates && typeof center.vatRates === 'object' ? center.vatRates : {};
   const champ = (cle, titre, aide) => ebR(`${titre} (%)`, aide, ebNum(`estab-tva-${cle}`, `TVA des ${TVA_SORTES[cle]}, en pour cent`, { value: taux[cle] ?? '', min: 0, max: 100, step: 1, htmlStep: '0.01' }));
+  // (quand Modifier s ouvre hors TVA, lib/center-config.js normalizeHtvaParDefaut ; ce qui ne se lit pas : « Jamais »)
+  const ouverture = Object.prototype.hasOwnProperty.call(HTVA_PAR_DEFAUT_MOTS, center.htvaParDefaut) ? center.htvaParDefaut : 'jamais';
   return ebG('TVA', 'Les taux qui servent à lire un prix hors TVA dans Modifier. Le prix enregistré reste TVA comprise.',
     champ('activities', 'Activités', 'Bowling, duckpin, laser, minigolf, billard, playground, pixel : l’accès et l’usage.')
     + champ('food', 'Nourriture', '')
     + champ('drinks', 'Boissons', '')
-    + champ('arcades', 'Arcades', ''), { id: 'eb-tva' });
+    + champ('arcades', 'Arcades', '')
+    + ebR('Prix hors TVA à l’ouverture', 'Modifier montre alors d’abord le prix hors TVA. Un groupe : un team building, ou un grand groupe qui joue en plusieurs groupes. Dans Modifier, TVAC et HTVA se changent toujours à la main.',
+      ebSeg('estab-tva-ouverture', 'Prix hors TVA à l’ouverture de Modifier', Object.entries(HTVA_PAR_DEFAUT_MOTS), ouverture)), { id: 'eb-tva' });
 }
 // Les taux tapes, tels quels : le serveur les borne (normalizeVatRates) et refuse ce qui sort de 0 a 100 %.
 // Une case vide ne part pas : le taux enregistre reste (la fusion de saveCenterConfig, cle par cle).
@@ -15809,6 +15818,12 @@ function collectEstablishmentVatRates() {
     if (brut !== '') taux[cle] = brut;
   });
   return Object.keys(taux).length ? taux : undefined;
+}
+// Le choix « Prix hors TVA à l ouverture », tel quel : le serveur le relit (normalizeHtvaParDefaut). Une page qui
+// ne l a pas montre ne l envoie pas : le reglage enregistre reste.
+function collectEstablishmentHtvaParDefaut() {
+  const champ = document.getElementById('estab-tva-ouverture');
+  return champ ? String(champ.value || '') : undefined;
 }
 
 function ebCentreHtml(c) {
@@ -16590,6 +16605,7 @@ function ebDireUnChangement(cle, v, avant) {
   if (EB_TEXTES_DITS[cle]) return EB_TEXTES_DITS[cle];
   if (EB_ZONES_DITES[cle]) return EB_ZONES_DITES[cle];
   if (cle === 'estab-status') return { active: 'Centre ouvert à la réservation', planned: 'Centre prévu', closed: 'Centre archivé' }[v] || 'Statut changé';
+  if (cle === 'estab-tva-ouverture') return `Prix hors TVA à l’ouverture : ${(HTVA_PAR_DEFAUT_MOTS[v] || HTVA_PAR_DEFAUT_MOTS.jamais).toLowerCase()}`;
   if (cle === 'estab-customRequestFromPax') return v === '' ? 'Plus de demande sur mesure' : `Sur mesure dès ${v} joueurs`;
   if (/^estab-style-/.test(cle) || cle === 'estab-accent-picker') return 'Style du formulaire changé';
   if (/^estab-arc-/.test(cle)) return 'Cartes Arcades modifiées';
@@ -24202,6 +24218,7 @@ function openStaffReservationDetail(id) {
   }
   upsertReservationInState(reservation);
   state.currentDate = reservation.date || state.currentDate;
+  oublierPrixVuDeLaFiche();
   state.selectedRes = reservation;
   state.activeTab = 'details';
   state.editState = etatEditionDepuis(reservation);
@@ -30601,8 +30618,10 @@ function editRes(id, ev) {
   if (ev) ev.stopPropagation();
   state.selectedRes = state.reservations.find(r => r.id === id);
   if (!state.selectedRes) return;
+  oublierPrixVuDeLaFiche();
   state.activeTab = 'modifier';
   state.editState = etatEditionDepuis(state.selectedRes);
+  retenirPrixVuDeLaFiche();
   syncEditLaneAssignment();
   renderPos();
 }
@@ -30617,6 +30636,8 @@ function openPos(id) {
   heureOuverteEdition = '';
   // Une proposition d ordre lue sur une autre fiche ne revient pas : elle se redemande.
   autresOrdresFiche.clear();
+  // (TVAC ou HTVA : une fiche ouverte repart du reglage du centre)
+  oublierPrixVuDeLaFiche();
   const reservation = findStaffReservationById(id);
   if (!reservation) {
     toast('Réservation introuvable ou non chargée.');
@@ -30680,6 +30701,7 @@ function closePos() {
   // La bulle du compte ouverte depuis la fiche part avec elle.
   if (compteArrivee().id && compteArrivee().dansFiche) fermerCompteArrivee(false);
   state.selectedRes = null;
+  oublierPrixVuDeLaFiche();
   ficheFaitsPeints = '';
   const overlay = document.getElementById('posOverlay');
   // Elle se range dans sa ligne : sa forme y retourne, le voile s eteint (rien n attend).
@@ -30758,6 +30780,7 @@ function ouvrirOngletFiche(cible) {
   state.activeTab = cible;
   if (state.activeTab === 'modifier') {
     state.editState = etatEditionDepuis(state.selectedRes);
+    retenirPrixVuDeLaFiche();
     syncEditLaneAssignment();
     noterFormulaireEdition();
   }
@@ -34950,9 +34973,72 @@ function prixHorsTvaEdition() {
   return Boolean(state.editState && state.editState.prixVu === 'htva' && tauxTvaDuCentre());
 }
 
+// QUAND MODIFIER S OUVRE HORS TVA (2026-11-23, Ansar : « on choisit, c est pas mis d office, mais des que c est un
+// groupe team building ou juste un grand groupe, la oui »). Le reglage du centre (Etablissement > Le centre > TVA,
+// lib/center-config.js normalizeHtvaParDefaut), lu comme les taux : la page Etablissement d abord, puis le poll de
+// la journee. Ce qui ne se lit pas, ou ne se reconnait pas, vaut « jamais » : la fiche s ouvre TVA comprise.
+const HTVA_PAR_DEFAUT_MOTS = Object.freeze({ jamais: 'Jamais', toutes: 'Toutes les réservations', groupes: 'Les groupes seulement' });
+function reglageHtvaDuCentre() {
+  const centre = typeof staffCenterConfigCache !== 'undefined' && staffCenterConfigCache && Array.isArray(staffCenterConfigCache.centers)
+    ? staffCenterConfigCache.centers.find((c) => c && c.id === getCurrentStaffCenterId())
+    : null;
+  const lu = centre && typeof centre.htvaParDefaut === 'string' ? centre.htvaParDefaut : (state && state.staffHtvaParDefaut);
+  return typeof lu === 'string' && Object.prototype.hasOwnProperty.call(HTVA_PAR_DEFAUT_MOTS, lu) ? lu : 'jamais';
+}
+
+// UN GRAND GROUPE : celui que le moteur a coupe en plusieurs groupes, parce que le centre ne le prend pas d un coup
+// (lib/grand-groupe.js : des sous-groupes qui tournent ; lib/ops-engine.js : les services du bowling au-dela de ses
+// pistes, les vagues du laser au-dela de ses armes). Le plan du dossier porte cette coupe, faite sur la
+// configuration du centre : aucun seuil n est recompte ici.
+function dossierEnGrandGroupe(r) {
+  const plan = r && r.opsPlan && typeof r.opsPlan === 'object' ? r.opsPlan : null;
+  if (!plan) return false;
+  if (plan.grandGroupe && typeof plan.grandGroupe === 'object' && Number(plan.grandGroupe.nombre) > 1) return true;
+  return (Array.isArray(plan.resourceBlocks) ? plan.resourceBlocks : [])
+    .some((b) => b && (b.resourceType === 'bowling_lane' || b.resourceType === 'laser_arena') && (Number(b.groupWaveCount) > 1 || Number(b.sousGroupes) > 1));
+}
+
+// UN GROUPE, POUR LA TVA : un team building (l occasion « Entreprise / team building » ou « Team building »,
+// STAFF_OCCASION_LABELS) ou un grand groupe.
+function dossierDeGroupePourLaTva(r) {
+  const occasion = String((r && r.occasion) || '').trim().toLowerCase();
+  if (occasion === 'teambuilding' || occasion === 'entreprise') return true;
+  return dossierEnGrandGroupe(r);
+}
+
+// Le prix que Modifier montre a son ouverture, d apres le reglage : HTVA quand il le veut pour ce dossier et que
+// les taux du centre se lisent (sans eux, le hors TVA ne se calcule pas), sinon TVAC.
+function prixVuDuReglage(r) {
+  const reglage = reglageHtvaDuCentre();
+  const htva = reglage === 'toutes' || (reglage === 'groupes' && dossierDeGroupePourLaTva(r));
+  return htva && tauxTvaDuCentre() ? 'htva' : 'tvac';
+}
+
+// LE CHOIX DE LA FICHE OUVERTE : celui du reglage a l ouverture de Modifier, puis celui du comptoir. Il tient tant
+// que la fiche reste ouverte sur ce dossier : un etat d edition refait (l echo du serveur, un conflit, Modifier
+// rouvert depuis Infos) le reprend tel quel, et rien de ce qui arrive apres l ouverture (le catalogue, les offres,
+// le poll, les taux, le reglage lui-meme) ne le change. Une autre fiche, ou celle-ci fermee puis rouverte, repart
+// du reglage.
+var prixVuDeLaFiche = null;
+function prixVuALOuverture(r) {
+  if (prixVuDeLaFiche && r && Number(prixVuDeLaFiche.id) === Number(r.id)) return prixVuDeLaFiche.vu;
+  return prixVuDuReglage(r);
+}
+// (Modifier ouvert retient sa decision ; un calcul fait sur un autre dossier, preparerCompte, n y touche pas)
+function retenirPrixVuDeLaFiche() {
+  const r = state.selectedRes;
+  if (!r || !state.editState || (prixVuDeLaFiche && Number(prixVuDeLaFiche.id) === Number(r.id))) return;
+  prixVuDeLaFiche = { id: Number(r.id), vu: state.editState.prixVu === 'htva' ? 'htva' : 'tvac' };
+}
+function oublierPrixVuDeLaFiche() {
+  prixVuDeLaFiche = null;
+}
+
 function basculerTvaEdition(mode) {
   if (!state.editState) return;
   state.editState.prixVu = mode === 'htva' && tauxTvaDuCentre() ? 'htva' : 'tvac';
+  // (le choix du comptoir tient tant que la fiche reste ouverte sur ce dossier : prixVuALOuverture)
+  if (state.selectedRes) prixVuDeLaFiche = { id: Number(state.selectedRes.id), vu: state.editState.prixVu };
   renderPos();
 }
 

@@ -1,7 +1,7 @@
 const { getPool, readStaffState, readAdminRangeState } = require('../lib/database');
 const { sendError, sendJson } = require('../lib/http');
 const { refreshCenterOverrides, getCenter } = require('../lib/ops-knowledge');
-const { normalizeClassification, normalizeAccueil, normalizeVatRates } = require('../lib/center-config');
+const { normalizeClassification, normalizeAccueil, normalizeVatRates, normalizeHtvaParDefaut } = require('../lib/center-config');
 const { isStaffAuthStorageError, requireStaffPermission } = require('../lib/staff-auth');
 const { buildStaffDaySeries } = require('../lib/staff-day-series');
 
@@ -112,8 +112,12 @@ const traiter = async (req, res) => {
     // hors TVA, a toute l equipe, comme le seuil de retard.
     let vatRates;
     try { vatRates = normalizeVatRates(getCenter(centerId)?.vatRates); } catch (error) { vatRates = undefined; }
+    // Quand Modifier s ouvre hors TVA (Etablissement > Le centre > TVA), relu par la meme regle : une valeur
+    // inconnue, ou une config en base sans la cle, se lit « jamais ».
+    let htvaParDefaut;
+    try { htvaParDefaut = normalizeHtvaParDefaut(getCenter(centerId)?.htvaParDefaut); } catch (error) { htvaParDefaut = undefined; }
     // (`modificationABlanc` : ce serveur sait dire ce que « Modifier » ecrirait, POST dryRun + modification)
-    sendJson(res, 200, { ok: true, ...snapshot, classification, accueil, vatRates, ouvertures, modificationABlanc: true });
+    sendJson(res, 200, { ok: true, ...snapshot, classification, accueil, vatRates, htvaParDefaut, ouvertures, modificationABlanc: true });
   } catch (error) {
     require('../lib/garde-serveur').signalerPanneServeur('api/staff-state', error);
     if (isStaffAuthStorageError(error)) {

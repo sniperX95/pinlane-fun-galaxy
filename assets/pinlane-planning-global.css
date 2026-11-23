@@ -404,6 +404,16 @@ button.gf-bloc__in:focus-visible { outline: 2px solid var(--console-focus); outl
 .gf-i__mot { display: inline-block; margin-right: 2px; padding: 0 6px; border-radius: 4px; font-size: 12px; font-weight: 700; line-height: 16px; vertical-align: 1px; white-space: nowrap; }
 .gf-i--client .gf-i__mot { background: var(--gf-note-client); color: var(--gf-note-client-encre); }
 .gf-i--equipe .gf-i__mot { background: var(--gf-note-equipe); color: var(--gf-note-equipe-encre); }
+/* LES NOTES ET LE SUR MESURE TAPENT A L OEIL SANS PRENDRE DE PLACE (2026-11-23, le gerant : « ça
+   doit taper à l'œil [...] mais ça doit pas prendre trop de place fait ça quali ») : un fond leger
+   de leur teinte, un liseré a gauche, le texte un cran plus gras, toujours deux lignes au plus.
+   Le sur mesure prend le violet de la formule, qu aucun statut ne porte ; jamais le rouge. */
+.gf-i--client { --gf-i-teinte: var(--gf-note-client); }
+.gf-i--equipe { --gf-i-teinte: var(--gf-note-equipe); }
+.gf-i--mesure { --gf-i-teinte: var(--gf-formule-encre); }
+.gf-i.gf-i--note { padding: 1px 6px 1px 5px; border-left: 3px solid var(--gf-i-teinte); border-radius: 0 4px 4px 0; background: color-mix(in srgb, var(--gf-i-teinte) 9%, var(--surface)); }
+.gf-i.gf-i--note > p { font-weight: 550; }
+.gf-i--mesure .gf-i__mot { background: var(--gf-formule-encre); color: var(--gf-formule-fond); }
 .gf-r.is-parti :is(.gf-nom__t, .gf-n b, .gf-formule) { color: var(--muted); font-weight: 600; }
 .gf-r.is-loin .gf-nom__t { font-weight: 550; }
 .gf-r.is-loin .gf-n b { font-weight: 600; }
@@ -427,7 +437,7 @@ button.gf-bloc__in:focus-visible { outline: 2px solid var(--console-focus); outl
 [data-theme='dark'] .gf { --gf-formule-fond: #261d40; --gf-formule-encre: #cdbcff; --gf-formule-cadre: #5a4790; }
 .gf-formule { display: inline-block; max-width: 100%; box-sizing: border-box; padding: 1px 7px; border-radius: 6px; background: var(--gf-formule-fond); color: var(--gf-formule-encre); font-size: 14px; font-weight: 650; line-height: 18px; }
 .gf-formule.is-long { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; padding: 2px 6px; font-size: 12px; font-weight: 650; line-height: 14px; }
-.gf-formule.is-mesure { padding: 0 6px; background: transparent; box-shadow: inset 0 0 0 1px var(--gf-formule-cadre); font-size: 12px; font-weight: 650; line-height: 18px; }
+.gf-formule.is-mesure { padding: 0 6px; background: transparent; box-shadow: inset 0 0 0 1.5px var(--gf-formule-encre); font-size: 12px; font-weight: 700; line-height: 18px; }
 .gf-f__i { margin-top: 2px; }
 .gf-r.is-parti .gf-formule { background: transparent; box-shadow: inset 0 0 0 1px var(--line); }
 .gf-f__i { display: block; font-size: 12px; line-height: 15px; color: var(--muted); }
@@ -437,11 +447,11 @@ button.gf-bloc__in:focus-visible { outline: 2px solid var(--console-focus); outl
    JAMAIS LA CASE (2026-11-07, Ansar : « des fois c'est toute la case qui est surlignée et
    des fois juste l'heure, moi je veux que ce soit que les heures, c'est plus joli ») :
    A VENIR, la pastille de la teinte du statut ; LA DEMI-HEURE QUI VIENT, en gras ;
-   A LANCER, la pastille cerclee de cette teinte ; EN COURS, en gras sur un fond doux, un
-   cran plus soutenu que celui d une heure a venir (l audit du 2026-11-03 : les plus gros
-   aplats etaient des activites sans geste a faire) ; FINIE, grise, cochee si le groupe a
-   ete pointe ; groupe pas encore pointe a l heure, en rouge sur rouge pale. Le reste de la
-   case garde son encre. */
+   A LANCER (son heure venue, personne n a coche, 2026-11-23), en gras sur un fond doux, cerclee
+   de cette teinte, une case vide devant l heure ; PAS ENCORE COCHEE, son heure passee, la meme
+   case vide, sans fond ; FAITE (cochee a la main, rien d autre), grise, barree, sa coche devant ;
+   le groupe reparti sans coche, grise seulement ; groupe pas encore pointe a l heure, en rouge
+   sur rouge pale. L heure ne coche ni ne lance rien. Le reste de la case garde son encre. */
 .gf-t td.gf-a { height: 1px; padding: 0; border-left: 1px solid var(--line); }
 .gf-x { position: relative; box-sizing: border-box; display: flex; flex-direction: column; width: 100%; height: 100%; min-height: calc(var(--gf-l) - 1px); padding: 7px 3px 5px 8px; color: var(--text); font-size: 14px; font-weight: 500; line-height: 18px; white-space: nowrap; }
 .gf-a.is-plusieurs .gf-x { height: auto; min-height: 0; padding-block: 2px; }
@@ -452,7 +462,7 @@ button.gf-bloc__in:focus-visible { outline: 2px solid var(--console-focus); outl
    vert paye) : on balaie les heures du regard. Finie, elle garde son texte nu, « vers »
    aussi tant que rien ne presse. */
 .gf-x__t { align-self: flex-start; margin-left: -5px; padding: 0 5px; border-radius: 6px; white-space: nowrap; background: color-mix(in srgb, var(--bk-barre) 15%, var(--surface)); color: var(--bk-encre-2); font-weight: 650; }
-.gf-x__t.is-nu, .gf-x:is(.is-fini, .is-panne) .gf-x__t { margin-left: 0; padding: 0; background: transparent; box-shadow: none; color: inherit; }
+.gf-x__t.is-nu, .gf-x:is(.is-fini, .is-clos, .is-panne) .gf-x__t { margin-left: 0; padding: 0; background: transparent; box-shadow: none; color: inherit; }
 .gf-r.is-parti .gf-x__t { background: transparent; color: var(--muted); }
 .gf-x__n { white-space: nowrap; }
 /* CE QUI SORT DE L HABITUEL (2026-11-08) : une autre duree qu une heure, un autre nombre que
@@ -460,7 +470,7 @@ button.gf-bloc__in:focus-visible { outline: 2px solid var(--console-focus); outl
 .gf-x__h { align-self: flex-start; margin: 2px 0 0 -5px; padding: 0 5px; border-radius: 6px; background: color-mix(in srgb, var(--text) 13%, var(--surface)); color: var(--text); font-size: 12px; font-weight: 700; line-height: 17px; white-space: nowrap; }
 .gf-x__hors { display: flex; flex-wrap: wrap; gap: 3px; margin: 2px 0 0 -5px; }
 .gf-x__hors .gf-x__h { margin: 0; }
-.gf-x.is-fini .gf-x__h, .gf-r.is-parti .gf-x__h { background: transparent; box-shadow: inset 0 0 0 1px var(--line); color: var(--muted); font-weight: 600; }
+.gf-x:is(.is-fini, .is-clos) .gf-x__h, .gf-r.is-parti .gf-x__h { background: transparent; box-shadow: inset 0 0 0 1px var(--line); color: var(--muted); font-weight: 600; }
 /* « Illimité » prend la couleur de la formule : c est elle qui le donne. */
 .gf-x__t.is-illimite { background: var(--gf-formule-fond); color: var(--gf-formule-encre); }
 /* « Libre » porte la pastille des heures (2026-11-19). Une activite finie la perd, et son mot
@@ -478,9 +488,16 @@ button.gf-bloc__in:focus-visible { outline: 2px solid var(--console-focus); outl
 }
 @keyframes gfRaye { from { transform: scaleX(0); } }
 @keyframes gfDesurligne { from { background-color: color-mix(in srgb, var(--bk-barre) 15%, var(--surface)); color: var(--bk-encre-2); } }
-.gf-x:is(.is-lancer, .is-encours, .is-retard) .gf-x__t { font-weight: 700; }
-.gf-x.is-lancer .gf-x__t { background: transparent; box-shadow: inset 0 0 0 1px var(--bk-barre); color: var(--bk-encre); }
-.gf-x.is-encours .gf-x__t { background: var(--bk-cadre); color: var(--bk-encre); }
+.gf-x:is(.is-lancer, .is-acocher, .is-retard) .gf-x__t { font-weight: 700; }
+.gf-x.is-lancer .gf-x__t { background: var(--bk-cadre); color: var(--bk-encre); box-shadow: inset 0 0 0 1.5px var(--bk-barre); }
+.gf-x.is-acocher .gf-x__t { background: transparent; color: var(--bk-encre); box-shadow: inset 0 0 0 1.5px var(--bk-barre); }
+.gf-x:is(.is-lancer, .is-acocher) .gf-x__t:not(.is-nu) { padding-left: 3px; }
+.gf-x__ac { display: inline-block; width: 10px; height: 10px; margin-right: 3px; vertical-align: -1px; }
+/* « + » EN PLUS DE LA FORMULE (2026-11-23) : en exposant sur la pastille, sans largeur ; l encre du
+   texte, aucune couleur de statut. */
+.gf-x.is-en-plus .gf-x__t { position: relative; }
+.gf-x__plus { position: absolute; top: -5px; right: -8px; box-sizing: border-box; min-width: 13px; height: 13px; padding: 0 2px; border-radius: 7px; background: var(--text); color: var(--surface); font-size: 11px; font-style: normal; font-weight: 800; line-height: 13px; text-align: center; pointer-events: none; }
+.gf-x__plus::before { content: '+'; }
 .gf-x.is-credit { font-size: 13px; }
 .gf-x.is-credit .gf-x__d { font-size: 12px; white-space: nowrap; }
 /* Des arcades vendues en argent : le montant se lit de loin, comme une heure (Ansar, 2026-11-22 : « 8 € en gros »). */
@@ -488,10 +505,10 @@ button.gf-bloc__in:focus-visible { outline: 2px solid var(--console-focus); outl
 .gf-x.is-libre { padding-left: 8px; color: var(--muted); font-size: 13px; white-space: normal; }
 .gf-x.is-retard .gf-x__t { background: var(--gf-rouge-pale); color: var(--gf-rouge); }
 .gf-x.is-aplacer { color: var(--warning); }
-.gf-x.is-fini { color: var(--muted); }
+.gf-x:is(.is-fini, .is-clos) { color: var(--muted); }
 .gf-x.is-panne { color: var(--gf-rouge); cursor: pointer; }
 .gf-x.is-panne .gf-x__d { color: inherit; font-weight: 700; }
-.gf-x.is-fini .gf-x__d { color: var(--muted); }
+.gf-x:is(.is-fini, .is-clos) .gf-x__d { color: var(--muted); }
 /* (la coche pend dans la marge de la case, devant l heure : elle ne prend aucune
    largeur a la colonne) */
 .gf-x__ok { position: absolute; left: 1px; top: 12px; width: 9px; height: 9px; color: var(--muted); }
@@ -617,8 +634,11 @@ button.gf-bloc__in:focus-visible { outline: 2px solid var(--console-focus); outl
    (le fond pale d une case comme pastille de statut tenait 1,1:1 sur la page, sous les
    3:1 d un element graphique : console-contrast, 2026-10-26) */
 .gf-leg { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--bk-barre); }
-.gf-leg:is(.is-encours, .is-libre) { width: 16px; height: 11px; box-sizing: border-box; border-radius: 3px; }
-.gf-leg.is-encours { --bk-barre: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
+.gf-leg:is(.is-lancer, .is-libre) { width: 16px; height: 11px; box-sizing: border-box; border-radius: 3px; }
+/* (a lancer : la case vide cerclee de la pastille ; en plus : le « + » des cases) */
+.gf-leg.is-lancer { --bk-barre: var(--accent-soft); box-shadow: inset 0 0 0 1.5px var(--accent); }
+.gf-leg.is-plus { position: relative; width: 13px; height: 13px; background: var(--text); }
+.gf-leg.is-plus::after { content: '+'; position: absolute; inset: 0; color: var(--surface); font-size: 11px; font-style: normal; font-weight: 800; line-height: 13px; text-align: center; }
 .gf-leg.is-libre { border: 1.5px dashed var(--line-strong); background: transparent; }
 /* (fini : la coche des cases, dessinee en deux traits) */
 .gf-leg.is-fini { width: 5px; height: 9px; margin: 0 4px 2px; border: solid var(--muted); border-width: 0 2px 2px 0; border-radius: 0; background: transparent; transform: rotate(45deg); }
@@ -683,7 +703,8 @@ button.gf-bloc__in:focus-visible { outline: 2px solid var(--console-focus); outl
   .gf-i.gf-i--note { display: -webkit-box; margin-top: 2px; }
   .gf-i > span { margin-right: 4px; white-space: normal; }
   .gf-i > p { display: inline; }
-  .gf-x__ok, .gf-x__t .gf-x__ok { display: none; }
+  .gf-x__ok, .gf-x__t .gf-x__ok, .gf-x__ac { display: none; }
+  .gf-x:is(.is-lancer, .is-acocher) .gf-x__t:not(.is-nu) { padding-left: 4px; }
 }
 
 /* DEFILEE DE COTE, UNE LIGNE DIT ENCORE DE QUI ELLE PARLE : la barre et le nom restent colles
@@ -740,6 +761,8 @@ button.gf-bloc__in:focus-visible { outline: 2px solid var(--console-focus); outl
   .gf-t .gf-r > td.gf-a.is-vide { display: none; }
   .gf-x, .gf-a.is-plusieurs .gf-x, .gf-a.is-plusieurs .gf-x:first-child { display: inline-flex; flex-direction: row; align-items: baseline; flex-wrap: nowrap; gap: 5px; width: auto; height: auto; min-height: 24px; padding: 2px 6px; border-radius: 6px; font-size: 13px; line-height: 17px; white-space: nowrap; }
   .gf-x__ok { display: none; }
+  /* (au telephone, la case vide de la coche attendue revient : la case est une pastille large) */
+  .gf-x__ac { display: inline-block; }
   /* LE GESTE : en pied de carte, sur toute sa largeur. */
   .gf-gb--etat:not(.gf-compte) { justify-content: flex-start; height: 24px; }
   /* LA DEMI-HEURE : une bande en tete de sa premiere carte. */

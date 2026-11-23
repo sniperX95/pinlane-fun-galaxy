@@ -326,7 +326,10 @@ async function scenarios(browser, mutation = null) {
   }
   // Le badge complet se voit la ou la place le permet : sur les grands ecrans,
   // en fenetre et en plein ecran, avec un prix ajuste (9604) comme sans.
-  ok(vus.has('1440:9601') && vus.has('1700:9602') && vus.has('1920+:9604') && vus.has('1920+:9601') && vus.has('1920+:9609'), '[B] le badge complet se montre quand le pied a la place (1440 a 1920, fenetre et plein ecran)', [...vus].filter(v => /^(1440|1700|1920)/.test(v)).join(' '));
+  // (2026-11-23 : la jauge du suivi est sur toute carte, a la carte comprise, et le badge prend la
+  // place qu elle laisse ; le pied le plus large, Patro 9602, passe au pictogramme a 1700 : le
+  // « +1 » complet a 1700 se lit sur Noah 9608)
+  ok(vus.has('1440:9601') && vus.has('1700:9608') && vus.has('1920+:9604') && vus.has('1920+:9601') && vus.has('1920+:9609'), '[B] le badge complet se montre quand le pied a la place (1440 a 1920, fenetre et plein ecran)', [...vus].filter(v => /^(1440|1700|1920)/.test(v)).join(' '));
 
   // [A] la couleur et les contrastes, dans les deux themes.
   for (const theme of ['dark', 'light']) {

@@ -750,7 +750,8 @@ async function inventaire(browser) {
     ok((await appels()).join().startsWith('lpReserverAuProchain'), '[H] Laser : Réserver au prochain départ');
     await aller(page, 'all');
     const mc = await menuPlus(page);
-    ok(/Départ laser de \d\d:\d\d/.test(mc.texte) && /en cours/.test(mc.texte) && /Libre : sans heure fixe/.test(mc.texte), '[H] Complet : le depart laser et la legende des cases restent au menu', mc.texte.slice(-160));
+    // (2026-11-23 : l heure ne coche plus rien, la legende dit « à lancer » et « fait », plus « en cours »)
+    ok(/Départ laser de \d\d:\d\d/.test(mc.texte) && /à lancer : pas encore coché/.test(mc.texte) && /fait : coché/.test(mc.texte) && /Libre : sans heure fixe/.test(mc.texte), '[H] Complet : le depart laser et la legende des cases restent au menu', mc.texte.slice(-160));
     await page.evaluate(() => closeStaffFloatingMenus());
     // La ligne 2 de chaque planning : ses chiffres.
     const mots = {
@@ -1014,19 +1015,20 @@ async function ligne(browser) {
 async function couleurs(browser) {
   await avec(browser, { lettre: 'K' }, async (page) => {
     const lum = `const lum = (s) => { const c = String(s).match(/[0-9.]+/g).map(Number); const f = (v) => { const x = v / 255; return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); };`;
-    // Une activite en cours : sa pastille, du gras sur un fond doux, le plus gros aplat n est
+    // Une activite a lancer (son heure venue, pas encore cochee : depuis le 2026-11-23 l heure ne
+    // dit plus « en cours ») : sa pastille, du gras sur un fond doux, le plus gros aplat n est
     // plus elle. La case reste nue, comme celle d a cote (2026-11-07, Ansar : « moi je veux
     // que ce soit que les heures »).
     const c = await page.evaluate((code) => {
       const lire = new Function(`${code} return lum;`)();
-      const e = Array.from(document.querySelectorAll('.gf-x.is-encours'));
+      const e = Array.from(document.querySelectorAll('.gf-x.is-lancer'));
       const p = e.map((x) => x.querySelector('.gf-x__t')).filter(Boolean);
       const vide = getComputedStyle(document.querySelector('.gf-r td.gf-a.is-vide')).backgroundColor;
       const nue = (x) => { const s = getComputedStyle(x), td = getComputedStyle(x.closest('td')); return /^rgba\(0, 0, 0, 0\)$/.test(s.backgroundColor) && s.backgroundImage === 'none' && s.boxShadow === 'none' && td.backgroundColor === vide && td.backgroundImage === 'none'; };
       return { n: e.length, pastilles: p.length, doux: p.every((t) => lire(getComputedStyle(t).backgroundColor) > 0.6), gras: p.every((t) => Number(getComputedStyle(t).fontWeight) >= 700), nues: e.filter(nue).length };
     }, lum);
-    ok(c.n > 0 && c.pastilles === c.n && c.doux && c.gras, '[K] une activite en cours : sa pastille, du gras sur un fond doux', c);
-    ok(c.n > 0 && c.nues === c.n, '[K] une activite en cours ne peint pas sa case : seule l heure', c);
+    ok(c.n > 0 && c.pastilles === c.n && c.doux && c.gras, '[K] une activite a lancer : sa pastille, du gras sur un fond doux', c);
+    ok(c.n > 0 && c.nues === c.n, '[K] une activite a lancer ne peint pas sa case : seule l heure', c);
     // Le seul bouton plein : le retard le plus recent, pas le plus ancien.
     const p = await page.evaluate(() => {
       const min = (t) => { const m = /^En retard · (?:(\d+) min|(\d+) h (\d{2}))$/.exec(t || ''); return m ? (m[1] ? Number(m[1]) : Number(m[2]) * 60 + Number(m[3])) : NaN; };
@@ -1157,7 +1159,8 @@ async function mots(browser) {
       return {
         pistes: pistes.length,
         tailles: Math.min(...pistes.map((e) => parseFloat(getComputedStyle(e).fontSize))),
-        noires: pistes.filter((e) => !e.closest('.is-fini')).every((e) => { const s = getComputedStyle(e).color; const c = lire(s); return c[0] + c[1] + c[2] < 3 * 110 && s === getComputedStyle(e.closest('.gf-x')).color; }),
+        // (une case faite, ou d un groupe reparti, s ecrit en gris)
+        noires: pistes.filter((e) => !e.closest('.is-fini, .is-clos')).every((e) => { const s = getComputedStyle(e).color; const c = lire(s); return c[0] + c[1] + c[2] < 3 * 110 && s === getComputedStyle(e.closest('.gf-x')).color; }),
         vers: tout('.gf-x.is-libre').map((e) => e.textContent).slice(0, 3),
         credits: tout('.gf-x.is-credit').map((e) => e.textContent).slice(0, 3),
         joueurs: tout('.gf-bloc__in span').filter((e) => /joueur/.test(e.textContent)).length,
@@ -1848,9 +1851,10 @@ const MUTATIONS = [
   { nom: 'fleche-qui-bouge', lettre: 'J', scenarios: ['ligne'], editions: SEUL(PGC, '.gf-gb--fleche { flex: 0 0 26px; padding: 0; color: var(--muted); }', '.gf-gb--fleche { flex: 0 0 26px; margin-right: 10px; padding: 0; color: var(--muted); }') },
   { nom: 'autre-jour-sans-geste', lettre: 'J', scenarios: ['ligne'], editions: SEUL(PG, "      if (tel) h = '<a class=\"gf-gb gf-gb--tel\"", "      if (false) h = '<a class=\"gf-gb gf-gb--tel\"") },
   // [K] les couleurs
-  { nom: 'en-cours-en-aplat', lettre: 'K', scenarios: ['couleurs'], editions: SEUL(PGC, '.gf-x.is-encours .gf-x__t { background: var(--bk-cadre); color: var(--bk-encre); }', '.gf-x.is-encours .gf-x__t { background: var(--bk-barre); color: var(--bk-plein); }') },
-  { nom: 'en-cours-sans-gras', lettre: 'K', scenarios: ['couleurs'], editions: SEUL(PGC, '.gf-x:is(.is-lancer, .is-encours, .is-retard) .gf-x__t { font-weight: 700; }', '.gf-x:is(.is-lancer, .is-retard) .gf-x__t { font-weight: 700; }') },
-  { nom: 'en-cours-peint-sa-case', lettre: 'K', scenarios: ['couleurs'], editions: SEUL(PGC, '.gf-x.is-credit { font-size: 13px; }', '.gf-x.is-encours { background: var(--bk-haut); }\n.gf-x.is-credit { font-size: 13px; }') },
+  // (depuis le 2026-11-23, l heure ne lance plus rien : « à lancer » remplace l « en cours » tire de l horloge)
+  { nom: 'a-lancer-en-aplat', lettre: 'K', scenarios: ['couleurs'], editions: SEUL(PGC, '.gf-x.is-lancer .gf-x__t { background: var(--bk-cadre); color: var(--bk-encre); box-shadow: inset 0 0 0 1.5px var(--bk-barre); }', '.gf-x.is-lancer .gf-x__t { background: var(--bk-barre); color: var(--bk-plein); box-shadow: inset 0 0 0 1.5px var(--bk-barre); }') },
+  { nom: 'a-lancer-sans-gras', lettre: 'K', scenarios: ['couleurs'], editions: SEUL(PGC, '.gf-x:is(.is-lancer, .is-acocher, .is-retard) .gf-x__t { font-weight: 700; }', '.gf-x:is(.is-acocher, .is-retard) .gf-x__t { font-weight: 700; }') },
+  { nom: 'a-lancer-peint-sa-case', lettre: 'K', scenarios: ['couleurs'], editions: SEUL(PGC, '.gf-x.is-credit { font-size: 13px; }', '.gf-x.is-lancer { background: var(--bk-haut); }\n.gf-x.is-credit { font-size: 13px; }') },
   { nom: 'bouton-plein-au-plus-ancien', lettre: 'K', scenarios: ['couleurs'], editions: SEUL(PG, 'var bouton = enRetard.length ? enRetard[enRetard.length - 1] :', 'var bouton = enRetard.length ? enRetard[0] :') },
   { nom: 'legende-laser-fausse', lettre: 'K', scenarios: ['couleurs'], editions: SEUL(PGC, '.pb-leg--laser .gf-leg { background: var(--lp-c); }\n', '') },
   // La carte Bowling prend une couleur que sa legende ne suit pas. (Decrocher la legende du

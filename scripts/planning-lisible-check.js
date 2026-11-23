@@ -159,7 +159,8 @@ async function deuxParties(browser) {
       };
     })()`);
     const p = c && c.parties;
-    ok(Array.isArray(p) && p.length === 2 && /is-encours/.test(p[0].classe) && /is-(avenir|bientot)/.test(p[1].classe), '[C] le montage : la partie de 19:30 se joue, celle de 20:00 vient, dans la meme case', c);
+    // (depuis le 2026-11-23 l heure ne lance rien : la partie de 19:30, pas cochee, est « à lancer »)
+    ok(Array.isArray(p) && p.length === 2 && /is-lancer/.test(p[0].classe) && /is-(avenir|bientot)/.test(p[1].classe), '[C] le montage : la partie de 19:30 est a lancer, celle de 20:00 vient, dans la meme case', c);
     if (!Array.isArray(p) || p.length !== 2) return;
     const [jouee, vient] = p;
     ok(c.fondCase === c.fondVide && c.imageCase === 'none' && p.every((x) => transparent(x.fond) && x.image === 'none' && x.cadre === 'none'), '[C] la case reste nue : ni elle ni ses parties ne se peignent, seules les heures', c);
@@ -241,8 +242,8 @@ const MUTATIONS = [
   { nom: 'libelle-client-court', lettre: 'A', scenarios: ['notes'], editions: [{ fichier: PG, de: "gfRubrique('client', 'Note du client',", vers: "gfRubrique('client', 'Client'," }] },
   { nom: 'modifie-revient', lettre: 'B', scenarios: ['modifie'], editions: [{ fichier: PG, de: "    if (prix) liste.push(gfRubrique('prix', 'Prix', gpEsc(prix), prix));\n", vers: "    if (prix) liste.push(gfRubrique('prix', 'Prix', gpEsc(prix), prix));\n    var modif = typeof texteDerniereModif === 'function' ? texteDerniereModif(r, { max: 4 }) : '';\n    if (modif) liste.push(gfRubrique('modif', 'Modifié', gpEsc(modif.replace(/^Modifié\\s*/, '')), modif));\n" }] },
   { nom: 'case-peinte', lettre: 'C', scenarios: ['deuxParties'], editions: [{ fichier: PGC, de: '.gf-a.is-plusieurs .gf-x { height: auto; min-height: 0; padding-block: 2px; }', vers: '.gf-a.is-plusieurs .gf-x { height: auto; min-height: 0; padding-block: 2px; }\n.gf-t .gf-r > td.gf-a.is-plusieurs { background: var(--bk-haut); }' }] },
-  { nom: 'partie-en-bande', lettre: 'C', scenarios: ['deuxParties'], editions: [{ fichier: PGC, de: '.gf-x.is-credit { font-size: 13px; }', vers: '.gf-x.is-encours { background: var(--bk-haut); }\n.gf-x.is-credit { font-size: 13px; }' }] },
-  { nom: 'en-cours-comme-a-venir', lettre: 'C', scenarios: ['deuxParties'], editions: [{ fichier: PGC, de: '.gf-x.is-encours .gf-x__t { background: var(--bk-cadre); color: var(--bk-encre); }', vers: '.gf-x.is-encours .gf-x__t { color: var(--bk-encre); }' }] },
+  { nom: 'partie-en-bande', lettre: 'C', scenarios: ['deuxParties'], editions: [{ fichier: PGC, de: '.gf-x.is-credit { font-size: 13px; }', vers: '.gf-x.is-lancer { background: var(--bk-haut); }\n.gf-x.is-credit { font-size: 13px; }' }] },
+  { nom: 'a-lancer-comme-a-venir', lettre: 'C', scenarios: ['deuxParties'], editions: [{ fichier: PGC, de: '.gf-x.is-lancer .gf-x__t { background: var(--bk-cadre); color: var(--bk-encre); box-shadow: inset 0 0 0 1.5px var(--bk-barre); }', vers: '.gf-x.is-lancer .gf-x__t { color: var(--bk-encre); box-shadow: inset 0 0 0 1.5px var(--bk-barre); }' }] },
   { nom: 'barre-epaisse', lettre: 'D', scenarios: ['barre'], editions: [{ fichier: PGC, de: '.gf-t tr.gf-now > td { position: relative; height: 0;', vers: '.gf-t tr.gf-now > td { position: relative; height: 16px;' }] },
   { nom: 'barre-au-bord', lettre: 'E', scenarios: ['minute'], editions: [{ fichier: PG, de: '        dansLibre = !q && m.maintenant != null', vers: '        dansLibre = false && m.maintenant != null' }] },
   { nom: 'barre-figee', lettre: 'E', scenarios: ['minute'], editions: [{ fichier: PG, de: '      if (trait.style.top !== haut) trait.style.top = haut;\n', vers: '' }] },

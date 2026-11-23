@@ -473,7 +473,8 @@
       // parti, sa ligne se lit comme telle. Le compteur, lui, dit le chiffre de la liste,
       // qui le garde a suivre tant que son programme n est pas coche (l audit du
       // 2026-11-03 : 6 au-dessus, 7 dessous, pour un meme « Sur place »).
-      var parti = r.status === 'paid' && mo.etat === 'onsite' && maintenant != null && span.end <= maintenant;
+      // (la regle des plannings, groupeReparti : la carte bowling et le planning laser la lisent aussi)
+      var parti = mo.etat === 'onsite' && groupeReparti(r, mo, maintenant == null ? NaN : maintenant, span);
       return { r: r, id: String(r.id), etat: parti ? 'done' : mo.etat || 'upcoming', etatListe: mo.etat || 'upcoming', retard: Boolean(mo.late), rt: typeof retardDuGroupe === 'function' ? retardDuGroupe(r, mo) : null, nonPointe: !mo.late && groupeEnRetardAuPlanning(r, mo), teinte: gpTeinte(r), span: span, heure: gpHeureReservee(r, span), prog: getGroupeProgramme(r), cases: new Map(), infos: [], credits: [], table: null, boissons: null };
     });
     // L ORDRE DU PAPIER : l heure de la reservation, puis le nom.
@@ -490,7 +491,8 @@
       // (le sous-groupe d un grand groupe, lib/grand-groupe.js : la case dit lequel joue a cette heure)
       getBowlingWindowsFromReservation(r).forEach(function (w) {
         // (aVolonte : des pistes gardees toute la visite d un acces illimite, lib/a-volonte.js)
-        poser('bowling', { start: w.start, end: w.end, pistes: (w.lanes || []).filter(Number.isFinite), joueurs: Number(w.players) || Number(r.pax) || 0, aVolonte: Boolean(w.aVolonte), groupe: Number(w.sousGroupe) || 0 });
+        // (enPlus : un bowling en plus d une formule, lib/formule-en-plus.js ; sa case le dit, gfActivite)
+        poser('bowling', { start: w.start, end: w.end, pistes: (w.lanes || []).filter(Number.isFinite), joueurs: Number(w.players) || Number(r.pax) || 0, aVolonte: Boolean(w.aVolonte), groupe: Number(w.sousGroupe) || 0, enPlus: Boolean(w.enPlus) });
       });
       // Les vagues d une meme partie entrent ensemble : une seule heure.
       var parties = new Map();
@@ -500,13 +502,14 @@
         var deja = parties.get(k);
         // (chaque vague garde sa cle, celle que le glisser deplace : l heure qui se touche les emporte)
         if (deja) { deja.joueurs += j; deja.end = Math.max(deja.end, w.end); if (deja.groupe !== (Number(w.sousGroupe) || 0)) deja.groupe = 0; deja.unites.push(laserBlockUnitKey(w)); return; }
-        var e = { start: w.start, end: w.end, joueurs: j, aVolonte: Boolean(w.aVolonte), groupe: Number(w.sousGroupe) || 0, rang: Number(w.countIndex) || 1, unites: [laserBlockUnitKey(w)] };
+        var e = { start: w.start, end: w.end, joueurs: j, aVolonte: Boolean(w.aVolonte), groupe: Number(w.sousGroupe) || 0, rang: Number(w.countIndex) || 1, unites: [laserBlockUnitKey(w)], enPlus: Boolean(w.enPlus) };
         parties.set(k, e);
         poser('laser_game', e);
       });
       // (un depart garde a volonte n est pas une partie de plus : il ne se compte pas)
       // (les departs d un grand groupe sont des sous-groupes, pas des parties : la partie est celle du plan)
-      Array.from(parties.values()).filter(function (e) { return !e.aVolonte; }).sort(function (a, b) { return a.start - b.start; }).forEach(function (e, n, toutes) {
+      // (une partie en plus d une formule n est pas une partie de la formule : elle dit « en plus »)
+      Array.from(parties.values()).filter(function (e) { return !e.aVolonte && !e.enPlus; }).sort(function (a, b) { return a.start - b.start; }).forEach(function (e, n, toutes) {
         var enGroupes = toutes.some(function (x) { return x.groupe; });
         e.partie = enGroupes ? e.rang : n + 1;
         e.parties = enGroupes ? Math.max.apply(null, toutes.map(function (x) { return x.rang; })) : toutes.length;
@@ -541,6 +544,15 @@
       });
       // Le sur mesure : « Arcades 8 € par joueur » de Modifier ou de Réserver (une ligne du dossier, sans heure).
       gpArcadesSurMesure(r).forEach(function (cs) { g.credits.push(cs); poser('arcade_time', { credit: true, nom: cs.nom, credits: cs }); });
+      // LES PETITES ACTIVITES EN PLUS D UNE FORMULE (lib/formule-en-plus.js), a leur heure ou libres,
+      // telles que le programme de la fiche les lit : leur case dit « en plus ». (une case deja posee
+      // pour la meme activite a la meme heure le devient, elle ne se double pas)
+      g.prog.forEach(function (e) {
+        if (!e.enPlus || !e.activityId || e.activityId === 'bowling' || e.activityId === 'laser_game' || GP_SANS_COLONNE[e.activityId] || GP_SERVI[e.activityId]) return;
+        var deja = (g.cases.get(colonneDe(e.activityId).cle) || []).find(function (x) { return x.activityId === e.activityId && (e.start == null ? x.start == null : x.start != null && Math.abs(x.start - e.start) < 0.02); });
+        if (deja) { deja.enPlus = true; return; }
+        poser(e.activityId, e.start == null ? { start: null, end: null, libre: true, enPlus: true, nom: e.nom } : { start: e.start, end: Math.max(e.end, e.start + 0.25), enPlus: true });
+      });
       g.extras = gpExtras(r);
       g.formule = gpFormule(r);
       g.illimite = gfIllimite(r);
@@ -609,34 +621,38 @@
     var r = g.r;
     return r.status === 'arrived' || r.status === 'paid' || (typeof groupeAJoue === 'function' && groupeAJoue(r));
   }
-  // fini (l heure est passee, l activite est cochee, le groupe est parti),
-  // en cours, a lancer (le groupe est la, son heure arrive dans les 5 min),
-  // en retard (l heure est la, le groupe n est pas pointe), a venir. Une
-  // activite sans heure fixe n est jamais « en cours » : le groupe la joue a
-  // son rythme ; une partie de laser sans heure est « à placer ».
-  var GF_LANCER = 5 / 60;
+  // UNE ACTIVITE N EST FAITE QUE COCHEE (2026-11-23, le gerant : « j'ai l'impression que ça
+  // barre les activités tout seul quand on met un groupe arrivé et qu'il est l'heure de son
+  // activité mais non faut cocher tout le temps manuellement prcq sinon on sait pas voir si c
+  // lancé ou pas par les students si ça se fait automatiquement »). L heure ne coche ni ne lance
+  // plus rien : plus de « fini » ni d « en cours » tires de l horloge.
+  //   fini     cochee a la main (le suivi du programme de la fiche) : barree, avec sa coche ;
+  //   clos     le groupe est reparti, ou le jour est passe, sans coche : grise, ni trait ni coche ;
+  //   lancer   son heure est venue (5 min avant), le groupe est la, personne n a coche ;
+  //   acocher  son heure est passee, le groupe est encore la, personne n a coche ;
+  //   retard   l heure est la, le groupe n est pas pointe ; aplacer, avenir.
+  // Une activite sans heure fixe (libre, a volonte, a la journee) n attend rien a une minute : le
+  // groupe la joue a son rythme. La regle est celle des cartes bowling et du planning laser
+  // (cocheAttendue, app-main.js).
   function gfEtat(g, e, m) {
     if (e.aPlacer && !g.illimite) return 'aplacer';
+    if (e.fait) return 'fini';
     // (jamais pointe, visite finie ou jour passe : en retard tant que personne n a tranche)
-    if (g.nonPointe && !e.fait && !e.credit) return 'retard';
-    if (m.passe || g.parti || g.etat === 'closing' || e.fait) return 'fini';
+    if (g.nonPointe && !e.credit) return 'retard';
+    if (m.passe || g.parti) return 'clos';
     if (e.credit) return 'avenir';
     // (une formule illimitee se joue toute la visite, pas a l heure de sa premiere partie)
     var entiere = e.journee || g.illimite || e.illimite;
     var debut = entiere ? g.span.start : e.start;
-    var fin = entiere ? g.span.end : e.end;
     if (m.maintenant == null || debut == null) return 'avenir';
     var present = gfPresent(g);
-    // (un groupe en retard n a rien fini : ses heures passees restent en retard)
-    if (fin <= m.maintenant + 1e-6) return g.retard && !present ? 'retard' : 'fini';
-    if (debut <= m.maintenant + 1e-6) {
-      if (!present) return g.retard ? 'retard' : 'avenir';
-      return e.libre && !entiere ? 'avenir' : 'encours';
-    }
-    if (present && !e.libre && debut - m.maintenant <= GF_LANCER + 1e-6) return 'lancer';
-    return 'avenir';
+    // (un groupe en retard n a rien commence : ses heures venues restent en retard)
+    if (!present) return g.retard && debut <= m.maintenant + 1e-6 ? 'retard' : 'avenir';
+    if (entiere) return 'avenir';
+    var attendue = cocheAttendue({ start: debut, end: e.end, libre: e.libre }, { present: true, reparti: false, now: m.maintenant });
+    return attendue === 'noncoche' ? 'acocher' : attendue || 'avenir';
   }
-  var GF_ETATS = { fini: 'fini', encours: 'en cours', avenir: 'à venir', retard: 'groupe pas encore pointé', lancer: 'à lancer', aplacer: 'à placer' };
+  var GF_ETATS = { fini: 'fait', clos: 'pas coché', avenir: 'à venir', retard: 'groupe pas encore pointé', lancer: 'à lancer, pas encore coché', acocher: 'pas encore coché', aplacer: 'à placer' };
   // CE QUI VIENT DANS LA DEMI-HEURE SORT DU RESTE (2026-11-02). Toutes les heures
   // de la feuille etaient du meme gras : a 15:10, rien ne disait lesquelles
   // comptent. Une heure a venir dans les 30 min reste en gras, celles d apres
@@ -815,7 +831,8 @@
         // UNE PISTE FERMEE SE VOIT SUR LA LIGNE DU GROUPE (2026-11-02) : fermee au planning
         // bowling, le tableau ne changeait pas, et le groupe arrivait sur une piste en
         // panne. Un toucher mene a son bloc, pour le deplacer.
-        var fermees = (e.pistes || []).filter(function (p) { return state.laneStatuses && state.laneStatuses[p] === 'maintenance'; });
+        // (une partie passee, ou d un groupe reparti, n a plus de piste a servir : rien ne s y dit ferme)
+        var fermees = etat === 'clos' || etat === 'acocher' ? [] : (e.pistes || []).filter(function (p) { return state.laneStatuses && state.laneStatuses[p] === 'maintenance'; });
         if (fermees.length && etat !== 'fini') { d = gfPistesEnMots(fermees) + (fermees.length > 1 ? ' fermées' : ' fermée'); d2 = ''; panne = true; }
         else if (n && gfRendueA(r, fin)) { d = gfPistesEnMots(e.pistes) + (n > 1 ? ' libérées' : ' libérée'); d2 = ''; }
         bulle = 'Bowling de ' + gpHeure(debut) + ' à ' + gpHeure(fin) + (groupe ? ' · ' + groupe : '') + ' · ' + (n ? (n > 1 ? 'pistes ' : 'piste ') + gpPistes(e.pistes) : 'pistes à attribuer') + ' · ' + (Number(e.joueurs) || Number(r.pax) || 0) + ' joueurs';
@@ -844,8 +861,9 @@
         bulle = gpTitreActivite(e.activityId) + (e.libre ? ', sans heure fixe' : ' à ' + gpHeure(debut)) + (dureeDite > 0 ? ' · ' + gfDuree(dureeDite) : '') + (d ? ' · ' + d : '');
       }
     }
-    var classes = 'gf-x is-' + etat + (etat === 'fini' && gfVientDeFinir(g, e, col, m.jour) ? ' vient-de-finir' : '') + (e.libre && !e.journee ? ' is-libre' : '') + (e.credit ? ' is-credit' : '') + (gfBientot(g, e, etat, m) ? ' is-bientot' : '') + (panne ? ' is-panne' : '');
-    return '<span class="' + classes + '" title="' + gpEsc(bulle + ' · ' + GF_ETATS[etat]) + '"' + (panne ? ' data-gf-voir="bowling"' : '') + '>' + (montant ? '<b class="gf-x__t is-nu gf-x__montant">' + gpEsc(t) + '</b>' : gfHeureHtml(t, etat === 'fini' && gfPresent(g), etat, gfActDe(g, e, m, t, panne))) + (d ? '<span class="gf-x__d">' + gfNumerosEntiers(d) + '</span>' : '') + gfHorsHtml(d2, d3) + '</span>';
+    if (e.enPlus) bulle += ' · en plus de la formule';
+    var classes = 'gf-x is-' + etat + (etat === 'fini' && gfVientDeFinir(g, e, col, m.jour) ? ' vient-de-finir' : '') + (e.libre && !e.journee ? ' is-libre' : '') + (e.credit ? ' is-credit' : '') + (gfBientot(g, e, etat, m) ? ' is-bientot' : '') + (panne ? ' is-panne' : '') + (e.enPlus ? ' is-en-plus' : '');
+    return '<span class="' + classes + '" title="' + gpEsc(bulle + ' · ' + GF_ETATS[etat]) + '"' + (panne ? ' data-gf-voir="bowling"' : '') + '>' + (montant ? '<b class="gf-x__t is-nu gf-x__montant">' + gpEsc(t) + '</b>' : gfHeureHtml(t, etat === 'fini', etat, gfActDe(g, e, m, t, panne), e.enPlus)) + (d ? '<span class="gf-x__d">' + gfNumerosEntiers(d) + '</span>' : '') + gfHorsHtml(d2, d3) + '</span>';
   }
   // L HEURE SE TOUCHE (2026-11-22, gfOuvrirHeure plus bas) : une heure fixe, d une activite que ce role
   // deplace, se touche et se prend. Aucun element de plus : la pastille porte son geste. (une piste en
@@ -875,14 +893,25 @@
   // heures libre faut quils soient surligne et quand c fait dcp c plus surligne et quand c fait
   // montre plus visible avec une barre [...] super clean et pro »). « Libre » prend la pastille
   // des heures fixes ; une activite finie perd la sienne et son mot est barre d un trait (CSS).
-  function gfHeureHtml(t, fait, etat, act) {
+  // LA COCHE ATTENDUE SE VOIT (2026-11-23) : a lancer ou pas encore cochee, une case vide devant
+  // l heure, la ou la coche se posera ; cochee, la coche ; repartie sans coche, ni l une ni l autre.
+  // UNE ACTIVITE EN PLUS D UNE FORMULE SE DISTINGUE (2026-11-23, le gerant : « ça serait cool que ça
+  // distingue les activités de la formule et activité en plus qu'il a ») : un « + » en exposant sur
+  // sa pastille, sans largeur de plus ; les activites de la formule n en portent pas.
+  var GF_A_COCHER = '<svg class="gf-x__ac" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="4"/></svg>';
+  // (le « + » est dessine par la feuille de style : le texte de la pastille reste son heure)
+  var GF_PLUS = '<i class="gf-x__plus" aria-hidden="true"></i>';
+  function gfHeureHtml(t, fait, etat, act, enPlus) {
     var fixe = /^\d{1,2}:\d{2}$/.test(t);
-    var signe = t !== '' && (etat === 'retard' || etat === 'encours' || etat === 'lancer');
+    var attend = t !== '' && (etat === 'lancer' || etat === 'acocher');
+    var signe = t !== '' && (etat === 'retard' || attend);
     var libre = t === 'Libre';
-    var fini = etat === 'fini' && t !== '';
-    if (t === GF_ILLIMITE || t === GF_VOLONTE) return '<b class="gf-x__t is-illimite">' + (fait ? GF_FAIT : '') + gpEsc(t) + '</b>';
-    if (!fixe && !signe && !fait && !fini && !libre) return gpEsc(t);
-    return '<b class="gf-x__t' + (fixe || signe || libre && !fini ? '' : ' is-nu') + (libre ? ' is-libre' : '') + '"' + (fixe && act ? act : '') + '>' + (fait ? GF_FAIT : '') + gpEsc(t) + '</b>';
+    var fini = (etat === 'fini' || etat === 'clos') && t !== '';
+    var repere = fait ? GF_FAIT : attend ? GF_A_COCHER : '';
+    var plus = enPlus && t !== '' ? GF_PLUS : '';
+    if (t === GF_ILLIMITE || t === GF_VOLONTE) return '<b class="gf-x__t is-illimite">' + repere + gpEsc(t) + plus + '</b>';
+    if (!fixe && !signe && !repere && !fini && !libre && !plus) return gpEsc(t);
+    return '<b class="gf-x__t' + (fixe || signe || libre && !fini ? '' : ' is-nu') + (libre ? ' is-libre' : '') + '"' + (fixe && act ? act : '') + '>' + repere + gpEsc(t) + plus + '</b>';
   }
   // LE TRAIT SE DESSINE QUAND L ACTIVITE VIENT DE FINIR, une fois : jamais au premier rendu
   // d un jour, jamais au rendu suivant (la ligne inchangee n est pas redessinee).
@@ -967,7 +996,11 @@
   // leur etiquette pleine, en toutes lettres, au debut du texte : la seconde ligne repart
   // sous l etiquette, la note tient dans ses deux lignes. Les autres rubriques gardent
   // leur libelle gris dans sa colonne.
-  var GF_NOTES = { client: true, equipe: true };
+  // LE SUR MESURE AUSSI (2026-11-23, le gerant : « les sur mesure le texte là écrit sur planning
+  // complet on doit vrm bien le voir ça doit taper à l'œil et pareil pour note équipe et note client
+  // [...] mais ça doit pas prendre trop de place ») : son etiquette pleine, comme les notes ; les trois
+  // se lisent sur un fond leger de leur teinte, liseré a gauche, dans leurs deux lignes (CSS).
+  var GF_NOTES = { client: true, equipe: true, mesure: true };
   // `bulle` : ce que dit la bulle quand ce n est pas le texte seul (les notes de l equipe,
   // chacune suivie de qui l a ecrite et quand, gfBulleNotes).
   function gfRubrique(cle, mot, html, texte, allergie, bulle) {

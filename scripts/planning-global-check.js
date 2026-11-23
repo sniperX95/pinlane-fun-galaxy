@@ -132,7 +132,7 @@ function lireFeuille() {
     const nom = tr.querySelector('.gf-nom__t');
     const cases = {};
     tr.querySelectorAll('td.gf-a').forEach((td, i) => {
-      cases[cles[i]] = Array.from(td.querySelectorAll('.gf-x')).map((x) => ({ t: texteDe(x), d: (x.querySelector('.gf-x__d') || {}).textContent || '', etat: (x.className.match(/is-(fini|encours|avenir|retard|lancer|aplacer)\b/) || [])[1] || '', libre: x.classList.contains('is-libre') }));
+      cases[cles[i]] = Array.from(td.querySelectorAll('.gf-x')).map((x) => ({ t: texteDe(x), d: (x.querySelector('.gf-x__d') || {}).textContent || '', etat: (x.className.match(/is-(fini|clos|acocher|avenir|retard|lancer|aplacer)\b/) || [])[1] || '', libre: x.classList.contains('is-libre') }));
     });
     const h = tr.querySelector('td.gf-h');
     const etat = tr.querySelector('td.gf-etat');
@@ -315,15 +315,17 @@ function pistes(liste) {
 function retardCourt(n) { return `En retard · ${n < 60 ? `${n} min` : `${Math.floor(n / 60)} h ${p2(n % 60)}`}`; }
 function heureDe(g) { const d = minutesDe(g.startTime); return d == null ? g.span.start : d; }
 
-// L etat attendu d une activite a heure (la regle de la feuille, redite).
+// L etat attendu d une activite a heure (la regle de la feuille, redite). Depuis le 2026-11-23,
+// l heure ne coche rien : faite seulement cochee ; le groupe reparti sans coche, close ; son heure
+// venue (5 min avant), le groupe la, a lancer ; passee sans coche, pas encore cochee.
 function etatAttendu(g, w, colonne, maintenant) {
   if (g.faits.some((f) => colonneDe(f.id) === colonne && Math.abs(f.start - w.start) < 0.02)) return 'fini';
   // (jamais pointe, visite finie : en retard tant que personne n a tranche)
   if (g.etat === 'closing' && !g.present) return 'retard';
-  if (g.etat === 'done' || g.etat === 'absent' || g.etat === 'closing') return 'fini';
-  if (w.end <= maintenant + 1e-6) return g.late && !g.present ? 'retard' : 'fini';
-  if (w.start <= maintenant + 1e-6) return g.present ? 'encours' : g.late ? 'retard' : 'avenir';
-  if (g.present && w.start - maintenant <= 5 / 60 + 1e-6) return 'lancer';
+  if (g.etat === 'done' || g.etat === 'absent') return 'clos';
+  if (!g.present) return g.late && w.start <= maintenant + 1e-6 ? 'retard' : 'avenir';
+  if (w.end <= maintenant + 1e-6) return 'acocher';
+  if (w.start - maintenant <= 5 / 60 + 1e-6) return 'lancer';
   return 'avenir';
 }
 
@@ -492,7 +494,7 @@ async function structure(page, s, label) {
         verifier(colonneDe(it.id), w, (l.cases[colonneDe(it.id)] || []).find((x) => x.t === hhmm(it.start) && !x.libre));
       });
     }
-    ok(fautesEtat.length === 0, `[E1] ${label} : chaque activite a heure dit ou elle en est a ${hhmm(o.maintenant)} (finie, en cours, a lancer, en retard, a venir)`, fautesEtat.slice(0, 4));
+    ok(fautesEtat.length === 0, `[E1] ${label} : chaque activite a heure dit ou elle en est a ${hhmm(o.maintenant)} (faite si cochee, a lancer, pas encore cochee, close, en retard, a venir)`, fautesEtat.slice(0, 4));
     const fautesRetard = groupes.filter((l) => {
       const g = parId.get(l.id);
       // (depuis l heure ecrite sur la ligne, pas l accueil conseille : deux groupes de
@@ -909,7 +911,8 @@ const MUTATIONS = [
   { nom: 'heure-decalee', lettre: 'F3', scenarios: [PIC], editions: [{ fichier: PG, de: "      t = desLeDebut ? '' : e.libre && !gfSeuleActivite(g) ? 'Libre' : gpHeure(debut);", vers: "      t = desLeDebut ? '' : e.libre && !gfSeuleActivite(g) ? 'Libre' : gpHeure(debut + 0.5);" }] },
   { nom: 'nom-coupe', lettre: 'F4', scenarios: [S('pire', 'ordinateur')], editions: [{ fichier: PGC, de: '.gf-nom__t { min-width: 0; font-size: 15px;', vers: '.gf-nom__t { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; max-width: 160px; font-size: 15px;' }] },
   { nom: 'personnes-plus-une', lettre: 'F5', scenarios: [PIC], editions: [{ fichier: PG, de: "'\"><b>' + pax + '</b>'", vers: "'\"><b>' + (pax + 1) + '</b>'" }] },
-  { nom: 'fini-une-heure-trop-tard', lettre: 'E1', scenarios: [PIC], editions: [{ fichier: PG, de: "    if (fin <= m.maintenant + 1e-6) return g.retard && !present ? 'retard' : 'fini';", vers: "    if (fin <= m.maintenant - 1) return g.retard && !present ? 'retard' : 'fini';" }] },
+  // (depuis le 2026-11-23, la coche attendue une heure trop tard : cocheAttendue, app-main.js)
+  { nom: 'non-coche-une-heure-trop-tard', lettre: 'E1', scenarios: [PIC], editions: [{ fichier: 'assets/app-main.js', de: "  if (now >= fin - 1e-6) return 'noncoche';", vers: "  if (now >= fin + 1) return 'noncoche';" }] },
   { nom: 'retard-muet', lettre: 'E2', scenarios: [PIC], editions: [{ fichier: PG, de: "(g.retard ? ' is-retard' : '')", vers: "''" }] },
   { nom: 'jamais-arrive', lettre: 'E3', scenarios: [PIC], editions: [{ fichier: PG, de: "    if (!m.aujourdHui || g.etat !== 'upcoming'", vers: "    if (true || g.etat !== 'upcoming'" }] },
   { nom: 'argent-muet', lettre: 'E3', scenarios: [PIC], editions: [{ fichier: PG, de: "    if (r.status === 'paid' || r.status === 'cancelled') return '';", vers: "    return '';" }] },

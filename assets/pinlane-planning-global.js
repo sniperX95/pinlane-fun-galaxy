@@ -2814,6 +2814,10 @@
     var p = gfPop;
     var a = p && gfAncreDuPop(p);
     if (!p || (a && Math.abs(a.getBoundingClientRect().top - p.haut) < 8)) return;
+    // (le champ d heure en main : sur iPhone, le clavier et le zoom font defiler la page ; la pop-up se
+    // repose contre sa pastille au lieu de se fermer sous les doigts, comme gfPopFermerSansFocus)
+    var actif = document.activeElement;
+    if (actif && p.el.contains(actif) && actif.matches && actif.matches("[data-gf-hp-champ]")) { gfPoserPop(true); return; }
     gfFermerHeure(false);
   }
   function gfClicDansPop(ev) {

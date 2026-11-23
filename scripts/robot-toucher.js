@@ -18,7 +18,13 @@ fs.mkdirSync(OUT, { recursive: true });
 const CENTRES = (process.env.ROBOT_CENTRES || 'gembloux,libramont').split(',');
 const LARGEUR = Number(process.env.ROBOT_W || 390);
 const SEULS = process.env.ROBOT_ECRANS ? process.env.ROBOT_ECRANS.split(',') : null;
-const DATE = '2026-11-21';
+// Un samedi au moins deux semaines plus tard (2026-11-23) : la date ecrite en dur (2026-11-21) etait passee,
+// la reservation s ouvrait sur un jour ferme au public et chaque clic expirait, sur les 24 ecrans des deux centres.
+const DATE = process.env.ROBOT_DATE || (() => {
+  const d = new Date();
+  d.setDate(d.getDate() + 14 + ((6 - ((d.getDay() + 14) % 7) + 7) % 7));
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+})();
 // Ce qui se lit et ne se touche pas, regarde ecran par ecran le 2026-11-05 : l enseigne du centre, un conseil, le texte a cote d un bouton.
 const SE_LIT = /^(span\.fg-centre|p\.fg-conseil|div\.fg-rise\.fg-sm-door|div\.fg-bar\.fg-dock\.fg-rise|div\.fg-hold|div\.fg-plus|p\.fg-done__row|div\.fg-rise\.fg-tabs)/;
 const dormir = (ms) => new Promise((r) => setTimeout(r, ms));

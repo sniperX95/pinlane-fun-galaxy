@@ -55,10 +55,12 @@
 //        l heure du champ, « Déplacer » l enregistre (un PATCH activityMove), Entree aussi ; les heures
 //        libres restent en raccourcis ; « Annuler » remet ;
 //   [M2] une minute qui ne tient pas le dit (l activite, l heure, la raison du serveur) et rien ne
-//        part ; une minute deja passee se dit sans demander au serveur ;
-//   [T1] « Tout le groupe » (Ansar : « si on veut tout avancer de 30 minutes, on peut pas ») : seul, le
-//        bowling de Sacha ne va pas a 16:00 (ses arcades y sont) ; tout le groupe, si (+30 min) ; 16:30
-//        non ; une requete, le calcul a blanc du groupe ;
+//        part ; une minute deja passee, ou d avant l arrivee du groupe, se dit sans demander au serveur ;
+//   [T1] « Tout le groupe » (Ansar : « si on veut tout avancer de 30 minutes, on peut pas ») : seule, la
+//        1re partie de Manon ne va pas a 16:00 (sa 2e y joue) ; tout le groupe, si (+30 min). Sacha : seul,
+//        son bowling ne va ni a 17:00 ni a 17:30 (son laser) ; tout le groupe va a 16:00 (+30 min), pas a
+//        16:30 ; une requete, le calcul a blanc du groupe. (Ses arcades ne retiennent pas son bowling seul :
+//        le controle de Modifier, du glisser et de la pop-up ne les compte pas, seul Reserver le fait, 3db74d9.)
 //   [T2] un toucher decale tout le groupe d un PATCH (toutLeGroupe), en base ; « Annuler » remet tout ;
 //   [T3] a la minute, ce qui coince se dit : l activite et l heure qui coincent, meme quand ce n est pas
 //        celle qu on a touchee ; ce qui passe dit chaque activite a sa nouvelle heure ;
@@ -761,8 +763,9 @@ async function scenarioVagues(browser) {
     // [W2] Sans la console : le 1er groupe a 18:00, le 2e a 19:30, ou le basket joue a 12.
     const depart = brut(ETHAN);
     const refus = await serveur.appeler('PATCH', '/api/staff-reservations', { id: ETHAN, centerId: 'libramont', baseUpdatedAt: enBase(ETHAN).version, activityMoves: [{ activityId: 'laser_game', unitKey: '1.1', startTime: '18:00' }, { activityId: 'laser_game', unitKey: '1.2', startTime: '19:30' }] });
-    ok(refus.statut === 409 && refus.json && refus.json.rang === 1 && refus.json.message === 'Laser Game complet de 19:30 à 19:55 : 34 joueurs pour 30 armes.' && brut(ETHAN) === depart,
-      '[W2] le 2e groupe coince (19:30, 34 joueurs pour 30 armes) : le serveur refuse les deux, dit lequel (rang 1), rien n est ecrit', { statut: refus.statut, json: refus.json, apres: enBase(ETHAN) });
+    // (la phrase du comptoir depuis 1672d14 : les armes qui restent, celles qu il faut, la prochaine partie libre)
+    ok(refus.statut === 409 && refus.json && refus.json.rang === 1 && refus.json.message === 'Plus assez d’armes pour le laser à 19:30 : il en reste 18 sur 30, il en faut 22. La prochaine partie libre est à 20:30.' && brut(ETHAN) === depart,
+      '[W2] le 2e groupe coince (19:30 : 18 armes restent, il en faut 22) : le serveur refuse les deux, dit lequel (rang 1), rien n est ecrit', { statut: refus.statut, json: refus.json, apres: enBase(ETHAN) });
 
     // [W1] La pop-up : 18:00 touche, un seul PATCH, les deux groupes ensemble ; « Annuler » les remet ensemble.
     const a = await ouvrir('18:00');
@@ -793,7 +796,7 @@ async function scenarioVagues(browser) {
     const avis = await page.evaluate(lireAvis);
     const puce = await page.evaluate((s) => ((document.querySelector(s) || {}).textContent || '').trim(), sel);
     ok(b.offerte && patchs.length === n + 1 && dits(patchs[n]) === '1.1>18:00 1.2>18:00' && brut(ETHAN) === avant && puce === '16:00'
-      && /Pas déplacé/.test(avis) && avis.includes('Laser, 1re partie, groupe 2 sur 2 à 18:00 : Laser Game complet de 18:00 à 18:25 : 32 joueurs pour 30 armes.') && avis.includes('Aucun groupe n’a bougé.'),
+      && /Pas déplacé/.test(avis) && avis.includes('Laser, 1re partie, groupe 2 sur 2 à 18:00 : Plus assez d’armes pour le laser à 18:00 : il en reste 20 sur 30, il en faut 22. La prochaine partie libre est à 18:30.') && avis.includes('Aucun groupe n’a bougé.'),
       '[W3] l arene remplie entre la pop-up et le toucher : le 2e groupe coince, aucun ne bouge, l avis dit lequel', { avis, puce, envoye: dits(patchs[n]), apres: enBase(ETHAN) });
     ok(erreurs.length === 0, '[J1] aucune erreur JS (les deux groupes)', erreurs);
   } finally {
@@ -930,31 +933,56 @@ async function scenarioMinute(browser) {
     await page.keyboard.press('Escape');
     await page.waitForTimeout(400);
 
-    // [M2] Noel a 16:02 : le bowling est complet.
+    // [M2] Noel (bowling 16:30, arrive a 16:30). A 16:02, avant son arrivee : la pop-up le dit sans demander au
+    // serveur. A 23:02, c est le serveur qui refuse (le bowling finirait apres minuit) : la ligne dit sa raison.
     const departNoel = brut(NOEL);
     const np = patchs.length;
     await ouvrirHeure(page, NOEL, 'bowling');
+    const n2 = blancs.length;
     await page.fill('#gfHeurePop [data-gf-hp-champ]', '16:02');
-    const refus = await verdictLu(page, '16:02');
+    const avantArrivee = await verdictLu(page, '16:02');
+    ok(avantArrivee && avantArrivee.verdict === 'Bowling ne tient pas à 16:02 : avant l’arrivée du groupe, à 16:30.' && avantArrivee.ton === 'bloque' && avantArrivee.desactive === true && blancs.length === n2,
+      '[M2] Noel a 16:02 : « Bowling ne tient pas à 16:02 : avant l’arrivée du groupe, à 16:30. », sans demander au serveur', { avantArrivee, blancs: blancs.length - n2 });
+    await page.fill('#gfHeurePop [data-gf-hp-champ]', '23:02');
+    const refus = await verdictLu(page, '23:02');
     await capture(page, 'pop-minute-refus');
     await page.keyboard.press('Enter');
     await page.waitForTimeout(600);
-    ok(refus && /^Bowling ne tient pas à 16:02 : \S/.test(refus.verdict) && refus.ton === 'bloque' && refus.desactive === true && patchs.length === np && brut(NOEL) === departNoel,
-      '[M2] Noel a 16:02 : « Bowling ne tient pas à 16:02 : » puis la raison du serveur ; le bouton reste eteint, Entree n enregistre rien', { refus, patchs: patchs.length - np });
+    ok(refus && /^Bowling ne tient pas à 23:02 : Hors des horaires d’ouverture : l’activité finirait à 00:02, le centre ferme à minuit/.test(refus.verdict) && refus.ton === 'bloque' && refus.desactive === true
+      && blancs.length === n2 + 1 && patchs.length === np && brut(NOEL) === departNoel,
+      '[M2] Noel a 23:02 : le serveur la refuse (un calcul a blanc), la ligne dit l activite, l heure et sa raison ; le bouton reste eteint, Entree n enregistre rien', { refus, blancs: blancs.length - n2, patchs: patchs.length - np });
     ok(erreurs.length === 0, '[J1] aucune erreur JS (l heure a la minute)', erreurs);
   } finally {
     await ctx.close();
   }
 }
 
-// Sacha : bowling 15:30 (pistes 1 et 2), arcades 16:35, laser 17:30.
+// Manon (laser 15:30, 2e partie 16:00), puis Sacha : bowling 15:30 (pistes 1 et 2), arcades 16:35, laser 17:30.
 async function scenarioGroupe(browser) {
   const { ctx, page, erreurs, patchs, blancs } = await monter(browser);
   try {
+    // [T1] La demande d Ansar, sur Manon : seule, sa 1re partie ne va pas a 16:00, sa 2e y joue ; tout le
+    // groupe, si (les deux parties bougent ensemble). Le serveur le dit aussi (decaler-groupe-check.js [B]).
+    await ouvrirHeure(page, MANON, 'laser_game:1.1');
+    const manonSeule = await page.evaluate(lireMinute);
+    // (sans « Tout le groupe », rien a toucher : c est l assertion qui le dit, pas une attente qui casse)
+    const boutonGroupe = await page.$('#gfHeurePop [data-gf-hp-mode="groupe"]');
+    if (boutonGroupe) {
+      await boutonGroupe.click();
+      await page.waitForFunction(() => { const z = document.querySelector('#gfHeurePop [data-gf-hp-heures]'); return Boolean(z) && z.getAttribute('data-gf-hp-pour') === 'groupe'; }, null, { timeout: 10000 }).catch(() => null);
+    }
+    const manonGroupe = await page.evaluate(lireMinute);
+    ok(manonSeule && manonSeule.mode === 'seul' && manonSeule.pour === 'seul' && manonSeule.heures.length > 0 && !manonSeule.heures.includes('16:00')
+      && manonGroupe && manonGroupe.mode === 'groupe' && manonGroupe.raccourcis.some((x) => x.heure === '16:00' && x.ecart === '+30 min'),
+      '[T1] Manon (laser 15:30, 2e partie 16:00) : seule, sa 1re partie ne va pas a 16:00 (sa 2e y joue) ; « Tout le groupe » propose 16:00 (+30 min)',
+      { seule: manonSeule && manonSeule.heures, groupe: manonGroupe && manonGroupe.raccourcis });
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(400);
+
     await ouvrirHeure(page, SACHA, 'bowling');
     const seul = await page.evaluate(lireMinute);
-    ok(seul && seul.mode === 'seul' && seul.pour === 'seul' && /Cette activité/.test(seul.texte) && /Tout le groupe/.test(seul.texte) && !seul.heures.includes('16:00'),
-      '[T1] Sacha (bowling, arcades, laser) : « Cette activité » ou « Tout le groupe » ; seul, son bowling ne va pas a 16:00 (ses arcades y sont)', seul);
+    ok(seul && seul.mode === 'seul' && seul.pour === 'seul' && /Cette activité/.test(seul.texte) && /Tout le groupe/.test(seul.texte) && seul.heures.length > 0 && !seul.heures.includes('17:00') && !seul.heures.includes('17:30'),
+      '[T1] Sacha (bowling, arcades, laser) : « Cette activité » ou « Tout le groupe » ; seul, son bowling ne va ni a 17:00 ni a 17:30 (son laser de 17:30 y est)', seul);
     const n0 = blancs.length;
     await page.click('#gfHeurePop [data-gf-hp-mode="groupe"]');
     await page.waitForFunction(() => { const z = document.querySelector('#gfHeurePop [data-gf-hp-heures]'); return Boolean(z) && z.getAttribute('data-gf-hp-pour') === 'groupe'; }, null, { timeout: 10000 }).catch(() => null);
@@ -1103,7 +1131,7 @@ const MUTATIONS = [
   { nom: 'groupe-avis-muet', lettre: 'T4', scenarios: ['groupe'], editions: [{ fichier: MODULE, de: "    var texte = (lu.cle ? gfNeTientPas(gfNomDeCle(r, lu.cle), gfActiviteDeCle(lu.cle), String(lu.heure || ''), gfPhraseErreur(erreur)) : gfPhraseErreur(erreur)).replace(/\\s*$/, '');", vers: '    var texte = gfPhraseErreur(erreur);' }] },
   // (Entree ne fait que juger : l heure qui passe ne s enregistre plus au clavier)
   { nom: 'minute-entree-morte', lettre: 'M1', scenarios: ['minute'], editions: [{ fichier: MODULE, de: '    if (p.juge && p.juge.passe === true && p.juge.minute === m && p.juge.mode === p.mode) { gfValiderPop(); return; }\n', vers: '' }] },
-  // (« Tout le groupe » juge comme « Cette activité » : ses propres arcades rebloquent 16:00, la demande d Ansar)
+  // (« Tout le groupe » juge comme « Cette activité » : la 2e partie de Manon rebloque son 16:00, la demande d Ansar)
   { nom: 'groupe-juge-comme-seul', lettre: 'T1', scenarios: ['groupe'], editions: [{ fichier: MODULE, de: "    if (p.mode === 'groupe') { gfRemplirGroupe(r); return; }\n", vers: '' }] },
   // (un toucher sur une heure du groupe ne part pas)
   { nom: 'groupe-toucher-mort', lettre: 'T2', scenarios: ['groupe'], editions: [{ fichier: MODULE, de: '      if (r && ve && ve.passe) gfEnregistrerGroupe(r, point, offset, e);\n', vers: '' }] },

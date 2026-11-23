@@ -43392,6 +43392,9 @@ async function rvChercherClientConnu() {
     if (!quickBookState || seq !== rvClientSeq) return;
     quickBookState.clientConnu = { cle: chiffres, etat: 'ok', resultat: payload && payload.client ? payload.client : null };
     const r = quickBookState.clientConnu.resultat;
+    // L adresse deja connue de ce client dans ce centre se pose dans le champ « Par mail », sans ecraser ce qui est tape (2026-11-23).
+    const connue = r ? rvEmailNettoye(r.email) : '';
+    if (connue && rvEmailValide(connue) && !String(quickBookState.email || '').trim()) quickBookState.email = connue;
     if (r && r.nom && !String(quickBookState.name || '').trim()) {
       quickBookState.name = r.nom;
       quickBookState.nomReconnu = r.nom;

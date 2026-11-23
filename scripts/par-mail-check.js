@@ -90,6 +90,7 @@ const MUTATIONS = [
   { nom: 'serveur-exige-le-telephone', lettre: 'S', cible: '[S] Par mail, sans numero ni adresse', serveur: true, fichier: API, de: "  if (corps && corps.contact === 'mail') {", vers: '  if (false) {' },
   { nom: 'serveur-adresse-fausse-a-la-creation', lettre: 'S', cible: '[S] une adresse fausse se refuse a la creation', serveur: true, fichier: API, de: '    if (propre && !M.emailValide(propre)) throw createHttpError(M.MESSAGE_EMAIL_INVALIDE, 422);\n    corps.email = propre;', vers: '    corps.email = propre;' },
   { nom: 'serveur-adresse-fausse-au-patch', lettre: 'S', cible: '[S] Modifier : une adresse fausse se refuse', serveur: true, fichier: API, de: '    if (propre && !M.emailValide(propre)) throw createHttpError(M.MESSAGE_EMAIL_INVALIDE, 422);\n    patch.email = propre;', vers: '    patch.email = propre;' },
+  { nom: 'historique-sans-adresse', lettre: 'S', cible: '[S] un client deja venu : la reponse porte son adresse', serveur: true, fichier: 'lib/database.js', de: "    email: String(row.email || '').trim(),", vers: "    email: ''," },
   { nom: 'serveur-adresse-brute', lettre: 'S', cible: '[S] Par mail, l adresse tapee se range nettoyee', serveur: true, fichier: API, de: '    corps.email = propre;\n', vers: '' },
   { nom: 'regle-sans-domaine', lettre: 'J', cible: '[J] la page et le serveur jugent pareil', serveur: true, fichier: LIB, de: '  if (morceaux.length < 2 || !morceaux.every(', vers: '  if (!morceaux.every(' },
   { nom: 'page-nettoie-autrement', lettre: 'J', cible: '[J] la page et le serveur nettoient pareil', fichier: APP, de: "  t = t.replace(/^mailto:/i, '').replace(/[.,;:]+$/, '');", vers: "  t = t.replace(/[.,;:]+$/, '');" },
@@ -101,6 +102,7 @@ const MUTATIONS = [
   { nom: 'contact-oublie-a-l-envoi', lettre: 'R', cible: '[R] Par mail, adresse vide : Créer cree le dossier', fichier: APP, de: "    ...(!simulation && rvParMail(s) ? { contact: 'mail' } : {}),\n", vers: '' },
   { nom: 'tab-vole-par-un-bouton', lettre: 'R', cible: '[R] Tab va du telephone au nom', fichier: APP, de: "onblur=\"rsTelFini(this)\">${reconnu ? '<span class=\"rv-tag\">reconnu</span>' : ''}</span></label>`;", vers: "onblur=\"rsTelFini(this)\">${reconnu ? '<span class=\"rv-tag\">reconnu</span>' : ''}<button type=\"button\" class=\"rs-tk-bascule\">Par mail</button></span></label>`;" },
   { nom: 'retour-perd-le-numero', lettre: 'R', cible: '[R] « Par téléphone » rend le champ du numero', fichier: APP, de: "  s.contact = rvParMail(s) ? 'tel' : 'mail';\n  s.telDemande = false;", vers: "  s.contact = rvParMail(s) ? 'tel' : 'mail';\n  s.phone = '+32 ';\n  s.telDemande = false;" },
+  { nom: 'reserver-ignore-l-adresse-connue', lettre: 'R', cible: '[R] un client deja venu dans ce centre', fichier: APP, de: "    if (connue && rvEmailValide(connue) && !String(quickBookState.email || '').trim()) quickBookState.email = connue;", vers: '' },
   { nom: 'reserver-ignore-l-adresse-du-client', lettre: 'R', cible: '[R] un client qui a deja une adresse', fichier: APP, de: '    contact: rvContactInitial(prefill.phone, prefill.email),', vers: "    contact: 'tel'," },
   { nom: 'page-laisse-partir-sans-domaine', lettre: 'E', cible: '[E] une adresse fausse ne part pas', fichier: APP, de: '  if (morceaux.length < 2 || !morceaux.every(', vers: '  if (!morceaux.every(' },
   { nom: 'champ-pas-nettoye', lettre: 'E', cible: '[E] l adresse se nettoie quand le champ rend la main', fichier: APP, de: '  s.email = rvEmailNettoye(champ.value);', vers: '  s.email = champ.value;' },
@@ -420,6 +422,17 @@ async function scenarioS() {
   const numeroCourt = await creer('Mail Court', '18:00', { contact: 'mail', phone: '0470', email: '' });
   ok(numeroCourt.statut === 422 && /8 chiffres/.test(numeroCourt.message), '[S] Par mail, un numero envoye quand meme doit tenir', dire(numeroCourt));
 
+  // L adresse deja connue : la fenetre Reserver demande le client a son numero (GET ?client=), la reponse porte
+  // l adresse la plus recente de CE centre, jamais celle d un autre centre qui a le meme numero.
+  const habitue = await creer('Habitue Mail', '17:30', { phone: '0470 55 66 77', email: 'Habitue@Exemple.BE' });
+  B.base.reservations.set(9001, B.ligne(9001, { center_id: 'autre-centre', phone: '0470 55 66 77', email: 'intrus@autre-centre.be', name: 'Habitue Mail', date: JOUR, status: 'pending', start_time: '18:30' }));
+  const connu = await serveur.appeler('GET', `${URL_RESA}?client=0470556677&centerId=libramont`);
+  ok(habitue.statut === 201 && connu.statut === 200 && Boolean(connu.json.client) && connu.json.client.email === 'habitue@exemple.be',
+    '[S] un client deja venu : la reponse porte son adresse, celle de ce centre, nettoyee', { statut: connu.statut, client: connu.json.client && connu.json.client.email });
+  const inconnu = await serveur.appeler('GET', `${URL_RESA}?client=0470889900&centerId=libramont`);
+  ok(inconnu.statut === 200 && !inconnu.json.client, '[S] un numero inconnu de ce centre ne rend aucune adresse', { statut: inconnu.statut, client: inconnu.json.client });
+  B.base.reservations.delete(9001);
+
   // Le lot : chaque dossier juge seul, l echec dit son rang.
   const lot = await serveur.appeler('POST', URL_RESA, { centerId: 'libramont', dossiers: [
     corpsDuckpin('Lot Bon', '19:00', { contact: 'mail', phone: '', email: 'Marie.Lot@Exemple.BE' }),
@@ -614,7 +627,7 @@ async function scenarioJ() {
 // ---------------------------------------------------------------------------
 async function scenarioR(browser) {
   console.log('\n[R] Reserver : le bouton « Par mail » a cote du telephone');
-  const m = await ouvrirConsole(browser, ['sansNumero']);
+  const m = await ouvrirConsole(browser, ['sansNumero', 'adresse']);
   const { page, journal } = m;
   try {
     await ouvrirReserver(page);
@@ -667,6 +680,18 @@ async function scenarioR(browser) {
     const retour = await lireContact(page);
     ok(Boolean(retour.tel) && String(retour.tel.valeur).replace(/\D/g, '').endsWith('470998877') && Boolean(retour.bouton) && retour.bouton.texte === 'Par mail' && retour.focus === 'qbPhone',
       '[R] « Par téléphone » rend le champ du numero, le numero tape garde, le focus dedans', { tel: retour.tel, bouton: retour.bouton && retour.bouton.texte, focus: retour.focus });
+    // Un numero deja venu dans CE centre : « Par mail » montre son adresse, sans qu on la retape.
+    await page.fill('#qbPhone', DOSSIERS.adresse.champs.phone);
+    await page.keyboard.press('Tab');
+    await page.waitForFunction(() => quickBookState && quickBookState.clientConnu && quickBookState.clientConnu.etat === 'ok' && /470123456$/.test(quickBookState.clientConnu.cle), null, { timeout: 8000 }).catch(() => null);
+    await page.click('#rsContactBascule');
+    await page.mouse.move(2, 2);
+    await page.waitForTimeout(300);
+    const connu = await lireContact(page); connu.cc = await page.evaluate(() => JSON.stringify(quickBookState.clientConnu));
+    ok(Boolean(connu.mail) && connu.mail.valeur === DOSSIERS.adresse.champs.email, '[R] un client deja venu dans ce centre : « Par mail » montre son adresse, deja dans le champ', { mail: connu.mail, etat: connu.etat, cc: connu.cc });
+    await photo(page, 'reserver-adresse-connue', '#quickBookOverlay .rs-tk');
+    await page.click('#rsContactBascule');
+    await page.waitForTimeout(300);
     // Au telephone, un champ vide ne part pas : il mene au bouton.
     const avantVide = new Set(B.base.reservations.keys());
     await page.fill('#qbPhone', '');

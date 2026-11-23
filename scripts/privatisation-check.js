@@ -326,7 +326,9 @@ const MUTATIONS = [
   ] },
   { nom: 'ecrit-sans-voir', rouge: '[A] sans les avoir vues, rien ne s ecrit (409, le nom du dossier dit)', editions: [{ fichier: 'lib/privatisation.js', de: '  const nonVues = (liste) => liste.filter((r) => !r.duGroupe && !p.reservationsVues.includes(r.id));', vers: '  const nonVues = () => [];' }] },
   { nom: 'nom-en-ligne', rouge: '[B] le client en ligne ne lit jamais le nom du groupe prive', editions: [{ fichier: 'lib/availability-blocks.js', de: "  if (canal === 'public') {", vers: '  if (false) {' }] },
-  { nom: 'groupe-bloque-par-sa-privatisation', rouge: '[J] la reservation du groupe se deplace dans sa privatisation', editions: [{ fichier: DB, de: '  const blocks = sansLaPrivatisationDuGroupe(listeDesBlocages, { reservationId: payload.id });', vers: '  const blocks = listeDesBlocages;' }] },
+  // (le glisser, validateActivityMoveResources : son commentaire tient l ancre unique, la meme ligne vit
+  // aussi dans placesDuDeplacement depuis d6f6eb9, et une ancre double desarmait cette contre-preuve)
+  { nom: 'groupe-bloque-par-sa-privatisation', rouge: '[J] la reservation du groupe se deplace dans sa privatisation', editions: [{ fichier: DB, de: '  // blocages sont retires, les autres restent opposables.\n  const blocks = sansLaPrivatisationDuGroupe(listeDesBlocages, { reservationId: payload.id });', vers: '  // blocages sont retires, les autres restent opposables.\n  const blocks = listeDesBlocages;' }] },
   // Deux gardes tiennent ce cas (le groupe encore libre, et le blocage encore sans reservation) : les deux partent.
   { nom: 'deuxieme-dossier-rattache', rouge: '[J] un deuxieme dossier ne se glisse pas dans une privatisation deja rattachee', editions: [
     { fichier: 'lib/privatisation.js', de: '  return privatisationsDuJour(blocsDuJour, date).find((groupe) => groupe.ids.includes(voulu) && !groupe.reservationId) || null;', vers: '  return privatisationsDuJour(blocsDuJour, date).find((groupe) => groupe.ids.includes(voulu)) || null;' },

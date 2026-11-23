@@ -81,6 +81,11 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
+// (comme grands-groupes-check : la creation d un grand groupe, [T5], passe par le vrai moteur, sans reseau ni vraie base)
+delete process.env.RESEND_API_KEY;
+delete process.env.POSTGRES_URL;
+process.env.DATABASE_URL = 'postgres://gate:gate@127.0.0.1:1/gate';
+process.env.PINLANE_CALENDAR_SYNC = 'off';
 // La base en memoire et le faux 'pg' s installent au require, avant tout module de lib/.
 const B = require('./reserver-banc.js');
 const { chromium } = require('playwright-core');
@@ -166,11 +171,14 @@ function enBase(id) {
 // les modules de lib/ : l horloge se regle apres lui.
 function reglerHorloge(jour = JOUR) { require(path.join(ROOT, RETARD)).__horloge.instant = () => new Date(`${jour}T14:10:00Z`); }
 
-async function monter(browser, { appareil = 'ordinateur', mouvementReduit = false, fixture = 'pic', variante = [] } = {}) {
+async function monter(browser, { appareil = 'ordinateur', mouvementReduit = false, fixture = 'pic', variante = [], horlogeServeur = false } = {}) {
   // (une autre journee ou une variante : la meme sur le serveur et dans la page, FX.varier)
   const journee = fixture === 'pic' && !variante.length ? FIXTURE.staffState : FX.varier(FX.lireFixture(fixture), FX.lireCentre(), variante).fixture.staffState;
   B.semer(journee.reservations.map(ligneDepuis));
-  const serveur = B.monter({ mutations: mutation ? mutation.editions.filter((ed) => ed.serveur) : [], session: B.sessionDuRole('manager', { nom: 'Rachel' }) });
+  // (horlogeServeur : le jour du serveur est celui de la fixture, a 15:10, comme grands-groupes-check : la creation d un grand groupe n est planifiee que dans l horizon du jour)
+  if (horlogeServeur) globalThis.__comptoirMaintenant = FX.instant(journee.date, '15:10').getTime();
+  const horloge = horlogeServeur ? [{ fichier: 'lib/booking-config.js', de: 'function getBusinessNowParts(date = new Date()) {', vers: 'function getBusinessNowParts(date = new Date(globalThis.__comptoirMaintenant || Date.now())) {' }] : [];
+  const serveur = B.monter({ mutations: [...horloge, ...(mutation ? mutation.editions.filter((ed) => ed.serveur) : [])], session: B.sessionDuRole('manager', { nom: 'Rachel' }) });
   reglerHorloge(journee.date);
   const patchs = [];
   const blancs = [];
@@ -1054,6 +1062,55 @@ async function scenarioGroupe(browser) {
 }
 
 // ---------------------------------------------------------------------------
+// [T5] « Tout le groupe » sur un GRAND GROUPE dont les heures ont ete posees au comptoir (2026-11-23).
+// 60 joueurs en 4 groupes, chacun a son heure (groupes 1 et 2 : laser 15:30 puis bowling 16:30 ; groupes 3 et 4 :
+// bowling 15:30 puis laser 16:30). Le serveur decale tout le groupe de +30 min : ou chaque groupe, chaque activite,
+// passe du MEME ecart (et rien d autre ne bouge), ou il refuse avec une phrase et n ecrit rien. Jamais la moitie.
+// ---------------------------------------------------------------------------
+const heuresDesBlocs = (id) => {
+  const row = B.base.reservations.get(Number(id));
+  const plan = typeof row.ops_plan === 'string' ? JSON.parse(row.ops_plan) : (row.ops_plan || {});
+  return (plan.resourceBlocks || []).filter((b) => b && (b.resourceType === 'laser_arena' || b.resourceType === 'bowling_lane'))
+    .map((b) => `${b.resourceType === 'laser_arena' ? 'L' : 'B'}${Number(b.sousGroupe) || 0}@${b.startTime}`).sort();
+};
+async function scenarioGrandGroupe(browser) {
+  const { ctx, page, erreurs, serveur } = await monter(browser, { fixture: 'vide', horlogeServeur: true });
+  try {
+    const jour = FX.lireFixture('vide').staffState.date;
+    const decale = (liste, ecart) => liste.map((x) => { const [t, h] = x.split('@'); return `${t}@${hhmm(minutes(h) + ecart)}`; }).sort();
+    // Deux groupes (30 + 30), puis quatre (15 x 4) : les groupes 1 et 2 au laser puis au bowling, les autres l inverse.
+    for (const [nombre, tailles, heures] of [
+      [2, [30, 30], [{ bowling: '16:30', laser_game: '15:30' }, { bowling: '15:30', laser_game: '16:30' }]],
+      [4, [15, 15, 15, 15], [{ bowling: '16:30', laser_game: '15:30' }, { bowling: '16:30', laser_game: '15:30' }, { bowling: '15:30', laser_game: '16:30' }, { bowling: '15:30', laser_game: '16:30' }]],
+    ]) {
+      // (le dossier d avant s en va : la journee est vide pour le suivant, les memes heures)
+      for (const [cle, ligne] of [...B.base.reservations]) if (/^DÉMO|^Groupe Posé/.test(String(ligne.name)) && /^Groupe Posé/.test(String(ligne.name))) B.base.reservations.delete(cle);
+      const cree = await serveur.appeler('POST', '/api/staff-reservations', {
+        name: `Groupe Posé ${nombre}`, phone: '0470111222', email: '', notes: '', occasion: '', date: jour, startTime: '15:30', duration: 1, totalDuration: 3, lanes: [], pax: 60, status: 'pending', type: 'visite', formuleId: '',
+        program: [{ activityId: 'bowling', pax: 60, participants: 60, duration: 1 }, { activityId: 'laser_game', pax: 60, participants: 60, games: 1 }],
+        laserGames: 0, extras: [], channel: 'staff', requiresLanes: true, centerId: 'libramont',
+        preference: { activityOrder: ['bowling', 'laser_game'], preferredTimes: { bowling: '15:30', laser_game: '15:30' }, grandGroupe: { nombre, tailles, heures, impose: true } },
+      });
+      const id = cree.json && cree.json.reservation && cree.json.reservation.id;
+      const avant = id ? heuresDesBlocs(id) : [];
+      if (!ok(cree.statut === 201 && avant.length >= nombre * 2 && avant.some((x) => x.endsWith('@16:30')) && avant.some((x) => x.endsWith('@15:30')), `[T5] le grand groupe pose au comptoir nait en ${nombre} groupes, chacun a ses heures`, { statut: cree.statut, message: cree.json && cree.json.message, avant })) continue;
+      const rep = await serveur.appeler('PATCH', '/api/staff-reservations', { id, centerId: 'libramont', baseUpdatedAt: enBase(id).version, toutLeGroupe: { ecart: 30 } });
+      if (process.env.HG_DEBUG) console.log('DEBUG', nombre, rep.statut, JSON.stringify(rep.json).slice(0, 700));
+      const apres = heuresDesBlocs(id);
+      const tousDecales = JSON.stringify(apres) === JSON.stringify(decale(avant, 30));
+      const refuse = rep.statut >= 400 && typeof (rep.json && rep.json.message) === 'string' && rep.json.message.length > 15 && JSON.stringify(apres) === JSON.stringify(avant);
+      ok((rep.statut === 200 && tousDecales) || refuse,
+        `[T5] « Tout le groupe » +30 min sur ${nombre} groupes poses : chaque groupe passe du meme ecart, ou le serveur refuse avec une phrase et rien ne bouge (reponse ${rep.statut}${rep.statut === 200 ? ', les passages decales' : ''})`, { statut: rep.statut, message: rep.json && rep.json.message, avant, apres });
+      // (deux groupes : le plan tient, il DOIT passer ; la barre est plus haute que le refus)
+      if (nombre === 2) ok(rep.statut === 200 && tousDecales, '[T5] deux groupes : « Tout le groupe » passe, les quatre passages decales de 30 min', { statut: rep.statut, message: rep.json && rep.json.message, avant, apres });
+    }
+    ok(erreurs.length === 0, '[J1] aucune erreur JS (grand groupe, tout le groupe)', erreurs);
+  } finally {
+    await ctx.close();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // [D1] : au telephone, le champ de l heure (Henrard, bowling 16:00).
 // ---------------------------------------------------------------------------
 function lireTelephone(id) {
@@ -1205,6 +1262,8 @@ const MUTATIONS = [
   { nom: 'telephone-clavier-ferme', lettre: 'D1', scenarios: ['telephone'], editions: [{ fichier: MODULE, de: "    if (p && actif && p.el.contains(actif) && actif.matches && actif.matches('[data-gf-hp-champ]')) { gfPoserPop(true); return; }\n", vers: '' }] },
   // (la page qui defile laisse la pop-up en l air)
   { nom: 'telephone-defile-reste', lettre: 'D1', scenarios: ['telephone'], editions: [{ fichier: MODULE, de: '    if (!p || (a && Math.abs(a.getBoundingClientRect().top - p.haut) < 8)) return;\n', vers: '    if (true) return;\n' }] },
+  // (« Tout le groupe » sur un grand groupe pose : le groupe 2 reste a son heure pendant que les autres passent a +30 min, la moitie du dossier)
+  { nom: 'tout-le-groupe-sauf-le-groupe-2', lettre: 'T5', scenarios: ['grand'], editions: [{ serveur: true, fichier: 'lib/decaler-le-groupe.js', de: '  if (Array.isArray(plan.resourceBlocks)) sortie.resourceBlocks = plan.resourceBlocks.map((b) => decalerUnBloc(b, ecart));', vers: '  if (Array.isArray(plan.resourceBlocks)) sortie.resourceBlocks = plan.resourceBlocks.map((b) => (Number(b.sousGroupe) === 2 ? b : decalerUnBloc(b, ecart)));' }] },
 ];
 
 async function jouer(browser, noms) {
@@ -1218,6 +1277,7 @@ async function jouer(browser, noms) {
     if (nom === 'vagues') await scenarioVagues(browser);
     if (nom === 'minute') await scenarioMinute(browser);
     if (nom === 'groupe') await scenarioGroupe(browser);
+    if (nom === 'grand') await scenarioGrandGroupe(browser);
     if (nom === 'telephone') await scenarioTelephone(browser);
   }
 }
@@ -1228,7 +1288,7 @@ async function main() {
   const t0 = Date.now();
   try {
     if (!process.argv.includes('--contre-preuves')) {
-      await jouer(browser, liste(process.env.HG_SCENARIOS) || ['pop', 'souris', 'doigt', 'ligne', 'gele', 'fiche', 'vagues', 'minute', 'groupe', 'telephone']);
+      await jouer(browser, liste(process.env.HG_SCENARIOS) || ['pop', 'souris', 'doigt', 'ligne', 'gele', 'fiche', 'vagues', 'minute', 'groupe', 'grand', 'telephone']);
     } else {
       console.log('[K] contre-preuves : chaque garde retiree fait rougir sa lettre');
       for (const m of MUTATIONS.filter((x) => !process.env.HG_MUTATIONS || liste(process.env.HG_MUTATIONS).includes(x.nom))) {

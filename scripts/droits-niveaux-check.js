@@ -927,6 +927,10 @@ async function groupeConsole(mutations = []) {
     document: { getElementById: () => null },
     QB_EXTRA_SUGGESTIONS: { nourriture: [], boissons: [] },
     escapeHtml: String,
+    // (chargerCatalogueSurMesure lit l etat de la console depuis le lot 2, 89de6cb : Modifier ouvert,
+    // le catalogue arrive repeint le prix. Sans `state` dans le bac, la lecture levait et rendait
+    // un catalogue vide ; ici aucune fiche n est ouverte, rien ne se repeint)
+    state: { editState: null, activeTab: 'planning' },
   };
   vm.createContext(bac);
   const etat = (/(?:let|var) catalogueSurMesureConsole = [^;]+;\nlet catalogueSurMesureEnCours = null;/.exec(src) || [''])[0];

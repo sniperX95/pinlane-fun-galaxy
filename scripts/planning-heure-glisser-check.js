@@ -35,9 +35,40 @@
 //        la remet ; posee ou elle ne passe pas (pistes prises, heure deja passee), la raison se dit et
 //        rien ne s ecrit ;
 //   [F1] un groupe qui joue deja ne bouge pas : sa pop-up le dit sans proposer d heure, ni son heure
-//        ni sa ligne ne se levent, rien ne s ecrit ; le serveur le redit (`gele`) ;
+//        ni sa ligne ne se levent, rien ne s ecrit ; le serveur le redit (`gele`), mot pour mot ; la
+//        phrase dit ce que le serveur verifie (sur place et l heure d une activite passee, ou une
+//        activite cochee a la main), jamais « joue » (2026-11-23 : la coche automatique est retiree) ;
+//   [F2] une console restee ouverte sur un etat perime envoie quand meme : le PATCH qui deplace une
+//        activite (activityMove ou activityMoves) et le calcul a blanc de « Modifier » refusent ce
+//        groupe avec la phrase de la pop-up, rien ne s ecrit ;
+//   [W1] les deux groupes d une partie laser lancee ensemble (Ethan, 40 joueurs) bougent en bloc : un
+//        toucher, un seul PATCH activityMoves, les deux a la nouvelle heure ; « Annuler » les remet
+//        ensemble, d un seul PATCH ;
+//   [W2] le serveur juge les groupes ensemble : le second coince, il refuse tout, dit lequel (`rang`)
+//        et n ecrit rien ;
+//   [W3] l arene se remplit entre la pop-up et le toucher : le second groupe coince au serveur, rien
+//        ne bouge (ni l un ni l autre), et l avis dit lequel coince ;
 //   [S1] le meme geste depuis la fiche : l heure du Programme ouvre la meme pop-up, contre elle, avec
 //        les memes heures, et un toucher enregistre ;
+//   [M1] l heure a la minute (2026-11-23, Ansar : « on peut pas choisir l'heure qu'on veut à la
+//        minute ») : le champ et ses pas de 5 min (ceux de la fenetre du retard) ; le serveur juge
+//        l heure du champ, « Déplacer » l enregistre (un PATCH activityMove), Entree aussi ; les heures
+//        libres restent en raccourcis ; « Annuler » remet ;
+//   [M2] une minute qui ne tient pas le dit (l activite, l heure, la raison du serveur) et rien ne
+//        part ; une minute deja passee, ou d avant l arrivee du groupe, se dit sans demander au serveur ;
+//   [T1] « Tout le groupe » (Ansar : « si on veut tout avancer de 30 minutes, on peut pas ») : seule, la
+//        1re partie de Manon ne va pas a 16:00 (sa 2e y joue) ; tout le groupe, si (+30 min). Sacha : seul,
+//        son bowling ne va ni a 17:00 ni a 17:30 (son laser) ; tout le groupe va a 16:00 (+30 min), pas a
+//        16:30 ; une requete, le calcul a blanc du groupe. (Ses arcades ne retiennent pas son bowling seul :
+//        le controle de Modifier, du glisser et de la pop-up ne les compte pas, seul Reserver le fait, 3db74d9.)
+//   [T2] un toucher decale tout le groupe d un PATCH (toutLeGroupe), en base ; « Annuler » remet tout ;
+//   [T3] a la minute, ce qui coince se dit : l activite et l heure qui coincent, meme quand ce n est pas
+//        celle qu on a touchee ; ce qui passe dit chaque activite a sa nouvelle heure ;
+//   [T4] des pistes se prennent entre le verdict et le toucher : le serveur refuse, l avis dit quelle
+//        activite coince, a quelle heure, et que rien n a bouge ;
+//   [D1] au telephone (390 px, au doigt) : toucher le champ de l heure ne ferme pas la pop-up, la saisie se
+//        juge ; le clavier qui reduit la fenetre non plus, elle se repose entiere contre sa pastille ; sans le
+//        champ en main, la page qui defile la ferme ;
 //   [J1] aucune erreur JS.
 // La console reelle (scripts/planning-v3-fixtures.js, journee « pic » de Fun Galaxy Libramont, samedi
 // 16 janvier 2027 a 15:10) ; ses PATCH et ses calculs a blanc partent au VRAI handler
@@ -71,6 +102,11 @@ const MANON = 1618; // laser 15:30 (1re partie) et 16:00 (2e), 8 joueurs : a 17:
 const HENRARD = 1635; // bowling 16:00, piste 8, arrivee 16:00 : toute sa visite passe a 17:00
 const NOEL = 1637; // bowling 16:30, piste 6 : a 16:00, le bowling est complet
 const LINA = 1601; // arrivee, son laser a commence a 15:00 : elle joue
+const SACHA = 1604; // bowling 15:30 (pistes 1 et 2), arcades 16:35, laser 17:30 : tout le groupe passe a +30 min
+const NATHAN = 1607; // bowling 17:00, pistes 1 et 2 (le modele du groupe de derniere minute)
+// (journee normale, variante « deux-groupes ») 40 joueurs : sa 1re partie de laser en deux groupes, 18 et
+// 22, lances ensemble a 16:00 (1.1 et 1.2), sa 2e a 16:30 ; le basket (12) joue a 19:30
+const ETHAN = 1588;
 
 let echecs = 0;
 let silence = false;
@@ -128,16 +164,18 @@ function enBase(id) {
 
 // L HEURE DU SERVEUR EST CELLE DE LA PAGE : 15:10 a Libramont (UTC+1 en janvier). Le montage recharge
 // les modules de lib/ : l horloge se regle apres lui.
-function reglerHorloge() { require(path.join(ROOT, RETARD)).__horloge.instant = () => new Date(`${JOUR}T14:10:00Z`); }
+function reglerHorloge(jour = JOUR) { require(path.join(ROOT, RETARD)).__horloge.instant = () => new Date(`${jour}T14:10:00Z`); }
 
-async function monter(browser, { appareil = 'ordinateur', mouvementReduit = false } = {}) {
-  B.semer(FIXTURE.staffState.reservations.map(ligneDepuis));
+async function monter(browser, { appareil = 'ordinateur', mouvementReduit = false, fixture = 'pic', variante = [] } = {}) {
+  // (une autre journee ou une variante : la meme sur le serveur et dans la page, FX.varier)
+  const journee = fixture === 'pic' && !variante.length ? FIXTURE.staffState : FX.varier(FX.lireFixture(fixture), FX.lireCentre(), variante).fixture.staffState;
+  B.semer(journee.reservations.map(ligneDepuis));
   const serveur = B.monter({ mutations: mutation ? mutation.editions.filter((ed) => ed.serveur) : [], session: B.sessionDuRole('manager', { nom: 'Rachel' }) });
-  reglerHorloge();
+  reglerHorloge(journee.date);
   const patchs = [];
   const blancs = [];
   const { ctx, page, erreurs } = await FX.monter(browser, {
-    fixture: 'pic', appareil, theme: 'light', port: PORT, heure: '15:10', mouvementReduit,
+    fixture, variante, appareil, theme: 'light', port: PORT, heure: '15:10', mouvementReduit,
     avantChargement: async (p) => {
       await p.exposeFunction('__fixtureServeur', async (corps) => { patchs.push(corps); return serveur.appeler('PATCH', '/api/staff-reservations', corps); });
       await p.exposeFunction('__fixtureBlanc', async (corps) => { blancs.push(corps); return serveur.appeler('POST', '/api/staff-reservations', corps); });
@@ -627,13 +665,14 @@ async function scenarioLigne(browser) {
 }
 
 // ---------------------------------------------------------------------------
-// [F1] : Lina joue depuis 15:00.
+// [F1] : Lina, sur place, son laser de 15:00 passe ; Manon, une partie cochee a la main.
 // ---------------------------------------------------------------------------
 async function scenarioGele(browser) {
   const { ctx, page, erreurs, serveur, patchs, blancs } = await monter(browser);
   try {
     const depart = brut(LINA);
-    const phrase = 'DÉMO · Anniversaire Lina (12 ans) joue depuis 15:00 : ses heures ne bougent plus.';
+    // (2026-11-23 : personne ne l a cochee ; le serveur sait qu elle est la et que l heure de son laser est passee)
+    const phrase = 'DÉMO · Anniversaire Lina (12 ans) : sur place, et l’heure de Laser Game (15:00) est passée. Ses heures ne bougent plus.';
     await ligneEnHaut(page, LINA);
     const sel = PASTILLE(LINA, 'minigolf_blacklight');
     await page.click(sel);
@@ -641,8 +680,8 @@ async function scenarioGele(browser) {
     const pop = await page.evaluate(lirePop);
     await capture(page, 'pop-gele');
     const essais = blancs.filter((c) => c.deplacement && Number(c.deplacement.id) === LINA && Array.isArray(c.deplacement.essais));
-    ok(pop && pop.gele === phrase && pop.heures.length === 0 && pop.fiche && essais.length === 0,
-      '[F1] sa pop-up dit qu elle joue, sans proposer d heure ; « Ouvrir la fiche » reste', { pop, essais: essais.length });
+    ok(pop && pop.gele === phrase && !/\bjoue/.test(pop.gele) && pop.heures.length === 0 && pop.fiche && essais.length === 0,
+      '[F1] sa pop-up dit ce qui la gele (sur place, l heure de son laser passee), jamais « joue », sans proposer d heure ; « Ouvrir la fiche » reste', { pop, essais: essais.length });
     await page.keyboard.press('Escape');
     await page.waitForTimeout(300);
     // Son heure ne se leve pas.
@@ -658,12 +697,111 @@ async function scenarioGele(browser) {
     const ligne = await glisserALaSouris(page, deL, versL);
     await page.waitForTimeout(200);
     const avisL = await page.evaluate(lireAvis);
-    ok(!heure.leve && !ligne.leve && patchs.length === 0 && brut(LINA) === depart && avis.includes(phrase) && /joue depuis 15:00 : sa ligne ne bouge pas\./.test(avisL),
+    ok(!heure.leve && !ligne.leve && patchs.length === 0 && brut(LINA) === depart && avis.includes(phrase) && avisL.includes('DÉMO · Anniversaire Lina (12 ans) : sur place, et l’heure de Laser Game (15:00) est passée. Sa ligne ne bouge pas.'),
       '[F1] ni son heure ni sa ligne ne se levent : la raison se dit, rien ne s ecrit', { heure: heure.leve, ligne: ligne.leve, avis, avisL, patchs: patchs.length });
     const rep = await serveur.appeler('POST', '/api/staff-reservations', { dryRun: true, centerId: 'libramont', deplacement: { id: LINA, centerId: 'libramont', baseUpdatedAt: enBase(LINA).version, essais: [[{ activityId: 'minigolf_blacklight', startTime: '16:30' }]] } });
     ok(rep.statut === 200 && rep.json && rep.json.gele === phrase && Array.isArray(rep.json.essais) && rep.json.essais.length === 0 && brut(LINA) === depart,
       '[F1] le serveur le redit : son calcul a blanc rend `gele`, aucune heure', rep.json);
+    // [F2] Une console restee ouverte sur l etat d avant envoie quand meme : le serveur refuse.
+    const version = enBase(LINA).version;
+    const minigolf = { activityId: 'minigolf_blacklight', startTime: '16:30' };
+    const seul = await serveur.appeler('PATCH', '/api/staff-reservations', { id: LINA, centerId: 'libramont', baseUpdatedAt: version, activityMove: minigolf });
+    const ensemble = await serveur.appeler('PATCH', '/api/staff-reservations', { id: LINA, centerId: 'libramont', baseUpdatedAt: version, activityMoves: [minigolf] });
+    // (le verdict d une heure changee dans « Modifier », et celui de toute la modification qui la porte)
+    const verdict = await serveur.appeler('POST', '/api/staff-reservations', { dryRun: true, centerId: 'libramont', deplacement: { id: LINA, centerId: 'libramont', baseUpdatedAt: version, activityMoves: [minigolf] } });
+    const modifier = await serveur.appeler('POST', '/api/staff-reservations', { dryRun: true, modification: { id: LINA, centerId: 'libramont', baseUpdatedAt: version, deplacements: [minigolf] } });
+    const refuse = (r) => r.statut === 409 && r.json && r.json.ok === false && r.json.message === phrase && r.json.code === 'groupe_en_jeu';
+    const refusABlanc = (r) => Boolean(r.json && r.json.refus && r.json.refus.message === phrase && r.json.refus.code === 'groupe_en_jeu');
+    ok(refuse(seul) && refuse(ensemble) && refusABlanc(verdict) && refusABlanc(modifier) && brut(LINA) === depart,
+      '[F2] le PATCH qui deplace son activite, seul ou en bloc, et les verdicts de « Modifier » la refusent avec la phrase de la pop-up ; rien ne s ecrit',
+      { seul: [seul.statut, seul.json], ensemble: [ensemble.statut, ensemble.json && ensemble.json.message], verdict: verdict.json && verdict.json.refus, modifier: modifier.json && modifier.json.refus });
+    // [F1] Une coche a la main : Manon, sa 1re partie cochee (15:30, l heure n est pas encore la). La pop-up
+    // et le serveur disent la coche, mot pour mot.
+    const manon = B.base.reservations.get(MANON);
+    B.base.reservations.set(MANON, { ...manon, activity_progress: { 'laser_game-1': { done: true } } });
+    await page.evaluate((id) => { const r = state.reservations.find((x) => Number(x.id) === id); r.activityProgress = { 'laser_game-1': { done: true } }; }, MANON);
+    await ligneEnHaut(page, MANON);
+    await page.click(PASTILLE(MANON, 'laser_game:1.1'));
+    await page.waitForTimeout(500);
+    const popM = await page.evaluate(lirePop);
+    const repM = await serveur.appeler('POST', '/api/staff-reservations', { dryRun: true, centerId: 'libramont', deplacement: { id: MANON, centerId: 'libramont', baseUpdatedAt: enBase(MANON).version, toutLeGroupe: { ecarts: [30] } } });
+    const phraseM = `${manon.name} : une activité est cochée faite (Laser Game, 15:30). Ses heures ne bougent plus.`;
+    ok(popM && popM.gele === phraseM && popM.heures.length === 0 && repM.json && repM.json.gele === phraseM,
+      '[F1] une activite cochee a la main gele le groupe : la pop-up et le serveur disent « une activité est cochée faite (Laser Game, 15:30) »', { pop: popM && popM.gele, serveur: repM.json && repM.json.gele });
+    await capture(page, 'pop-gele-coche');
+    await page.keyboard.press('Escape');
     ok(erreurs.length === 0, '[J1] aucune erreur JS (le groupe qui joue)', erreurs);
+  } finally {
+    await ctx.close();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// [W1] [W2] [W3] : les deux groupes de la 1re partie laser d Ethan (journee normale, « deux-groupes »).
+// ---------------------------------------------------------------------------
+// Un groupe arrive au comptoir pendant que la pop-up est ouverte : 10 joueurs dans l arene a `heure`
+// (sur le modele du laser de Theo, la meme journee).
+function groupeDeDerniereMinute(heure) {
+  const r = JSON.parse(JSON.stringify(FX.lireFixture('normal').staffState.reservations.find((x) => x.id === 1584)));
+  const debut = minutes(heure);
+  const bloc = r.opsPlan.resourceBlocks.find((b) => b.resourceType === 'laser_arena');
+  Object.assign(r, { id: 9902, name: 'DÉMO · Groupe de dernière minute', pax: 10, startTime: heure });
+  r.opsPlan = { ...r.opsPlan, timeline: [], laserPassPlan: undefined, resourceBlocks: [{ ...bloc, start: debut, end: debut + 25, startTime: heure, endTime: hhmm(debut + 25), players: 10, weaponNeed: 10, groupPlayers: 10, playersTotal: 10, playersBefore: 0, countIndex: 1, groupWaveIndex: 1, groupWaveCount: 1 }] };
+  return r;
+}
+async function scenarioVagues(browser) {
+  const { ctx, page, erreurs, serveur, patchs } = await monter(browser, { fixture: 'normal', variante: ['deux-groupes'] });
+  try {
+    const sel = PASTILLE(ETHAN, 'laser_game:1.1+1.2');
+    const ouvrir = async (heure) => {
+      await ligneEnHaut(page, ETHAN);
+      await page.click(sel);
+      await page.waitForSelector('#gfHeurePop.is-rempli', { timeout: 10000 }).catch(() => null);
+      await page.waitForTimeout(300);
+      const choix = page.locator('#gfHeurePop [data-gf-hp-choix]', { hasText: heure }).first();
+      return { offerte: (await choix.count()) > 0, choix };
+    };
+    const dits = (corps) => ((corps && corps.activityMoves) || []).map((m) => `${m.unitKey}>${m.startTime}`).join(' ');
+
+    // [W2] Sans la console : le 1er groupe a 18:00, le 2e a 19:30, ou le basket joue a 12.
+    const depart = brut(ETHAN);
+    const refus = await serveur.appeler('PATCH', '/api/staff-reservations', { id: ETHAN, centerId: 'libramont', baseUpdatedAt: enBase(ETHAN).version, activityMoves: [{ activityId: 'laser_game', unitKey: '1.1', startTime: '18:00' }, { activityId: 'laser_game', unitKey: '1.2', startTime: '19:30' }] });
+    // (la phrase du comptoir depuis 1672d14 : les armes qui restent, celles qu il faut, la prochaine partie libre)
+    ok(refus.statut === 409 && refus.json && refus.json.rang === 1 && refus.json.message === 'Plus assez d’armes pour le laser à 19:30 : il en reste 18 sur 30, il en faut 22. La prochaine partie libre est à 20:30.' && brut(ETHAN) === depart,
+      '[W2] le 2e groupe coince (19:30 : 18 armes restent, il en faut 22) : le serveur refuse les deux, dit lequel (rang 1), rien n est ecrit', { statut: refus.statut, json: refus.json, apres: enBase(ETHAN) });
+
+    // [W1] La pop-up : 18:00 touche, un seul PATCH, les deux groupes ensemble ; « Annuler » les remet ensemble.
+    const a = await ouvrir('18:00');
+    if (a.offerte) await a.choix.click();
+    await attendre(page, async () => patchs.length >= 1);
+    await page.waitForTimeout(300);
+    const apres = enBase(ETHAN);
+    const toast = await page.evaluate(lireToast);
+    ok(a.offerte && patchs.length === 1 && !('activityMove' in patchs[0]) && dits(patchs[0]) === '1.1>18:00 1.2>18:00'
+      && apres.laser['1.1'] === '18:00' && apres.laser['1.2'] === '18:00' && apres.laser['2.1'] === '16:30' && /Amis d.Ethan : Laser, 1re partie passe à 18:00\./.test(toast.texte) && toast.annuler,
+      '[W1] « 18:00 » touche : un seul PATCH activityMoves, les deux groupes a 18:00 en base, le toast avec « Annuler »', { offerte: a.offerte, patchs, apres, toast });
+    if (toast.annuler) await page.click('#toast .toast-annuler');
+    await attendre(page, async () => patchs.length >= 2);
+    await page.waitForTimeout(300);
+    const remis = enBase(ETHAN);
+    ok(patchs.length === 2 && dits(patchs[1]) === '1.1>16:00 1.2>16:00' && remis.laser['1.1'] === '16:00' && remis.laser['1.2'] === '16:00',
+      '[W1] « Annuler » remet les deux groupes a 16:00, d un seul PATCH', { retour: dits(patchs[1]), remis, patchs: patchs.length });
+
+    // [W3] La pop-up ouverte sur 18:00, un groupe de 10 entre dans l arene a 18:00, puis le toucher :
+    // 18 + 10 tiennent, 22 + 10 non.
+    const n = patchs.length;
+    const avant = brut(ETHAN);
+    const b = await ouvrir('18:00');
+    B.base.reservations.set(9902, ligneDepuis(groupeDeDerniereMinute('18:00')));
+    if (b.offerte) await b.choix.click();
+    await attendre(page, async () => patchs.length > n);
+    await page.waitForTimeout(500);
+    const avis = await page.evaluate(lireAvis);
+    const puce = await page.evaluate((s) => ((document.querySelector(s) || {}).textContent || '').trim(), sel);
+    ok(b.offerte && patchs.length === n + 1 && dits(patchs[n]) === '1.1>18:00 1.2>18:00' && brut(ETHAN) === avant && puce === '16:00'
+      && /Pas déplacé/.test(avis) && avis.includes('Laser, 1re partie, groupe 2 sur 2 à 18:00 : Plus assez d’armes pour le laser à 18:00 : il en reste 20 sur 30, il en faut 22. La prochaine partie libre est à 18:30.') && avis.includes('Aucun groupe n’a bougé.'),
+      '[W3] l arene remplie entre la pop-up et le toucher : le 2e groupe coince, aucun ne bouge, l avis dit lequel', { avis, puce, envoye: dits(patchs[n]), apres: enBase(ETHAN) });
+    ok(erreurs.length === 0, '[J1] aucune erreur JS (les deux groupes)', erreurs);
   } finally {
     await ctx.close();
   }
@@ -709,6 +847,275 @@ async function scenarioFiche(browser) {
 // ---------------------------------------------------------------------------
 // LES CONTRE-PREUVES : chaque garde retiree (en memoire) fait rougir sa lettre.
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// [M1] [M2] : l heure a la minute ; [T1] [T2] [T3] [T4] : tout le groupe (2026-11-23).
+// ---------------------------------------------------------------------------
+// Le champ, ses pas, son bouton, la ligne du verdict, ce qui bouge, et les raccourcis.
+function lireMinute() {
+  const p = document.getElementById('gfHeurePop');
+  if (!p) return null;
+  const champ = p.querySelector('[data-gf-hp-champ]');
+  const bouton = p.querySelector('[data-gf-hp-valider]');
+  const verdict = p.querySelector('[data-gf-hp-verdict]');
+  const mode = p.querySelector('[data-gf-hp-mode][aria-pressed="true"]');
+  const zone = p.querySelector('[data-gf-hp-heures]');
+  return {
+    texte: p.innerText.replace(/\s+/g, ' ').trim(),
+    champ: champ ? champ.value : null,
+    pas: Array.from(p.querySelectorAll('[data-gf-hp-pas]')).map((b) => b.textContent.trim()),
+    bouton: bouton ? bouton.textContent.trim() : null,
+    desactive: bouton ? bouton.disabled : null,
+    verdict: verdict ? verdict.textContent.trim() : '',
+    ton: verdict ? ((/is-(passe|bloque)/.exec(verdict.className) || [])[1] || '') : '',
+    mode: mode ? mode.getAttribute('data-gf-hp-mode') : '',
+    pour: zone ? zone.getAttribute('data-gf-hp-pour') || '' : '',
+    heures: Array.from(p.querySelectorAll('[data-gf-hp-choix]')).map((b) => b.childNodes[0].textContent.trim()),
+    raccourcis: Array.from(p.querySelectorAll('[data-gf-hp-ecart]')).map((b) => ({ heure: b.childNodes[0].textContent.trim(), ecart: ((b.querySelector('small') || {}).textContent || '').trim() })),
+  };
+}
+// La ligne du verdict, une fois le serveur (ou le plancher) passe : elle nomme l heure jugee.
+async function verdictLu(page, heure) {
+  await page.waitForFunction((h) => {
+    const v = document.querySelector('#gfHeurePop [data-gf-hp-verdict]');
+    const t = v ? v.textContent : '';
+    return t.indexOf(h) >= 0 && /passe|ne tient pas|ne répond pas/.test(t);
+  }, heure, { timeout: 10000 }).catch(() => null);
+  return page.evaluate(lireMinute);
+}
+async function ouvrirHeure(page, id, cle) {
+  await ligneEnHaut(page, id);
+  await page.click(PASTILLE(id, cle));
+  await page.waitForSelector('#gfHeurePop.is-rempli', { timeout: 10000 }).catch(() => null);
+  await page.waitForTimeout(300);
+}
+
+// Henrard (bowling 16:00, piste 8, seul a heure) et Noel (bowling 16:30, piste 6).
+async function scenarioMinute(browser) {
+  const { ctx, page, erreurs, patchs, blancs } = await monter(browser);
+  try {
+    await ouvrirHeure(page, HENRARD, 'bowling');
+    const ouvert = await page.evaluate(lireMinute);
+    ok(ouvert && ouvert.champ === '16:00' && ouvert.pas.join(' ') === '−5 +5' && ouvert.bouton === 'Déplacer' && ouvert.desactive === true && ouvert.mode === '' && ouvert.verdict === '' && ouvert.heures.length > 0,
+      '[M1] la pop-up porte l heure a la minute : le champ (16:00), −5 et +5, « Déplacer » en attente ; les heures libres restent en raccourcis', ouvert);
+    const n0 = blancs.length;
+    await page.click('#gfHeurePop [data-gf-hp-pas="5"]');
+    const plus5 = await verdictLu(page, '16:05');
+    ok(plus5 && plus5.champ === '16:05' && plus5.verdict === '16:05 passe.' && plus5.ton === 'passe' && plus5.desactive === false && blancs.length === n0 + 1 && patchs.length === 0,
+      '[M1] +5 : 16:05 ; le serveur la juge (un calcul a blanc) : « 16:05 passe. » ; rien n est ecrit avant le bouton', { plus5, blancs: blancs.length - n0, patchs: patchs.length });
+    await capture(page, 'pop-minute');
+    await page.click('#gfHeurePop [data-gf-hp-valider]');
+    await attendre(page, async () => patchs.length >= 1);
+    await page.waitForTimeout(300);
+    const corps = patchs[0] || {};
+    const toast = await page.evaluate(lireToast);
+    ok(patchs.length === 1 && corps.activityMove && corps.activityMove.activityId === 'bowling' && corps.activityMove.startTime === '16:05' && !corps.toutLeGroupe && enBase(HENRARD).bowling === '16:05[8]'
+      && /Famille Henrard : Bowling passe à 16:05\./.test(toast.texte) && toast.annuler,
+      '[M1] « Déplacer » : un PATCH activityMove a 16:05, piste 8, en base ; un toast avec « Annuler »', { corps, base: enBase(HENRARD), toast });
+    if (toast.annuler) await page.click('#toast .toast-annuler');
+    await attendre(page, async () => patchs.length >= 2);
+    await page.waitForTimeout(300);
+    ok(patchs.length === 2 && enBase(HENRARD).bowling === '16:00[8]', '[M1] « Annuler » la remet a 16:00', enBase(HENRARD));
+
+    // Tapee au clavier, puis Entree.
+    await ouvrirHeure(page, HENRARD, 'bowling');
+    await page.fill('#gfHeurePop [data-gf-hp-champ]', '16:17');
+    const tape = await verdictLu(page, '16:17');
+    await page.keyboard.press('Enter');
+    await attendre(page, async () => patchs.length >= 3);
+    await page.waitForTimeout(300);
+    ok(tape && tape.verdict === '16:17 passe.' && patchs.length === 3 && patchs[2].activityMove && patchs[2].activityMove.startTime === '16:17' && enBase(HENRARD).bowling === '16:17[8]',
+      '[M1] tapee au clavier, 16:17 se juge, Entree l enregistre', { tape: tape && tape.verdict, patch: patchs[2], base: enBase(HENRARD) });
+
+    // [M2] Deja passee : 15:05, il est 15:10. Le serveur n est pas derange.
+    await ouvrirHeure(page, HENRARD, 'bowling');
+    const n1 = blancs.length;
+    await page.fill('#gfHeurePop [data-gf-hp-champ]', '15:05');
+    const passee = await verdictLu(page, '15:05');
+    ok(passee && passee.verdict === 'Bowling ne tient pas à 15:05 : déjà passé, il est 15:10.' && passee.ton === 'bloque' && passee.desactive === true && blancs.length === n1,
+      '[M2] 15:05 : « Bowling ne tient pas à 15:05 : déjà passé, il est 15:10. », sans demander au serveur', { passee, blancs: blancs.length - n1 });
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(400);
+
+    // [M2] Noel (bowling 16:30, arrive a 16:30). A 16:02, avant son arrivee : la pop-up le dit sans demander au
+    // serveur. A 23:02, c est le serveur qui refuse (le bowling finirait apres minuit) : la ligne dit sa raison.
+    const departNoel = brut(NOEL);
+    const np = patchs.length;
+    await ouvrirHeure(page, NOEL, 'bowling');
+    const n2 = blancs.length;
+    await page.fill('#gfHeurePop [data-gf-hp-champ]', '16:02');
+    const avantArrivee = await verdictLu(page, '16:02');
+    ok(avantArrivee && avantArrivee.verdict === 'Bowling ne tient pas à 16:02 : avant l’arrivée du groupe, à 16:30.' && avantArrivee.ton === 'bloque' && avantArrivee.desactive === true && blancs.length === n2,
+      '[M2] Noel a 16:02 : « Bowling ne tient pas à 16:02 : avant l’arrivée du groupe, à 16:30. », sans demander au serveur', { avantArrivee, blancs: blancs.length - n2 });
+    await page.fill('#gfHeurePop [data-gf-hp-champ]', '23:02');
+    const refus = await verdictLu(page, '23:02');
+    await capture(page, 'pop-minute-refus');
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(600);
+    ok(refus && /^Bowling ne tient pas à 23:02 : Hors des horaires d’ouverture : l’activité finirait à 00:02, le centre ferme à minuit/.test(refus.verdict) && refus.ton === 'bloque' && refus.desactive === true
+      && blancs.length === n2 + 1 && patchs.length === np && brut(NOEL) === departNoel,
+      '[M2] Noel a 23:02 : le serveur la refuse (un calcul a blanc), la ligne dit l activite, l heure et sa raison ; le bouton reste eteint, Entree n enregistre rien', { refus, blancs: blancs.length - n2, patchs: patchs.length - np });
+    ok(erreurs.length === 0, '[J1] aucune erreur JS (l heure a la minute)', erreurs);
+  } finally {
+    await ctx.close();
+  }
+}
+
+// Manon (laser 15:30, 2e partie 16:00), puis Sacha : bowling 15:30 (pistes 1 et 2), arcades 16:35, laser 17:30.
+async function scenarioGroupe(browser) {
+  const { ctx, page, erreurs, patchs, blancs } = await monter(browser);
+  try {
+    // [T1] La demande d Ansar, sur Manon : seule, sa 1re partie ne va pas a 16:00, sa 2e y joue ; tout le
+    // groupe, si (les deux parties bougent ensemble). Le serveur le dit aussi (decaler-groupe-check.js [B]).
+    await ouvrirHeure(page, MANON, 'laser_game:1.1');
+    const manonSeule = await page.evaluate(lireMinute);
+    // (sans « Tout le groupe », rien a toucher : c est l assertion qui le dit, pas une attente qui casse)
+    const boutonGroupe = await page.$('#gfHeurePop [data-gf-hp-mode="groupe"]');
+    if (boutonGroupe) {
+      await boutonGroupe.click();
+      await page.waitForFunction(() => { const z = document.querySelector('#gfHeurePop [data-gf-hp-heures]'); return Boolean(z) && z.getAttribute('data-gf-hp-pour') === 'groupe'; }, null, { timeout: 10000 }).catch(() => null);
+    }
+    const manonGroupe = await page.evaluate(lireMinute);
+    ok(manonSeule && manonSeule.mode === 'seul' && manonSeule.pour === 'seul' && manonSeule.heures.length > 0 && !manonSeule.heures.includes('16:00')
+      && manonGroupe && manonGroupe.mode === 'groupe' && manonGroupe.raccourcis.some((x) => x.heure === '16:00' && x.ecart === '+30 min'),
+      '[T1] Manon (laser 15:30, 2e partie 16:00) : seule, sa 1re partie ne va pas a 16:00 (sa 2e y joue) ; « Tout le groupe » propose 16:00 (+30 min)',
+      { seule: manonSeule && manonSeule.heures, groupe: manonGroupe && manonGroupe.raccourcis });
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(400);
+
+    await ouvrirHeure(page, SACHA, 'bowling');
+    const seul = await page.evaluate(lireMinute);
+    ok(seul && seul.mode === 'seul' && seul.pour === 'seul' && /Cette activité/.test(seul.texte) && /Tout le groupe/.test(seul.texte) && seul.heures.length > 0 && !seul.heures.includes('17:00') && !seul.heures.includes('17:30'),
+      '[T1] Sacha (bowling, arcades, laser) : « Cette activité » ou « Tout le groupe » ; seul, son bowling ne va ni a 17:00 ni a 17:30 (son laser de 17:30 y est)', seul);
+    const n0 = blancs.length;
+    await page.click('#gfHeurePop [data-gf-hp-mode="groupe"]');
+    await page.waitForFunction(() => { const z = document.querySelector('#gfHeurePop [data-gf-hp-heures]'); return Boolean(z) && z.getAttribute('data-gf-hp-pour') === 'groupe'; }, null, { timeout: 10000 }).catch(() => null);
+    const groupe = await page.evaluate(lireMinute);
+    const demandes = blancs.slice(n0).filter((c) => c.deplacement && Number(c.deplacement.id) === SACHA);
+    const raccourcis = (groupe && groupe.raccourcis) || [];
+    ok(groupe && groupe.mode === 'groupe' && groupe.bouton === 'Tout décaler' && raccourcis.some((x) => x.heure === '16:00' && x.ecart === '+30 min') && !raccourcis.some((x) => x.heure === '16:30')
+      && demandes.length === 1 && demandes[0].deplacement.toutLeGroupe && Array.isArray(demandes[0].deplacement.toutLeGroupe.ecarts),
+      '[T1] « Tout le groupe » : 16:00 (+30 min) est proposee, 16:30 non (ses pistes y sont prises) ; une requete, le calcul a blanc du groupe', { raccourcis, demandes: demandes.length });
+    await capture(page, 'pop-groupe');
+
+    // [T2] Un toucher sur 16:00 : tout le groupe passe 30 min plus tard, « Annuler » le remet.
+    const avant = enBase(SACHA);
+    await page.click('#gfHeurePop [data-gf-hp-ecart="30"]');
+    await attendre(page, async () => patchs.length >= 1);
+    await page.waitForTimeout(300);
+    const corps = patchs[0] || {};
+    const apres = enBase(SACHA);
+    const toast = await page.evaluate(lireToast);
+    ok(patchs.length === 1 && Object.keys(corps).sort().join(',') === 'baseUpdatedAt,centerId,id,toutLeGroupe' && JSON.stringify(corps.toutLeGroupe) === '{"ecart":30}'
+      && apres.debut === '16:00' && apres.bowling === '16:00[1,2]' && apres.laser['1.1'] === '18:00' && /: tout le groupe passe 30 min plus tard \(Bowling à 16:00\)\./.test(toast.texte) && toast.annuler,
+      '[T2] un toucher : un seul PATCH toutLeGroupe (+30 min) ; l arrivee, le bowling (pistes 1 et 2) et le laser passent ensemble ; « Annuler » propose', { corps, avant, apres, toast });
+    if (toast.annuler) await page.click('#toast .toast-annuler');
+    await attendre(page, async () => patchs.length >= 2);
+    await page.waitForTimeout(300);
+    const remis = enBase(SACHA);
+    const toast2 = await page.evaluate(lireToast);
+    ok(patchs.length === 2 && JSON.stringify((patchs[1] || {}).toutLeGroupe) === '{"ecart":-30}' && remis.debut === '15:30' && remis.bowling === '15:30[1,2]' && remis.laser['1.1'] === '17:30' && /tout le groupe revient à ses heures\./.test(toast2.texte),
+      '[T2] « Annuler » remet tout le groupe a ses heures, d un PATCH', { remis, toast: toast2.texte });
+
+    // [T3] A la minute, pour tout le groupe.
+    await ouvrirHeure(page, SACHA, 'bowling');
+    await page.click('#gfHeurePop [data-gf-hp-mode="groupe"]');
+    await page.click('#gfHeurePop [data-gf-hp-pas="5"]');
+    const cinq = await verdictLu(page, '17:35');
+    ok(cinq && cinq.champ === '15:35' && /^Laser ne tient pas à 17:35 : l’arène joue déjà la partie de 17:30/.test(cinq.verdict) && cinq.ton === 'bloque' && cinq.desactive === true,
+      '[T3] +5 pour tout le groupe : ce n est pas le bowling touche qui coince, c est son laser, et la ligne le dit (« Laser ne tient pas à 17:35 : ... »)', cinq);
+    await page.fill('#gfHeurePop [data-gf-hp-champ]', '16:30');
+    const soixante = await verdictLu(page, '16:30');
+    ok(soixante && soixante.verdict === 'Bowling ne tient pas à 16:30 : Pistes 1 et 2 déjà prises de 16:30 à 17:30.' && soixante.desactive === true,
+      '[T3] 16:30 : « Bowling ne tient pas à 16:30 : Pistes 1 et 2 déjà prises de 16:30 à 17:30. »', soixante);
+    await page.fill('#gfHeurePop [data-gf-hp-champ]', '16:00');
+    const trente = await verdictLu(page, '16:00');
+    ok(trente && /^Tout le groupe passe 30 min plus tard : Bowling 16:00 · .*Laser 18:00\.$/.test(trente.verdict) && trente.ton === 'passe' && trente.desactive === false && trente.bouton === 'Tout décaler',
+      '[T3] 16:00 : « Tout le groupe passe 30 min plus tard », chaque activite a sa nouvelle heure ; « Tout décaler » s active', trente);
+    await capture(page, 'pop-groupe-minute');
+
+    // [T4] Un groupe de derniere minute prend les pistes 1 et 2 a 16:00, entre le verdict et le toucher.
+    const { planDecale } = require(path.join(ROOT, 'lib/decaler-le-groupe.js'));
+    const nathan = FIXTURE.staffState.reservations.find((x) => x.id === NATHAN);
+    B.base.reservations.set(9903, { ...ligneDepuis(nathan), id: 9903, name: 'DÉMO · Groupe de dernière minute', start_time: '16:00', ops_plan: planDecale(nathan.opsPlan, -60) });
+    const depart = brut(SACHA);
+    const np = patchs.length;
+    await page.click('#gfHeurePop [data-gf-hp-valider]');
+    await attendre(page, async () => patchs.length > np);
+    await page.waitForTimeout(500);
+    const avis = await page.evaluate(lireAvis);
+    await capture(page, 'groupe-refuse');
+    ok(patchs.length === np + 1 && patchs[np].toutLeGroupe && patchs[np].toutLeGroupe.ecart === 30 && brut(SACHA) === depart && /Pas déplacé/.test(avis)
+      && avis.includes('Tout le groupe : Bowling ne tient pas à 16:00 : Pistes 1 et 2 déjà prises de 16:00 à 17:00. Rien n’a bougé.'),
+      '[T4] ses pistes se prennent entre le verdict et le toucher : le serveur refuse, l avis dit l activite et l heure qui coincent, et que rien n a bouge', { avis, patchs: patchs.length - np });
+    ok(erreurs.length === 0, '[J1] aucune erreur JS (tout le groupe)', erreurs);
+  } finally {
+    await ctx.close();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// [D1] : au telephone, le champ de l heure (Henrard, bowling 16:00).
+// ---------------------------------------------------------------------------
+function lireTelephone(id) {
+  const p = document.getElementById('gfHeurePop');
+  const a = document.querySelector(`#globalPlanningGridWrap tr[data-gf-id="${id}"] [data-gf-act="bowling"]`);
+  const rp = p && p.getBoundingClientRect();
+  const ra = a && a.getBoundingClientRect();
+  const actif = document.activeElement;
+  return {
+    ouverte: Boolean(p),
+    champEnMain: Boolean(actif && actif.matches && actif.matches('#gfHeurePop [data-gf-hp-champ]')),
+    verdict: (((p && p.querySelector('[data-gf-hp-verdict]')) || {}).textContent || '').trim(),
+    entiere: Boolean(rp) && rp.top >= 0 && rp.bottom <= window.innerHeight,
+    contre: Boolean(rp && ra) && (Math.abs(rp.top - (ra.bottom + 6)) <= 1 || Math.abs(rp.bottom - (ra.top - 6)) <= 1),
+  };
+}
+async function scenarioTelephone(browser) {
+  const { ctx, page, erreurs, patchs } = await monter(browser, { appareil: 'telephone' });
+  try {
+    const sel = PASTILLE(HENRARD, 'bowling');
+    // (le gerant cherche son groupe du doigt : la liste ne suit plus l heure, la page est a lui)
+    const cdp = await ctx.newCDPSession(page);
+    const point = (x, y) => [{ x, y, id: 1, radiusX: 4, radiusY: 4, force: 1 }];
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: point(200, 640) });
+    for (let i = 1; i <= 12; i += 1) { await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: point(200, 640 - i * 25) }); await page.waitForTimeout(16); }
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await page.waitForTimeout(300);
+    await page.evaluate((s) => document.querySelector(s).scrollIntoView({ block: 'center' }), sel);
+    await page.waitForTimeout(300);
+    await page.tap(sel);
+    await page.waitForSelector('#gfHeurePop.is-rempli', { timeout: 10000 }).catch(() => null);
+    await page.tap('#gfHeurePop [data-gf-hp-champ]');
+    await page.waitForTimeout(300);
+    const touche = await page.evaluate(lireTelephone, HENRARD);
+    await page.keyboard.type('1607');
+    await page.waitForFunction(() => /16:07 passe/.test(((document.querySelector('#gfHeurePop [data-gf-hp-verdict]') || {}).textContent || '')), null, { timeout: 10000 }).catch(() => null);
+    const tape = await page.evaluate(lireTelephone, HENRARD);
+    // Le clavier du telephone s ouvre : la fenetre perd 400 px (index.html, interactive-widget=resizes-content).
+    await page.setViewportSize({ width: 390, height: 444 });
+    await page.waitForTimeout(400);
+    const clavier = await page.evaluate(lireTelephone, HENRARD);
+    ok(touche.ouverte && touche.champEnMain && tape.ouverte && tape.verdict === '16:07 passe.' && clavier.ouverte && clavier.champEnMain && clavier.entiere && clavier.contre && patchs.length === 0,
+      '[D1] au telephone : toucher le champ ne ferme pas la pop-up, 16:07 se juge ; le clavier qui reduit la fenetre non plus, elle se repose entiere contre sa pastille', { touche, tape, clavier });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(400);
+    // Sans le champ en main, la page qui defile emporte la pastille : la pop-up se ferme.
+    await page.evaluate((s) => document.querySelector(s).scrollIntoView({ block: 'center' }), sel);
+    await page.waitForTimeout(300);
+    await page.tap(sel);
+    await page.waitForSelector('#gfHeurePop.is-rempli', { timeout: 10000 }).catch(() => null);
+    const rouverte = await page.evaluate(lireTelephone, HENRARD);
+    await page.evaluate(() => window.scrollBy(0, 120));
+    await page.waitForTimeout(400);
+    const defilee = await page.evaluate(lireTelephone, HENRARD);
+    ok(rouverte.ouverte && !rouverte.champEnMain && !defilee.ouverte && patchs.length === 0, '[D1] sans le champ en main, la page qui defile ferme la pop-up', { rouverte, defilee });
+    ok(erreurs.length === 0, '[J1] aucune erreur JS (au telephone)', erreurs);
+  } finally {
+    await ctx.close();
+  }
+}
+
 const MUTATIONS = [
   { nom: 'pop-au-coin', lettre: 'P1', scenarios: ['pop'], editions: [{ fichier: MODULE, de: '    var top = Math.max(marge, dessous ? a.bottom + 6 : a.top - 6 - h);', vers: '    var top = marge;' }] },
   { nom: 'goutte-lente', lettre: 'P2', scenarios: ['pop'], editions: [{ fichier: FEUILLE, de: '  .gf-hp.is-nait { animation: gfHpGoutte 260ms cubic-bezier(0.23, 1, 0.32, 1) both; }', vers: '  .gf-hp.is-nait { animation: gfHpGoutte 600ms ease both; }' }] },
@@ -720,7 +1127,7 @@ const MUTATIONS = [
     { fichier: FEUILLE, de: '@media (prefers-reduced-motion: no-preference) {\n  .gf-hp.is-nait {', vers: '@media all {\n  .gf-hp.is-nait {' },
     { fichier: FEUILLE_COMMUNE, de: '    animation-duration: 0.01ms !important;\n    animation-iteration-count: 1 !important;\n', vers: '' },
   ] },
-  { nom: 'tableau-reecrit', lettre: 'P3', scenarios: ['pop'], editions: [{ fichier: MODULE, de: '    document.body.appendChild(el);\n    gfJetonPop += 1;', vers: "    document.body.appendChild(el);\n    var gw = document.getElementById('globalPlanningGridWrap'); if (gw) { gw._gfParties = null; renderGlobalPlanning(gw); }\n    gfJetonPop += 1;" }] },
+  { nom: 'tableau-reecrit', lettre: 'P3', scenarios: ['pop'], editions: [{ fichier: MODULE, de: '    document.body.appendChild(el);\n    gfPop = p;', vers: "    document.body.appendChild(el);\n    var gw = document.getElementById('globalPlanningGridWrap'); if (gw) { gw._gfParties = null; renderGlobalPlanning(gw); }\n    gfPop = p;" }] },
   { nom: 'heures-sans-verdict', lettre: 'V1', scenarios: ['pop'], editions: [{ fichier: MODULE, de: '      var libres = debuts.filter(function (d) { var v = memo.verdicts.get(gfMinute(d)); return v && v.passe; });', vers: '      var libres = debuts.filter(function (d) { return memo.verdicts.has(gfMinute(d)); });' }] },
   { nom: 'essais-complaisants', lettre: 'V1', scenarios: ['pop'], editions: [{ fichier: API, serveur: true, de: '      return { passe: false, raison: phraseDuRefus(error.message) };', vers: '      return { passe: true };' }] },
   { nom: 'enregistre-pas', lettre: 'E1', scenarios: ['pop'], editions: [{ fichier: MODULE, de: '    if (r && v && v.passe) gfEnregistrerHeure(r, point, minute / 60, offset, v.moves);', vers: '' }] },
@@ -743,11 +1150,61 @@ const MUTATIONS = [
   { nom: 'ligne-annuler-vide', lettre: 'L1', scenarios: ['ligne'], editions: [{ fichier: MODULE, de: '        gfDeplacerLeDossier(courant, avant, autres && pistesAvant.length ? pistesAvant : null).then(function (rendu) {', vers: '        Promise.resolve(null).then(function (rendu) {' }] },
   { nom: 'ligne-heure-passee', lettre: 'L1', scenarios: ['ligne'], editions: [{ fichier: MODULE, de: '    var maintenant = r.date === todayStr() ? Math.ceil(currentTimeDecimal() * 60 - 1e-6) / 60 : null;', vers: '    var maintenant = null;' }] },
   { nom: 'gele-ignore', lettre: 'F1', scenarios: ['gele'], editions: [
-    { fichier: MODULE, de: '    if (!debuts.length) return null;\n', vers: '    if (true) return null;\n' },
+    { fichier: MODULE, de: '    if (!commencees.length) return null;\n', vers: '    if (true) return null;\n' },
     { fichier: RETARD, serveur: true, de: '  if (!commencees.length) return null;', vers: '  if (true) return null;' },
   ] },
   { nom: 'gele-serveur-muet', lettre: 'F1', scenarios: ['gele'], editions: [{ fichier: RETARD, serveur: true, de: '  if (!commencees.length) return null;', vers: '  if (true) return null;' }] },
+  // (le PATCH deplace le groupe qui joue, pour une console restee sur l etat d avant)
+  { nom: 'gele-patch-ouvert', lettre: 'F2', scenarios: ['gele'], editions: [{ fichier: API, serveur: true, de: '        refuserSiLeGroupeJoue(current, deplacements);\n', vers: '' }] },
+  // (le verdict d une heure de « Modifier » le laisse passer)
+  { nom: 'gele-heure-a-blanc', lettre: 'F2', scenarios: ['gele'], editions: [{ fichier: API, serveur: true, de: '    refuserSiLeGroupeJoue(current, deplacements);\n    let candidat = current;', vers: '    let candidat = current;' }] },
+  // (le verdict de toute la modification le laisse passer)
+  { nom: 'gele-modifier-a-blanc', lettre: 'F2', scenarios: ['gele'], editions: [{ fichier: API, serveur: true, de: '  // (le PATCH activityMove le refusera : le verdict le dit avant le clic)\n  refuserSiLeGroupeJoue(current, deplacements);\n', vers: '' }] },
+  // (les groupes partent l un apres l autre, un PATCH chacun : le premier bouge meme si le second coince)
+  { nom: 'vagues-une-a-une', lettre: 'W1', scenarios: ['vagues'], editions: [{ fichier: MODULE, de: '    var envoi = moves.length > 1 ? envoyerDeplacementsActivite(r, moves) : envoyerDeplacementActivite(r, moves[0]);', vers: '    var envoi = moves.reduce(function (s, m) { return s.then(function (p) { return envoyerDeplacementActivite((p && p.reservation) || r, m); }); }, Promise.resolve(null));' }] },
+  // (la base n ecrit que le premier groupe)
+  { nom: 'vagues-en-partie', lettre: 'W1', scenarios: ['vagues'], editions: [{ fichier: 'lib/database.js', serveur: true, de: '    const deplacements = Array.isArray(input.activityMoves) ? input.activityMoves : (input.activityMove ? [input.activityMove] : null);', vers: '    const deplacements = Array.isArray(input.activityMoves) ? input.activityMoves.slice(0, 1) : (input.activityMove ? [input.activityMove] : null);' }] },
+  // (le refus ne dit plus quel groupe coince)
+  { nom: 'vagues-sans-rang', lettre: 'W2', scenarios: ['vagues'], editions: [{ fichier: API, serveur: true, de: '    if (error && Number.isInteger(error.rangDuDeplacement)) extra.rang = error.rangDuDeplacement;\n', vers: '' }] },
+  // (l avis tait le groupe qui coince)
+  { nom: 'vagues-sans-nom', lettre: 'W3', scenarios: ['vagues'], editions: [{ fichier: MODULE, de: "    var vague = moves.length > 1 && Number.isInteger(lu.rang) && moves[lu.rang] ?", vers: "    var vague = false ?" }] },
   { nom: 'fiche-sans-heure', lettre: 'S1', scenarios: ['fiche'], editions: [{ fichier: CONSOLE, de: "    const cleHeure = options.coches && typeof window.pgCleHeure === 'function' ? window.pgCleHeure(r, etape) : '';", vers: "    const cleHeure = '';" }] },
+  // (la phrase de la pop-up redit « joue depuis », quand personne n a coche)
+  { nom: 'gele-phrase-joue', lettre: 'F1', scenarios: ['gele'], editions: [{ fichier: MODULE, de: "      : 'sur place, et l’heure de ' + gfNomDuGel(premiere.activityId) + ' (' + gpHeure(premiere.start) + ') est passée';", vers: "      : 'joue depuis ' + depuis;" }] },
+  // (une coche a la main se dit comme une heure passee)
+  { nom: 'gele-coche-muette', lettre: 'F1', scenarios: ['gele'], editions: [{ fichier: MODULE, de: '    var motif = cochees.length\n', vers: '    var motif = false\n' }] },
+  // (le serveur redit « joue depuis » : la pop-up et lui ne disent plus la meme chose)
+  { nom: 'gele-serveur-joue', lettre: 'F1', scenarios: ['gele'], editions: [{ fichier: RETARD, serveur: true, de: "  return { depuis, motif, phrase: `${current.name || 'Ce groupe'} : ${motif}. Ses heures ne bougent plus.` };", vers: "  return { depuis, motif, phrase: `${current.name || 'Ce groupe'} joue depuis ${depuis} : ses heures ne bougent plus.` };" }] },
+  // (les pas de 5 min ne font rien)
+  { nom: 'minute-sans-pas', lettre: 'M1', scenarios: ['minute'], editions: [{ fichier: MODULE, de: "    if (pas) { gfPasPop(Number(pas.getAttribute('data-gf-hp-pas'))); return; }", vers: '    if (pas) return;' }] },
+  // (« Déplacer » ne fait rien)
+  { nom: 'minute-sans-bouton', lettre: 'M1', scenarios: ['minute'], editions: [{ fichier: MODULE, de: "    if (ev.target.closest('[data-gf-hp-valider]')) { gfValiderPop(); return; }", vers: "    if (ev.target.closest('[data-gf-hp-valider]')) return;" }] },
+  // (une minute refusee par le serveur se dit libre)
+  { nom: 'minute-complaisante', lettre: 'M2', scenarios: ['minute'], editions: [{ fichier: MODULE, de: '        : { minute: m, mode: mode, passe: false, texte: gfNeTientPas(p.point.nom, p.point.activityId, heure, v.raison) });', vers: "        : { minute: m, mode: mode, passe: true, d: d, moves: [{ activityId: p.point.activityId, startTime: heure, lanes: p.point.pistes }], texte: heure + ' passe.' });" }] },
+  // (une minute deja passee part au serveur)
+  { nom: 'minute-passee-au-serveur', lettre: 'M2', scenarios: ['minute'], editions: [{ fichier: MODULE, de: '    if (d < plancher.h - 1e-6) {\n      var motif = plancher.maintenant', vers: '    if (false) {\n      var motif = plancher.maintenant' }] },
+  // (pas de « Tout le groupe »)
+  { nom: 'groupe-absent', lettre: 'T1', scenarios: ['groupe'], editions: [{ fichier: MODULE, de: "    var mode = p.groupe ? '<div class=\"gf-hp__mode\"", vers: "    var mode = false ? '<div class=\"gf-hp__mode\"" }] },
+  // (les heures du groupe proposees sans le verdict du serveur)
+  { nom: 'groupe-heures-sans-verdict', lettre: 'T1', scenarios: ['groupe'], editions: [{ fichier: MODULE, de: '      var libres = ecarts.filter(function (e) { var v = memo.verdicts.get(e); return v && v.passe; });', vers: '      var libres = ecarts.filter(function (e) { return memo.verdicts.has(e); });' }] },
+  // (le calcul a blanc du groupe laisse tout passer)
+  { nom: 'groupe-serveur-complaisant', lettre: 'T1', scenarios: ['groupe'], editions: [{ fichier: API, serveur: true, de: "        return { passe: false, raison: phraseDuRefus(error.message), ...(error.cleDuDeplacement ? { cle: String(error.cleDuDeplacement), heure: String(error.heureDuDeplacement || '') } : {}) };", vers: '        return { passe: true };' }] },
+  // (« Annuler » ne remet rien)
+  { nom: 'groupe-annuler-vide', lettre: 'T2', scenarios: ['groupe'], editions: [{ fichier: MODULE, de: 'toastAnnulable(dit, function () { gfDefaireGroupe(ecrit.id, ecart, autres ? pistesAvant : null); });', vers: 'toastAnnulable(dit, function () {});' }] },
+  // (la ligne dit l activite touchee, pas celle qui coince)
+  { nom: 'groupe-ligne-muette', lettre: 'T3', scenarios: ['groupe'], editions: [{ fichier: MODULE, de: "          : { minute: m, mode: mode, passe: false, texte: v.cle ? gfNeTientPas(gfNomDeCle(r, v.cle), gfActiviteDeCle(v.cle), v.heure || '', v.plancher ? 'déjà passé, il est ' + gpHeure(currentTimeDecimal()) + '.' : v.raison) : gfNeTientPas('Tout le groupe', '', '', v.raison) });", vers: '          : { minute: m, mode: mode, passe: false, texte: gfNeTientPas(p.point.nom, p.point.activityId, heure, v.raison) });' }] },
+  // (l avis tait l activite et l heure qui coincent)
+  { nom: 'groupe-avis-muet', lettre: 'T4', scenarios: ['groupe'], editions: [{ fichier: MODULE, de: "    var texte = (lu.cle ? gfNeTientPas(gfNomDeCle(r, lu.cle), gfActiviteDeCle(lu.cle), String(lu.heure || ''), gfPhraseErreur(erreur)) : gfPhraseErreur(erreur)).replace(/\\s*$/, '');", vers: '    var texte = gfPhraseErreur(erreur);' }] },
+  // (Entree ne fait que juger : l heure qui passe ne s enregistre plus au clavier)
+  { nom: 'minute-entree-morte', lettre: 'M1', scenarios: ['minute'], editions: [{ fichier: MODULE, de: '    if (p.juge && p.juge.passe === true && p.juge.minute === m && p.juge.mode === p.mode) { gfValiderPop(); return; }\n', vers: '' }] },
+  // (« Tout le groupe » juge comme « Cette activité » : la 2e partie de Manon rebloque son 16:00, la demande d Ansar)
+  { nom: 'groupe-juge-comme-seul', lettre: 'T1', scenarios: ['groupe'], editions: [{ fichier: MODULE, de: "    if (p.mode === 'groupe') { gfRemplirGroupe(r); return; }\n", vers: '' }] },
+  // (un toucher sur une heure du groupe ne part pas)
+  { nom: 'groupe-toucher-mort', lettre: 'T2', scenarios: ['groupe'], editions: [{ fichier: MODULE, de: '      if (r && ve && ve.passe) gfEnregistrerGroupe(r, point, offset, e);\n', vers: '' }] },
+  // (le clavier du telephone qui reduit la fenetre ferme la pop-up, champ en main)
+  { nom: 'telephone-clavier-ferme', lettre: 'D1', scenarios: ['telephone'], editions: [{ fichier: MODULE, de: "    if (p && actif && p.el.contains(actif) && actif.matches && actif.matches('[data-gf-hp-champ]')) { gfPoserPop(true); return; }\n", vers: '' }] },
+  // (la page qui defile laisse la pop-up en l air)
+  { nom: 'telephone-defile-reste', lettre: 'D1', scenarios: ['telephone'], editions: [{ fichier: MODULE, de: '    if (!p || (a && Math.abs(a.getBoundingClientRect().top - p.haut) < 8)) return;\n', vers: '    if (true) return;\n' }] },
 ];
 
 async function jouer(browser, noms) {
@@ -758,6 +1215,10 @@ async function jouer(browser, noms) {
     if (nom === 'ligne') await scenarioLigne(browser);
     if (nom === 'gele') await scenarioGele(browser);
     if (nom === 'fiche') await scenarioFiche(browser);
+    if (nom === 'vagues') await scenarioVagues(browser);
+    if (nom === 'minute') await scenarioMinute(browser);
+    if (nom === 'groupe') await scenarioGroupe(browser);
+    if (nom === 'telephone') await scenarioTelephone(browser);
   }
 }
 
@@ -767,7 +1228,7 @@ async function main() {
   const t0 = Date.now();
   try {
     if (!process.argv.includes('--contre-preuves')) {
-      await jouer(browser, liste(process.env.HG_SCENARIOS) || ['pop', 'souris', 'doigt', 'ligne', 'gele', 'fiche']);
+      await jouer(browser, liste(process.env.HG_SCENARIOS) || ['pop', 'souris', 'doigt', 'ligne', 'gele', 'fiche', 'vagues', 'minute', 'groupe', 'telephone']);
     } else {
       console.log('[K] contre-preuves : chaque garde retiree fait rougir sa lettre');
       for (const m of MUTATIONS.filter((x) => !process.env.HG_MUTATIONS || liste(process.env.HG_MUTATIONS).includes(x.nom))) {

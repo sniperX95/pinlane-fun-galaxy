@@ -209,8 +209,11 @@ async function scenarioRefus(browser) {
     '[V5] apres le refus du serveur, le prix tape et ce qui partait restent a l ecran, a cote du motif', p.apres);
   // Lina passe en Formule 4 : ses pistes ne sont pas libres a l heure de son bowling.
   const l = await jouerCas(browser, { id: LINA, geste: async (page) => { await page.selectOption('#posOverlay #editFormuleSelect', 'f4'); } });
-  ok(l.avant.ton === 'refus' && /Ce créneau vient de changer/.test(l.avant.verdict) && l.reponses.join() === '400',
-    '[V1] des pistes prises a l heure du bowling : le refus du serveur se lit avant le clic, mot pour mot', { verdict: l.avant.verdict, reponses: l.reponses });
+  // (la cause dite au comptoir, 2026-11-22 : « Ce créneau vient de changer » est la phrase du formulaire
+  // en ligne, api/staff-reservations.js PHRASE_PISTES_PRISES)
+  ok(l.avant.ton === 'refus' && /Pas de piste libre pour ce groupe à cette heure\./.test(l.avant.verdict) && !/vient de changer/.test(l.avant.verdict) && l.reponses.join() === '400'
+    && l.apres && /Pas de piste libre pour ce groupe à cette heure\./.test(l.apres.erreur),
+    '[V1] des pistes prises a l heure du bowling : le refus du serveur se lit avant le clic, « Pas de piste libre pour ce groupe à cette heure. », et le clic le redit', { verdict: l.avant.verdict, erreur: l.apres && l.apres.erreur, reponses: l.reponses });
   ok(l.apres && !l.apres.fermee && /Formule 5 → Formule 4/.test(l.apres.pied) && !l.ecrit, '[V5] apres ce refus, la formule choisie reste a l ecran', l.apres && l.apres.pied);
   ok([c, m, p, l].every((x) => !x.erreurs.length), '[J1] aucune erreur JS (refus)', [c, m, p, l].flatMap((x) => x.erreurs).slice(0, 3));
 }
@@ -273,6 +276,8 @@ const REFUS = ['refus'];
 const PASSE = ['passe'];
 const MUTATIONS = [
   { nom: 'a-blanc-ecrit', lettre: 'V6', scenarios: PASSE, editions: [{ fichier: BASE, serveur: true, de: 'temoin.ligne = await ecrireLaModification(client, input, versionAttendue); throw temoin; });', vers: 'temoin.ligne = await ecrireLaModification(client, input, versionAttendue); });\n      throw temoin;' }] },
+  // (la phrase du formulaire en ligne revient dans « Modifier », avant le clic)
+  { nom: 'pistes-prises-du-formulaire', lettre: 'V1', scenarios: REFUS, editions: [{ fichier: 'api/staff-reservations.js', serveur: true, de: '    dansLesMotsDuComptoir(error);\n', vers: '' }] },
   { nom: 'verdict-muet', lettre: 'V1', scenarios: REFUS, editions: [{ fichier: JS, de: '    v.resultat = reponse && reponse.modification === true ? lireVerdictEdition(reponse, envoi) : null;', vers: '    v.resultat = null;' }] },
   { nom: 'refus-de-l-ecran-tu', lettre: 'V1', scenarios: REFUS, editions: [{ fichier: JS, de: '  if (envoi.erreur) { v.resultat = { refus: envoi.erreur, lignes: [], ecrit: null, prixSuivi: false }; peindreVerdictEdition(); return; }', vers: '  if (envoi.erreur) { peindreVerdictEdition(); return; }' }] },
   { nom: 'prix-de-l-ecran', lettre: 'V2', scenarios: PASSE, editions: [{ fichier: JS, de: '  const ecrit = prixDuVerdictEdition();\n  if (ecrit != null) return ecrit;\n', vers: '' }] },

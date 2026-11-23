@@ -321,7 +321,46 @@ function patchNeedsOnlyStatus(body = {}) {
 // refuse a chaque glisser. Modifier le dossier reste le droit de modifier.
 function patchIsActivityMoveOnly(body = {}) {
   const keys = Object.keys(body || {}).filter((key) => !['id', 'centerId', 'center_id', 'baseUpdatedAt'].includes(key));
-  return keys.length === 1 && keys[0] === 'activityMove';
+  return keys.length === 1 && (keys[0] === 'activityMove' || keys[0] === 'activityMoves');
+}
+
+// UN GROUPE QUI JOUE DEJA NE BOUGE PAS, AUSSI PAR L API (2026-11-22). La pop-up de l heure et le glisser
+// du planning complet le disaient ; une console restee ouverte sur un etat perime deplacait quand meme.
+// Chaque deplacement d activite (PATCH activityMove ou activityMoves, et leurs calculs a blanc) le
+// refuse avec la phrase de la pop-up (groupeEnJeu, lib/retard-arrivee.js). Poser une activite qui
+// attend sa place n est pas bouger le groupe : une partie de laser ajoutee pendant qu il joue se place
+// (heures-du-dossier-check [D]).
+function placeUneActiviteSansHeure(current, deplacement) {
+  if (!deplacement || typeof deplacement !== 'object' || deplacement.unplace === true || deplacement.libre === true) return false;
+  const plan = current && current.opsPlan && typeof current.opsPlan === 'object' ? current.opsPlan : {};
+  const blocs = Array.isArray(plan.resourceBlocks) ? plan.resourceBlocks : [];
+  const activite = String(deplacement.activityId || '');
+  if (activite === 'laser_game') {
+    return !blocs.some((b) => b && b.resourceType === 'laser_arena' && `${Number(b.countIndex || 1)}.${Number(b.groupWaveIndex || 1)}` === String(deplacement.unitKey));
+  }
+  if (activite === 'bowling') return !blocs.some((b) => b && b.resourceType === 'bowling_lane');
+  const frise = Array.isArray(plan.timeline) ? plan.timeline : [];
+  return !frise.some((e) => e && e.activityId === activite && e.type === 'activity' && e.flexible !== true && e.startTime && e.endTime);
+}
+function refuserSiLeGroupeJoue(current, deplacements = []) {
+  if (deplacements.length && deplacements.every((d) => placeUneActiviteSansHeure(current, d))) return;
+  const enJeu = require('../lib/retard-arrivee').groupeEnJeu(current);
+  if (!enJeu) return;
+  const error = new Error(enJeu.phrase);
+  error.statusCode = 409;
+  error.code = 'groupe_en_jeu';
+  error.expose = true;
+  throw error;
+}
+
+// LES PISTES PRISES SE DISENT AU COMPTOIR (2026-11-22). Le moteur refuse les pistes d un plan prises a
+// son heure avec la phrase du formulaire en ligne (« Ce créneau vient de changer. Merci de relancer la
+// recherche », lib/database.js ensureAssignableLanes, code `pistes_prises`) ; « Modifier » et le glisser
+// d une ligne disent la cause.
+const PHRASE_PISTES_PRISES = 'Pas de piste libre pour ce groupe à cette heure.';
+function dansLesMotsDuComptoir(error) {
+  if (error && error.code === 'pistes_prises') error.message = PHRASE_PISTES_PRISES;
+  return error;
 }
 
 // Un PATCH qui ne touche QUE le suivi d'activités (cocher/décocher) : chemin rapide
@@ -519,6 +558,7 @@ async function modifierABlanc(req, res, corps) {
     return { ok: true, dryRun: true, modification: true, reservation, ...(planNonRefait ? { planNonRefait } : {}) };
   } catch (error) {
     if ((error && error.statusCode >= 500) || estErreurInfra(error)) throw error;
+    dansLesMotsDuComptoir(error);
     return { ok: true, dryRun: true, modification: true, refus: { message: String(error.message), statut: error.statusCode || 400, ...(error.code ? { code: error.code } : {}), ...(Number.isInteger(error.rangDuDeplacement) ? { rang: error.rangDuDeplacement, suggestions: error.heuresProches || [] } : {}), ...(error.enPlus ? { enPlus: String(error.enPlus) } : {}) } };
   }
 }
@@ -533,6 +573,8 @@ async function deplacerAvantLeReste(current, deplacements, session) {
     const droit = activite === 'laser_game' ? 'planning.laser' : activite === 'bowling' ? 'planning.bowling' : '';
     if (droit && !sessionHasPermission(session, droit)) throw createHttpError('Ce planning ne fait pas partie de votre rôle.', 403);
   });
+  // (le PATCH activityMove le refusera : le verdict le dit avant le clic)
+  refuserSiLeGroupeJoue(current, deplacements);
   const { buildActivityMove } = require('../lib/reservation-activity-move');
   const { validateActivityMoveResources } = require('../lib/database');
   const lu = await readStaffState(current.date, current.centerId || 'libramont', { avecBlocages: true, avecFermetures: true });
@@ -567,6 +609,8 @@ async function deplacerAvantLeReste(current, deplacements, session) {
 // `deplacement: true` : un serveur d avant ce jour ne le dit pas, et la console se tait.
 const DEPLACEMENTS_A_BLANC_MAX = 12;
 async function deplacerABlanc(req, res, corps) {
+  // (tout le groupe du meme ecart : son calcul a blanc, decalerABlanc)
+  if (corps.toutLeGroupe != null) return decalerABlanc(req, res, corps);
   if (!corps.id) throw createHttpError('Reservation manquante.', 400);
   const current = await getReservationById(corps.id);
   if (!current) throw createHttpError('Reservation introuvable.', 404);
@@ -616,6 +660,7 @@ async function deplacerABlanc(req, res, corps) {
       return verdict && verdict.opsPlan ? { ...essai, opsPlan: verdict.opsPlan } : essai;
     };
     if (essais) return heuresDesEssais({ current, essais, autres, auPlusTot, essayer });
+    refuserSiLeGroupeJoue(current, deplacements);
     let candidat = current;
     for (let rang = 0; rang < deplacements.length; rang += 1) {
       const deplacement = deplacements[rang];
@@ -761,6 +806,96 @@ async function patcherRetard(req, res, body, current, requestedCenterId) {
   const secours = lu.cles.length ? await copierAuSecours(reservation, 'modifiee', current, session) : '';
   const avertissements = [audit.warning, secours].filter(Boolean);
   sendJson(res, 200, { ok: true, reservation, automation, ...(avertissements.length ? { warnings: avertissements } : {}) });
+}
+
+// TOUT LE GROUPE DU MEME ECART (2026-11-23, la pop-up de l heure du planning complet ; Ansar : « si on veut
+// tout avancer de 30 minutes, on peut pas »). Toute la visite d un bloc, arrivee comprise, jugee et ecrite
+// ensemble par lib/decaler-le-groupe.js (ecrireLeGroupeDecale, sous le verrou) : tout, ou rien. Le droit du
+// glisser, et celui de chaque ressource que le groupe tient (comme un glisser de son bowling ou de son
+// laser) ; un jour passe, son droit ; un groupe qui joue ne bouge pas. Le refus d une activite qui ne tient
+// pas porte son nom et son heure (`cle`, `heure`).
+function exigerLesDroitsDuGroupe(current, session) {
+  const { activitesAHeure } = require('../lib/retard-arrivee');
+  const activites = new Set(activitesAHeure(current).map((etape) => etape.activityId));
+  if ((activites.has('bowling') && !sessionHasPermission(session, 'planning.bowling')) || (activites.has('laser_game') && !sessionHasPermission(session, 'planning.laser'))) {
+    throw createHttpError('Ce planning ne fait pas partie de votre rôle.', 403);
+  }
+  if (dateValide(current.date) && current.date < aujourdhuiABruxelles() && !sessionHasPermission(session, 'planning.past')) throw createHttpError('Changer un jour passé ne fait pas partie de votre rôle.', 403);
+}
+async function patcherToutLeGroupe(req, res, body, current, requestedCenterId) {
+  const enTrop = Object.keys(body).filter((cle) => !['id', 'centerId', 'center_id', 'baseUpdatedAt', 'toutLeGroupe'].includes(cle));
+  if (enTrop.length) throw createHttpError('Décaler tout le groupe ne modifie aucun autre choix du dossier.', 422);
+  const centre = current.centerId || 'libramont';
+  const session = await requireStaffPermission(req, res, ['planning.drag', 'reservations.edit'], { centerId: centre });
+  if (!session) return;
+  if (requestedCenterId !== centre) throw createHttpError('Une réservation reste dans son centre : annulez-la et recréez-la dans l autre.', 422);
+  const { lireDecalage } = require('../lib/decaler-le-groupe');
+  const lu = lireDecalage(body.toutLeGroupe);
+  if (!body.baseUpdatedAt || !memeVersion(current.updatedAt, lireVersionAttendue(body.baseUpdatedAt))) throw reservationModifieeEntreTemps(current);
+  exigerLesDroitsDuGroupe(current, session);
+  refuserSiLeGroupeJoue(current);
+  await warmCenterKnowledge();
+  const { ecrireLeGroupeDecale } = require('../lib/database');
+  const reservation = await ecrireLeGroupeDecale({ id: current.id, centerId: centre, baseUpdatedAt: body.baseUpdatedAt, ecart: lu.ecart, pistes: lu.pistes, modifiePar: nomDeSession(session) });
+  const automation = await refreshReservationAutomation(current, reservation, { reason: 'activity_moved' });
+  const audit = await writeAuditLog({ centerId: centre, ...actorFromSession(session), surface: 'api/staff-reservations.js', action: 'decalerToutLeGroupe', method: 'PATCH', entityType: 'reservation', entityId: current.id, outcome: 'success', changes: buildReservationAuditChanges(current, reservation), context: contexteRegistre(current, reservation, { toutLeGroupe: { ecart: lu.ecart } }), requestId: newRequestId() });
+  // (l arrivee et toutes les heures changent : la copie de secours, comme « Modifier » et le retard)
+  const secours = await copierAuSecours(reservation, 'modifiee', current, session);
+  const avertissements = [audit.warning, secours].filter(Boolean);
+  sendJson(res, 200, { ok: true, reservation, toutLeGroupe: { ecart: lu.ecart, unchangedActivities: true }, automation, ...(avertissements.length ? { warnings: avertissements } : {}) });
+}
+
+// TOUT LE GROUPE, A BLANC (2026-11-23) : la pop-up de l heure demande ici ce que donnerait chaque ecart
+// (`toutLeGroupe.ecarts`, un par heure a essayer), juge comme l ecriture le jugera, sur la journee relue,
+// fermetures et blocages compris. Rien ne s ecrit. Chaque ecart rend { passe } (et les pistes du bowling
+// quand elles changent), ou { passe: false, raison, cle, heure } : l activite et l heure qui coincent. Une
+// heure deja passee (`auPlusTot`) ne se juge pas : { passe: false, plancher }. Un groupe qui joue : `gele`.
+async function decalerABlanc(req, res, corps) {
+  if (!corps.id) throw createHttpError('Reservation manquante.', 400);
+  const current = await getReservationById(corps.id);
+  if (!current) throw createHttpError('Reservation introuvable.', 404);
+  const centre = current.centerId || 'libramont';
+  const session = await requireStaffPermission(req, res, ['planning.drag', 'reservations.edit'], { centerId: centre });
+  if (!session) return null;
+  try {
+    const { lireEcarts, etapesDuDecalage, decalerLeGroupe, pistesDuBowling } = require('../lib/decaler-le-groupe');
+    const { groupeEnJeu, maintenantDuJour, phraseDuRefus } = require('../lib/retard-arrivee');
+    const ecarts = lireEcarts(corps.toutLeGroupe);
+    if ((corps.centerId || corps.center_id || centre) !== centre) throw createHttpError('Une réservation reste dans son centre : annulez-la et recréez-la dans l autre.', 422);
+    exigerLesDroitsDuGroupe(current, session);
+    if (!corps.baseUpdatedAt || !memeVersion(current.updatedAt, lireVersionAttendue(corps.baseUpdatedAt))) throw reservationModifieeEntreTemps(current);
+    const maintenant = maintenantDuJour(current.date);
+    const enJeu = groupeEnJeu(current, maintenant);
+    if (enJeu) return { ok: true, dryRun: true, deplacement: true, groupe: true, gele: enJeu.phrase, essais: [] };
+    const { validateActivityMoveResources } = require('../lib/database');
+    const snapshot = await readStaffState(current.date, centre, { avecBlocages: true, avecFermetures: true });
+    const autres = snapshot.reservations.filter(row => Number(row.id) !== Number(current.id));
+    const blocs = snapshot.blocks || [];
+    const auPlusTot = Number.isFinite(Number(corps.auPlusTot)) && corps.auPlusTot !== null && corps.auPlusTot !== ''
+      ? Math.max(0, Math.min(48 * 60, Math.round(Number(corps.auPlusTot)))) : null;
+    const valider = (essai, move) => {
+      try { return validateActivityMoveResources(essai, move, autres, snapshot.laneStatuses, blocs, current.date); }
+      catch (error) { if (!error.statusCode) error.statusCode = 409; throw error; }
+    };
+    const jour = { reservations: autres, laneStatuses: snapshot.laneStatuses || {}, blocks: blocs, date: current.date };
+    const avant = pistesDuBowling(current).join(',');
+    const juger = (ecart) => {
+      try {
+        // (une activite qui passerait a une heure deja passee : le groupe ne remonte pas le temps)
+        const tot = auPlusTot === null ? null : etapesDuDecalage(current, ecart).find((etape) => etape.apres < auPlusTot);
+        if (tot) return { passe: false, plancher: true, cle: tot.cle, heure: tot.move.startTime, raison: 'Cette heure est déjà passée.' };
+        const { pistes } = decalerLeGroupe(current, { ecart }, { valider, jour, autres, maintenant, centreId: centre });
+        return { passe: true, ...(pistes.length && pistes.join(',') !== avant ? { pistes } : {}) };
+      } catch (error) {
+        if (!error || !error.statusCode || error.statusCode >= 500 || estErreurInfra(error) || error.statusCode === 403 || error.code === 'reservation_modifiee') throw error;
+        return { passe: false, raison: phraseDuRefus(error.message), ...(error.cleDuDeplacement ? { cle: String(error.cleDuDeplacement), heure: String(error.heureDuDeplacement || '') } : {}) };
+      }
+    };
+    return { ok: true, dryRun: true, deplacement: true, groupe: true, essais: ecarts.map(juger) };
+  } catch (error) {
+    if (!error || !error.statusCode || error.statusCode >= 500 || estErreurInfra(error)) throw error;
+    return { ok: true, dryRun: true, deplacement: true, groupe: true, refus: { message: String(error.message), statut: error.statusCode, ...(error.code ? { code: error.code } : {}) } };
+  }
 }
 
 // UN AUTRE ORDRE POUR UN DOSSIER ENREGISTRE (2026-11-18, Marius, Gembloux : « l algo ne
@@ -1385,7 +1520,8 @@ const traiter = async (req, res) => {
         if (blanc) sendJson(res, 200, blanc);
         return;
       }
-      // L heure d une activite changee dans « Modifier » (deplacerABlanc) : le droit du glisser.
+      // L heure d une activite changee dans « Modifier » (deplacerABlanc) : le droit du glisser. Tout le
+      // groupe du meme ecart (decalerABlanc), la pop-up de l heure du planning complet.
       if (body.dryRun === true && body.deplacement && typeof body.deplacement === 'object' && !Array.isArray(body.deplacement)) {
         if (!(await requireAnyStaffSession(req, res))) return;
         await warmCenterKnowledge();
@@ -1444,6 +1580,10 @@ const traiter = async (req, res) => {
         await patcherRetard(req, res, body, current, requestedCenterId);
         return;
       }
+      if (Object.prototype.hasOwnProperty.call(body, 'toutLeGroupe')) {
+        await patcherToutLeGroupe(req, res, body, current, requestedCenterId);
+        return;
+      }
       // L encaisse et l absence (0056) sont des gestes d accueil : meme droit
       // de base que changer un statut (l encaisse redemande payments.markPaid).
       const gesteAccueil = Object.keys(body).filter((key) => !['id', 'centerId', 'center_id', 'baseUpdatedAt'].includes(key));
@@ -1466,9 +1606,13 @@ const traiter = async (req, res) => {
       // « Gérer les pistes bowling » et « Gérer les sessions Laser Game » ne gardaient que les
       // onglets de la console, un role sans l un des deux deplacait quand meme par l API.
       if (patchIsActivityMoveOnly(body)) {
-        const activiteDeplacee = String((body.activityMove && body.activityMove.activityId) || '');
-        const droitDeLaRessource = activiteDeplacee === 'laser_game' ? 'planning.laser' : (activiteDeplacee === 'bowling' ? 'planning.bowling' : '');
-        if (droitDeLaRessource && !sessionHasPermission(session, droitDeLaRessource)) throw createHttpError('Ce planning ne fait pas partie de votre rôle.', 403);
+        // (les vagues d une partie, activityMoves : le droit de chacune)
+        const deplaces = Array.isArray(body.activityMoves) ? body.activityMoves : [body.activityMove];
+        deplaces.forEach((deplace) => {
+          const activiteDeplacee = String((deplace && deplace.activityId) || '');
+          const droitDeLaRessource = activiteDeplacee === 'laser_game' ? 'planning.laser' : (activiteDeplacee === 'bowling' ? 'planning.bowling' : '');
+          if (droitDeLaRessource && !sessionHasPermission(session, droitDeLaRessource)) throw createHttpError('Ce planning ne fait pas partie de votre rôle.', 403);
+        });
       }
       // UN JOUR PASSE SE CORRIGE AVEC SON DROIT (2026-11-07). planning.past
       // (« Changer un jour passé ») ne gardait que le bouton Valider de l ecran :
@@ -1688,27 +1832,48 @@ const traiter = async (req, res) => {
       }
 
       await warmCenterKnowledge();
-      if (Object.prototype.hasOwnProperty.call(body, 'activityMove')) {
-        if (Object.keys(body).some(field => !['id', 'centerId', 'center_id', 'baseUpdatedAt', 'activityMove'].includes(field))) {
+      // LES VAGUES D UNE PARTIE LASER BOUGENT EN BLOC (activityMoves, 2026-11-22) : chacune jugee sur le
+      // dossier que la precedente deplace, ecrites ensemble sous le verrou (lib/database.js), ou refusees
+      // ensemble. Le refus dit le rang de celle qui coince (`rang`) ; rien n a bouge.
+      const plusieurs = Object.prototype.hasOwnProperty.call(body, 'activityMoves');
+      if (plusieurs || Object.prototype.hasOwnProperty.call(body, 'activityMove')) {
+        const champ = plusieurs ? 'activityMoves' : 'activityMove';
+        if (Object.keys(body).some(field => !['id', 'centerId', 'center_id', 'baseUpdatedAt', champ].includes(field))) {
           throw createHttpError('Un déplacement d’activité ne modifie aucun autre choix du dossier.', 422);
+        }
+        const deplacements = plusieurs ? body.activityMoves : [body.activityMove];
+        if (plusieurs && (!Array.isArray(deplacements) || !deplacements.length || deplacements.length > ETAPES_PAR_ESSAI_MAX || deplacements.some((d) => !d || typeof d !== 'object' || Array.isArray(d)))) {
+          throw createHttpError('Déplacement d’activité invalide.', 400);
         }
         if (!body.baseUpdatedAt || !memeVersion(current.updatedAt, lireVersionAttendue(body.baseUpdatedAt))) {
           throw reservationModifieeEntreTemps(current);
         }
+        refuserSiLeGroupeJoue(current, deplacements);
         const { buildActivityMove } = require('../lib/reservation-activity-move');
         const { readStaffState, validateActivityMoveResources } = require('../lib/database');
         // (l heure a la minute du comptoir : lib/reservation-activity-move.js, aLaMinute)
-        const candidate = buildActivityMove(current, body.activityMove, { aLaMinute: true });
         // (les fermetures et privatisations du jour : `snapshot.blocks` etait toujours vide, seule
         // l ecriture sous verrou les jugeait ; la meme phrase, maintenant des ce controle)
         const snapshot = await readStaffState(current.date, requestedCenterId, { avecBlocages: true, avecFermetures: true });
-        try {
-          validateActivityMoveResources(candidate, body.activityMove, snapshot.reservations.filter(row => Number(row.id) !== Number(current.id)), snapshot.laneStatuses, snapshot.blocks || [], current.date);
-        } catch (error) { if (!error.statusCode) error.statusCode = 409; throw error; }
-        const reservation = await updateReservation({ id: current.id, centerId: requestedCenterId, baseUpdatedAt: body.baseUpdatedAt, aLaMinute: true, activityMove: body.activityMove, modifiePar: nomDeSession(session) });
+        const voisins = snapshot.reservations.filter(row => Number(row.id) !== Number(current.id));
+        // (chaque etape part du dossier que la precedente a deplace, calee comme l ecriture la calera : une
+        // partie a quelques minutes d une autre la rejoint, lib/database.js rejoindreLesParties)
+        let candidate = current;
+        deplacements.forEach((deplacement, rang) => {
+          try {
+            const suivant = buildActivityMove(candidate, deplacement, { aLaMinute: true });
+            let verdict = null;
+            try {
+              verdict = validateActivityMoveResources(suivant, deplacement, voisins, snapshot.laneStatuses, snapshot.blocks || [], current.date);
+            } catch (error) { if (!error.statusCode) error.statusCode = 409; throw error; }
+            candidate = verdict && verdict.opsPlan ? { ...suivant, opsPlan: verdict.opsPlan } : suivant;
+          } catch (error) { if (plusieurs && error) error.rangDuDeplacement = rang; throw error; }
+        });
+        const reservation = await updateReservation({ id: current.id, centerId: requestedCenterId, baseUpdatedAt: body.baseUpdatedAt, aLaMinute: true, [champ]: plusieurs ? deplacements : body.activityMove, modifiePar: nomDeSession(session) });
         const automation = await refreshReservationAutomation(current, reservation, { reason: 'activity_moved' });
-        const auditMove = await writeAuditLog({ centerId: requestedCenterId, ...actorFromSession(session), surface: 'api/staff-reservations.js', action: 'moveReservationActivity', method: 'PATCH', entityType: 'reservation', entityId: current.id, outcome: 'success', changes: buildReservationAuditChanges(current, reservation), context: contexteRegistre(current, reservation, { activityMove: body.activityMove }), requestId: newRequestId() });
-        sendJson(res, 200, { ok: true, reservation, activityMove: { ...body.activityMove, unchangedActivities: true }, automation, ...(auditMove.warning ? { warnings: [auditMove.warning] } : {}) });
+        const auditMove = await writeAuditLog({ centerId: requestedCenterId, ...actorFromSession(session), surface: 'api/staff-reservations.js', action: 'moveReservationActivity', method: 'PATCH', entityType: 'reservation', entityId: current.id, outcome: 'success', changes: buildReservationAuditChanges(current, reservation), context: contexteRegistre(current, reservation, { [champ]: plusieurs ? deplacements : body.activityMove }), requestId: newRequestId() });
+        const recu = plusieurs ? { activityMoves: deplacements.map((d) => ({ ...d, unchangedActivities: true })) } : { activityMove: { ...body.activityMove, unchangedActivities: true } };
+        sendJson(res, 200, { ok: true, reservation, ...recu, automation, ...(auditMove.warning ? { warnings: [auditMove.warning] } : {}) });
         return;
       }
       // ENCAISSER PAR « MODIFIER » DEMANDE LE DROIT D ENCAISSER (2026-10-12).
@@ -1721,7 +1886,8 @@ const traiter = async (req, res) => {
         const sessionEncaisse = await requireStaffPermission(req, res, 'payments.markPaid', { centerId: requestedCenterId });
         if (!sessionEncaisse) return;
       }
-      const { patch, ops, shouldReplan } = await calculerLaModification({ body, current, session, requestedCenterId });
+      // (des pistes prises a l heure du dossier se disent comme au calcul a blanc : PHRASE_PISTES_PRISES)
+      const { patch, ops, shouldReplan } = await calculerLaModification({ body, current, session, requestedCenterId }).catch((error) => { throw dansLesMotsDuComptoir(error); });
       if (autreOrdreApplique && (!shouldReplan || ops.planAvailable === false || !planConformeALaProposition(ops.opsPlan, autreOrdreApplique))) {
         throw createHttpError(`Cet ordre ne tient plus tel quel${ops.planRefusal ? ` (${ops.planRefusal})` : ''} : relancez « Proposer un autre ordre ».`, 409);
       }
@@ -1732,7 +1898,7 @@ const traiter = async (req, res) => {
         // La derniere modification se signe au nom de la session, jamais d un
         // nom venu du corps (lib/historique-dossier.js).
         modifiePar: nomDeSession(session),
-      });
+      }).catch((error) => { throw dansLesMotsDuComptoir(error); });
       const automation = hasAnyField(patch, AUTOMATION_REFRESH_FIELDS)
         ? await refreshReservationAutomation(current, reservation, { reason: 'reservation_updated' })
         : { communications: 0, jobs: 0, refreshed: false };
@@ -1881,7 +2047,11 @@ const traiter = async (req, res) => {
     // Un refus de droit garde son code stable : la console le lit, pas la phrase.
     const extra = error && error.code === 'reservation_modifiee' && error.reservation
       ? { code: error.code, reservation: error.reservation }
-      : estRefusDeDroit(error) ? { code: error.code } : {};
+      : estRefusDeDroit(error) || (error && error.code === 'groupe_en_jeu') ? { code: error.code } : {};
+    // (les vagues d une partie deplacees ensemble : le rang de celle qui coince, rien n a bouge)
+    if (error && Number.isInteger(error.rangDuDeplacement)) extra.rang = error.rangDuDeplacement;
+    // (tout le groupe decale : l activite et l heure qui coincent, lib/decaler-le-groupe.js)
+    if (error && error.cleDuDeplacement) Object.assign(extra, { cle: String(error.cleDuDeplacement), heure: String(error.heureDuDeplacement || '') });
     sendError(res, (error && error.statusCode) || 400, raw, extra);
   }
 };

@@ -2436,6 +2436,86 @@ function envoyerDeplacementActivite(avant, activityMove) {
   });
 }
 
+// LES VAGUES D UNE PARTIE LASER, EN BLOC (2026-11-22, le planning complet) : un seul PATCH activityMoves,
+// ecrit tout entier ou refuse tout entier. Le refus porte le rang de la vague qui coince
+// (error.payload.rang) ; rien n a bouge. La meme verification qu un deplacement seul : seules ces vagues
+// ont change.
+function envoyerDeplacementsActivite(avant, activityMoves) {
+  return enchainerEcritureReservation(avant.id, async (derniere) => {
+    const base = derniere && String(derniere.id) === String(avant.id) ? derniere : avant;
+    let payload;
+    try {
+      payload = await apiRequest(API_ENDPOINTS.staffReservations, {
+        method: 'PATCH',
+        body: JSON.stringify({ id: base.id, centerId: base.centerId || base.center_id || getCurrentStaffCenterId(), baseUpdatedAt: base.updatedAt, activityMoves })
+      });
+    } catch (error) {
+      if (error.status === 409 && error.payload?.reservation) {
+        throw conflitReservation(error.payload.reservation, ['opsPlan'], 'Le planning a changé sur un autre poste. Vérifiez sa position actuelle puis refaites le déplacement.');
+      }
+      throw error;
+    }
+    const saved = payload?.reservation;
+    const recus = Array.isArray(payload?.activityMoves) ? payload.activityMoves : [];
+    const unites = new Set(activityMoves.map(move => move.unitKey));
+    const cible = block => (block.resourceType === 'laser_arena' || block.activityId === 'laser_game') && unites.has(laserBlockUnitKey(block));
+    const autres = plan => (plan?.resourceBlocks || []).filter(block => !cible(block));
+    const invariants = ['date', 'startTime', 'duration', 'totalDuration', 'pax', 'price', 'basePrice', 'extras', 'program', 'status', 'activityProgress'];
+    const ancienPlanExplicite = Boolean(base.opsPlan?.resourceBlocks?.length);
+    const conforme = saved && String(saved.id) === String(base.id)
+      && String(saved.centerId || saved.center_id) === String(base.centerId || base.center_id || getCurrentStaffCenterId())
+      && activityMoves.every(move => move.activityId === 'laser_game')
+      && recus.length === activityMoves.length
+      && recus.every((recu, rang) => recu?.activityId === 'laser_game' && recu.unitKey === activityMoves[rang].unitKey && recu.unchangedActivities === true)
+      && invariants.every(key => valeurReservationComparable(saved[key]) === valeurReservationComparable(base[key]))
+      && (!ancienPlanExplicite || valeurReservationComparable(autres(saved.opsPlan)) === valeurReservationComparable(autres(base.opsPlan)))
+      && (!Array.isArray(base.opsPlan?.timeline) || valeurReservationComparable((saved.opsPlan?.timeline || []).filter(block => !cible(block))) === valeurReservationComparable(base.opsPlan.timeline.filter(block => !cible(block))));
+    if (!conforme) throw new Error('Le serveur n’a pas confirmé un déplacement limité à cette activité. Actualisez le planning avant de réessayer.');
+    return payload;
+  });
+}
+
+// TOUT LE GROUPE DU MEME ECART (2026-11-23, la pop-up de l heure du planning complet) : un seul PATCH
+// toutLeGroupe, que le serveur juge et ecrit d un bloc (lib/decaler-le-groupe.js), ou refuse tout entier ;
+// le refus dit l activite et l heure qui coincent (error.payload.cle, .heure), rien n a bouge. `pistes` :
+// celles que le bowling reprend (« Annuler » rend celles d avant). La verification : l arrivee et chaque
+// bloc du groupe du meme ecart, le reste du dossier tel quel.
+function envoyerDecalageDuGroupe(avant, ecart, pistes = null) {
+  return enchainerEcritureReservation(avant.id, async (derniere) => {
+    const base = derniere && String(derniere.id) === String(avant.id) ? derniere : avant;
+    let payload;
+    try {
+      payload = await apiRequest(API_ENDPOINTS.staffReservations, {
+        method: 'PATCH',
+        body: JSON.stringify({ id: base.id, centerId: base.centerId || base.center_id || getCurrentStaffCenterId(), baseUpdatedAt: base.updatedAt, toutLeGroupe: { ecart, ...(Array.isArray(pistes) && pistes.length ? { pistes } : {}) } })
+      });
+    } catch (error) {
+      if (error.status === 409 && error.payload?.reservation) {
+        throw conflitReservation(error.payload.reservation, ['startTime', 'opsPlan'], 'Le planning a changé sur un autre poste. Vérifiez sa position actuelle puis refaites le déplacement.');
+      }
+      throw error;
+    }
+    const saved = payload?.reservation;
+    const minute = texte => { const m = /^(\d{2}):(\d{2})/.exec(String(texte || '')); return m ? Number(m[1]) * 60 + Number(m[2]) : NaN; };
+    // (chaque bloc du groupe : le bowling dans son ordre, chaque partie de laser par sa cle)
+    const debuts = (plan, decale) => {
+      const blocs = (plan?.resourceBlocks || []).filter(Boolean);
+      const bowling = blocs.filter(block => block.resourceType === 'bowling_lane').map((block, rang) => `bowling:${rang}@${minute(block.startTime) + decale}`);
+      const laser = blocs.filter(block => block.resourceType === 'laser_arena').map(block => `laser:${laserBlockUnitKey(block)}@${minute(block.startTime) + decale}`);
+      return [...bowling, ...laser].sort().join(' ');
+    };
+    const invariants = ['date', 'duration', 'totalDuration', 'pax', 'price', 'basePrice', 'extras', 'program', 'status', 'activityProgress'];
+    const conforme = saved && String(saved.id) === String(base.id)
+      && String(saved.centerId || saved.center_id) === String(base.centerId || base.center_id || getCurrentStaffCenterId())
+      && payload.toutLeGroupe && payload.toutLeGroupe.ecart === ecart && payload.toutLeGroupe.unchangedActivities === true
+      && minute(saved.startTime) === minute(base.startTime) + ecart
+      && invariants.every(key => valeurReservationComparable(saved[key]) === valeurReservationComparable(base[key]))
+      && debuts(saved.opsPlan, 0) === debuts(base.opsPlan, ecart);
+    if (!conforme) throw new Error('Le serveur n’a pas confirmé le décalage de tout le groupe. Actualisez le planning avant de réessayer.');
+    return payload;
+  });
+}
+
 function envoyerModificationReservation(avant, appliquer, overrides = {}) {
   return enchainerEcritureReservation(avant.id, async (derniere) => {
     // Une ecriture de CE poste vient d aboutir sur ce dossier : on part de ce

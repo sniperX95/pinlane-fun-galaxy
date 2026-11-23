@@ -38803,6 +38803,9 @@ async function chargerCatalogueSurMesure() {
             if (liste) liste.innerHTML = optionsSurMesure(items);
           });
         });
+        // (Modifier ouvert : la TVA d une formule lit le prix de ses boissons dans ce catalogue ; arrive
+        // apres l ouverture, il repeint le prix, sans quoi la cruche restait hors repartition)
+        if (state.editState && state.activeTab === 'modifier' && typeof majEditPrixEstime === 'function') majEditPrixEstime();
       }
       return lu;
     } catch (error) {

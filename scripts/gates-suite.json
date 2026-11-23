@@ -182,6 +182,7 @@
     "test:pricing-tier-ceiling",
     "test:duckpin-summary",
     "test:duckpin-deux-pistes",
+    "test:tva-modifier",
     "test:center-required",
     "test:orphan-center",
     "test:laser-waves",

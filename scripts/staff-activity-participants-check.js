@@ -10,7 +10,7 @@ const catalog = [
   { id: 'laser_game', name: 'Laser Game', priceType: 'grid_laser' },
   { id: 'minigolf_blacklight', name: 'Minigolf', priceType: 'per_pax', priceValue: 10 },
   { id: 'billards', name: 'Billard', priceType: 'per_unit_hour', priceValue: 10, unitLabel: 'par table', units: 5 },
-  { id: 'duckpin_bowling', name: 'Duckpin', priceType: 'grid_bowling', units: 2, capacityPerUnit: 6 },
+  { id: 'duckpin_bowling', name: 'Duckpin', priceType: 'grid_bowling', resourceType: 'duckpin_lane', units: 2, capacityPerUnit: 6 },
   { id: 'fun_run', name: 'Fun Run', priceType: 'grid_fun_run', capacityPerUnit: 5 },
   { id: 'playground', name: 'Playground', priceType: 'per_pax', priceValue: 12, unitLabel: 'par enfant', dayAccess: true },
   { id: 'arcade_time', name: 'Arcades', priceType: 'per_pax', priceValue: null, defaultMinutes:30 },
@@ -30,7 +30,7 @@ const ctx = vm.createContext({ console, state: { booking: {}, selectedRes: null,
 vm.runInContext(fs.readFileSync(path.join(root, 'assets/booking-core.js'), 'utf8'), ctx);
 ctx.testCatalog = catalog;
 vm.runInContext('setCenterActivities(testCatalog)', ctx);
-const functions = ['getQuickBookLaneNeed', 'rvPistesALaMain', 'bowlingCapacityMessage', 'getEditBowlingCapacityNeed', 'debutBowlingEdition', 'heureNouvelleTapee', 'minutesHeureEdition', 'activiteAjouteeEdition', 'participantsLigneProgramme', 'nomActivite', 'catalogueDeLigne', 'ligneALaJournee', 'detailLigneProgramme', 'detailLigneProgrammeSansEffectif', 'detailUnitesLigne', 'buildEditProgramFromReservation', 'estimerPrixProgramme', 'getEditProgramItems', 'editionChangeLePrix', 'poseEditionChange', 'enPlusEditionChange', 'pistesALaMainDuDossier', 'parseLaneInput', 'rsFmPrix', 'rsFmActive', 'rsFmMontant', 'formuleChangeeEdition', 'dossierPourFormule', 'departsEdition', 'editArcadeTimingChanged', 'editProgramAChange', 'ensureQuickVisit', 'getQuickVisitOptions', 'getQuickVisitParticipants', 'getQuickVisitMinutes', 'getQuickVisitUnits', 'getQuickVisitHours', 'ligneProgrammeQuick', 'renderActivityParticipantsControl', 'setQuickVisitParticipants', 'setEditActivityParticipants', 'syncQuickBookDuration', 'getQuickBookSummaryActivites'];
+const functions = ['getQuickBookLaneNeed', 'rvPistesALaMain', 'bowlingCapacityMessage', 'getEditBowlingCapacityNeed', 'debutBowlingEdition', 'heureNouvelleTapee', 'minutesHeureEdition', 'activiteAjouteeEdition', 'participantsLigneProgramme', 'nomActivite', 'catalogueDeLigne', 'ligneALaJournee', 'detailLigneProgramme', 'detailLigneProgrammeSansEffectif', 'detailUnitesLigne', 'buildEditProgramFromReservation', 'estimerPrixProgramme', 'sorteTvaActivite', 'getEditProgramItems', 'editionChangeLePrix', 'poseEditionChange', 'enPlusEditionChange', 'pistesALaMainDuDossier', 'parseLaneInput', 'rsFmPrix', 'rsFmActive', 'rsFmMontant', 'formuleChangeeEdition', 'dossierPourFormule', 'departsEdition', 'editArcadeTimingChanged', 'editProgramAChange', 'ensureQuickVisit', 'getQuickVisitOptions', 'getQuickVisitParticipants', 'getQuickVisitMinutes', 'getQuickVisitUnits', 'getQuickVisitHours', 'ligneProgrammeQuick', 'pistesChoisiesQuick', 'pistesDuckpin', 'renderActivityParticipantsControl', 'setQuickVisitParticipants', 'setEditActivityParticipants', 'syncQuickBookDuration', 'getQuickBookSummaryActivites'];
 for (const name of functions) {
   const from = app.indexOf(`function ${name}(`);
   assert.ok(from >= 0, name);
@@ -182,7 +182,7 @@ assert.equal(run("getFreeActivityPrice(getCenterActivity('fun_run'),{pax:240,min
 assert.equal(run("getFreeActivityPrice(getCenterActivity('fun_run'),{pax:1000,minutes:30})"),11000);
 assert.equal(run("estimerPrixProgramme([{activityId:'duckpin_bowling',participants:1000,duration:1}],1000,'2026-10-06','14:00').total"),167*39);
 assert.equal(run("getActivityUnitPlan(getCenterActivity('billards'),1000,999).units"),5,'physical table selection still bounded by catalog installation');
-for(const name of ['crActivites','applyStaffRequestActivitiesToQuickBook','setQuickVisitActivityDuration','rsReglagesActivite','rsRang','rsPetite','rvHeuresLabel']) {
+for(const name of ['crActivites','applyStaffRequestActivitiesToQuickBook','setQuickVisitActivityDuration','rsReglagesActivite','rsRang','rsPetite','rvHeuresLabel','rsRangPistesDuckpin','rsPistesDuckpinActuelles','rsPasPistesDuckpin','pistesDuckpinNote','rsPasHtml','rvPluriel']) {
   const from=app.indexOf('function '+name+'(');assert.ok(from>=0,name);
   vm.runInContext(app.slice(from,app.indexOf('\nfunction ',from+1)),ctx);
 }
@@ -216,6 +216,12 @@ assert.match(run('crActivites(customChoice).join(" | ")'),/Billard : 8 joueurs.*
 // La page de la ligne Duckpin offre ses durees (Les seances, 2026-11-03 : rsReglagesActivite
 // a remplace les options de l ancienne fenetre, la regle reste).
 assert.match(run("rsReglagesActivite('duckpin_bowling').join('')"),/setQuickVisitActivityDuration/);
+// Et ses pistes (2026-11-22, Ansar : « Duckpin possibilite de mettre 2 pistes ») : 6 joueurs, 1 piste
+// conseillee, « + » jusqu aux 2 pistes du centre.
+{
+  const pageDuckpin = run("rsReglagesActivite('duckpin_bowling').join('')");
+  assert.ok(pageDuckpin.includes('Pistes') && pageDuckpin.includes('setQuickPistesDuckpin(this.dataset.activite,2)'), 'la page du duckpin a sa rangee Pistes, jusqu aux 2 pistes du centre');
+}
 assert.equal(run('getQuickBookSummaryActivites().total'),359.75);
 run("setQuickVisitActivityDuration('duckpin_bowling',2)");
 assert.equal(run("ligneProgrammeQuick('duckpin_bowling').duration"),2);

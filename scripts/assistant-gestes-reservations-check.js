@@ -14,7 +14,8 @@
 //   I. sous l ecriture : une relance ou un SMS a la meme cle ne repart pas, la coche prend le chemin
 //      de la case, un bilan modifie a la main ne se regenere pas ;
 //   P. les etapes a cocher (lib/programme-a-cocher.js) rendent les cles de la fiche
-//      (getGroupeProgramme, assets/app-main.js, jouee en machine virtuelle) sur des dossiers types.
+//      (getGroupeProgramme, assets/app-main.js, jouee en machine virtuelle) sur des dossiers types, les
+//      activites en plus d une formule comprises (2026-11-22).
 // Lancement : node scripts/assistant-gestes-reservations-check.js [--contre-preuves]
 const fs = require('fs');
 const path = require('path');
@@ -77,6 +78,10 @@ const MUTATIONS = [
   // Les lignes ajoutees au dossier se cochent aussi (2026-11-21, « ça doit le mettre dans la liste à cocher aussi »).
   { nom: 'extras-oublies', rouge: '[P] les lignes ajoutees au dossier (boissons, nourriture, ligne a payer) se cochent comme la fiche', editions: [{ fichier: PROGRAMME, de: '  extrasACocher(r, faite).forEach((x) => etapes.push(x));', vers: '' }] },
   { nom: 'extras-meme-id-confondus', rouge: '[P] les lignes ajoutees au dossier (boissons, nourriture, ligne a payer) se cochent comme la fiche', editions: [{ fichier: PROGRAMME, de: "    const cle = `extra-${base}${n > 1 ? `-${n}` : ''}`;", vers: '    const cle = `extra-${base}`;' }] },
+  // Les activites en plus d une formule (2026-11-22) : l assistant coche ce que le staff coche.
+  { nom: 'en-plus-oubliees', rouge: '[P] les activites en plus d une formule : chacune sa case, a son heure ou libre, dans l ordre de la fiche', editions: [{ fichier: PROGRAMME, de: '  pasEnPlus.forEach((s) => {\n    const libre = s.flexible === true;', vers: '  [].forEach((s) => {\n    const libre = s.flexible === true;' }] },
+  { nom: 'en-plus-libre-a-une-heure', rouge: '[P] les activites en plus d une formule : chacune sa case, a son heure ou libre, dans l ordre de la fiche', editions: [{ fichier: PROGRAMME, de: '    const libre = s.flexible === true;\n    const ligne = lignesEnPlus', vers: '    const libre = false;\n    const ligne = lignesEnPlus' }] },
+  { nom: 'en-plus-etape-de-la-formule', rouge: '[P] les activites en plus d une formule : chacune sa case, a son heure ou libre, dans l ordre de la fiche', editions: [{ fichier: PROGRAMME, de: " && x.activityId !== 'laser_game' && deLaFormule(x)).forEach((x) => {", vers: " && x.activityId !== 'laser_game').forEach((x) => {" }] },
   // Deplacer une activite (2026-11-12) : le corps du glisser, juge sur la carte comme la fiche le jugera.
   { nom: 'deplacement-sans-version', rouge: '[G] un bowling se deplace dans la forme du glisser du planning, avant et apres sur la carte, avec la version', editions: [{ fichier: LOT, de: 'corps: { id: r.id, baseUpdatedAt: r.version, activityMove: move },', vers: 'corps: { id: r.id, activityMove: move },' }] },
   { nom: 'deplacement-sans-apercu', rouge: '[G] un creneau pris, une heure hors grille ou des pistes en trop se refusent sur la carte', editions: [{ fichier: LOT, de: "          candidat = await ctx.lire('apercuDuDeplacement', r.id, JSON.stringify(move));", vers: '          candidat = { opsPlan: r.opsPlan || {} };' }] },
@@ -1051,6 +1056,12 @@ function dossiersDuProgramme() {
     // Les lignes ajoutees (2026-11-21) : une ligne libre « à payer », une servie a une heure, deux au meme id, une sans id.
     d('extras', { lanes: [2], program: { items: [{ activityId: 'bowling', participants: 8, planned: true }] }, opsPlan: { resourceBlocks: [bloc('bowling', '14:00', '15:00', { lanes: [2] })] }, extras: [{ id: 'boissons-1', name: '3 cruches + tables × 1', price: 0, aPayer: true, qte: 1 }, { id: 'nourriture-1', name: 'Pizza Margherita × 6', price: 84, qte: 6, heure: '15:30' }, { id: 'nourriture-1', name: 'Frites', price: 4, qte: 2 }, { name: 'Sans id', price: 3 }, { id: 'vide', name: '   ', price: 1 }, { id: 'Gâteau maison ×', name: 'Gâteau maison × 1', price: 12, qte: 1 }], activityProgress: { 'extra-boissons-1': { done: true }, 'extra-nourriture-1-2': { done: true } } }),
     d('extras', { type: 'formule', formuleId: 'f1', lanes: [1], opsPlan: { resourceBlocks: [bloc('bowling', '14:00', '15:00', { lanes: [1] }), bloc('laser_game', '15:30', '15:55', { countIndex: 1 })], timeline: [pas('bowling', '14:00', '15:00'), pas('laser_game', '15:30', '15:55'), pas('arcade_time', '16:00', '16:30')] }, extras: [{ id: 'autres-1', name: 'Gâteau × 1', price: 0, aPayer: true, qte: 1, heure: '16:30' }, { id: 'arcades-temps', name: 'Arcades 30 min × 12 joueurs', price: 120 }], activityProgress: { 'extra-autres-1': { done: true } } }),
+    // Les activites en plus d une formule (2026-11-22, lib/formule-en-plus.js) : une Formule 5 et son laser en plus (sa
+    // partie 3), un duckpin en plus a 19:00 et un billard en plus libre ; une Formule 1 et un bowling en plus AVANT le
+    // sien ; une formule lue d apres son plan (sans etapes au catalogue), un billard en plus libre et un duckpin a 16:00.
+    d('enplus', { type: 'formule', formuleId: 'f5', pax: 6, opsPlan: { resourceBlocks: [bloc('laser_game', '16:00', '16:25', { countIndex: 1 }), bloc('laser_game', '16:30', '16:55', { countIndex: 2 }), bloc('laser_game', '18:00', '18:25', { countIndex: 3, enPlus: true })], timeline: [pas('laser_game', '16:00', '16:25'), pas('laser_game', '16:30', '16:55'), pas('minigolf_blacklight', '16:55', '17:40'), pas('laser_game', '18:00', '18:25', { enPlus: true, countIndex: 3 }), pas('duckpin_bowling', '19:00', '20:00', { enPlus: true }), pas('billards', '16:00', '20:00', { enPlus: true, flexible: true })], enPlus: { items: [{ activityId: 'laser_game', name: 'Laser Game', participants: 6, games: 1, heure: '18:00' }, { activityId: 'duckpin_bowling', name: 'Duckpin Bowling', participants: 6, heure: '19:00' }, { activityId: 'billards', name: 'Billards', participants: 6, heure: '' }] } }, activityProgress: { 'enplus-duckpin_bowling': { done: true }, 'laser_game-3': { done: true } } }),
+    d('enplus', { type: 'formule', formuleId: 'f1', lanes: [1, 2], opsPlan: { resourceBlocks: [bloc('bowling', '16:00', '17:00', { lanes: [1] }), bloc('bowling', '14:00', '15:00', { lanes: [2], enPlus: true, countIndex: 2 }), bloc('laser_game', '17:30', '17:55', { countIndex: 1 })], timeline: [pas('bowling', '16:00', '17:00'), pas('laser_game', '17:30', '17:55'), pas('arcade_time', '18:00', '18:30'), pas('bowling', '14:00', '15:00', { enPlus: true, countIndex: 2 })], enPlus: { items: [{ activityId: 'bowling', name: 'Bowling', participants: 8, duration: 1, heure: '14:00' }] } }, activityProgress: { 'bowling-g1': { done: true } } }),
+    d('enplus', { type: 'formule', formuleId: 'zz-maison', label: 'Formule maison', opsPlan: { timeline: [pas('minigolf_blacklight', '14:00', '14:45'), pas('arcade_time', '15:00', '15:30'), pas('billards', '14:00', '15:30', { enPlus: true, flexible: true }), pas('duckpin_bowling', '16:00', '16:30', { enPlus: true })], enPlus: { items: [{ activityId: 'billards', name: 'Billards', participants: 8, heure: '' }, { activityId: 'duckpin_bowling', name: 'Duckpin Bowling', participants: 8, heure: '16:00' }] } }, activityProgress: { 'enplus-billards': { done: true } } }),
   ];
 }
 
@@ -1078,6 +1089,7 @@ function verifierProgramme(ok) {
   ligneP('libre', '[P] les activites libres d une visite, celles d avant le reste comprises');
   ligneP('postes', '[P] les postes de l arene du centre decoupent les vagues comme la console');
   ligneP('extras', '[P] les lignes ajoutees au dossier (boissons, nourriture, ligne a payer) se cochent comme la fiche');
+  ligneP('enplus', '[P] les activites en plus d une formule : chacune sa case, a son heure ou libre, dans l ordre de la fiche');
   const memes = JSON.stringify(T.__test.NOMS) === JSON.stringify(vm.runInContext('FORMULA_ACTIVITY_LABELS', c))
     && JSON.stringify(Object.entries(T.__test.ETAPES).map(([id, l]) => [id, l.map((x) => [x.a, x.c])])) === JSON.stringify(Object.entries(vm.runInContext('FORMULA_ACTIVITY_STEPS', c)).map(([id, l]) => [id, l.map((x) => [x.a, x.c])]))
     && vm.runInContext('LASER_GAME_ARENA_MINUTES', c) === require(path.join(ROOT, 'lib/booking-config.js')).LASER_GAME_ARENA_MINUTES

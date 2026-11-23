@@ -140,6 +140,7 @@ const MUTATIONS = [
   { nom: 'email-cache', lettre: 'R9', bloc: 'pli', cible: '[R9] un e-mail invalide rouvre le pli', fichier: APP, de: ` oninvalid="document.getElementById('editContactPli').open = true"`, vers: '' },
   { nom: 'bouton-petit', lettre: 'R10', bloc: 'comptoir-light', cible: '[R10] au doigt, 44 px', fichier: 'assets/pinlane-staff.css', de: '.qb-modal.rv.rs .rs-payer { min-width: 0; height: 44px;', vers: '.qb-modal.rv.rs .rs-payer { min-width: 0; height: 24px;' },
   { nom: 'deux-pleins', lettre: 'R10', bloc: 'comptoir-light', cible: '[R10] un seul bouton plein au pied', fichier: 'assets/pinlane-staff.css', de: 'border: 1px solid var(--rs-ligne-forte); border-radius: 10px; background: var(--surface); font-size: 14px; font-weight: 550; line-height: 1; color: var(--text);', vers: 'border: 0; border-radius: 10px; background: var(--accent); font-size: 14px; font-weight: 550; line-height: 1; color: var(--accent-contrast);' },
+  { nom: 'prix-au-demi-euro', lettre: 'R11', cible: '[R11] un extra a 3,30 EUR laisse le champ de prix valide', fichier: APP, de: '<input id="rsLibrePrix" type="number" min="0" step="0.01"', vers: '<input id="rsLibrePrix" type="number" min="0" step="0.5"' },
 ];
 const LES_MUTATIONS = new Map(MUTATIONS.map((m) => [m.nom, m]));
 
@@ -1061,7 +1062,39 @@ async function scenarioR10(browser) {
 }
 
 // ---------------------------------------------------------------------------
-const SCENARIOS = { R1: scenarioR1, R2: scenarioR2, R3: scenarioR3, R4: scenarioR4, R5: scenarioR5, R6: scenarioR6, R7: scenarioR7, R8: scenarioR8, R9: scenarioR9, R10: scenarioR10 };
+// ---------------------------------------------------------------------------
+// [R11] UN PRIX AU CENTIME SE TAPE ET SE REND (2026-11-23, 7d7732f)
+// ---------------------------------------------------------------------------
+// Les champs de prix de la fenetre gardaient step=0.5 : un extra a 3,30 EUR rendait le formulaire
+// invalide, et le navigateur bloquait « Créer » sans un mot. Le gate tape 3,30 sur la ligne libre,
+// exige que le champ soit valide, et que la reservation parte avec son prix au centime.
+async function scenarioR11(browser) {
+  console.log('\n[R11] un extra a 3,30 EUR : le formulaire reste valide et la reservation part');
+  const m = await ouvrir(browser);
+  const { page, journal } = m;
+  await page.evaluate(() => reserverAuComptoir({ type: 'bowling', pax: 6 }));
+  await planPose(page);
+  await page.locator('#rsTkMesure').click();
+  await page.waitForSelector('#rsLibreNom', { timeout: 8000 }).catch(() => {});
+  const champ = await page.evaluate(() => { const c = document.getElementById('rsLibrePrix'); return { present: Boolean(c), step: c ? c.getAttribute('step') : '' }; });
+  ok(champ.present, 'MONTAGE le champ de prix de la ligne libre est ouvert a ce role', champ);
+  if (!champ.present) { await m.finir('R11'); return; }
+  await page.locator('#rsLibreNom').fill('Gaufre');
+  await page.locator('#rsLibrePrix').fill('3.30');
+  await page.waitForTimeout(250);
+  const valide = await page.evaluate(() => { const c = document.getElementById('rsLibrePrix'); return { valide: c.checkValidity(), message: c.validationMessage, valeur: c.value, step: c.getAttribute('step') }; });
+  ok(valide.valide && valide.valeur === '3.30', '[R11] un extra a 3,30 EUR laisse le champ de prix valide (checkValidity)', valide);
+  await planPose(page);
+  await page.locator('#qbPhone').fill(TEL_COMPTOIR);
+  await page.locator('#rvCreer').click();
+  await fenetreFermee(page).catch(() => {});
+  const posts = creationsDe(journal);
+  const ligne = posts.length ? (posts[posts.length - 1].corps.extras || []).find((l) => /gaufre/i.test(l.name || l.nom || '')) : null;
+  ok(posts.length === 1 && Boolean(ligne) && Number(ligne.prixUnitaire ?? ligne.price) === 3.3, '[R11] la reservation part, avec son extra a 3,30 EUR', { posts: posts.length, extras: posts[0] && posts[0].corps.extras });
+  await m.finir('R11');
+}
+
+const SCENARIOS = { R1: scenarioR1, R2: scenarioR2, R3: scenarioR3, R4: scenarioR4, R5: scenarioR5, R6: scenarioR6, R7: scenarioR7, R8: scenarioR8, R9: scenarioR9, R10: scenarioR10, R11: scenarioR11 };
 
 function verifierLesAncres() {
   let mortes = 0;

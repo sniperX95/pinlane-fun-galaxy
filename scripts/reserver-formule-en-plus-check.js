@@ -56,6 +56,18 @@
 //       adapte la formule (le minigolf retire) ; [G1] le dossier ecrit est la formule adaptee, le bowling et le
 //       duckpin dans son programme a leur heure, plus aucune activite en plus a part ; [G2] son prix est la formule
 //       plus les deux, au catalogue (retirer le minigolf ne baisse rien) ;
+//   [H] « AJOUTER » DANS MODIFIER (le coordinateur, 22/11 : « sur un dossier en formule, Ajouter crée un ajout en plus
+//       (sa ligne, son heure, son prix catalogue), comme dans Réserver. Il n'adapte plus la formule. Seul Adapter à ce
+//       groupe adapte ») : une Formule 5 creee telle quelle ; [H1] « Ajouter » le bowling et le duckpin : chacun sa
+//       rangee en plus, le bowling a la premiere demi-heure apres la formule, le duckpin libre, a leur prix du
+//       catalogue, la formule telle quelle ; « Laser Game en plus » se propose aussi ; [H2] « Vérifié au planning. »,
+//       la barre du bas, puis « Enregistrer » ecrit la Formule 5 telle quelle et ses deux activites en plus ;
+//       [H3] « Adapter à ce groupe », puis « Ajouter » le Fun Run : il entre dans le programme, les activites en plus
+//       avec lui, la formule adaptee a son prix ; [H4] une Formule 1 de 12 joueurs sur deux pistes, creee telle quelle :
+//       « Laser Game en plus » s enregistre et la formule garde ses deux pistes ;
+//   [I] LE PROGRAMME A COCHER : [I1] sur ce dossier, la fiche (getGroupeProgramme) et la copie du serveur que lit
+//       l assistant (lib/programme-a-cocher.js) disent les memes cases, dans le meme ordre, aux memes heures ; [I2] une
+//       formule lue d apres son plan donne une seule case a chaque activite en plus, libre ou a son heure ;
 //   [V1] a 1366 x 768, la fenetre tient sans defiler, aucun mot des heures n est coupe ;
 //   [J1] aucune erreur JS.
 // --contre-preuves : chaque regle retiree (au code servi ou au serveur, en memoire ; le disque n est jamais
@@ -65,7 +77,11 @@
 // compte comme une heure fixe, l activite de l acces vendue en plus, la tuile qui deplie, Modifier sans les
 // rangees en plus ou qui les melange aux parties de la formule, Modifier qui ne les envoie pas, le serveur qui
 // ignore leur changement ou ne rejuge pas leur prix, « Adapter » qui les perd ou oublie leur heure, le repli du
-// serveur retire. (Dans Modifier, leur heure dans la formule adaptee est celle que le moteur garde pour tout
+// serveur retire, « Ajouter » de Modifier qui adapte, le laser de la formule qui ne se reprend pas en plus, l heure
+// proposee sur la formule, « Adapter à ce groupe » sans effet, une formule relue en base qui ne demande plus qu une
+// piste a sa premiere activite en plus, une activite en plus libre sans etape au plan a cote
+// d une autre a son heure, la copie du serveur sans les activites en plus, la fiche qui compte deux fois une
+// activite en plus libre. (Dans Modifier, leur heure dans la formule adaptee est celle que le moteur garde pour tout
 // dossier modifie, editFormulaPreference : [G1] la verifie, sa contre-preuve est celle de ce moteur.)
 //   RFP_PORT : le port du site servi (7330) ; RFP_CAPTURES : le dossier des captures (captures-formule) ;
 //   RFP_MUTATIONS : un sous-ensemble (noms separes par des virgules) ; RFP_SCENARIOS : des lettres (A,E...) ;
@@ -187,9 +203,9 @@ async function photo(page, nom, selecteur = '#quickBookOverlay .qb-modal') {
   else await page.screenshot({ path: path.join(CAPTURES, `${nom}.png`) });
 }
 
-// Reserver, 6 joueurs, le samedi 23 : une formule a 16:00, puis retour a la page des activites.
-async function formule(page, id) {
-  await C.ouvrirFenetre(page, PAX);
+// Reserver, 6 joueurs (ou `pax`), le samedi 23 : une formule a 16:00, puis retour a la page des activites.
+async function formule(page, id, pax = PAX) {
+  await C.ouvrirFenetre(page, pax);
   await page.click(`#quickBookOverlay [data-jour="${JOUR_RESA}"]`);
   await page.waitForFunction((j) => quickBookState && quickBookState.date === j, JOUR_RESA, { timeout: 8000 });
   await page.click('#quickBookOverlay #rsFormules');
@@ -804,6 +820,185 @@ async function scenarioG(browser) {
 }
 
 // ---------------------------------------------------------------------------
+// [H] « AJOUTER » DANS MODIFIER, SUR UNE FORMULE PRISE TELLE QUELLE ; [I] LE PROGRAMME A COCHER.
+// ---------------------------------------------------------------------------
+// Les « Ajouter » du Programme de Modifier et « Adapter à ce groupe ».
+const lireAjoutsModifier = (page) => page.evaluate(() => {
+  const t = (n) => (n ? n.textContent.replace(/\s+/g, ' ').trim() : '');
+  const bouton = document.querySelector('#posOverlay #editAdapter button');
+  return {
+    ajouter: Array.from(document.querySelectorAll('#posOverlay .fm-ajouts .fm-ajout')).map(t),
+    adapter: bouton ? { presse: bouton.getAttribute('aria-pressed') === 'true', aide: t(document.getElementById('editAdapterAide')) } : null,
+    adaptee: editProgramAChange(),
+    programme: Array.from(document.querySelectorAll('#posOverlay .fm-act[data-edit-activity]')).map((n) => n.getAttribute('data-edit-activity')),
+  };
+});
+
+// La premiere demi-heure ou une activite de `duree` minutes tient apres ce que la formule du dossier fait a heure
+// fixe (son bowling, chaque partie de son laser, ses etapes a heure), relue sur le plan ecrit en base.
+function heureApresLaFormule(id, duree) {
+  const plan = enApi(id).opsPlan || {};
+  const min = (h) => enMin(String(h || '').slice(0, 5));
+  const plages = [];
+  (plan.resourceBlocks || []).filter((b) => b && !b.enPlus && !b.aVolonte && (b.resourceType === 'bowling_lane' || b.resourceType === 'laser_arena')).forEach((b) => {
+    const debut = min(b.startTime);
+    plages.push({ debut, fin: b.resourceType === 'laser_arena' ? debut + 25 : min(b.endTime) });
+  });
+  (plan.timeline || []).filter((s) => s && s.type === 'activity' && !s.enPlus && s.flexible !== true && !['bowling', 'laser_game', 'party_table', 'arcade_credit', 'playground'].includes(s.activityId) && !/^service/.test(String(s.activityId || ''))).forEach((s) => {
+    if (min(s.endTime) > min(s.startTime)) plages.push({ debut: min(s.startTime), fin: min(s.endTime) });
+  });
+  const fin = Math.max(...plages.map((p) => p.fin));
+  for (let t = Math.ceil(fin / 30) * 30; t + duree <= 24 * 60; t += 30) {
+    if (!plages.some((p) => t < p.fin && p.debut < t + duree)) return { heure: `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`, fin };
+  }
+  return { heure: '', fin };
+}
+
+// Ce que la fiche (getGroupeProgramme) et la copie du serveur (lib/programme-a-cocher.js, celle de l assistant)
+// disent de chaque case : sa cle, son activite, faite ou non, son heure, a placer, libre. La meme projection que
+// scripts/assistant-gestes-reservations-check.js.
+const caseLue = (e) => [e.coche === undefined ? e.cle : e.coche, e.activityId, Boolean(e.fait), e.start == null ? null : Math.round(e.start * 60), e.end == null ? null : Math.round(e.end * 60), Boolean(e.aPlacer), Boolean(e.libre)].join('|');
+async function casesACocher(page, dossier) {
+  const fiche = (await page.evaluate((d) => getGroupeProgramme(d), dossier)).map(caseLue);
+  const serveur = require(path.join(ROOT, 'lib/programme-a-cocher.js')).etapesACocher(JSON.parse(JSON.stringify(dossier))).map(caseLue);
+  return { fiche, serveur };
+}
+
+async function scenarioH(browser) {
+  const serveur = C.monterServeur({ mutations: mutation ? mutation.editions.filter((ed) => ed.serveur) : [] });
+  const m = await C.ouvrirConsole(browser, serveur, { port: PORT, role: 'manager', appareil: 'comptoir' });
+  const { page, erreurs } = m;
+  const attendu = { formule: catalogue.formule('f5'), bowling: catalogue.activite({ activityId: 'bowling', duration: 1 }), duckpin: catalogue.activite({ activityId: 'duckpin_bowling' }), funRun: catalogue.activite({ activityId: 'fun_run' }) };
+  attendu.total = Math.round((attendu.formule + attendu.bowling + attendu.duckpin) * 100) / 100;
+  attendu.adaptee = Math.round((attendu.total + attendu.funRun) * 100) / 100;
+  try {
+    if (!(attendu.formule > 0 && attendu.bowling > 0 && attendu.duckpin > 0 && attendu.funRun > 0)) throw new Error(`catalogue du banc illisible : ${JSON.stringify(attendu)}`);
+    await formule(page, 'f5');
+    const ids = await creer(page, m);
+    const cree = ids[0] ? enBase(ids[0]) : {};
+    const lasersFormule = (cree.laser || []).filter((l) => !l.enPlus).map((l) => l.debut);
+    if (!(ids.length === 1 && cree.label === 'FORMULE 5' && !cree.enPlus && lasersFormule.length === 2)) throw new Error(`dossier de depart : ${JSON.stringify(cree)}`);
+    const proposee = heureApresLaFormule(ids[0], 60);
+
+    // [H1] « Ajouter » met le bowling et le duckpin en plus de la formule, qui reste telle quelle.
+    await ouvrirModifier(page, ids[0]);
+    const avant = await lireAjoutsModifier(page);
+    ok(avant.ajouter.includes('Laser Game en plus') && avant.ajouter.includes('Bowling') && avant.ajouter.includes('Duckpin Bowling') && Boolean(avant.adapter) && !avant.adapter.presse && avant.adapter.aide === '« Ajouter » met l’activité en plus de la formule, à son prix.',
+      '[H1] Modifier d une Formule 5 telle quelle : « Ajouter » propose aussi « Laser Game en plus », et « Adapter à ce groupe » dit que l ajout se met en plus', avant);
+    await page.click('#posOverlay .fm-ajouts .fm-ajout[onclick*="\'bowling\'"]');
+    await page.waitForSelector('#posOverlay [data-edit-en-plus="bowling"]', { timeout: 5000 }).catch(() => null);
+    await page.click('#posOverlay .fm-ajouts .fm-ajout[onclick*="\'duckpin_bowling\'"]');
+    await page.waitForSelector('#posOverlay [data-edit-en-plus="duckpin_bowling"]', { timeout: 5000 }).catch(() => null);
+    await attendreVerdict(page);
+    const h = await lireModifier(page);
+    const apres = await lireAjoutsModifier(page);
+    const rangee = (id) => h.rangees.find((x) => x.enPlus === id) || {};
+    const laserDeLaFormule = h.rangees.find((x) => x.activite === 'laser_game') || {};
+    ok(rangee('bowling').heure === proposee.heure && /^Bowling/.test(rangee('bowling').nom || '') && rangee('bowling').detail === `en plus de la formule · ${euros(attendu.bowling)}` && rangee('bowling').retirer && rangee('bowling').joueurs === String(PAX)
+      && rangee('duckpin_bowling').heure === 'Libre' && rangee('duckpin_bowling').detail === `en plus de la formule · ${euros(attendu.duckpin)}` && rangee('duckpin_bowling').retirer
+      && !apres.adaptee && apres.programme.join() === avant.programme.join() && lasersFormule.every((x) => (laserDeLaFormule.parties || '').includes(x)),
+      `[H1] le bowling en plus a sa rangee, a ${proposee.heure} (juste apres la formule), le duckpin la sienne, libre, chacun a son prix du catalogue ; la formule reste telle quelle`, { proposee, rangees: h.rangees, adaptee: apres.adaptee, programme: apres.programme });
+    // (la photo du Programme entier : la fenetre grandit le temps de la prendre)
+    if (!mutation) {
+      const vue = page.viewportSize();
+      await page.setViewportSize({ width: vue.width, height: 1500 });
+      await page.waitForTimeout(400);
+      await photo(page, 'apres-modifier-ajouter-en-plus', '#posOverlay');
+      await page.setViewportSize(vue);
+      await page.waitForTimeout(400);
+    }
+    // [H2] Le verdict, la barre du bas, puis « Enregistrer ».
+    const nomDuckpin = rangee('duckpin_bowling').nom || 'Duckpin Bowling';
+    ok(h.verdict === 'Vérifié au planning.' && h.modifs.includes(`Ajout : Bowling en plus à ${proposee.heure}`) && h.modifs.includes(`Ajout : ${nomDuckpin} en plus`) && h.modifs.includes(`→ ${euros(attendu.total)}`),
+      `[H2] « Vérifié au planning. » ; la barre du bas dit les deux ajouts et le prix qui suit (${euros(attendu.total)})`, { verdict: h.verdict, modifs: h.modifs });
+    await enregistrerModifier(page, ids[0]);
+    const ecrit = enBase(ids[0]);
+    const items = Object.fromEntries(((ecrit.enPlus && ecrit.enPlus.items) || []).map((x) => [x.activityId, x]));
+    ok(ecrit.label === 'FORMULE 5' && ecrit.formuleId === 'f5' && Boolean(items.bowling) && items.bowling.heure === proposee.heure && centimes(items.bowling.price) === centimes(attendu.bowling)
+      && Boolean(items.duckpin_bowling) && !items.duckpin_bowling.heure && centimes(items.duckpin_bowling.price) === centimes(attendu.duckpin)
+      && centimes(ecrit.price) === centimes(attendu.total) && centimes(ecrit.basePrice) === centimes(attendu.total) && (ecrit.laser || []).filter((l) => !l.enPlus).map((l) => l.debut).join() === lasersFormule.join(),
+      `[H2] « Enregistrer » ecrit la Formule 5 telle quelle, le bowling en plus a ${proposee.heure} et le duckpin en plus libre, a leur prix ; son laser a ses heures, ${euros(attendu.total)}`, ecrit);
+
+    // [I1] Le programme a cocher de ce dossier : la fiche et la copie du serveur (l assistant) disent les memes cases.
+    const i1 = await casesACocher(page, enApi(ids[0]));
+    ok(JSON.stringify(i1.fiche) === JSON.stringify(i1.serveur) && i1.fiche.filter((x) => x.startsWith('enplus-duckpin_bowling|duckpin_bowling|')).length === 1 && i1.fiche.some((x) => x.startsWith('enplus-duckpin_bowling|') && x.endsWith('|true'))
+      && i1.fiche.filter((x) => x.startsWith('bowling-1|bowling|false|')).length === 1,
+      '[I1] le programme a cocher : la fiche et la copie du serveur (celle de l assistant) disent les memes cases, dans le meme ordre, aux memes heures ; le duckpin en plus une fois, libre', i1);
+    // [I2] Une formule lue d apres son plan (sans etapes au catalogue), un billard en plus libre et un duckpin en plus a
+    // 16:00 : chacun une seule case, la sienne, comme la copie du serveur.
+    const maison = {
+      id: 990, centerId: 'libramont', date: JOUR_RESA, startTime: '14:00', duration: 1, status: 'pending', pax: 8, lanes: [], type: 'formule', formuleId: 'zz-maison', label: 'Formule maison', program: { items: [] },
+      activityProgress: { 'enplus-billards': { done: true } },
+      opsPlan: {
+        resourceBlocks: [],
+        timeline: [
+          { type: 'activity', activityId: 'minigolf_blacklight', startTime: '14:00', endTime: '14:45' },
+          { type: 'activity', activityId: 'arcade_time', startTime: '15:00', endTime: '15:30' },
+          { type: 'activity', activityId: 'billards', startTime: '14:00', endTime: '15:30', enPlus: true, flexible: true },
+          { type: 'activity', activityId: 'duckpin_bowling', startTime: '16:00', endTime: '16:30', enPlus: true },
+        ],
+        enPlus: { items: [{ activityId: 'billards', name: 'Billard', participants: 8 }, { activityId: 'duckpin_bowling', name: 'Duckpin Bowling', participants: 8, heure: '16:00' }] },
+      },
+    };
+    const i2 = await casesACocher(page, maison);
+    ok(JSON.stringify(i2.fiche) === JSON.stringify(i2.serveur) && i2.fiche.filter((x) => /\|billards\|/.test(x)).length === 1 && i2.fiche.includes('enplus-billards|billards|true|||false|true')
+      && i2.fiche.filter((x) => /\|duckpin_bowling\|/.test(x)).length === 1 && i2.fiche.includes('enplus-duckpin_bowling|duckpin_bowling|false|960|990|false|false'),
+      '[I2] une formule lue d apres son plan : le billard en plus libre et le duckpin en plus a 16:00 ont chacun une seule case, la leur, dans la fiche comme dans la copie du serveur', i2);
+
+    // [H3] « Adapter à ce groupe » : ce qu on ajoute ensuite entre dans la formule, et les activites en plus avec.
+    await ouvrirModifier(page, ids[0]);
+    await page.click('#posOverlay #editAdapter button');
+    await page.waitForTimeout(300);
+    const adapte = await lireAjoutsModifier(page);
+    ok(Boolean(adapte.adapter) && adapte.adapter.presse && adapte.adapter.aide === 'Les activités ajoutées entrent dans la formule, chacune à son prix.' && !adapte.ajouter.includes('Laser Game en plus'),
+      '[H3] « Adapter à ce groupe » : il dit que les activites ajoutees entrent dans la formule, « Laser Game en plus » ne se propose plus', adapte);
+    await page.click('#posOverlay .fm-ajouts .fm-ajout[onclick*="\'fun_run\'"]');
+    await page.waitForSelector('#posOverlay .fm-act[data-edit-activity="fun_run"]', { timeout: 5000 }).catch(() => null);
+    await attendreVerdict(page);
+    const h3 = await lireModifier(page);
+    const enPlus3 = h3.rangees.filter((x) => x.enPlus);
+    ok(h3.rangees.some((x) => x.activite === 'fun_run') && !h3.rangees.some((x) => x.enPlus === 'fun_run') && enPlus3.length === 2 && enPlus3.every((x) => x.detail.startsWith('entre dans la formule adaptée')) && !/^Ne passera pas/.test(h3.verdict) && h3.verdict !== '',
+      '[H3] puis « Ajouter » le Fun Run : il entre dans le programme de la formule, le bowling et le duckpin en plus disent qu ils y entrent, le verdict passe', { rangees: h3.rangees, verdict: h3.verdict });
+    await enregistrerModifier(page, ids[0]);
+    const r3 = enBase(ids[0]);
+    const lu3 = programmeEnBase(ids[0]);
+    ok(/\(adaptée\)/.test(r3.label) && ['laser_game', 'bowling', 'duckpin_bowling', 'fun_run'].every((x) => lu3.items.includes(x)) && !r3.enPlus && lu3.heure('bowling') === proposee.heure
+      && centimes(r3.price) === centimes(attendu.adaptee) && centimes(r3.basePrice) === centimes(attendu.adaptee),
+      `[H3] « Enregistrer » : la formule adaptee, le Fun Run, le bowling (${proposee.heure}) et le duckpin dans son programme, chacun a son prix (${euros(attendu.adaptee)})`, { label: r3.label, items: lu3.items, bowling: lu3.heure('bowling'), price: r3.price, basePrice: r3.basePrice, enPlus: r3.enPlus });
+
+    // [H4] Une Formule 1 de 12 joueurs, sur deux pistes, creee telle quelle : « Laser Game en plus » s enregistre, la
+    // formule garde ses deux pistes (relue en base, elle n en disait plus le nombre, et la base refusait l ecriture).
+    await page.evaluate(() => closePos());
+    const GRAND = 12;
+    await formule(page, 'f1', GRAND);
+    const ids4 = await creer(page, m);
+    const f1 = ids4[0] ? enBase(ids4[0]) : {};
+    const pistesF1 = ((f1.bowling || [])[0] || {}).pistes || [];
+    if (!(ids4.length === 1 && f1.label === 'FORMULE 1' && pistesF1.length === 2)) throw new Error(`Formule 1 de ${GRAND} joueurs : ${JSON.stringify(f1)}`);
+    const prix4 = {
+      formule: require(path.join(ROOT, 'lib/booking-config.js')).getBasePrice('formule', 0, 0, GRAND, 'f1', 'libramont'),
+      laser: Number(require(path.join(ROOT, 'lib/visit-program.js')).normalizeProgram([{ activityId: 'laser_game', games: 1 }], { centerId: 'libramont', pax: GRAND, dateStr: JOUR_RESA, staff: true }).items[0].price),
+    };
+    const heureLaser = heureApresLaFormule(ids4[0], 25).heure;
+    await ouvrirModifier(page, ids4[0]);
+    await page.click('#posOverlay [data-ajout-en-plus="laser_game"]');
+    await page.waitForSelector('#posOverlay [data-edit-en-plus="laser_game"]', { timeout: 5000 }).catch(() => null);
+    await attendreVerdict(page);
+    const h4 = await lireModifier(page);
+    await enregistrerModifier(page, ids4[0]);
+    const r4 = enBase(ids4[0]);
+    const refus4 = await page.evaluate(() => state.editError || '');
+    const total4 = Math.round((prix4.formule + prix4.laser) * 100) / 100;
+    ok(!refus4 && Boolean(r4.enPlus) && r4.enPlus.items.length === 1 && r4.enPlus.items[0].activityId === 'laser_game' && r4.enPlus.items[0].heure === heureLaser
+      && JSON.stringify(((r4.bowling || [])[0] || {}).pistes) === JSON.stringify(pistesF1) && r4.label === 'FORMULE 1' && centimes(r4.price) === centimes(total4),
+      `[H4] une Formule 1 sur deux pistes : « Laser Game en plus » (${heureLaser}) s enregistre, la formule garde ses pistes ${pistesF1.join(' et ')}, ${euros(total4)}`, { refus: refus4, verdict: h4.verdict, enPlus: r4.enPlus, bowling: r4.bowling, price: r4.price });
+    ok(erreurs.length === 0, '[J1] aucune erreur JS (Ajouter dans Modifier)', erreurs.slice(0, 3));
+  } finally {
+    await m.ctx.close();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // LES CONTRE-PREUVES : une regle retiree, sa lettre rougit.
 // ---------------------------------------------------------------------------
 const MUTATIONS = [
@@ -856,13 +1051,29 @@ const MUTATIONS = [
   { nom: 'adapter-sans-heures', lettre: 'F1', scenario: 'F', editions: [{ fichier: JS, de: '    if (x.heure && RV_ANCRABLES.includes(x.id)) s.heures = { ...(s.heures || {}), [x.id]: x.heure };\n    else if (x.heure) s.heuresPosees = { ...(s.heuresPosees || {}), [x.id]: x.heure };\n', vers: '' }] },
   // Le serveur ne reprend pas les activites en plus dans le programme que Modifier adapte.
   { nom: 'repli-serveur-retire', lettre: 'G1', scenario: 'G', editions: [{ fichier: API, serveur: true, de: '  if ((enPlusAvant || (enPlusVoulus && enPlusVoulus.length)) && patch.program) {', vers: '  if (false) {' }] },
+  // « Ajouter » de Modifier adapte la formule, comme avant.
+  { nom: 'ajouter-adapte-dans-modifier', lettre: 'H1', scenario: 'H', editions: [{ fichier: JS, de: '  if (enPlusPossibleEdition()) { ajouterEnPlusEdition(id); return; }\n', vers: '' }] },
+  // Le laser que la formule a deja ne se reprend pas en plus dans Modifier.
+  { nom: 'laser-de-la-formule-pas-en-plus', lettre: 'H1', scenario: 'H', editions: [{ fichier: JS, de: "    if (RV_ANCRABLES.includes(choice.id) && enPlusPossibleEdition(r) && !enPlusEditeDe(choice.id)) ajouts.push(", vers: '    if (false) ajouts.push(' }] },
+  // L heure proposee a l ajout tombe sur la formule (son arrivee).
+  { nom: 'heure-proposee-sur-la-formule', lettre: 'H2', scenario: 'H', editions: [{ fichier: JS, de: '    if (!plages.some((p) => t < p.fin && p.debut < t + duree)) return enHeure(t);', vers: '    return enHeure(Math.ceil(arrivee / 30) * 30);' }] },
+  // « Adapter à ce groupe » ne change rien : l ajout reste en plus.
+  { nom: 'adapter-sans-effet', lettre: 'H3', scenario: 'H', editions: [{ fichier: JS, de: '  return formuleTelleQuelleEdition(r) && !state.editState.adapterLaFormule;', vers: '  return formuleTelleQuelleEdition(r);' }] },
+  // Une formule relue en base qui prend sa premiere activite en plus ne demande qu une piste : la base refuse.
+  { nom: 'pistes-de-la-formule-oubliees', lettre: 'H4', scenario: 'H', editions: [{ fichier: EN_PLUS, serveur: true, de: '    ...(pistes.length ? { lanes: pistes, laneCount: Math.max(pistesDeLaFormule, Number(visite.laneCount) || 0, 1), requiresLanes: true } : {}),', vers: '    ...(pistes.length ? { lanes: pistes, laneCount: Math.max(Number(formule.laneCount) || 0, Number(visite.laneCount) || 0, 1), requiresLanes: true } : {}),' }] },
+  // Une activite en plus libre, a cote d une autre a son heure, sans etape au plan (la fiche et l assistant l oublient).
+  { nom: 'en-plus-libre-sans-etape', lettre: 'I1', scenario: 'H', editions: [{ fichier: EN_PLUS, serveur: true, de: "    if (!jeux.some((etape) => String(etape.activityId || '') === id)) jeux.push({ type: 'activity', activityId: id, enPlus: true, flexible: true });", vers: "    if (false) jeux.push({ type: 'activity', activityId: id, enPlus: true, flexible: true });" }] },
+  // La copie du serveur (l assistant) sans les petites activites en plus.
+  { nom: 'jumelle-sans-en-plus', lettre: 'I1', scenario: 'H', editions: [{ fichier: 'lib/programme-a-cocher.js', serveur: true, de: '  pasEnPlus.forEach((s) => {\n    const libre = s.flexible === true;', vers: '  [].forEach((s) => {\n    const libre = s.flexible === true;' }] },
+  // La fiche compte une petite activite en plus libre aussi comme une etape de sa formule.
+  { nom: 'fiche-compte-deux-fois', lettre: 'I2', scenario: 'H', editions: [{ fichier: JS, de: " && !pasEnPlus.some(step => step.flexible === true && step.activityId === item.activityId))", vers: ')' }] },
 ];
 
 async function main() {
   const serveurHttp = await FX.servir({ port: PORT, transformer });
   const browser = await chromium.launch({ executablePath: BROWSER_PATH, headless: true });
   const t0 = Date.now();
-  const scenarios = { A: scenarioA, B: scenarioB, C: scenarioC, D: scenarioD, E: scenarioE, F: scenarioF, G: scenarioG };
+  const scenarios = { A: scenarioA, B: scenarioB, C: scenarioC, D: scenarioD, E: scenarioE, F: scenarioF, G: scenarioG, H: scenarioH };
   // (RFP_SCENARIOS : un sous-ensemble des lettres, separees par des virgules)
   const lettres = liste(process.env.RFP_SCENARIOS) || Object.keys(scenarios);
   try {

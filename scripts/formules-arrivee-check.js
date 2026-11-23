@@ -1645,15 +1645,19 @@ function laConsole() {
     'renderActivitesCourtes', 'formuleAcheteeDuDossier', 'peutAdapterLeProgramme',
     // (renderEditFormuleBloc lit les activites en plus de la formule, 2026-11-22 : enPlusEdition, qui part du
     // dossier par enPlusDuDossierEdition ; sans fiche en cours d edition, elle n en a aucune)
-    'enPlusDuDossierEdition', 'enPlusEdition', 'renderEditFormuleBloc'].forEach((nom) => {
+    'enPlusDuDossierEdition', 'enPlusEdition', 'renderEditFormuleBloc',
+    // (et ses « Ajouter » d une formule prise telle quelle, 2026-11-23 : en plus d elle, ou dans elle apres
+    // « Adapter à ce groupe » ; sans fiche en cours d edition, ni l un ni l autre)
+    'formuleTelleQuelleEdition', 'enPlusPossibleEdition', 'adapterEditionHtml'].forEach((nom) => {
     const debut = app.indexOf(`\nfunction ${nom}(`);
     const fin = debut < 0 ? -1 : app.indexOf('\n}\n', debut + 1);
     if (fin < 0) { manquantes.push(nom); return; }
     vm.runInContext(app.slice(debut + 1, fin + 2), bac);
   });
   // Les constantes de la carte du planning, lues dans app-main comme ses
-  // fonctions (en `var`, que les scripts du bac partagent).
-  ['PLANNING_LABEL_NARROW', 'PLANNING_CARD_LABEL_MAX'].forEach((nom) => {
+  // fonctions (en `var`, que les scripts du bac partagent), et RV_ANCRABLES,
+  // que renderEditFormuleBloc lit.
+  ['PLANNING_LABEL_NARROW', 'PLANNING_CARD_LABEL_MAX', 'RV_ANCRABLES'].forEach((nom) => {
     const debut = app.indexOf(`\nconst ${nom} = `);
     const fin = debut < 0 ? -1 : app.indexOf(';\n', debut + 1);
     if (fin < 0) { manquantes.push(nom); return; }

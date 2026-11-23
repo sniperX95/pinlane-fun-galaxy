@@ -2521,6 +2521,8 @@ function etatEditionDepuis(reservation) {
   const etat = { ...reservation };
   etat.lanesStr = pistesDeLaFormuleSeule(reservation).join(', ');
   etat.pistesALaMain = pistesALaMainDuDossier(reservation) > 0;
+  // (TVAC ou HTVA : le choix de la fiche ouverte sur ce dossier, sinon le reglage du centre, prixVuALOuverture)
+  etat.prixVu = prixVuALOuverture(reservation);
   departsEdition().set(etat, { origine: { ...reservation }, base: { ...reservation } });
   return etat;
 }
@@ -3765,6 +3767,10 @@ async function syncDateReservations(dateStr, opts = {}) {
     if (payload.classification) state.staffClassification = payload.classification;
     // Le seuil de retard du centre (Etablissement > Regles), meme chemin.
     if (payload.accueil) state.staffAccueil = payload.accueil;
+    // Les taux de TVA du centre (Etablissement > Le centre > TVA), meme chemin : Modifier les lit.
+    if (payload.vatRates) state.staffTva = payload.vatRates;
+    // Quand Modifier s ouvre hors TVA, meme chemin (reglageHtvaDuCentre).
+    if (payload.htvaParDefaut) state.staffHtvaParDefaut = payload.htvaParDefaut;
     // Les jours ouverts autrement pour un groupe (lib/booking-config), toute la liste.
     if (!payload.degraded) smPoserOuvertures(payload.ouvertures);
     hydrateSelectedReservation();
@@ -14767,6 +14773,19 @@ function validateEstablishmentForm() {
       invalid.push(input);
     }
   });
+  // La TVA : un taux de 0 a 100 %, deux decimales au plus. Une case vide garde le taux enregistre
+  // (collectEstablishmentVatRates ne l envoie pas).
+  Object.keys(TVA_SORTES).forEach((cle) => {
+    const input = document.getElementById(`estab-tva-${cle}`);
+    if (!input) return;
+    const brut = String(input.value || '').trim().replace(',', '.');
+    if (brut === '') return;
+    const value = Number(brut);
+    if (!Number.isFinite(value) || value < 0 || value > 100 || Math.abs(Math.round(value * 100) - value * 100) > 1e-6) {
+      markEstablishmentFieldError(input, `TVA des ${TVA_SORTES[cle]} : un taux de 0 à 100 %.`);
+      invalid.push(input);
+    }
+  });
   // Les installations des activites : un entier, au moins 1. Une saisie
   // refusee revient au gerant avec sa raison, jamais jetee en silence.
   document.querySelectorAll('[data-estab-page] .estab-cap-input').forEach((input) => {
@@ -14983,6 +15002,8 @@ async function submitCenterConfig(centerId) {
     })(),
     classification,
     accueil: { lateThresholdMinutes: Number(establishmentInputValue('estab-lateThreshold', STAFF_LATE_THRESHOLD_DEFAUT)) },
+    vatRates: collectEstablishmentVatRates(),
+    htvaParDefaut: collectEstablishmentHtvaParDefaut(),
     bookingRules: { minDaysAhead: Number(establishmentInputValue('estab-book-min', 0)) || 0, horizonDays: establishmentInputValue('estab-book-horizon', '') === '' ? null : Number(establishmentInputValue('estab-book-horizon', '')) },
     customActivities: establishmentCustomActivitiesDraft.map(item => ({ id: item.id, label: item.label }))
   };
@@ -15773,6 +15794,38 @@ function ebSectionDe(k, salles) {
 }
 
 // ── Le centre ────────────────────────────────────────────────────────────────
+// LA TVA DU CENTRE (2026-11-23, Ansar : « oui et paramettrable ») : un taux par sorte de ligne, pour lire
+// un prix hors TVA dans Modifier. Les valeurs viennent de la config du centre (normalizeVatRates).
+function ebTvaHtml(center) {
+  const taux = center.vatRates && typeof center.vatRates === 'object' ? center.vatRates : {};
+  const champ = (cle, titre, aide) => ebR(`${titre} (%)`, aide, ebNum(`estab-tva-${cle}`, `TVA des ${TVA_SORTES[cle]}, en pour cent`, { value: taux[cle] ?? '', min: 0, max: 100, step: 1, htmlStep: '0.01' }));
+  // (quand Modifier s ouvre hors TVA, lib/center-config.js normalizeHtvaParDefaut ; ce qui ne se lit pas : « Jamais »)
+  const ouverture = Object.prototype.hasOwnProperty.call(HTVA_PAR_DEFAUT_MOTS, center.htvaParDefaut) ? center.htvaParDefaut : 'jamais';
+  return ebG('TVA', 'Les taux qui servent à lire un prix hors TVA dans Modifier. Le prix enregistré reste TVA comprise.',
+    champ('activities', 'Activités', 'Bowling, duckpin, laser, minigolf, billard, playground, pixel : l’accès et l’usage.')
+    + champ('food', 'Nourriture', '')
+    + champ('drinks', 'Boissons', '')
+    + champ('arcades', 'Arcades', '')
+    + ebR('Prix hors TVA à l’ouverture', 'Modifier montre alors d’abord le prix hors TVA. Un groupe : un team building, ou un grand groupe qui joue en plusieurs groupes. Dans Modifier, TVAC et HTVA se changent toujours à la main.',
+      ebSeg('estab-tva-ouverture', 'Prix hors TVA à l’ouverture de Modifier', Object.entries(HTVA_PAR_DEFAUT_MOTS), ouverture)), { id: 'eb-tva' });
+}
+// Les taux tapes, tels quels : le serveur les borne (normalizeVatRates) et refuse ce qui sort de 0 a 100 %.
+// Une case vide ne part pas : le taux enregistre reste (la fusion de saveCenterConfig, cle par cle).
+function collectEstablishmentVatRates() {
+  const taux = {};
+  Object.keys(TVA_SORTES).forEach((cle) => {
+    const brut = String(document.getElementById(`estab-tva-${cle}`)?.value ?? '').trim().replace(',', '.');
+    if (brut !== '') taux[cle] = brut;
+  });
+  return Object.keys(taux).length ? taux : undefined;
+}
+// Le choix « Prix hors TVA à l ouverture », tel quel : le serveur le relit (normalizeHtvaParDefaut). Une page qui
+// ne l a pas montre ne l envoie pas : le reglage enregistre reste.
+function collectEstablishmentHtvaParDefaut() {
+  const champ = document.getElementById('estab-tva-ouverture');
+  return champ ? String(champ.value || '') : undefined;
+}
+
 function ebCentreHtml(c) {
   const center = c.center;
   const ident = center.identity && typeof center.identity === 'object' ? center.identity : {};
@@ -15792,6 +15845,7 @@ function ebCentreHtml(c) {
       + ebR('Site du centre', 'Le formulaire, les mails et l’assistant y renvoient.', ebTexte('estab-site', ident.siteUrl || '', { max: 300, ph: 'https://…' }))
       + ebR('Mails aux clients', 'L’expéditeur, les modèles et les relances se règlent dans Emails & relances.', '<button type="button" class="eb-b" onclick="openStaffMenuPage(\'emails\')">Ouvrir</button>')
       + ebR('Mail du centre', 'Les réponses des clients arrivent ici. Il se change avec l’équipe Pinlane.', `<b class="eb-ro-v">${ebE(center.publicEmail || 'Pas encore renseigné')}</b>`))
+    + ebTvaHtml(center)
     + (c.canEdit ? ebG('Ajouter un centre', 'Il arrive en « prévu » : rien ne s’ouvre aux clients avant que vous le décidiez.',
       ebR('Nom du nouveau centre', '', ebTexte('estab-new-name', '', { max: 80, attrs: 'oninput="ebIdentifiantDuNom(this.value)"' }))
       + ebR('Identifiant', 'Sans espace. Il se lit dans le lien de réservation.', ebTexte('estab-new-id', '', { max: 40, ph: 'namur', attrs: 'oninput="this.dataset.touche=\'1\'"' }))
@@ -16551,6 +16605,7 @@ function ebDireUnChangement(cle, v, avant) {
   if (EB_TEXTES_DITS[cle]) return EB_TEXTES_DITS[cle];
   if (EB_ZONES_DITES[cle]) return EB_ZONES_DITES[cle];
   if (cle === 'estab-status') return { active: 'Centre ouvert à la réservation', planned: 'Centre prévu', closed: 'Centre archivé' }[v] || 'Statut changé';
+  if (cle === 'estab-tva-ouverture') return `Prix hors TVA à l’ouverture : ${(HTVA_PAR_DEFAUT_MOTS[v] || HTVA_PAR_DEFAUT_MOTS.jamais).toLowerCase()}`;
   if (cle === 'estab-customRequestFromPax') return v === '' ? 'Plus de demande sur mesure' : `Sur mesure dès ${v} joueurs`;
   if (/^estab-style-/.test(cle) || cle === 'estab-accent-picker') return 'Style du formulaire changé';
   if (/^estab-arc-/.test(cle)) return 'Cartes Arcades modifiées';
@@ -24163,6 +24218,7 @@ function openStaffReservationDetail(id) {
   }
   upsertReservationInState(reservation);
   state.currentDate = reservation.date || state.currentDate;
+  oublierPrixVuDeLaFiche();
   state.selectedRes = reservation;
   state.activeTab = 'details';
   state.editState = etatEditionDepuis(reservation);
@@ -29297,7 +29353,7 @@ function getGroupeProgramme(r) {
     etapes.push({
       cle: `enplus-${step.activityId}-${index + 1}`,
       activityId: step.activityId,
-      nom: String(ligne.name || step.label || nomActiviteHeureEdition(step.activityId)),
+      nom: String(ligne.name || step.label || (typeof nomActiviteHeureEdition === 'function' ? nomActiviteHeureEdition(step.activityId) : step.activityId)),
       quoi: `${Number(ligne.participants) || Number(r.pax) || 0} joueurs · en plus`,
       ou: '',
       groupe: '',
@@ -29343,7 +29399,8 @@ function getGroupeProgramme(r) {
   // Une activite de formule sans heure au plan reste au programme, cochable.
   if (formuleSuivie) {
     getFormulaActivityProgressSummary(r).items
-      .filter(item => !item.startTime && item.activityId !== 'bowling' && item.activityId !== 'laser_game')
+      // (une petite activite en plus libre n en est pas une : une formule lue d apres son plan la comptait deux fois)
+      .filter(item => !item.startTime && item.activityId !== 'bowling' && item.activityId !== 'laser_game' && !pasEnPlus.some(step => step.flexible === true && step.activityId === item.activityId))
       .forEach(item => etapes.push({
         cle: item.key, activityId: item.activityId, nom: item.label, quoi: '', ou: '', groupe: '',
         start: null, end: null, libre: true, fait: Boolean(item.done), coche: item.key, exige: true,
@@ -30561,8 +30618,10 @@ function editRes(id, ev) {
   if (ev) ev.stopPropagation();
   state.selectedRes = state.reservations.find(r => r.id === id);
   if (!state.selectedRes) return;
+  oublierPrixVuDeLaFiche();
   state.activeTab = 'modifier';
   state.editState = etatEditionDepuis(state.selectedRes);
+  retenirPrixVuDeLaFiche();
   syncEditLaneAssignment();
   renderPos();
 }
@@ -30577,6 +30636,8 @@ function openPos(id) {
   heureOuverteEdition = '';
   // Une proposition d ordre lue sur une autre fiche ne revient pas : elle se redemande.
   autresOrdresFiche.clear();
+  // (TVAC ou HTVA : une fiche ouverte repart du reglage du centre)
+  oublierPrixVuDeLaFiche();
   const reservation = findStaffReservationById(id);
   if (!reservation) {
     toast('Réservation introuvable ou non chargée.');
@@ -30640,6 +30701,7 @@ function closePos() {
   // La bulle du compte ouverte depuis la fiche part avec elle.
   if (compteArrivee().id && compteArrivee().dansFiche) fermerCompteArrivee(false);
   state.selectedRes = null;
+  oublierPrixVuDeLaFiche();
   ficheFaitsPeints = '';
   const overlay = document.getElementById('posOverlay');
   // Elle se range dans sa ligne : sa forme y retourne, le voile s eteint (rien n attend).
@@ -30674,6 +30736,8 @@ function ficheEditionModifiee() {
   const es = state.editState;
   if (state.activeTab !== 'modifier' || !es || !state.selectedRes) return false;
   if (editProgramAChange()) return true;
+  // Une activite en plus ajoutee, reglee ou retiree, pas enregistree (2026-11-22).
+  if (enPlusEditionChange()) return true;
   // Une heure d activite changee et pas enregistree (2026-11-18).
   if (Object.keys(heuresChangeesEdition()).length) return true;
   const edition = departsEdition().get(es);
@@ -30716,6 +30780,7 @@ function ouvrirOngletFiche(cible) {
   state.activeTab = cible;
   if (state.activeTab === 'modifier') {
     state.editState = etatEditionDepuis(state.selectedRes);
+    retenirPrixVuDeLaFiche();
     syncEditLaneAssignment();
     noterFormulaireEdition();
   }
@@ -32896,6 +32961,9 @@ function buildEditProgramFromReservation(r) {
       if (item.upsell) reglages.upsell = { ...item.upsell };
       ['arcadeMode', 'arcadeOfferId', 'cards', 'arcadeOffer', 'durationEstimated'].forEach(key => { if (item[key] != null) reglages[key] = item[key]; });
       if (Number(item.units) > 0) reglages.units = Number(item.units);
+      // (les pistes de duckpin choisies au comptoir : sans elles, enregistrer une autre modification
+      // rendait la piste vendue en plus, prix compris)
+      if (Number(item.pistesChoisies) > 0) reglages.pistesChoisies = Math.trunc(Number(item.pistesChoisies));
       if (Number(item.hours) > 0) reglages.hours = Number(item.hours);
       // Le palier d une session, pas le temps du groupe (3 x 30 min = 90). Les
       // passages de CE groupe servent a un dossier enregistre sans eux.
@@ -32957,8 +33025,12 @@ function estimerPrixProgramme(items, pax, dateStr, startTime) {
   let complet = true;
   let chiffrees = 0;
   const lignes = [];
+  // (chaque ligne dit sa sorte pour la TVA, tvaDuPrix : les arcades a part, le reste des activites)
+  let sorte = 'activities';
+  const ajouter = (ligne) => lignes.push({ ...ligne, sorte });
   (items || []).forEach((item) => {
     const id = String(item.activityId || '');
+    sorte = sorteTvaActivite(id);
     const effectif = participantsLigneProgramme(item, joueurs);
     if (id === 'bowling') {
       const heures = Number(item.duration) || 1;
@@ -32970,7 +33042,7 @@ function estimerPrixProgramme(items, pax, dateStr, startTime) {
       const montant = Number(getBasePrice('bowling', heures, pistes, effectif, '', dateStr)) || 0;
       total += montant;
       chiffrees += 1;
-      lignes.push({ nom: `Bowling ${formatDurationLabel(heures)}`, detail: `${pistes} piste${pistes > 1 ? 's' : ''}`, montant });
+      ajouter({ nom: `Bowling ${formatDurationLabel(heures)}`, detail: `${pistes} piste${pistes > 1 ? 's' : ''}`, montant });
       return;
     }
     if (id === 'laser_game') {
@@ -32990,7 +33062,7 @@ function estimerPrixProgramme(items, pax, dateStr, startTime) {
         const montant = Math.round(somme * 100) / 100;
         total += montant;
         chiffrees += 1;
-        lignes.push({ nom: `Laser ${parties} parties`, detail: joueursDesPartiesEnMots(parPartie), montant });
+        ajouter({ nom: `Laser ${parties} parties`, detail: joueursDesPartiesEnMots(parPartie), montant });
         return;
       }
       const option = getLaserOption(parties * 0.5);
@@ -32999,7 +33071,7 @@ function estimerPrixProgramme(items, pax, dateStr, startTime) {
       const montant = Math.round((unitaire * effectif + supplement) * 100) / 100;
       total += montant;
       chiffrees += 1;
-      lignes.push({ nom: `Laser ${parties} partie${parties > 1 ? 's' : ''}`, detail: `${formatMontant(unitaire)}/pers × ${effectif}${item.extraLaser ? ` · + ${item.extraLaser.games - parties} pour ${item.extraLaser.participants} joueurs${Number(item.extraLaser.discountAmount) > 0 ? ` · remise ${formatMoneyCentimes(item.extraLaser.discountAmount)}` : ''}` : ''}`, montant });
+      ajouter({ nom: `Laser ${parties} partie${parties > 1 ? 's' : ''}`, detail: `${formatMontant(unitaire)}/pers × ${effectif}${item.extraLaser ? ` · + ${item.extraLaser.games - parties} pour ${item.extraLaser.participants} joueurs${Number(item.extraLaser.discountAmount) > 0 ? ` · remise ${formatMoneyCentimes(item.extraLaser.discountAmount)}` : ''}` : ''}`, montant });
       return;
     }
     const activite = typeof getCenterActivity === 'function' ? getCenterActivity(id) : null;
@@ -33007,7 +33079,7 @@ function estimerPrixProgramme(items, pax, dateStr, startTime) {
     if (item.upsell && Number(item.upsell.participants) === effectif && Number.isFinite(Number(item.upsell.price))) {
       const montant = Math.max(0, Number(item.upsell.price));
       total += montant; chiffrees += 1;
-      lignes.push({ nom, detail: `Offre retenue · ${effectif} joueurs${Number(item.upsell.discountAmount) > 0 ? ` · remise ${formatMoneyCentimes(item.upsell.discountAmount)}` : ''}`, montant });
+      ajouter({ nom, detail: `Offre retenue · ${effectif} joueurs${Number(item.upsell.discountAmount) > 0 ? ` · remise ${formatMoneyCentimes(item.upsell.discountAmount)}` : ''}`, montant });
       return;
     }
     // MEME CALCUL QUE LE SERVEUR (lib/visit-program), ligne par ligne. Une
@@ -33020,16 +33092,17 @@ function estimerPrixProgramme(items, pax, dateStr, startTime) {
       const montant = Math.round(Number(item.waitPricePerPax) * attendent * 100) / 100;
       total += montant;
       chiffrees += 1;
-      lignes.push({ nom, detail: `pendant l’attente, ${attendent} pers.`, montant });
+      ajouter({ nom, detail: `pendant l’attente, ${attendent} pers.`, montant });
       return;
     }
     if (activite && activite.priceType === 'grid_bowling' && typeof getActivityUnitPlan === 'function') {
       const heures = Number(item.duration) || 1;
-      const plan = getActivityUnitPlan(activite, effectif);
+      // (les pistes choisies au comptoir comptent, comme au serveur : chacune se paie)
+      const plan = getActivityUnitPlan(activite, effectif, activite.resourceType === 'duckpin_lane' ? Math.trunc(Number(item.pistesChoisies) || 0) : 0);
       const montant = Number(getBasePrice('bowling', heures, plan.units, effectif, '', dateStr)) || 0;
       total += montant;
       chiffrees += 1;
-      lignes.push({ nom: `${nom} ${formatDurationLabel(heures)}`, detail: `${plan.units} piste${plan.units > 1 ? 's' : ''}${plan.tours > 1 ? ` · ${plan.tours} tours` : ''}`, montant });
+      ajouter({ nom: `${nom} ${formatDurationLabel(heures)}`, detail: `${plan.units} piste${plan.units > 1 ? 's' : ''}${plan.tours > 1 ? ` · ${plan.tours} tours` : ''}`, montant });
       return;
     }
     // Les reglages de la ligne comptent : une table de billard sur 2 h ne vaut
@@ -33049,12 +33122,12 @@ function estimerPrixProgramme(items, pax, dateStr, startTime) {
       : null;
     if (ligne == null) {
       complet = false;
-      lignes.push({ nom, detail: 'tarif non saisi', montant: null });
+      ajouter({ nom, detail: 'tarif non saisi', montant: null });
       return;
     }
     total += Number(ligne) || 0;
     chiffrees += 1;
-    lignes.push({ nom, detail: activite?.id === 'arcade_time' ? (() => { const q = getArcadeOfferQuote(activite,item,effectif); return q ? getStaffArcadeOfferDetail({cards:q.cards,arcadeOffer:q.offer}) : ''; })() : '', montant: Number(ligne) || 0 });
+    ajouter({ nom, detail: activite?.id === 'arcade_time' ? (() => { const q = getArcadeOfferQuote(activite,item,effectif); return q ? getStaffArcadeOfferDetail({cards:q.cards,arcadeOffer:q.offer}) : ''; })() : '', montant: Number(ligne) || 0 });
   });
   return {
     total: Math.round(total * 100) / 100,
@@ -33091,7 +33164,7 @@ function estimerFormuleEdition(r, e) {
   if (!(prixFormule > 0)) return null;
   // « 39 € × 11 », comme l addition de la fiche.
   const detail = `${formatMoneyCentimes(formule.price)} × ${formule.type === 'per_lane' ? `${pistes} piste${pistes > 1 ? 's' : ''}` : pax}`;
-  const lignes = [{ nom: nomDeLaFormuleAchetee(r, formule.name), detail, montant: prixFormule }];
+  const lignes = [{ nom: nomDeLaFormuleAchetee(r, formule.name), detail, montant: prixFormule, sorte: 'formule' }];
   const comprises = activitesDeLaFormuleEdition(applyReservationFormulaChoice(formule, r));
   const ajoutees = editProgramAChange() ? getEditProgramItems().filter((item) => !comprises.has(String(item.activityId || ''))) : [];
   const ajouts = ajoutees.length ? estimerPrixProgramme(ajoutees, e.pax, e.date || r.date, e.startTime || r.startTime) : null;
@@ -33154,7 +33227,7 @@ function getEditPrixEstime() {
   if (!extras.length) return estime;
   const total = Math.round((estime.total + sumExtras(extras)) * 100) / 100;
   const joueurs = Math.max(1, Number(state.editState.pax) || 1);
-  return { ...estime, total, lignes: [...estime.lignes, ...extras.map((x) => ({ nom: x.name || 'Extra', detail: '', montant: Number(x.price) || 0, ...(x.aPayer === true ? { aPayer: true } : {}) }))], parPersonne: Math.round(total / joueurs) };
+  return { ...estime, total, lignes: [...estime.lignes, ...extras.map((x) => ({ ...sorteTvaExtra(x), nom: x.name || 'Extra', detail: '', montant: Number(x.price) || 0, ...(x.aPayer === true ? { aPayer: true } : {}) }))], parPersonne: Math.round(total / joueurs) };
 }
 
 function ensureEditProgram(r) {
@@ -33238,6 +33311,10 @@ function getEditProgramItems() {
     // une unite et une heure.
     const reglages = (e.programmeEdite.othersOptions || {})[id] || {};
     const item={ activityId: id, pax, ...reglages, participants: participantsLigneProgramme(reglages, pax) };
+    // Le duckpin : ses pistes suivent ses joueurs et le choix de l equipe, et le detail de la rangee
+    // les dit avant l enregistrement (le serveur les recompte, lib/visit-program.js).
+    const pistes = pistesDuckpin(getCenterActivity(id), item.participants, reglages.pistesChoisies);
+    if (pistes) { item.units = pistes.n; item.sessions = pistes.tours; }
     if (id === 'arcade_time') {
       const saved=(state.selectedRes?.program?.items || []).find(line=>line.activityId===id);
       if (editArcadeTimingChanged() || (saved && item.participants !== Number(saved.participants || state.selectedRes.pax))) delete item.arcadeOffer;
@@ -33297,7 +33374,8 @@ function setEditLaserGames(nombre) {
 // bouton « Recalculer » rend la main a l estimation.
 function setEditPrice(valeur) {
   if (!state.editState) return;
-  state.editState.price = valeur;
+  // (en HTVA, le montant tape est hors TVA : il s enregistre TVA comprise, au melange de taux du dossier)
+  state.editState.price = prixHorsTvaEdition() ? tvacDuHorsTva(valeur) : valeur;
   state.editState.prixFige = true;
   majEditPrixEstime();
 }
@@ -33318,10 +33396,12 @@ function setEditPricePerPerson(valeur) {
   const parPersonne = Number(brut);
   if (!Number.isFinite(parPersonne) || parPersonne < 0) return;
   const joueurs = Math.max(1, Number(state.editState.pax) || 1);
-  state.editState.price = String(Math.round((parPersonne * joueurs) * 100) / 100);
+  const totalTape = String(Math.round((parPersonne * joueurs) * 100) / 100);
+  // (en HTVA, le total tape est hors TVA : il s enregistre TVA comprise, le champ garde le hors TVA)
+  state.editState.price = prixHorsTvaEdition() ? tvacDuHorsTva(totalTape) : totalTape;
   state.editState.prixFige = true;
   const champTotal = document.getElementById('editPriceInput');
-  if (champTotal) champTotal.value = state.editState.price;
+  if (champTotal) champTotal.value = totalTape;
   majEditPrixEstime();
 }
 
@@ -33342,20 +33422,32 @@ function majEditPrixEstime() {
   const champ = document.getElementById('editPriceInput');
   // Tant que personne n a fige un montant, le champ SUIT ce qu on change
   // (prixSuiviEdition).
+  const horsTva = prixHorsTvaEdition();
   if (!e.prixFige && champ) {
     const valeur = prixSuiviEdition(estime);
-    champ.value = String(valeur);
     e.price = String(valeur);
+    champ.value = String(horsTva ? (tvaEdition() || { htva: valeur }).htva : valeur);
   }
   const facture = getEditPriceValue() ?? (estime ? estime.total : 0);
   const joueurs = Math.max(1, Number(e.pax) || 1);
+  // (en HTVA, les champs disent le hors TVA du prix enregistre ; celui qu on tape garde sa saisie)
+  const tva = tvaEdition();
+  const montantVu = horsTva && tva ? tva.htva : facture;
   // Les deux champs se repondent, mais JAMAIS celui qu on est en train de
   // taper : reecrire sous les doigts transforme un « 1 » en cours de frappe
   // en « 17 » et rend le champ inutilisable.
   const champPersonne = document.getElementById('editPricePerPerson');
-  if (champPersonne && document.activeElement !== champPersonne) champPersonne.value = String(Math.round((facture / joueurs) * 100) / 100);
+  if (champPersonne && document.activeElement !== champPersonne) champPersonne.value = String(Math.round((montantVu / joueurs) * 100) / 100);
   const detail = document.querySelector('#posOverlay .dossier-price-detail .edit-prix-detail');
   if (detail && estime) detail.innerHTML = lignesDetailPrixHtml(estime);
+  const detailTva = document.getElementById('editPrixTvaDetail');
+  if (detailTva) detailTva.innerHTML = tvaDetailHtml(tva);
+  const ligneTva = document.getElementById('editPrixTva');
+  if (ligneTva && horsTva) {
+    const lu = (el) => { const brut = String((el && el.value) || '').trim().replace(',', '.'); return brut === '' ? NaN : Number(brut); };
+    const tape = document.activeElement === champ ? lu(champ) : document.activeElement === champPersonne ? Math.round(lu(champPersonne) * joueurs * 100) / 100 : null;
+    ligneTva.textContent = ligneTvaEditionTexte(tva, Number.isFinite(tape) ? tape : null);
+  }
   peindreEtatPrix(estime);
   peindreRaisonPrixEdition();
   majModifsEdition();
@@ -33997,13 +34089,31 @@ function reglagesAutreEditionHtml(id, reglages) {
   }
   if (activite.priceType === 'grid_bowling') {
     const duree = Number(reglages.duration) || 1;
-    return rang('Durée', DURATION_OPTIONS.map(o => bouton(duree === Number(o.value), rvHeuresLabel(Number(o.value)), 'duration', o.value)).join(''));
+    return rang('Durée', DURATION_OPTIONS.map(o => bouton(duree === Number(o.value), rvHeuresLabel(Number(o.value)), 'duration', o.value)).join(''))
+      + pistesDuckpinEditionHtml(id, activite, reglages);
   }
   if (activite.priceType === 'grid_fun_run') {
     const minutes = Number(reglages.minutes) > 0 ? Math.trunc(Number(reglages.minutes)) : Number(FUN_RUN_OPTIONS[0].minutes);
     return rang('Session', FUN_RUN_OPTIONS.map(o => bouton(minutes === Number(o.minutes), o.label, 'minutes', o.minutes)).join(''));
   }
   return '';
+}
+
+// LES PISTES DU DUCKPIN DANS MODIFIER (2026-11-22, Ansar : « Duckpin possibilité de mettre 2 pistes ») :
+// le meme compteur que ses joueurs, la regle de Reserver (pistesDuckpin), et le conseil a cote. Le
+// serveur rejuge la place a l enregistrement (la garde des installations comptees).
+function pistesDuckpinEditionHtml(id, activite, reglages) {
+  const joueurs = participantsLigneProgramme(reglages, state.editState && state.editState.pax);
+  const p = pistesDuckpin(activite, joueurs, reglages.pistesChoisies);
+  if (!p) return '';
+  const nom = activite.name || id;
+  const bouton = (valeur, actif, aria, trace) => `<button type="button" class="qb-step-btn staff-stepper-btn" aria-label="${escapeHtml(aria)}" ${actif ? '' : 'disabled'} data-activite="${escapeHtml(id)}" data-valeur="${valeur}" data-pistes-duckpin="1" onclick="setEditReglageActivite(this.dataset.activite, 'pistesChoisies', this.dataset.valeur)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="${trace}"/></svg></button>`;
+  return `<div class="qb-visit-options qb-visit-compteur dossier-activity-count" role="group" aria-label="${escapeHtml(`${nom} : pistes`)}" data-pistes-edition="${escapeHtml(id)}">`
+    + '<span class="qb-opt-legend">Pistes</span>'
+    + `<span class="staff-stepper">${bouton(p.n - 1, p.n > p.conseillees, `${nom} : une piste de moins`, 'M5 12h14')}`
+    + `<span class="qb-step-valeur staff-stepper-value">${p.n}</span>`
+    + `${bouton(p.n + 1, p.n < p.plafond, `${nom} : une piste de plus`, 'M5 12h14M12 5v14')}</span>`
+    + `<span class="dossier-pistes-conseil">${escapeHtml(pistesDuckpinNote(p, joueurs))}</span></div>`;
 }
 
 // Un reglage touche : borne comme dans Reserver (setQuickVisitUnits, setQuickVisitHours,
@@ -34021,6 +34131,12 @@ function setEditReglageActivite(id, cle, valeur) {
     reglages.hours = nombre;
   } else if (cle === 'duration' && activite.priceType === 'grid_bowling' && DURATION_OPTIONS.some(o => Number(o.value) === nombre)) {
     reglages.duration = nombre;
+  } else if (cle === 'pistesChoisies' && activite.resourceType === 'duckpin_lane') {
+    // (la regle de Reserver, setQuickPistesDuckpin : du conseil aux pistes du centre, effacee au conseil)
+    const p = pistesDuckpin(activite, participantsLigneProgramme(reglages, state.editState.pax));
+    const voulu = Math.min(p.plafond, Math.max(p.conseillees, Math.trunc(nombre) || p.conseillees));
+    if (voulu > p.conseillees) reglages.pistesChoisies = voulu;
+    else delete reglages.pistesChoisies;
   } else if (cle === 'minutes' && activite.priceType === 'grid_fun_run' && FUN_RUN_OPTIONS.some(o => Number(o.minutes) === nombre)) {
     reglages.minutes = nombre;
   } else return;
@@ -34270,6 +34386,104 @@ function rendreLibreEnPlusEdition(id) {
   renderPos();
 }
 
+// « AJOUTER » MET L ACTIVITE EN PLUS DE LA FORMULE (2026-11-22, le coordinateur : « dans Modifier, sur un dossier en
+// formule, Ajouter crée un ajout en plus (sa ligne, son heure, son prix catalogue), comme dans Réserver. Il n adapte
+// plus la formule. Seul Adapter à ce groupe adapte »). Une formule prise telle quelle reste entiere : l activite
+// ajoutee est sa rangee, a son heure et a son prix. « Adapter à ce groupe » (ou une formule deja adaptee, changee
+// ici, dont une activite a deja ete retiree ou reglee, ou un acces illimite qui redevient un programme normal) la
+// prend dans son programme, comme avant.
+function formuleTelleQuelleEdition(r = state.selectedRes) {
+  const e = state.editState;
+  if (!e || !r || !peutAdapterLeProgramme(r)) return false;
+  if (String(r.type || '') !== 'formule' || !r.formuleId || !resolveDisplayFormule(r.formuleId)) return false;
+  if (/\(adapt[ée]e\)/i.test(String(r.label || '')) && Array.isArray(r.program?.items) && r.program.items.length) return false;
+  return !formuleChangeeEdition() && !e.versProgrammeNormal && !editProgramAChange();
+}
+
+function enPlusPossibleEdition(r = state.selectedRes) {
+  return formuleTelleQuelleEdition(r) && !state.editState.adapterLaFormule;
+}
+
+// L heure proposee a une activite en plus ajoutee ici, comme Reserver (rvHeureEnPlusProposee) : la premiere
+// demi-heure apres ce que la formule fait a heure fixe (son bowling, chaque partie de son laser, ses etapes a heure),
+// sans la chevaucher, avant la fermeture ; un acces illimite se joue des l arrivee. Le verdict la juge.
+function heureEnPlusProposeeEdition(id, variante) {
+  const e = state.editState;
+  const r = state.selectedRes;
+  const ecrit = dossierEcritDuVerdict();
+  const plan = ((ecrit || r) && (ecrit || r).opsPlan) || {};
+  const min = (h) => minutesHeureEdition(String(h || '').slice(0, 5));
+  // (sans verdict a jour, le plan du dossier, decale de l arrivee changee ici)
+  const decalage = ecrit ? 0 : (min(e.startTime) - min(r.startTime)) || 0;
+  const plages = [];
+  (Array.isArray(plan.resourceBlocks) ? plan.resourceBlocks : []).forEach((b) => {
+    if (!b || b.enPlus || b.aVolonte || (b.resourceType !== 'bowling_lane' && b.resourceType !== 'laser_arena')) return;
+    const debut = min(b.startTime);
+    if (!Number.isFinite(debut)) return;
+    const fin = b.resourceType === 'laser_arena' ? debut + 25 : min(b.endTime);
+    plages.push({ debut: debut + decalage, fin: (Number.isFinite(fin) && fin > debut ? fin : debut + 60) + decalage });
+  });
+  const illimite = estFormuleIllimitee(resolveDisplayFormule(r.formuleId));
+  if (!illimite) {
+    (Array.isArray(plan.timeline) ? plan.timeline : []).forEach((s) => {
+      if (!s || s.type !== 'activity' || s.enPlus || s.flexible === true || RV_ANCRABLES.includes(s.activityId) || /^service/.test(String(s.activityId || '')) || ['party_table', 'arcade_credit', 'playground'].includes(s.activityId)) return;
+      const debut = min(s.startTime);
+      const fin = min(s.endTime);
+      if (Number.isFinite(debut) && Number.isFinite(fin) && fin > debut) plages.push({ debut: debut + decalage, fin: fin + decalage });
+    });
+  }
+  const arrivee = min(e.startTime || r.startTime);
+  const fin = plages.length ? Math.max(...plages.map((p) => p.fin)) : illimite ? arrivee : arrivee + Math.round((Number(e.totalDuration || r.totalDuration || e.duration || r.duration) || 0) * 60);
+  if (!Number.isFinite(fin)) return '';
+  const duree = id === 'laser_game' ? 30 * (Math.max(1, Number(variante) || 1) - 1) + 25 : Math.round((Number(variante) || 1) * 60);
+  const horaire = typeof getSchedule === 'function' ? getSchedule(e.date || r.date, state.isHolidayMode) : null;
+  const fermeture = horaire && Number.isFinite(Number(horaire.close)) ? Math.round(Number(horaire.close) * 60) : 24 * 60;
+  const enHeure = (t) => `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
+  const premiere = Math.ceil(fin / 30) * 30;
+  for (let t = premiere; t + duree <= fermeture; t += 30) {
+    if (!plages.some((p) => t < p.fin && p.debut < t + duree)) return enHeure(t);
+  }
+  return enHeure(premiere);
+}
+
+// Une activite en plus ajoutee ici : le bowling et le laser a l heure qui suit la formule (une heure, une partie),
+// une autre libre pendant la visite tant qu on ne lui en pose pas.
+function ajouterEnPlusEdition(id) {
+  const e = state.editState;
+  if (!e || !id || !enPlusPossibleEdition() || enPlusEditeDe(id)) return;
+  const ancre = RV_ANCRABLES.includes(id);
+  const variante = ancre ? 1 : null;
+  e.enPlusEdite = [...enPlusEdition(), { id, variante, heure: ancre ? heureEnPlusProposeeEdition(id, variante) : '', joueurs: null }];
+  heureEnPlusOuverteEdition = '';
+  if (state.editError) setEditError('');
+  renderPos();
+}
+
+// « Ajouter » d une activite : dans l acces illimite qui la comprend, en plus d une formule prise telle quelle, sinon
+// dans le programme (une visite, une formule adaptee).
+function ajouterActiviteEdition(id) {
+  const acces = typeof choixIllimiteEdition === 'function' && choixIllimiteEdition() ? resolveDisplayFormule(state.editState.formuleId) : null;
+  if (acces && activitesDeLIllimite(acces).includes(String(id))) { basculerIllimiteEdition(id); return; }
+  if (enPlusPossibleEdition()) { ajouterEnPlusEdition(id); return; }
+  toggleEditActivity(id);
+}
+
+// « Adapter à ce groupe » : ce qu on ajoute ensuite entre dans la formule, chacune a son prix ; un second toucher
+// la rend telle quelle, tant que rien n y est entre.
+function basculerAdapterEdition() {
+  const e = state.editState;
+  if (!e || !formuleTelleQuelleEdition()) return;
+  e.adapterLaFormule = !e.adapterLaFormule;
+  renderPos();
+}
+
+function adapterEditionHtml(r) {
+  const e = state.editState;
+  if (!e || !formuleTelleQuelleEdition(r) || estFormuleIllimitee(resolveDisplayFormule(r.formuleId))) return '';
+  const on = Boolean(e.adapterLaFormule);
+  return `<div class="fm-adapter" id="editAdapter"><button type="button" class="qb-dur-btn dossier-option${on ? ' active' : ''}" aria-pressed="${on}" aria-describedby="editAdapterAide" onclick="basculerAdapterEdition()">Adapter à ce groupe</button><span class="fm-adapter-aide" id="editAdapterAide">${on ? 'Les activités ajoutées entrent dans la formule, chacune à son prix.' : '« Ajouter » met l’activité en plus de la formule, à son prix.'}</span></div>`;
+}
+
 // L heure qu une activite en plus aura : celle du verdict a jour (le dossier que le serveur ecrirait), sinon la
 // sienne.
 function heureEnPlusAfficheeEdition(x) {
@@ -34448,9 +34662,11 @@ function renderEditFormuleBloc(r, formule, lignes, controls = {}) {
     const actif = estBowling ? !!programme.bowling.on : estLaser ? !!programme.laser_game.on : !!(programme.others || {})[choice.id];
     if (!actif) {
       // (une activite deja en plus de la formule a sa rangee : elle ne s ajoute pas une deuxieme fois)
-      if (!enPlusEditeDe(choice.id)) ajouts.push(`<button type="button" class="fm-ajout" onclick="toggleEditActivity('${escapeJsString(choice.id)}')">${plus}${escapeHtml(choice.label)}</button>`);
+      if (!enPlusEditeDe(choice.id)) ajouts.push(`<button type="button" class="fm-ajout" onclick="ajouterActiviteEdition('${escapeJsString(choice.id)}')">${plus}${escapeHtml(choice.label)}</button>`);
       return '';
     }
+    // (le bowling ou le laser que la formule a deja se reprend en plus, a l heure qui la suit, comme dans Reserver)
+    if (RV_ANCRABLES.includes(choice.id) && enPlusPossibleEdition(r) && !enPlusEditeDe(choice.id)) ajouts.push(`<button type="button" class="fm-ajout" data-ajout-en-plus="${escapeHtml(choice.id)}" onclick="ajouterEnPlusEdition('${escapeJsString(choice.id)}')">${plus}${escapeHtml(choice.label)} en plus</button>`);
     let options = '';
     if ((estBowling || estLaser) && volonte && volonte[choice.id]) {
       options = `<p class="fm-act-volonte" data-a-volonte="${escapeHtml(choice.id)}">${escapeHtml(volonte[choice.id])}</p>`;
@@ -34512,7 +34728,7 @@ function renderEditFormuleBloc(r, formule, lignes, controls = {}) {
   return `${choixAcces}${versNormal}${renderEditFormuleChoix() || (formule?.name && !versNormal && !estFormuleIllimitee(formule) ? `<p class="dossier-formula-origin">Formule <strong>${escapeHtml(formule.name)}</strong> · les changements ne valent que pour cette visite.</p>` : '')}
     <p class="fm-replan" role="status">Les heures seront recalculées à l’enregistrement.</p>
     <div class="fm-acts">${rangees || sansActivite}</div>
-    ${ajouts.length ? `<div class="fm-ajouts" role="group" aria-labelledby="fmAjoutsTitre"><span class="fm-ajouts-titre" id="fmAjoutsTitre">Ajouter</span>${ajouts.join('')}</div>` : ''}`;
+    ${ajouts.length ? `<div class="fm-ajouts" role="group" aria-labelledby="fmAjoutsTitre"><span class="fm-ajouts-titre" id="fmAjoutsTitre">Ajouter</span>${ajouts.join('')}</div>` : ''}${adapterEditionHtml(r)}`;
 }
 
 // D OU VIENT LE MONTANT, EN UNE PHRASE (2026-10-27). Les deux champs disent
@@ -34566,25 +34782,31 @@ function renderEditPrix(r) {
   const detailHtml = estime && estime.lignes.length
     ? `<ul class="edit-prix-detail">${lignesDetailPrixHtml(estime)}</ul>`
     : '';
+  // LE PRIX SE LIT TVAC OU HTVA (2026-11-23) : en HTVA, les champs disent le hors TVA du prix, et ce qui
+  // s y tape repart TVA comprise (setEditPrice). Le detail du calcul donne la TVA par taux.
+  const horsTva = prixHorsTvaEdition();
+  const tva = tvaEdition();
+  const montantVu = horsTva && tva ? tva.htva : Number(valeurChamp);
   const etat = textePrixEdition(r, estime);
   const formuleSM = formuleDuComptoir(r);
   return `<section class="fm-prix dossier-price-section" aria-labelledby="dossierPriceHeading">
-    <h4 class="fm-titre" id="dossierPriceHeading">Prix</h4>
+    <div class="fm-prix-tete"><h4 class="fm-titre" id="dossierPriceHeading">Prix</h4>${choixTvaEditionHtml()}</div>
     ${formuleSM ? `<p class="fm-prix-formule" id="editFormuleSM"><b>${escapeHtml(formuleSM.nom)}</b> formule sur mesure${formuleSM.prixParPersonne != null ? `, ${escapeHtml(formatMoneyCentimes(formuleSM.prixParPersonne))} par joueur` : ''}</p>` : ''}
     <div class="fm-prix-champs">
       <div class="fm-champ">
-        <label class="lbl" for="editPriceInput">Total</label>
-        <div class="fm-euro"><input id="editPriceInput" class="input" type="number" min="0" max="100000" step="0.01" inputmode="decimal" value="${escapeHtml(String(valeurChamp))}" oninput="setEditPrice(this.value)"><span aria-hidden="true">${signeMonnaie()}</span></div>
+        <label class="lbl" for="editPriceInput">Total${horsTva ? ' HTVA' : ''}</label>
+        <div class="fm-euro"><input id="editPriceInput" class="input" type="number" min="0" max="100000" step="0.01" inputmode="decimal" value="${escapeHtml(String(horsTva ? montantVu : valeurChamp))}" oninput="setEditPrice(this.value)"><span aria-hidden="true">${signeMonnaie()}</span></div>
       </div>
       <div class="fm-champ">
-        <label class="lbl" for="editPricePerPerson">Par joueur</label>
-        <div class="fm-euro"><input id="editPricePerPerson" class="input" type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(String(Math.round((valeurChamp / joueursActuels) * 100) / 100))}" oninput="setEditPricePerPerson(this.value)"><span aria-hidden="true">${signeMonnaie()}</span></div>
+        <label class="lbl" for="editPricePerPerson">Par joueur${horsTva ? ' HTVA' : ''}</label>
+        <div class="fm-euro"><input id="editPricePerPerson" class="input" type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(String(Math.round((montantVu / joueursActuels) * 100) / 100))}" oninput="setEditPricePerPerson(this.value)"><span aria-hidden="true">${signeMonnaie()}</span></div>
       </div>
     </div>
+    <p class="fm-prix-tva" id="editPrixTva"${horsTva ? '' : ' hidden'}>${horsTva ? escapeHtml(ligneTvaEditionTexte(tva)) : ''}</p>
     <p class="fm-prix-etat" id="editPrixEstime"${etat ? '' : ' hidden'}>${escapeHtml(etat)}</p>
     <button type="button" class="edit-adapter-btn fm-recalculer" id="editRecalculer" onclick="recalculerEditPrix()"${state.editState.prixFige ? '' : ' hidden'}>Recalculer avec les tarifs</button>
     ${raisonPrixEditionHtml()}
-    ${detailHtml ? `<details class="dossier-price-detail"><summary>Détail du calcul</summary>${detailHtml}</details>` : ''}
+    ${detailHtml ? `<details class="dossier-price-detail"><summary>Détail du calcul</summary>${detailHtml}<div class="edit-prix-tva" id="editPrixTvaDetail">${tvaDetailHtml(tva)}</div></details>` : ''}
   </section>`;
 }
 
@@ -34593,7 +34815,257 @@ function renderEditPrix(r) {
 // joueurs ajoute 39 EUR ; sans lui, le montant a l air arbitraire.
 function lignesDetailPrixHtml(estime) {
   // (une ligne a payer n a pas de montant : « À payer », jamais « 0 € »)
-  return estime.lignes.map(l => `<li><span>${escapeHtml(l.nom)}${l.detail ? ` <em>${escapeHtml(l.detail)}</em>` : ''}</span>${l.aPayer ? '<b class="pl-a-payer">À payer</b>' : `<b>${l.montant == null ? 'sur place' : `${Math.round((l.montant) * 100) / 100} ${signeMonnaie()}`}</b>`}</li>`).join('');
+  return estime.lignes.map(l => `<li><span>${escapeHtml(l.nom)}${l.detail ? ` <em>${escapeHtml(l.detail)}</em>` : ''}</span>${l.aPayer ? '<b class="pl-a-payer">À payer</b>' : `<b>${l.montant == null ? 'sur place' : formatMoneyCentimes(l.montant)}</b>`}</li>`).join('');
+}
+
+// LA TVA DU PRIX (2026-11-23, Ansar : « Et pouvoir mettre tva ou htva quand on va dans modifier prix »,
+// puis « oui et paramettrable »). Les taux sont ceux du centre (Etablissement > Le centre > TVA,
+// lib/center-config.js normalizeVatRates) : aucun taux n est ecrit ici. Le prix enregistre reste TVA
+// comprise ; le hors TVA se lit, et un montant tape hors TVA repart TVA comprise.
+const TVA_SORTES = Object.freeze({ activities: 'activités', food: 'nourriture', drinks: 'boissons', arcades: 'arcades' });
+
+// Les taux du centre : ceux que la page Etablissement vient de relire d abord, puis ceux que le poll de la
+// journee sert a toute l equipe. Sans eux, null : le hors TVA ne se calcule pas.
+function tauxTvaDuCentre() {
+  const centre = typeof staffCenterConfigCache !== 'undefined' && staffCenterConfigCache && Array.isArray(staffCenterConfigCache.centers)
+    ? staffCenterConfigCache.centers.find((c) => c && c.id === getCurrentStaffCenterId())
+    : null;
+  const lus = (centre && centre.vatRates) || (state && state.staffTva) || null;
+  if (!lus || typeof lus !== 'object') return null;
+  const taux = {};
+  for (const cle of Object.keys(TVA_SORTES)) {
+    const n = Number(lus[cle]);
+    if (!Number.isFinite(n) || n < 0 || n > 100) return null;
+    taux[cle] = n;
+  }
+  return taux;
+}
+
+// La sorte d une activite : les arcades a part, tout le reste est l acces et l usage d une installation.
+function sorteTvaActivite(activityId) {
+  return activityId === 'arcade_time' || activityId === 'arcade_credit' ? 'arcades' : 'activities';
+}
+
+// La sorte d un extra : sa categorie du catalogue d abord, sinon ce que son nom dit (groupeExtraDossier).
+// Ce qui ne se reconnait pas prend le taux des activites, et le dit (`inconnue`).
+function sorteTvaExtra(x) {
+  if (/^arcades-/.test(String((x && x.id) || ''))) return { sorte: 'arcades' };
+  const categorie = String((x && x.categorie) || '');
+  if (categorie === 'nourriture' || categorie === 'gateaux') return { sorte: 'food' };
+  if (categorie === 'boissons') return { sorte: 'drinks' };
+  const parNom = groupeExtraDossier({}, x && x.name);
+  if (parNom === 'nourriture') return { sorte: 'food' };
+  if (parNom === 'boissons') return { sorte: 'drinks' };
+  return { sorte: 'activities', inconnue: true };
+}
+
+// UNE FORMULE EST UNE VENTE COMPOSEE : son prix se repartit entre ce qu elle comprend, au prorata des prix
+// a la carte du groupe, et chaque part prend son taux. Un composant sans prix a la carte ne prend pas de
+// part (`sansPrix`) ; sans aucun prix a la carte, toute la formule prend le taux des activites, et le dit.
+function repartirFormule(nom, montant, composants) {
+  const chiffres = composants.filter((c) => Number(c.prix) > 0);
+  const somme = chiffres.reduce((s, c) => s + Number(c.prix), 0);
+  if (!(somme > 0)) return [{ nom, sorte: 'activities', inconnue: true, montant: Number(montant) || 0 }];
+  return [
+    ...chiffres.map((c) => ({ nom: c.nom, sorte: c.sorte, montant: (Number(montant) || 0) * Number(c.prix) / somme, prixCarte: Number(c.prix), dansFormule: true })),
+    ...composants.filter((c) => !(Number(c.prix) > 0)).map((c) => ({ nom: c.nom, sorte: c.sorte, montant: 0, dansFormule: true, sansPrix: true })),
+  ];
+}
+
+// Ce que la formule du dossier comprend, chacun a son prix a la carte pour ce groupe : ses activites comme
+// Modifier les chiffre (estimerPrixProgramme, une ligne par activite), ses boissons au prix de l article du
+// catalogue du centre que leur ligne nomme, quand il n y en a qu un (« 2 cruches boissons » : la cruche).
+function composantsDeLaFormuleEdition() {
+  const e = state.editState;
+  const r = state.selectedRes && dossierPourFormule(state.selectedRes);
+  const carte = r && r.formuleId ? resolveDisplayFormule(r.formuleId) : null;
+  if (!e || !carte) return [];
+  const formule = applyReservationFormulaChoice(carte, r);
+  const comprises = activitesDeLaFormuleEdition(formule);
+  const items = getEditProgramItems().filter((item) => comprises.has(String(item.activityId || '')));
+  const aLaCarte = items.length ? estimerPrixProgramme(items, e.pax, e.date || r.date, e.startTime || r.startTime) : { lignes: [] };
+  const composants = aLaCarte.lignes.map((l) => ({ nom: l.nom, sorte: l.sorte || 'activities', prix: l.montant == null ? null : Number(l.montant) }));
+  const { centre, articles } = typeof catalogueSurMesureConsole !== 'undefined' ? catalogueSurMesureConsole : {};
+  const boissons = centre === getCurrentStaffCenterId() && Array.isArray(articles) ? articles.filter((a) => a && a.categorie === 'boissons' && a.actif !== false) : [];
+  const vides = new Set(['de', 'd', 'des', 'du', 'la', 'le', 'les', 'a', 'au', 'aux', 'par', 'boisson', 'boissons', 'enfant', 'enfants', 'personne', 'personnes']);
+  (formule.desc || []).forEach((texte) => {
+    const ligne = formulaActivityToken(texte);
+    if (!/cruche|boisson|biere/.test(ligne)) return;
+    const nombre = Math.max(1, Number((ligne.match(/^\s*(\d+)/) || [])[1]) || 1);
+    const mots = ligne.replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter((m) => m && !/^\d+$/.test(m) && !vides.has(m)).map((m) => m.replace(/s$/, ''));
+    const trouves = mots.length ? boissons.filter((a) => mots.every((m) => formulaActivityToken(a.nom).includes(m))) : [];
+    const prix = trouves.length === 1 && Number(trouves[0].prix) > 0 ? Math.round(Number(trouves[0].prix) * nombre * 100) / 100 : null;
+    composants.push({ nom: texte, sorte: 'drinks', prix });
+  });
+  return composants;
+}
+
+// LES PARTS DU PRIX DE MODIFIER, chacune avec sa sorte : les lignes du detail du calcul, la formule
+// eclatee en ses composants. Une ligne « À payer » n a pas encore de montant : elle ne pese rien et dit
+// le taux qu elle prendra, celui des activites.
+function partsTvaEdition(estime) {
+  const parts = [];
+  ((estime && estime.lignes) || []).forEach((l) => {
+    if (l.sorte === 'formule') { parts.push(...repartirFormule(l.nom, l.montant, composantsDeLaFormuleEdition())); return; }
+    // (une ligne « À payer » se regle au comptoir : elle prend le taux des activites, et le detail le dit)
+    const sorte = !l.aPayer && TVA_SORTES[l.sorte] ? l.sorte : 'activities';
+    parts.push({ nom: l.nom, sorte, inconnue: Boolean(!l.aPayer && (l.inconnue || !TVA_SORTES[l.sorte])), aPayer: Boolean(l.aPayer), montant: l.aPayer ? 0 : Number(l.montant) || 0 });
+  });
+  return parts;
+}
+
+// LA TVA D UN PRIX TVA COMPRIS. Le total se repartit au prorata des parts (un prix fixe a la main garde
+// les proportions du detail), chaque part au taux de sa sorte. La TVA se donne par taux, au centime ; le
+// hors TVA est ce qui reste, pour que les deux retombent sur le total. `facteur` ramene un montant hors
+// TVA au TVA compris, avec le meme melange de taux ; `aCote` : les parts qui ne pesent rien.
+function tvaDuPrix(parts, totalTvac, taux) {
+  if (!taux) return null;
+  const total = Number(totalTvac);
+  if (!Number.isFinite(total) || total < 0) return null;
+  const pesent = parts.filter((p) => Number(p.montant) > 0);
+  const poids = pesent.reduce((s, p) => s + Number(p.montant), 0);
+  const base = poids > 0 ? pesent : [{ nom: '', sorte: 'activities', inconnue: true, montant: 1 }];
+  const somme = poids > 0 ? poids : 1;
+  const parTaux = new Map();
+  let inverse = 0;
+  const lignes = base.map((p) => {
+    const t = Number.isFinite(Number(taux[p.sorte])) ? Number(taux[p.sorte]) : Number(taux.activities);
+    const part = (total * Number(p.montant)) / somme;
+    parTaux.set(t, (parTaux.get(t) || 0) + part - part / (1 + t / 100));
+    inverse += (Number(p.montant) / somme) / (1 + t / 100);
+    return { ...p, taux: t, part };
+  });
+  const tva = [...parTaux.entries()].sort((a, b) => a[0] - b[0]).map(([t, m]) => ({ taux: t, montant: Math.round(m * 100) / 100 }));
+  const totalTva = tva.reduce((s, x) => s + x.montant, 0);
+  return {
+    tvac: Math.round(total * 100) / 100,
+    htva: Math.round((total - totalTva) * 100) / 100,
+    tva,
+    facteur: inverse > 0 ? 1 / inverse : 1,
+    lignes,
+    aCote: parts.filter((p) => !(Number(p.montant) > 0)),
+    sansDetail: !(poids > 0),
+    taux,
+  };
+}
+
+// La TVA du prix en cours dans Modifier : le montant du champ (TVA comprise), les parts du detail.
+function tvaEdition() {
+  if (!state.editState) return null;
+  const estime = getEditPrixEstime();
+  const valeur = Number(getEditPriceValue() ?? (estime ? estime.total : 0));
+  return tvaDuPrix(partsTvaEdition(estime), Number.isFinite(valeur) ? valeur : 0, tauxTvaDuCentre());
+}
+
+// Un montant tape hors TVA, ramene au TVA compris : c est lui qui s enregistre.
+function tvacDuHorsTva(valeur) {
+  const brut = String(valeur ?? '').trim().replace(',', '.');
+  if (brut === '') return '';
+  const n = Number(brut);
+  const tva = tvaEdition();
+  // (un montant illisible reste tel quel : getEditPriceValue le refuse, comme en TVA comprise)
+  if (!Number.isFinite(n) || n < 0 || !tva) return String(valeur ?? '');
+  return String(Math.round(n * tva.facteur * 100) / 100);
+}
+
+// Le prix se lit TVA comprise (le defaut, le prix d aujourd hui) ou hors TVA.
+function prixHorsTvaEdition() {
+  return Boolean(state.editState && state.editState.prixVu === 'htva' && tauxTvaDuCentre());
+}
+
+// QUAND MODIFIER S OUVRE HORS TVA (2026-11-23, Ansar : « on choisit, c est pas mis d office, mais des que c est un
+// groupe team building ou juste un grand groupe, la oui »). Le reglage du centre (Etablissement > Le centre > TVA,
+// lib/center-config.js normalizeHtvaParDefaut), lu comme les taux : la page Etablissement d abord, puis le poll de
+// la journee. Ce qui ne se lit pas, ou ne se reconnait pas, vaut « jamais » : la fiche s ouvre TVA comprise.
+const HTVA_PAR_DEFAUT_MOTS = Object.freeze({ jamais: 'Jamais', toutes: 'Toutes les réservations', groupes: 'Les groupes seulement' });
+function reglageHtvaDuCentre() {
+  const centre = typeof staffCenterConfigCache !== 'undefined' && staffCenterConfigCache && Array.isArray(staffCenterConfigCache.centers)
+    ? staffCenterConfigCache.centers.find((c) => c && c.id === getCurrentStaffCenterId())
+    : null;
+  const lu = centre && typeof centre.htvaParDefaut === 'string' ? centre.htvaParDefaut : (state && state.staffHtvaParDefaut);
+  return typeof lu === 'string' && Object.prototype.hasOwnProperty.call(HTVA_PAR_DEFAUT_MOTS, lu) ? lu : 'jamais';
+}
+
+// UN GRAND GROUPE : celui que le moteur a coupe en plusieurs groupes, parce que le centre ne le prend pas d un coup
+// (lib/grand-groupe.js : des sous-groupes qui tournent ; lib/ops-engine.js : les services du bowling au-dela de ses
+// pistes, les vagues du laser au-dela de ses armes). Le plan du dossier porte cette coupe, faite sur la
+// configuration du centre : aucun seuil n est recompte ici.
+function dossierEnGrandGroupe(r) {
+  const plan = r && r.opsPlan && typeof r.opsPlan === 'object' ? r.opsPlan : null;
+  if (!plan) return false;
+  if (plan.grandGroupe && typeof plan.grandGroupe === 'object' && Number(plan.grandGroupe.nombre) > 1) return true;
+  return (Array.isArray(plan.resourceBlocks) ? plan.resourceBlocks : [])
+    .some((b) => b && (b.resourceType === 'bowling_lane' || b.resourceType === 'laser_arena') && (Number(b.groupWaveCount) > 1 || Number(b.sousGroupes) > 1));
+}
+
+// UN GROUPE, POUR LA TVA : un team building (l occasion « Entreprise / team building » ou « Team building »,
+// STAFF_OCCASION_LABELS) ou un grand groupe.
+function dossierDeGroupePourLaTva(r) {
+  const occasion = String((r && r.occasion) || '').trim().toLowerCase();
+  if (occasion === 'teambuilding' || occasion === 'entreprise') return true;
+  return dossierEnGrandGroupe(r);
+}
+
+// Le prix que Modifier montre a son ouverture, d apres le reglage : HTVA quand il le veut pour ce dossier et que
+// les taux du centre se lisent (sans eux, le hors TVA ne se calcule pas), sinon TVAC.
+function prixVuDuReglage(r) {
+  const reglage = reglageHtvaDuCentre();
+  const htva = reglage === 'toutes' || (reglage === 'groupes' && dossierDeGroupePourLaTva(r));
+  return htva && tauxTvaDuCentre() ? 'htva' : 'tvac';
+}
+
+// LE CHOIX DE LA FICHE OUVERTE : celui du reglage a l ouverture de Modifier, puis celui du comptoir. Il tient tant
+// que la fiche reste ouverte sur ce dossier : un etat d edition refait (l echo du serveur, un conflit, Modifier
+// rouvert depuis Infos) le reprend tel quel, et rien de ce qui arrive apres l ouverture (le catalogue, les offres,
+// le poll, les taux, le reglage lui-meme) ne le change. Une autre fiche, ou celle-ci fermee puis rouverte, repart
+// du reglage.
+var prixVuDeLaFiche = null;
+function prixVuALOuverture(r) {
+  if (prixVuDeLaFiche && r && Number(prixVuDeLaFiche.id) === Number(r.id)) return prixVuDeLaFiche.vu;
+  return prixVuDuReglage(r);
+}
+// (Modifier ouvert retient sa decision ; un calcul fait sur un autre dossier, preparerCompte, n y touche pas)
+function retenirPrixVuDeLaFiche() {
+  const r = state.selectedRes;
+  if (!r || !state.editState || (prixVuDeLaFiche && Number(prixVuDeLaFiche.id) === Number(r.id))) return;
+  prixVuDeLaFiche = { id: Number(r.id), vu: state.editState.prixVu === 'htva' ? 'htva' : 'tvac' };
+}
+function oublierPrixVuDeLaFiche() {
+  prixVuDeLaFiche = null;
+}
+
+function basculerTvaEdition(mode) {
+  if (!state.editState) return;
+  state.editState.prixVu = mode === 'htva' && tauxTvaDuCentre() ? 'htva' : 'tvac';
+  // (le choix du comptoir tient tant que la fiche reste ouverte sur ce dossier : prixVuALOuverture)
+  if (state.selectedRes) prixVuDeLaFiche = { id: Number(state.selectedRes.id), vu: state.editState.prixVu };
+  renderPos();
+}
+
+function choixTvaEditionHtml() {
+  const lus = Boolean(tauxTvaDuCentre());
+  const vu = prixHorsTvaEdition() ? 'htva' : 'tvac';
+  return `<span class="fm-tva" role="group" aria-label="Prix TVA comprise ou hors TVA">${[['tvac', 'TVAC', 'TVA comprise'], ['htva', 'HTVA', 'hors TVA']].map(([mode, mot, dit]) => `<button type="button" class="qb-dur-btn dossier-option fm-tva-b${vu === mode ? ' active' : ''}" aria-pressed="${vu === mode}" data-tva="${mode}" aria-label="Prix ${dit}"${mode === 'htva' && !lus ? ' disabled title="Les taux de TVA du centre ne sont pas encore lus."' : ''} onclick="basculerTvaEdition('${mode}')">${mot}</button>`).join('')}</span>`;
+}
+
+// « 138,14 € HTVA = 156 € TVAC » : les deux montants, sous les champs, en HTVA.
+function ligneTvaEditionTexte(tva, horsTvaTape = null) {
+  if (!tva) return '';
+  const hors = horsTvaTape != null ? horsTvaTape : tva.htva;
+  return `${formatMoneyCentimes(hors)} HTVA = ${formatMoneyCentimes(tva.tvac)} TVAC`;
+}
+
+// La TVA dans le detail du calcul : chaque part et son taux, puis la TVA par taux et le hors TVA.
+function tvaDetailHtml(tva) {
+  if (!tva) return '<p class="edit-prix-tva-l"><span>TVA : les taux du centre ne sont pas encore lus.</span></p>';
+  const taux = (t) => `${String(t).replace('.', ',')} %`;
+  const lignes = tva.sansDetail
+    ? [`<p class="edit-prix-tva-l"><span>Tout le prix <em>sans détail chiffré : taux des activités</em></span><b>${taux(tva.taux.activities)}</b></p>`]
+    : tva.lignes.map((l) => `<p class="edit-prix-tva-l"><span>${escapeHtml(l.nom)}${l.dansFormule ? ' <em>dans la formule</em>' : ''}${l.inconnue ? ' <em>sorte inconnue : taux des activités</em>' : ''}</span><b>${formatMoneyCentimes(l.part)} · ${taux(l.taux)}</b></p>`);
+  const aCote = tva.aCote.map((l) => `<p class="edit-prix-tva-l"><span>${escapeHtml(l.nom)} <em>${l.aPayer ? `à payer : taux des activités, ${taux(tva.taux.activities)}` : l.sansPrix ? 'dans la formule, sans prix à la carte : hors répartition' : 'sans montant'}</em></span></p>`);
+  return `<p class="edit-prix-tva-t">TVA</p>${[...lignes, ...aCote].join('')}`
+    + `<p class="edit-prix-tva-l edit-prix-tva-somme" id="editTvaParTaux"><span>dont TVA ${tva.tva.map((x) => `${taux(x.taux)} : ${formatMoneyCentimes(x.montant)}`).join(' · ')}</span></p>`
+    + `<p class="edit-prix-tva-l"><span>Hors TVA</span><b id="editTvaHorsTva">${formatMoneyCentimes(tva.htva)}</b></p>`;
 }
 
 // NOURRITURE ET EXTRAS DANS L ONGLET MODIFIER (2026-10-27, Movsar : « faut
@@ -34746,7 +35218,7 @@ function renderEditExtras(r) {
       <div class="fm-x-arcades">
         <div class="dossier-options" role="group" aria-label="Arcades au temps ou en argent">${[['temps', 'Au temps'], ['argent', 'En argent']].map(([v, mot]) => `<button type="button" class="qb-dur-btn dossier-option${a.mode === v ? ' active' : ''}" aria-pressed="${a.mode === v}" onclick="setEditArcadesExtra('mode','${v}')">${mot}</button>`).join('')}</div>
         ${a.mode === 'temps' ? `<div class="dossier-options" role="group" aria-label="Temps d’arcades">${[15, 30, 60, 999].map((m) => `<button type="button" class="qb-dur-btn dossier-option${Number(a.minutes) === m ? ' active' : ''}" aria-pressed="${Number(a.minutes) === m}" onclick="setEditArcadesExtra('minutes',${m})">${m >= 999 ? 'À volonté' : `${m} min`}</button>`).join('')}</div>` : ''}
-        <span class="fm-euro"><input class="input fm-x-prix" type="number" min="0" step="0.5" inputmode="decimal" value="${escapeHtml(String(a.prix ?? ''))}" aria-label="${a.mode === 'temps' ? 'Prix des arcades par joueur' : 'Montant d’arcades par joueur'} en ${nomsMonnaie()}" oninput="setEditArcadesExtra('prix',this.value,true)"><span aria-hidden="true">${signeMonnaie()}</span></span>
+        <span class="fm-euro"><input class="input fm-x-prix" type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(String(a.prix ?? ''))}" aria-label="${a.mode === 'temps' ? 'Prix des arcades par joueur' : 'Montant d’arcades par joueur'} en ${nomsMonnaie()}" oninput="setEditArcadesExtra('prix',this.value,true)"><span aria-hidden="true">${signeMonnaie()}</span></span>
         <span class="fm-x-par" id="fmxPar-arcades">par joueur × ${Math.max(1, Math.trunc(Number(a.joueurs) || 1))}</span>
         <b class="fm-x-somme" id="fmxSomme-arcades">${escapeHtml(sommeArcadesExtra(a))}</b>
         <button type="button" class="fm-x-retirer" aria-label="Retirer les arcades" onclick="retirerEditArcadesExtra()">×</button>
@@ -34757,7 +35229,7 @@ function renderEditExtras(r) {
       ${modele[groupe].map((l, i) => `<div class="fm-x-ligne" data-x="${groupe}-${i}">
         ${champ(groupe, i, 'choix', l.choix, `list="fmx-${groupe}" placeholder="${invite}" aria-label="${titre} : ${invite.toLowerCase()}"`)}
         ${l.parPersonne ? `<span class="fm-x-qte fm-x-tous" id="fmxQte-${groupe}-${i}">${qteLigneExtra(l)}</span>` : champ(groupe, i, 'qte', l.qte, 'type="number" min="1" max="999" inputmode="numeric" aria-label="Quantité"')}
-        <span class="fm-euro" id="fmxPrix-${groupe}-${i}"${prixExtraPermis(l) ? '' : ' hidden'}>${champ(groupe, i, 'prix', l.aPayer ? '' : l.prix, `type="number" min="0" step="0.5" inputmode="decimal" placeholder="Prix" aria-label="Prix à l’unité en ${nomsMonnaie()}"${l.aPayer ? ' disabled' : ''}`)}<span aria-hidden="true">${signeMonnaie()}</span></span>
+        <span class="fm-euro" id="fmxPrix-${groupe}-${i}"${prixExtraPermis(l) ? '' : ' hidden'}>${champ(groupe, i, 'prix', l.aPayer ? '' : l.prix, `type="number" min="0" step="0.01" inputmode="decimal" placeholder="Prix" aria-label="Prix à l’unité en ${nomsMonnaie()}"${l.aPayer ? ' disabled' : ''}`)}<span aria-hidden="true">${signeMonnaie()}</span></span>
         <b class="fm-x-somme${extraAPayer(l) ? ' pl-a-payer' : ''}" id="fmxSomme-${groupe}-${i}">${escapeHtml(sommeLigneExtra(l))}</b>
         <button type="button" class="fm-x-retirer" aria-label="Retirer ${escapeHtml(l.choix || 'cette ligne')}" onclick="retirerEditExtra('${groupe}',${i})">×</button>
         <span class="fm-x-opts">
@@ -37829,6 +38301,50 @@ function getQuickVisitHours(id) {
   return choix.length ? Number(choix[0].hours) : 1;
 }
 
+// LES PISTES DU DUCKPIN (2026-11-22, Ansar : « Duckpin possibilité de mettre 2 pistes »). Comme au
+// bowling, le comptoir peut donner au groupe plus de pistes que ses joueurs n en demandent. La regle
+// est celle du serveur (lib/visit-program.js, activityUnitPlan) : jamais moins que le conseil (les
+// joueurs par piste du centre), jamais plus que les pistes du centre (Etablissement, « Pistes » du
+// duckpin) ; au-dela, le besoin decide seul et le groupe joue en tours. `choisies` : le nombre pose a
+// la main, 0 quand le centre decide. Null pour une activite qui n est pas un duckpin.
+function pistesDuckpin(activite, joueurs, choisies = 0) {
+  if (!activite || activite.resourceType !== 'duckpin_lane') return null;
+  const plan = getActivityUnitPlan({ ...activite, capacityPerUnit: Number(activite.capacityPerUnit) || 6 }, joueurs, Math.max(0, Math.trunc(Number(choisies) || 0)));
+  const dotation = Math.trunc(Number(activite.units) || 0);
+  return { n: plan.units, conseillees: plan.needed, plafond: Math.max(plan.needed, dotation > 0 ? dotation : 50), tours: plan.tours, dotation };
+}
+
+// Ce que dit le compteur, a cote du nombre : le conseil pour ce groupe, ou ses tours.
+function pistesDuckpinNote(p, joueurs) {
+  if (!p) return '';
+  if (p.tours > 1) return `en ${p.tours} tours, le centre en a ${p.dotation}`;
+  if (p.n > p.conseillees) return `${rvPluriel(p.conseillees, 'conseillée', 'conseillées')} pour ${rvPluriel(joueurs, 'joueur')}`;
+  return `${p.n > 1 ? 'conseillées' : 'conseillée'} pour ${rvPluriel(joueurs, 'joueur')}`;
+}
+
+// Les pistes posees a la main sur un duckpin de la fenetre Reserver : 0 quand le centre decide.
+function pistesChoisiesQuick(id) {
+  const visit = quickBookState && quickBookState.visit;
+  const n = visit && visit.options && visit.options[id] ? Math.trunc(Number(visit.options[id].pistesChoisies) || 0) : 0;
+  return n > 0 ? n : 0;
+}
+
+// « Pistes − N + » du duckpin. Ramene au conseil, le choix s efface (le centre redecide quand le
+// groupe change) ; au-dessus, il reste pose, comme au bowling (rsFixerPistes).
+function setQuickPistesDuckpin(id, nombre) {
+  if (!quickBookState) return;
+  const p = pistesDuckpin(getCenterActivity(id), getQuickVisitParticipants(id));
+  if (!p) return;
+  const voulu = Math.min(p.plafond, Math.max(p.conseillees, Math.trunc(Number(nombre)) || p.conseillees));
+  const options = getQuickVisitOptions(id);
+  if (voulu > p.conseillees) options.pistesChoisies = voulu;
+  else delete options.pistesChoisies;
+  quickBookState.forcer = false;
+  quickBookState.error = '';
+  syncQuickBookDuration();
+  renderQuickBook();
+}
+
 // UNE SEULE DEFINITION DE LA LIGNE ENVOYEE. Elle existait en deux exemplaires :
 // la visite lisait minutes et participants, le mode « une seule activite » ne
 // lisait rien du tout. Deux ecritures d une meme intention finissent toujours
@@ -37849,6 +38365,8 @@ function ligneProgrammeQuick(activityId) {
   if (!activite) return ligne;
   if (activityId === 'arcade_time') { const o = getQuickVisitOptions(activityId); if (o.arcadeMode && o.arcadeOfferId) { ligne.arcadeMode=o.arcadeMode; ligne.arcadeOfferId=o.arcadeOfferId; ligne.cards=o.arcadeMode==='time' ? ligne.participants : Math.min(1000,Math.max(1,Math.trunc(Number(o.cards)||ligne.participants))); } }
   if (activite.priceType === 'grid_bowling') ligne.duration = Number(getQuickVisitOptions(activityId).duration) || 1;
+  // (les pistes du duckpin posees a la main : le serveur les relit, setQuickPistesDuckpin)
+  if (activite.resourceType === 'duckpin_lane' && pistesChoisiesQuick(activityId)) ligne.pistesChoisies = pistesChoisiesQuick(activityId);
   // On n envoie un reglage QUE si l activite en a un : une cle inutile sur une
   // ligne qui ne la comprend pas est du bruit que le serveur devra ignorer, et
   // un jour ne plus ignorer.
@@ -38371,6 +38889,9 @@ async function chargerCatalogueSurMesure() {
             if (liste) liste.innerHTML = optionsSurMesure(items);
           });
         });
+        // (Modifier ouvert : la TVA d une formule lit le prix de ses boissons dans ce catalogue ; arrive
+        // apres l ouverture, il repeint le prix, sans quoi la cruche restait hors repartition)
+        if (state.editState && state.activeTab === 'modifier' && typeof majEditPrixEstime === 'function') majEditPrixEstime();
       }
       return lu;
     } catch (error) {
@@ -38497,7 +39018,7 @@ function renderQuickExtras() {
       ${e[groupe].map((l, i) => `<div class="qb-x-ligne">
         ${champ(groupe, i, 'choix', l.choix, `list="qbx-${groupe}" placeholder="${groupe === 'autres' ? 'Libellé' : 'Choix'}" aria-label="${titre} : choix"`)}
         ${champ(groupe, i, 'qte', l.qte, 'type="number" min="1" max="999" inputmode="numeric" aria-label="Quantité" placeholder="Qté"')}
-        <span class="qb-x-prix">${champ(groupe, i, 'prix', l.prix, `type="number" min="0" step="0.5" inputmode="decimal" aria-label="Prix unitaire en ${nomsMonnaie()}" placeholder="Prix"`)}<i>${signeMonnaie()}</i></span>
+        <span class="qb-x-prix">${champ(groupe, i, 'prix', l.prix, `type="number" min="0" step="0.01" inputmode="decimal" aria-label="Prix unitaire en ${nomsMonnaie()}" placeholder="Prix"`)}<i>${signeMonnaie()}</i></span>
         <button type="button" class="qb-x-rm" aria-label="Retirer la ligne" onclick="retirerQuickExtra('${groupe}',${i})">×</button>
       </div>`).join('')}
       <button type="button" class="qb-x-add" onclick="ajouterQuickExtra('${groupe}')">+ ${groupe === 'nourriture' ? 'Ajouter un plat' : groupe === 'boissons' ? 'Ajouter des boissons' : 'Ajouter une ligne'}</button>
@@ -38511,7 +39032,7 @@ function renderQuickExtras() {
         ${[['', 'Aucune'], ['temps', 'Au temps'], ['argent', 'En argent']].map(([v, mot]) => `<button type="button" class="qb-dur-btn ${e.arcades.mode === v ? 'active' : ''}" onclick="setQuickArcades('mode','${v}')">${mot}</button>`).join('')}
       </div>
       ${e.arcades.mode === 'temps' ? `<div class="qb-x-seg">${[15, 30, 60, 999].map((m) => `<button type="button" class="qb-dur-btn ${Number(e.arcades.minutes) === m ? 'active' : ''}" onclick="setQuickArcades('minutes',${m})">${m >= 999 ? 'À volonté' : `${m} min`}</button>`).join('')}</div>` : ''}
-      ${e.arcades.mode ? `<label class="qb-x-montant">${e.arcades.mode === 'temps' ? 'Prix par joueur' : 'Montant par joueur'} <input class="qb-input" type="number" min="0" step="0.5" inputmode="decimal" value="${escapeHtml(String(e.arcades.prix ?? ''))}" placeholder="${signeMonnaie()}" oninput="setQuickArcades('prix',this.value,true)"> ${signeMonnaie()}</label>` : ''}
+      ${e.arcades.mode ? `<label class="qb-x-montant">${e.arcades.mode === 'temps' ? 'Prix par joueur' : 'Montant par joueur'} <input class="qb-input" type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(String(e.arcades.prix ?? ''))}" placeholder="${signeMonnaie()}" oninput="setQuickArcades('prix',this.value,true)"> ${signeMonnaie()}</label>` : ''}
     </div>
     `}
     ${lignes('nourriture', 'Nourriture', 'quantité et prix à l’unité')}
@@ -40394,7 +40915,7 @@ function illNouvelHtml(ou) {
   const suite = ou === 'ed' ? 'ce dossier le prend tout de suite' : 'il se réserve tout de suite';
   return `<section class="rs-ill-nv" id="${p}" aria-labelledby="${p}Titre">
     <div class="rs-ill-nv-t"><p class="rs-ill-nv-n"><b id="${p}Titre">Accès illimité</b><span>Ce centre n’en a pas encore. Tapez son prix par joueur et choisissez sa durée, ${suite}.</span></p>
-      <label class="rs-ill-nv-prix"><span>Prix par joueur</span><span class="rs-ill-nv-champ"><input id="${p}Prix" type="number" min="0" max="1000" step="0.5" inputmode="decimal" autocomplete="off" value="${escapeHtml(String(n.prix == null ? '' : n.prix))}" aria-label="Prix par joueur en ${nomsMonnaie()}" oninput="illNouvelPrix('${ou}',this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();illNouvelCreer('${ou}');}"><span aria-hidden="true">${signeMonnaie()}</span></span></label></div>
+      <label class="rs-ill-nv-prix"><span>Prix par joueur</span><span class="rs-ill-nv-champ"><input id="${p}Prix" type="number" min="0" max="1000" step="0.01" inputmode="decimal" autocomplete="off" value="${escapeHtml(String(n.prix == null ? '' : n.prix))}" aria-label="Prix par joueur en ${nomsMonnaie()}" oninput="illNouvelPrix('${ou}',this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();illNouvelCreer('${ou}');}"><span aria-hidden="true">${signeMonnaie()}</span></span></label></div>
     <div class="rs-ill-nv-l"><span class="rs-ill-nv-lbl" id="${p}DureeT">Durée</span><div class="rs-ill-nv-seg" role="radiogroup" aria-labelledby="${p}DureeT">${duree}</div>${autreChamp}</div>
     <div class="rs-ill-nv-l is-acts"><span class="rs-ill-nv-lbl">Compris</span>${tuiles}</div>
     ${n.message ? `<p class="rs-ill-nv-ko" id="${p}Erreur" role="alert">${escapeHtml(n.message)}</p>` : ''}
@@ -43609,6 +44130,38 @@ function rsCompteurPistesHtml() {
   return rsCompteurHtml('Pistes', n, n > plancher ? `rsFixer(() => rsFixerPistes(${n - 1}))` : '', n < (getAvailabilityLaneCount() || n) ? `rsFixer(() => rsFixerPistes(${n + 1}))` : '', 'data-pistes-pas="1"');
 }
 
+// LES PISTES DU DUCKPIN (2026-11-22) : le meme compteur, du conseil du centre jusqu aux pistes qu il a
+// (pistesDuckpin). Rien pour une autre activite.
+function rsPistesDuckpinActuelles(id) {
+  return pistesDuckpin(getCenterActivity(id), getQuickVisitParticipants(id), pistesChoisiesQuick(id));
+}
+
+function rsPasPistesDuckpin(p) {
+  const pas = (x) => `rsFixer(() => setQuickPistesDuckpin(this.dataset.activite,${x}))`;
+  return { moins: p.n > p.conseillees ? pas(p.n - 1) : '', plus: p.n < p.plafond ? pas(p.n + 1) : '' };
+}
+
+function rsCompteurPistesDuckpinHtml(id) {
+  const p = rsPistesDuckpinActuelles(id);
+  if (!p) return '';
+  const { moins, plus } = rsPasPistesDuckpin(p);
+  return rsCompteurHtml('Pistes', p.n, moins, plus, `data-activite="${escapeHtml(id)}" data-pistes-duckpin="1"`, `Pistes, ${rsNomTuile(id)}`);
+}
+
+// Sur la page de l activite, la meme rangee que ses joueurs, et ce que le centre conseille.
+function rsRangPistesDuckpin(id) {
+  const p = rsPistesDuckpinActuelles(id);
+  if (!p) return '';
+  const { moins, plus } = rsPasPistesDuckpin(p);
+  return rsRang('Pistes', `${rsPasHtml(moins, plus, p.n, 'Pistes', `data-activite="${escapeHtml(id)}" data-pistes-duckpin="1"`)}<span class="rs-note">${escapeHtml(pistesDuckpinNote(p, getQuickVisitParticipants(id)))}</span>`);
+}
+
+// « 2 pistes », « 3 pistes en 2 tours » : ce que le duckpin prend, sur sa ligne du ticket.
+function rsPistesDuckpinDites(id) {
+  const p = rsPistesDuckpinActuelles(id);
+  return p ? `${rvPluriel(p.n, 'piste')}${p.tours > 1 ? ` en ${p.tours} tours` : ''}` : '';
+}
+
 // LES RETENUES D UN BLOC (2026-11-05, Ansar : « ça montre si ya des pistes ou des armes laser
 // qui sont en cours de reservation par les clients avec le formulaire [...] precisement et
 // joliement »). Une phrase par client : quoi, quand, et dans combien de temps ca se libere.
@@ -43767,10 +44320,13 @@ function rsJoueursPetitsHtml(petites) {
     const enfants = Boolean(activite && activityCountsChildren(activite));
     const joueurs = enPlus(c.id) ? (rsEtat().faits.combien ? rsCompteurJoueursEnPlusHtml(c.id, `${nom}${enfants ? ', enfants' : ''}`, `${enfants ? 'Enfants' : 'Joueurs'}, ${nom} en plus`) : '')
       : compteurs ? rsCompteurJoueursHtml(c.id, `${nom}${enfants ? ', enfants' : ''}`, `${enfants ? 'Enfants' : 'Joueurs'}, ${nom}`) : '';
+    // (le duckpin a ses pistes a cote de ses joueurs, comme le bowling sur son bloc ; pas sur une
+    // activite en plus d une formule, dont la ligne se fait ailleurs)
+    const pistes = compteurs && !enPlus(c.id) ? rsCompteurPistesDuckpinHtml(c.id) : '';
     const heure = rsBoutonHeureHtml(c.id);
     if (!joueurs && !heure) return '';
     const tete = joueurs || `<span class="rs-cpt"><span class="rs-cpt-l">${escapeHtml(nom)}</span></span>`;
-    return `<span class="rs-act-l" data-act="${escapeHtml(c.id)}">${tete}${heure}</span>${rsHeuresActiviteHtml(c.id)}`;
+    return `<span class="rs-act-l" data-act="${escapeHtml(c.id)}">${tete}${pistes}${heure}</span>${rsHeuresActiviteHtml(c.id)}`;
   }).join('');
   return lignes ? `<div class="rs-joueurs-petits" role="group" aria-label="Joueurs et heure par activité">${lignes}</div>` : '';
 }
@@ -45337,9 +45893,12 @@ function rsDetailLigne(id, etapes, ligne, ids) {
   // Une activite libre apres la premiere, sans heure a elle : le planning la tient pendant
   // la visite (son bloc dure toute la visite), elle se dit comme telle. Une heure posee a la main
   // se dit meme quand le plan ne la montre pas (il refuse, ou il calcule encore).
-  if (!etapes.length) return ligne && ligne.posee ? ligne.heure : ligne && ligne.index > 0 && !ligne.ancrable ? 'accès libre pendant la visite' : '';
+  // (le duckpin dit ses pistes en dernier, comme le bowling : « 15:00 à 16:00, 2 pistes »)
+  const pistes = rsPistesDuckpinDites(id);
+  const avecPistes = (texte) => [texte, pistes].filter(Boolean).join(', ');
+  if (!etapes.length) return avecPistes(ligne && ligne.posee ? ligne.heure : ligne && ligne.index > 0 && !ligne.ancrable ? 'accès libre pendant la visite' : '');
   const e = etapes[0];
-  if (e.debut == null) return e.d || '';
+  if (e.debut == null) return avecPistes(e.d || '');
   const avant = ligne && ligne.index > 0 ? ids[ligne.index - 1] : '';
   const suite = ligne && ligne.foulee && avant ? `à la suite ${avant === 'bowling' ? 'du bowling' : avant === 'laser_game' ? 'du laser' : `de ${rvMinuscule(rsNomCourt(avant))}`}` : '';
   if (id === 'laser_game') {
@@ -45349,7 +45908,7 @@ function rsDetailLigne(id, etapes, ligne, ids) {
   const fin = etapes[etapes.length - 1].fin;
   const plage = fin != null ? `${e.h} à ${numToTime(fin)}` : e.h;
   if (id === 'bowling') return [plage, String(e.d || '').replace(/, dans la foulée$/, ''), suite].filter(Boolean).join(', ');
-  return [plage, suite].filter(Boolean).join(', ');
+  return [plage, pistes, suite].filter(Boolean).join(', ');
 }
 
 // LE CLIENT AU TICKET (Ansar, 2026-11-11 : « à l endroit où on marque le nom du client
@@ -46248,6 +46807,9 @@ function rsReglagesActivite(id) {
   if (activite.priceType === 'grid_bowling') {
     const courant = Number(getQuickVisitOptions(id).duration) || 1;
     rangs.push(rsRang('Durée', DURATION_OPTIONS.map((o) => rsPetite(rvHeuresLabel(Number(o.value)), courant === Number(o.value), `rsFixer(() => setQuickVisitActivityDuration(this.dataset.activite,${o.value}))`, `data-activite="${sid}"`)).join(''), DURATION_OPTIONS.length));
+    // (le duckpin : ses pistes, au-dessus du conseil si l equipe le veut)
+    const pistes = rsRangPistesDuckpin(id);
+    if (pistes) rangs.push(pistes);
   } else if (activite.priceType === 'grid_fun_run') {
     const courant = getQuickVisitMinutes(id);
     rangs.push(rsRang('Session', FUN_RUN_OPTIONS.map((o) => rsPetite(o.label, courant === Number(o.minutes), `rsFixer(() => setQuickVisitMinutes(this.dataset.activite,${o.minutes}))`, `data-activite="${sid}"`, rsMontantOption(id, { minutes: Number(o.minutes) }))).join(''), FUN_RUN_OPTIONS.length));
@@ -47334,7 +47896,7 @@ function rsBandeHtml() {
   // Un prix « a saisir » se tape, au niveau catalogue comme au libre : le serveur garde
   // le prix tape d un article du centre a 0. Le prix d une ligne libre ne se tape qu au
   // libre ; au catalogue elle est « à payer » (resoudreExtras, lib/droits-reservation.js).
-  const prixChamp = (a ? a.prix == null : libre) ? `<input class="rs-x-prix" id="rsXPrix" type="number" min="0" step="0.5" inputmode="decimal" placeholder="Prix" value="${escapeHtml(String(ligne.prixUnitaire ?? ''))}" aria-label="Prix à l’unité en ${nomsMonnaie()}" oninput="rsArticleChamp('prix',this.value)">` : '';
+  const prixChamp = (a ? a.prix == null : libre) ? `<input class="rs-x-prix" id="rsXPrix" type="number" min="0" step="0.01" inputmode="decimal" placeholder="Prix" value="${escapeHtml(String(ligne.prixUnitaire ?? ''))}" aria-label="Prix à l’unité en ${nomsMonnaie()}" oninput="rsArticleChamp('prix',this.value)">` : '';
   const parPersonne = Boolean(ligne.suit);
   const calcul = valeur == null ? 'à payer'
     : ligne.offert ? `offert, au lieu de ${rsEuros(valeur)}`
@@ -47543,7 +48105,7 @@ function rsFormuleMesureHtml() {
   const mode = `<div class="rs-seg" role="group" aria-label="Prix par joueur ou pour le groupe"><button type="button" class="${fm.mode === 'total' ? '' : 'is-on'}" id="rsFmParJoueur" aria-pressed="${fm.mode !== 'total'}" onclick="rsFmMode('personne')">Par joueur</button><button type="button" class="${fm.mode === 'total' ? 'is-on' : ''}" id="rsFmAuTotal" aria-pressed="${fm.mode === 'total'}" onclick="rsFmMode('total')">Pour le groupe</button></div>`;
   const prixHtml = rsNiveau('prix') === 'non'
     ? '<p class="rs-texte" id="rsPrixFixe">Le prix se change avec un responsable.</p>'
-    : `<div class="rs-fm-ligne">${mode}<label class="rs-champ rs-fm-montant"><input id="rsFmMontant" type="number" min="0" step="0.5" inputmode="decimal" value="${escapeHtml(String(fm.montant ?? ''))}" aria-label="${fm.mode === 'total' ? 'Prix pour le groupe' : 'Prix par joueur'} en ${nomsMonnaie()}" oninput="rsFmChamp('montant',this.value)"><span aria-hidden="true">${signeMonnaie()}</span></label><span class="rs-fm-dit" id="rsFmCalcul">${escapeHtml(dit)}</span></div>${rsPlafondHtml()}`;
+    : `<div class="rs-fm-ligne">${mode}<label class="rs-champ rs-fm-montant"><input id="rsFmMontant" type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(String(fm.montant ?? ''))}" aria-label="${fm.mode === 'total' ? 'Prix pour le groupe' : 'Prix par joueur'} en ${nomsMonnaie()}" oninput="rsFmChamp('montant',this.value)"><span aria-hidden="true">${signeMonnaie()}</span></label><span class="rs-fm-dit" id="rsFmCalcul">${escapeHtml(dit)}</span></div>${rsPlafondHtml()}`;
   return `<section class="rs-fm" aria-label="Formule pour ce groupe">
     <div class="rs-rang rs-fm-rang"><span class="rs-lbl">Nom</span><div class="rs-champ"><input id="rsFmNom" maxlength="80" autocomplete="off" value="${escapeHtml(fm.nom || '')}" aria-label="Nom de la formule" oninput="rsFmChamp('nom',this.value)"></div></div>
     <div class="rs-rang rs-fm-rang"><span class="rs-lbl is-haut">Contient</span><div>${rsRecuHtml()}<p class="rs-fm-somme"><span>Prix normal</span><b id="rsFmDetail">${escapeHtml(rsEuros(reference))}</b></p></div></div>
@@ -47559,7 +48121,7 @@ function rsMesureArcadesHtml() {
   const rangs = [rsRang('Forme', [['temps', 'Au temps'], ['argent', 'En argent']].map(([v, mot]) => rsPetite(mot, e.arcades.mode === v, `rsFixer(() => setQuickArcades('mode','${v}'))`)).join(''), 2)];
   if (e.arcades.mode === 'temps') rangs.push(rsRang('Temps', [15, 30, 60, 999].map((m) => rsPetite(m >= 999 ? 'À volonté' : `${m} min`, Number(e.arcades.minutes) === m, `rsFixer(() => setQuickArcades('minutes',${m}))`)).join(''), 4));
   if (e.arcades.mode) {
-    rangs.push(`<label class="rs-champ"><span>${e.arcades.mode === 'temps' ? 'Prix par joueur' : 'Montant par joueur'} (${joueurs})</span><input id="rsXPrix" type="number" min="0" step="0.5" inputmode="decimal" value="${escapeHtml(String(e.arcades.prix ?? ''))}" aria-label="Prix des arcades par joueur" oninput="setQuickArcades('prix',this.value,true); rsMajTicket()"></label>`);
+    rangs.push(`<label class="rs-champ"><span>${e.arcades.mode === 'temps' ? 'Prix par joueur' : 'Montant par joueur'} (${joueurs})</span><input id="rsXPrix" type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(String(e.arcades.prix ?? ''))}" aria-label="Prix des arcades par joueur" oninput="setQuickArcades('prix',this.value,true); rsMajTicket()"></label>`);
     rangs.push(rsPetite('Retirer les arcades', false, "rsFixer(() => setQuickArcades('mode',''))", 'id="rsArcadesRetirer"'));
   }
   return `<div class="rs-rangs">${rangs.join('')}</div>`;
@@ -47587,7 +48149,7 @@ function rsMesureHtml() {
   // payer » ; au catalogue, son nom seul, « à payer » : le seul geste hors de la carte de ce niveau
   // (resoudreExtras, lib/droits-reservation.js). Sa quantite se regle sur sa ligne, comme un article.
   const prixLibre = niveau === 'libre'
-    ? `<label class="rs-champ"><span>Prix</span><input id="rsLibrePrix" type="number" min="0" step="0.5" inputmode="decimal" placeholder="À payer" value="${escapeHtml(String(b.mesure.prix ?? ''))}" aria-label="Prix de l’article libre en ${nomsMonnaie()}, vide pour à payer" oninput="rsLibreChamp('prix',this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();rsLibreAjouter();}"></label>`
+    ? `<label class="rs-champ"><span>Prix</span><input id="rsLibrePrix" type="number" min="0" step="0.01" inputmode="decimal" placeholder="À payer" value="${escapeHtml(String(b.mesure.prix ?? ''))}" aria-label="Prix de l’article libre en ${nomsMonnaie()}, vide pour à payer" oninput="rsLibreChamp('prix',this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();rsLibreAjouter();}"></label>`
     : '<span class="rs-champ rs-libre-apayer"><span>Prix</span><b class="pl-a-payer" id="rsLibreAPayer">À payer</b></span>';
   const libre = niveau === 'libre' || niveau === 'catalogue' ? `<div class="rs-libre"><label class="rs-champ"><span>Ajouter ce que vous voulez</span><input id="rsLibreNom" maxlength="80" autocomplete="off" value="${escapeHtml(b.mesure.nom || '')}" placeholder="Karaoké, open bar, gâteau…" aria-label="Nom de l’article libre" oninput="rsLibreChamp('nom',this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();rsLibreAjouter();}"></label>${prixLibre}<button type="button" class="rs-p" id="rsLibreAjouter" onclick="rsLibreAjouter()" title="La ligne est déjà au ticket dès que vous écrivez son nom : ce bouton en prépare une autre."><b>${rsLibreEnCours() ? 'Ajouter un autre' : 'Ajouter'}</b></button></div>` : '';
   if (courante === 'activites') return `${rsRetourHtml(droite)}${tabs}<div class="rs-petits rs-petits-mesure" role="group" aria-label="Activités en plus de la formule">${activites.map((id) => rsTuileHtml(id, [])).join('')}</div>${libre}`;

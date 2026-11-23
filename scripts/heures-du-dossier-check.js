@@ -22,7 +22,8 @@
 //   [C] UN REFUS SE DIT : sous le minimum de la formule, le comptoir lit le motif
 //       du moteur (avec pistes : rien n est ecrit ; sans piste : ecrit, et le
 //       toast dit que le planning n a pas suivi), jamais « mise à jour » tout court ;
-//   [D] UN LASER AJOUTE DEPUIS MODIFIER : le serveur ne pose aucune heure, la
+//   [D] UN LASER AJOUTE DEPUIS MODIFIER, DANS LA FORMULE (« Adapter à ce groupe » d abord : depuis le
+//       2026-11-22, « Ajouter » seul le met en plus de la formule) : le serveur ne pose aucune heure, la
 //       console n en invente aucune (ni 15:00, ni « de trop ») : « à placer », et
 //       le toast le dit ;
 //   [E] UN DEPLACEMENT QUI NE DEPLACE RIEN NE SE DIT PAS « déplacé » : Amis de
@@ -200,6 +201,13 @@ async function ouvrirModifier(page, id) {
   await page.evaluate((i) => { closePos(); openPos(i); setTab('modifier'); }, id);
   await page.waitForSelector('#posOverlay .fm-joueurs', { timeout: 8000 });
   await page.waitForTimeout(250);
+}
+// « Adapter à ce groupe » (2026-11-22) : sans lui, « Ajouter » met l activite en plus d une formule prise telle
+// quelle ; ces cas la font entrer dans la formule.
+async function adapterAuGroupe(page) {
+  const bouton = page.locator('#posOverlay #editAdapter button[aria-pressed="false"]');
+  if (await bouton.count()) await bouton.click();
+  await page.waitForTimeout(200);
 }
 async function enregistrerModifier(page) {
   await page.locator('#posOverlay button', { hasText: /^Enregistrer$/ }).first().click();
@@ -412,6 +420,7 @@ async function scenarioLaser(browser) {
   try {
     const tropAvant = await page.evaluate(() => (document.body.innerText.match(/\d+ de trop/g) || []).length);
     await ouvrirModifier(page, ARTHUR);
+    await adapterAuGroupe(page);
     const chip = page.locator('#posOverlay button', { hasText: /^Laser Game$/ }).first();
     await chip.scrollIntoViewIfNeeded();
     await chip.click();
@@ -453,6 +462,7 @@ async function scenarioDeuxParties(browser) {
   const { ctx, page, erreurs } = await monter(browser, serveur);
   try {
     await ouvrirModifier(page, ARTHUR);
+    await adapterAuGroupe(page);
     const chip = page.locator('#posOverlay button', { hasText: /^Laser Game$/ }).first();
     await chip.scrollIntoViewIfNeeded();
     await chip.click();

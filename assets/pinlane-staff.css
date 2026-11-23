@@ -10183,22 +10183,37 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv.rs .rs-texte { margin: 0; font-size: 15px; line-height: 1.4; color: var(--muted); }
 /* (2026-11-19) Une heure posee a la main qui ne tient pas : la phrase de Modifier, en rouge, sous la rangee. */
 .qb-modal.rv.rs .rs-texte.rs-heure-refus { color: var(--danger); font-weight: 600; }
-/* UN GRAND GROUPE (2026-11-22) : une rangee par groupe, une colonne par depart, ce que chacun y
-   joue (rsGrilleDesGroupesHtml). Le bowling et le laser gardent les teintes de leurs blocs. */
-.qb-modal.rv.rs .rs-gg-grille { display: flex; flex-direction: column; gap: 6px; }
-.qb-modal.rv.rs .rs-gg-r { display: grid; grid-template-columns: 110px repeat(var(--gg-cols, 2), minmax(0, 1fr)); gap: 6px; align-items: stretch; }
-.qb-modal.rv.rs .rs-gg-r.is-tete > span { padding: 0 4px; font-size: 13px; font-weight: 600; line-height: 1.2; color: var(--muted); font-variant-numeric: tabular-nums; }
-.qb-modal.rv.rs .rs-gg-q { display: flex; flex-direction: column; justify-content: center; min-width: 0; }
-.qb-modal.rv.rs .rs-gg-q b { font-size: 15px; font-weight: 600; line-height: 1.2; color: var(--text); }
-.qb-modal.rv.rs .rs-gg-q small { font-size: 13px; line-height: 1.3; color: var(--muted); }
+/* UN GRAND GROUPE (2026-11-22, refait le 2026-11-23) : une rangee par groupe, ses joueurs, son programme
+   dans l ordre de ses heures, chaque heure a toucher (rsRangeeDuGroupeHtml). Le bowling et le laser gardent
+   les teintes de leurs blocs ; ce qui coince se dit en rouge, sur la case. */
+.qb-modal.rv.rs .rs-gg-nv { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; min-width: 0; }
+.qb-modal.rv.rs .rs-gg-liste { display: flex; flex-direction: column; }
+.qb-modal.rv.rs .rs-gg-l { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 0; }
+.qb-modal.rv.rs .rs-gg-l + .rs-gg-l { border-top: 1px solid var(--rs-ligne); }
+.qb-modal.rv.rs .rs-gg-q { flex: 0 0 76px; font-size: 15px; font-weight: 600; line-height: 1.2; color: var(--text); }
+.qb-modal.rv.rs .rs-gg-j { flex: none; display: inline-flex; align-items: center; gap: 8px; }
+.qb-modal.rv.rs .rs-gg-u { font-size: 13px; line-height: 1.2; color: var(--muted); }
+.qb-modal.rv.rs .rs-gg-prog { flex: 1 1 300px; display: flex; align-items: stretch; gap: 6px; min-width: 0; }
+.qb-modal.rv.rs .rs-gg-fl { flex: none; align-self: center; font-size: 15px; line-height: 1; color: var(--faint); }
 .qb-modal.rv.rs .rs-gg-c { display: flex; flex-direction: column; justify-content: center; gap: 1px; min-width: 0; min-height: 52px; padding: 6px 10px; border-radius: 10px; background: var(--rs-touche); }
-.qb-modal.rv.rs .rs-gg-c b { font-size: 15px; font-weight: 600; line-height: 1.2; color: var(--text); }
-.qb-modal.rv.rs .rs-gg-c small { font-size: 13px; line-height: 1.3; color: var(--muted); overflow-wrap: anywhere; }
+.qb-modal.rv.rs .rs-gg-l .rs-gg-c { position: relative; flex: 1 1 0; flex-direction: row; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 6px 6px 12px; }
 .qb-modal.rv.rs .rs-gg-c.is-bowling { box-shadow: inset 3px 0 0 var(--act-bowling, var(--console-selected)); }
 .qb-modal.rv.rs .rs-gg-c.is-laser { box-shadow: inset 3px 0 0 var(--act-laser, var(--console-selected)); }
-.qb-modal.rv.rs .rs-gg-c.is-vide { background: transparent; box-shadow: inset 0 0 0 1px var(--rs-ligne); }
-.qb-modal.rv.rs .rs-gg-ts { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 22px; }
-.qb-modal.rv.rs .rs-gg-reste { min-width: 44px; font-size: 17px; font-weight: 600; text-align: center; }
+.qb-modal.rv.rs .rs-gg-c.is-ko { background: var(--rv-rouge-clair); box-shadow: inset 3px 0 0 var(--danger), inset 0 0 0 1px var(--danger); }
+.qb-modal.rv.rs .rs-gg-a { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.qb-modal.rv.rs .rs-gg-a b { font-size: 15px; font-weight: 600; line-height: 1.2; color: var(--text); }
+.qb-modal.rv.rs .rs-gg-a small { font-size: 13px; line-height: 1.3; color: var(--muted); overflow-wrap: anywhere; }
+.qb-modal.rv.rs .rs-gg-c.is-ko .rs-gg-a small { color: var(--danger); font-weight: 600; }
+.qb-modal.rv.rs .rs-gg-h { flex: none; display: inline-flex; align-items: center; justify-content: center; min-width: 72px; height: 40px; padding: 0 8px; border-radius: 8px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--rs-ligne-forte); font-size: 17px; font-weight: 600; line-height: 1; color: var(--text); font-variant-numeric: tabular-nums; cursor: text; }
+.qb-modal.rv.rs .rs-gg-h:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.qb-modal.rv.rs .rs-gg-c .rs-gg-champ { flex: none; width: 72px; height: 40px; font-size: 17px; }
+.qb-modal.rv.rs .rs-gg-inv { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 10px; background: var(--rs-touche); color: var(--text); }
+.qb-modal.rv.rs .rs-gg-inv svg { width: 20px; height: 20px; }
+.qb-modal.rv.rs .rs-gg-inv:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.qb-modal.rv.rs .rs-gg-ko { flex: 1 0 100%; font-size: 13px; font-weight: 550; line-height: 1.35; color: var(--danger); }
+.qb-modal.rv.rs .rs-gg-pied { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.qb-modal.rv.rs .rs-gg-total { flex: 1 1 auto; margin: 0; font-size: 15px; font-weight: 600; line-height: 1.3; color: var(--text); font-variant-numeric: tabular-nums; }
+.qb-modal.rv.rs .rs-gg-total.is-ko { color: var(--danger); }
 .qb-modal.rv.rs .rs-gg-premier { grid-template-columns: 64px auto minmax(0, 1fr); }
 .qb-modal.rv.rs .rs-gg-dit { font-size: 13px; line-height: 1.3; color: var(--muted); }
 .qb-modal.rv.rs .rs-gg-tourne { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
@@ -10207,8 +10222,9 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
    console, sur la largeur du ticket, son icone a la taille du « + ». */
 .qb-modal.rv.rs .rs-ajout-ligne.rs-gg-option { align-self: stretch; text-align: left; padding: 6px 16px 6px 12px; line-height: 1.35; }
 .qb-modal.rv.rs .rs-gg-option svg { width: 18px; height: 18px; }
+@media (hover: hover) { .qb-modal.rv.rs .rs-gg-h:hover, .qb-modal.rv.rs .rs-gg-inv:hover { background: var(--rs-survol); } }
 @media (max-width: 700px) {
-  .qb-modal.rv.rs .rs-gg-r { grid-template-columns: 76px repeat(var(--gg-cols, 2), minmax(0, 1fr)); }
+  .qb-modal.rv.rs .rs-gg-q { flex-basis: auto; }
   .qb-modal.rv.rs .rs-gg-premier { grid-template-columns: minmax(0, 1fr); }
 }
 .qb-modal.rv.rs .rs-rangs { flex: 1 1 auto; display: flex; flex-direction: column; gap: 10px; }
@@ -20419,6 +20435,42 @@ body:is(.staff-mode, .admin-mode) .fx-modal .fm .dossier-laser-schedule > summar
 body:is(.staff-mode, .admin-mode) .fx-modal .fm .dossier-laser-schedule > summary:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 3px; border-radius: 4px; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm .dossier-laser-units { display: grid; gap: 10px; margin-top: 8px; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm .fm-vide { margin: 0; font-size: 14px; color: var(--muted); }
+/* LES GROUPES D UN GRAND GROUPE DANS MODIFIER (2026-11-23) : le nombre de groupes, une rangee par groupe
+   (ses joueurs, son programme dans l ordre de ses heures, chaque heure a la minute), le total contre le
+   groupe (groupesEditionHtml). Ce qui coince se dit en rouge, sur la case, avec la phrase du serveur. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-groupes { display: grid; gap: 10px; margin: 12px 0 0; padding: 12px; border-radius: 8px; background: var(--fz-fond); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-groupes[hidden] { display: none; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-tete { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-titre { flex: 1 1 auto; margin: 0; font-size: 15px; font-weight: 650; line-height: 1.35; color: var(--text); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-nombre.fm-stepper { width: 150px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-n { align-self: center; text-align: center; font-size: 17px; font-weight: 650; font-variant-numeric: tabular-nums; color: var(--text); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-dit { flex: 1 1 100%; font-size: 12.5px; line-height: 1.4; color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-liste { display: grid; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-l { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 0; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-l + .fm-gg-l { border-top: 1px solid var(--line); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-q { flex: 0 0 72px; font-size: 14px; font-weight: 650; color: var(--text); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-j.fm-stepper { width: 140px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-prog { flex: 1 1 320px; display: flex; align-items: stretch; gap: 6px; min-width: 0; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-fl { flex: none; align-self: center; color: var(--faint); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-c { flex: 1 1 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; min-height: 52px; padding: 4px 4px 4px 12px; border-radius: 8px; background: var(--fz-carte); box-shadow: inset 3px 0 0 var(--act-bowling, var(--console-selected)); cursor: pointer; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-c.is-laser { box-shadow: inset 3px 0 0 var(--act-laser, var(--console-selected)); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-c.is-ko { background: var(--danger-soft); box-shadow: inset 3px 0 0 var(--danger), inset 0 0 0 1px var(--danger); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-a { display: grid; gap: 1px; min-width: 0; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-a b { font-size: 14px; font-weight: 650; line-height: 1.25; color: var(--text); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-a small { font-size: 12.5px; line-height: 1.35; color: var(--muted); overflow-wrap: anywhere; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-c.is-ko .fm-gg-a small { color: var(--danger); font-weight: 600; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-c .input { flex: none; width: 112px; min-height: 44px; font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-c.is-ko .input { border-color: var(--danger); box-shadow: 0 0 0 1px var(--danger); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-inv { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--fz-carte); color: var(--text); cursor: pointer; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-inv svg { width: 20px; height: 20px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-inv:hover { border-color: var(--console-selected); color: var(--console-selected); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-inv:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 2px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-ko { flex: 1 1 100%; font-size: 13px; font-weight: 600; line-height: 1.45; color: var(--danger); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-texte { margin: 0; font-size: 13px; color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-pied { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-total { flex: 1 1 auto; margin: 0; font-size: 14px; font-weight: 650; font-variant-numeric: tabular-nums; color: var(--text); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-total.is-ko { color: var(--danger); }
+@media (max-width: 760px) { body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-q { flex-basis: auto; } }
 
 /* Ajouter une activite : un bouton par activite, sous la liste. */
 /* Les plis de l onglet (heure des parties, detail du calcul, annuler) : un

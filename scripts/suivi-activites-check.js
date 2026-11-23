@@ -62,6 +62,16 @@ const APP = 'assets/app-main.js';
 const PG = 'assets/pinlane-planning-global.js';
 const PGC = 'assets/pinlane-planning-global.css';
 const CSS = 'assets/pinlane-staff.css';
+// SA_CAPTURES=<dossier> : en plus des verifications, des images brutes de la vraie console (pour montrer le
+// resultat a quelqu un qui ne lit pas le code ; jamais une preuve, les preuves sont les « ok » ci-dessus).
+const CAPTURES = process.env.SA_CAPTURES || '';
+async function capturer(page, nom, selecteur, garder = null) {
+  if (!CAPTURES) return;
+  fs.mkdirSync(CAPTURES, { recursive: true });
+  if (garder) await page.evaluate(([sel, ids]) => { document.querySelectorAll(sel).forEach((tr) => { tr.style.display = ids.includes(tr.getAttribute('data-gf-id')) ? '' : 'none'; }); }, [garder.lignes, garder.ids.map(String)]);
+  await FX.repos(page, 200);
+  await page.locator(selecteur).first().screenshot({ path: path.join(CAPTURES, nom) });
+}
 const liste = (v) => (v ? v.split(',').map((x) => x.trim()).filter(Boolean) : null);
 const ARTHUR = 1600;
 const CLUB = 1616;
@@ -373,6 +383,9 @@ async function lecture(browser) {
     const leg = await page.evaluate(() => { const l = document.querySelector('.staff-action-popover .gf-legende-menu'); return l ? l.textContent.replace(/\s+/g, ' ').trim() : ''; });
     ok(/à lancer : pas encore coché/.test(leg) && /fait : coché/.test(leg) && /en plus de la formule/.test(leg) && !/en cours/.test(leg), '[F] la legende dit « à lancer », « fait », « en plus », plus « en cours »', leg);
     await page.keyboard.press('Escape');
+    await aller(page, 'all');
+    await capturer(page, 'brut-pas-de-coche-auto.png', '#globalPlanningGridWrap', { lignes: '#globalPlanningGridWrap tr.gf-r', ids: [ARTHUR, CLUB, INES] });
+    await capturer(page, 'brut-lisible.png', '#globalPlanningGridWrap', { lignes: '#globalPlanningGridWrap tr.gf-r', ids: [ARTHUR, GERARD] });
   });
 }
 
@@ -410,6 +423,7 @@ async function scenarioCocher(browser) {
     ok(p.every((e) => enBase()[e.cle] && enBase()[e.cle].done), '[B] chaque coche est en base', { attendu: p.map((e) => e.cle), base: Object.keys(enBase()) });
     await aller(page, 'bowling');
     const finies = await lireCartes(page, CLUB);
+    await capturer(page, 'brut-barre.png', '#planningGridWrap');
     ok(finies.length === 2 && finies.every((c) => c.complete && c.opacite < 0.8 && /✓/.test(c.coin) && c.pleins === 4), '[B] tout coche : la carte bowling passe en transparent avec ✓, sa jauge pleine', finies);
     await aller(page, 'laser');
     const groupes = await lireLaser(page, CLUB);

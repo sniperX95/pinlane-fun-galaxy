@@ -32899,6 +32899,9 @@ function buildEditProgramFromReservation(r) {
       if (item.upsell) reglages.upsell = { ...item.upsell };
       ['arcadeMode', 'arcadeOfferId', 'cards', 'arcadeOffer', 'durationEstimated'].forEach(key => { if (item[key] != null) reglages[key] = item[key]; });
       if (Number(item.units) > 0) reglages.units = Number(item.units);
+      // (les pistes de duckpin choisies au comptoir : sans elles, enregistrer une autre modification
+      // rendait la piste vendue en plus, prix compris)
+      if (Number(item.pistesChoisies) > 0) reglages.pistesChoisies = Math.trunc(Number(item.pistesChoisies));
       if (Number(item.hours) > 0) reglages.hours = Number(item.hours);
       // Le palier d une session, pas le temps du groupe (3 x 30 min = 90). Les
       // passages de CE groupe servent a un dossier enregistre sans eux.
@@ -33028,7 +33031,8 @@ function estimerPrixProgramme(items, pax, dateStr, startTime) {
     }
     if (activite && activite.priceType === 'grid_bowling' && typeof getActivityUnitPlan === 'function') {
       const heures = Number(item.duration) || 1;
-      const plan = getActivityUnitPlan(activite, effectif);
+      // (les pistes choisies au comptoir comptent, comme au serveur : chacune se paie)
+      const plan = getActivityUnitPlan(activite, effectif, activite.resourceType === 'duckpin_lane' ? Math.trunc(Number(item.pistesChoisies) || 0) : 0);
       const montant = Number(getBasePrice('bowling', heures, plan.units, effectif, '', dateStr)) || 0;
       total += montant;
       chiffrees += 1;
@@ -33241,6 +33245,10 @@ function getEditProgramItems() {
     // une unite et une heure.
     const reglages = (e.programmeEdite.othersOptions || {})[id] || {};
     const item={ activityId: id, pax, ...reglages, participants: participantsLigneProgramme(reglages, pax) };
+    // Le duckpin : ses pistes suivent ses joueurs et le choix de l equipe, et le detail de la rangee
+    // les dit avant l enregistrement (le serveur les recompte, lib/visit-program.js).
+    const pistes = pistesDuckpin(getCenterActivity(id), item.participants, reglages.pistesChoisies);
+    if (pistes) { item.units = pistes.n; item.sessions = pistes.tours; }
     if (id === 'arcade_time') {
       const saved=(state.selectedRes?.program?.items || []).find(line=>line.activityId===id);
       if (editArcadeTimingChanged() || (saved && item.participants !== Number(saved.participants || state.selectedRes.pax))) delete item.arcadeOffer;
@@ -34000,13 +34008,31 @@ function reglagesAutreEditionHtml(id, reglages) {
   }
   if (activite.priceType === 'grid_bowling') {
     const duree = Number(reglages.duration) || 1;
-    return rang('Durée', DURATION_OPTIONS.map(o => bouton(duree === Number(o.value), rvHeuresLabel(Number(o.value)), 'duration', o.value)).join(''));
+    return rang('Durée', DURATION_OPTIONS.map(o => bouton(duree === Number(o.value), rvHeuresLabel(Number(o.value)), 'duration', o.value)).join(''))
+      + pistesDuckpinEditionHtml(id, activite, reglages);
   }
   if (activite.priceType === 'grid_fun_run') {
     const minutes = Number(reglages.minutes) > 0 ? Math.trunc(Number(reglages.minutes)) : Number(FUN_RUN_OPTIONS[0].minutes);
     return rang('Session', FUN_RUN_OPTIONS.map(o => bouton(minutes === Number(o.minutes), o.label, 'minutes', o.minutes)).join(''));
   }
   return '';
+}
+
+// LES PISTES DU DUCKPIN DANS MODIFIER (2026-11-22, Ansar : « Duckpin possibilité de mettre 2 pistes ») :
+// le meme compteur que ses joueurs, la regle de Reserver (pistesDuckpin), et le conseil a cote. Le
+// serveur rejuge la place a l enregistrement (la garde des installations comptees).
+function pistesDuckpinEditionHtml(id, activite, reglages) {
+  const joueurs = participantsLigneProgramme(reglages, state.editState && state.editState.pax);
+  const p = pistesDuckpin(activite, joueurs, reglages.pistesChoisies);
+  if (!p) return '';
+  const nom = activite.name || id;
+  const bouton = (valeur, actif, aria, trace) => `<button type="button" class="qb-step-btn staff-stepper-btn" aria-label="${escapeHtml(aria)}" ${actif ? '' : 'disabled'} data-activite="${escapeHtml(id)}" data-valeur="${valeur}" data-pistes-duckpin="1" onclick="setEditReglageActivite(this.dataset.activite, 'pistesChoisies', this.dataset.valeur)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="${trace}"/></svg></button>`;
+  return `<div class="qb-visit-options qb-visit-compteur dossier-activity-count" role="group" aria-label="${escapeHtml(`${nom} : pistes`)}" data-pistes-edition="${escapeHtml(id)}">`
+    + '<span class="qb-opt-legend">Pistes</span>'
+    + `<span class="staff-stepper">${bouton(p.n - 1, p.n > p.conseillees, `${nom} : une piste de moins`, 'M5 12h14')}`
+    + `<span class="qb-step-valeur staff-stepper-value">${p.n}</span>`
+    + `${bouton(p.n + 1, p.n < p.plafond, `${nom} : une piste de plus`, 'M5 12h14M12 5v14')}</span>`
+    + `<span class="dossier-pistes-conseil">${escapeHtml(pistesDuckpinNote(p, joueurs))}</span></div>`;
 }
 
 // Un reglage touche : borne comme dans Reserver (setQuickVisitUnits, setQuickVisitHours,
@@ -34024,6 +34050,12 @@ function setEditReglageActivite(id, cle, valeur) {
     reglages.hours = nombre;
   } else if (cle === 'duration' && activite.priceType === 'grid_bowling' && DURATION_OPTIONS.some(o => Number(o.value) === nombre)) {
     reglages.duration = nombre;
+  } else if (cle === 'pistesChoisies' && activite.resourceType === 'duckpin_lane') {
+    // (la regle de Reserver, setQuickPistesDuckpin : du conseil aux pistes du centre, effacee au conseil)
+    const p = pistesDuckpin(activite, participantsLigneProgramme(reglages, state.editState.pax));
+    const voulu = Math.min(p.plafond, Math.max(p.conseillees, Math.trunc(nombre) || p.conseillees));
+    if (voulu > p.conseillees) reglages.pistesChoisies = voulu;
+    else delete reglages.pistesChoisies;
   } else if (cle === 'minutes' && activite.priceType === 'grid_fun_run' && FUN_RUN_OPTIONS.some(o => Number(o.minutes) === nombre)) {
     reglages.minutes = nombre;
   } else return;
@@ -37932,6 +37964,50 @@ function getQuickVisitHours(id) {
   return choix.length ? Number(choix[0].hours) : 1;
 }
 
+// LES PISTES DU DUCKPIN (2026-11-22, Ansar : « Duckpin possibilité de mettre 2 pistes »). Comme au
+// bowling, le comptoir peut donner au groupe plus de pistes que ses joueurs n en demandent. La regle
+// est celle du serveur (lib/visit-program.js, activityUnitPlan) : jamais moins que le conseil (les
+// joueurs par piste du centre), jamais plus que les pistes du centre (Etablissement, « Pistes » du
+// duckpin) ; au-dela, le besoin decide seul et le groupe joue en tours. `choisies` : le nombre pose a
+// la main, 0 quand le centre decide. Null pour une activite qui n est pas un duckpin.
+function pistesDuckpin(activite, joueurs, choisies = 0) {
+  if (!activite || activite.resourceType !== 'duckpin_lane') return null;
+  const plan = getActivityUnitPlan({ ...activite, capacityPerUnit: Number(activite.capacityPerUnit) || 6 }, joueurs, Math.max(0, Math.trunc(Number(choisies) || 0)));
+  const dotation = Math.trunc(Number(activite.units) || 0);
+  return { n: plan.units, conseillees: plan.needed, plafond: Math.max(plan.needed, dotation > 0 ? dotation : 50), tours: plan.tours, dotation };
+}
+
+// Ce que dit le compteur, a cote du nombre : le conseil pour ce groupe, ou ses tours.
+function pistesDuckpinNote(p, joueurs) {
+  if (!p) return '';
+  if (p.tours > 1) return `en ${p.tours} tours, le centre en a ${p.dotation}`;
+  if (p.n > p.conseillees) return `${rvPluriel(p.conseillees, 'conseillée', 'conseillées')} pour ${rvPluriel(joueurs, 'joueur')}`;
+  return `${p.n > 1 ? 'conseillées' : 'conseillée'} pour ${rvPluriel(joueurs, 'joueur')}`;
+}
+
+// Les pistes posees a la main sur un duckpin de la fenetre Reserver : 0 quand le centre decide.
+function pistesChoisiesQuick(id) {
+  const visit = quickBookState && quickBookState.visit;
+  const n = visit && visit.options && visit.options[id] ? Math.trunc(Number(visit.options[id].pistesChoisies) || 0) : 0;
+  return n > 0 ? n : 0;
+}
+
+// « Pistes − N + » du duckpin. Ramene au conseil, le choix s efface (le centre redecide quand le
+// groupe change) ; au-dessus, il reste pose, comme au bowling (rsFixerPistes).
+function setQuickPistesDuckpin(id, nombre) {
+  if (!quickBookState) return;
+  const p = pistesDuckpin(getCenterActivity(id), getQuickVisitParticipants(id));
+  if (!p) return;
+  const voulu = Math.min(p.plafond, Math.max(p.conseillees, Math.trunc(Number(nombre)) || p.conseillees));
+  const options = getQuickVisitOptions(id);
+  if (voulu > p.conseillees) options.pistesChoisies = voulu;
+  else delete options.pistesChoisies;
+  quickBookState.forcer = false;
+  quickBookState.error = '';
+  syncQuickBookDuration();
+  renderQuickBook();
+}
+
 // UNE SEULE DEFINITION DE LA LIGNE ENVOYEE. Elle existait en deux exemplaires :
 // la visite lisait minutes et participants, le mode « une seule activite » ne
 // lisait rien du tout. Deux ecritures d une meme intention finissent toujours
@@ -37952,6 +38028,8 @@ function ligneProgrammeQuick(activityId) {
   if (!activite) return ligne;
   if (activityId === 'arcade_time') { const o = getQuickVisitOptions(activityId); if (o.arcadeMode && o.arcadeOfferId) { ligne.arcadeMode=o.arcadeMode; ligne.arcadeOfferId=o.arcadeOfferId; ligne.cards=o.arcadeMode==='time' ? ligne.participants : Math.min(1000,Math.max(1,Math.trunc(Number(o.cards)||ligne.participants))); } }
   if (activite.priceType === 'grid_bowling') ligne.duration = Number(getQuickVisitOptions(activityId).duration) || 1;
+  // (les pistes du duckpin posees a la main : le serveur les relit, setQuickPistesDuckpin)
+  if (activite.resourceType === 'duckpin_lane' && pistesChoisiesQuick(activityId)) ligne.pistesChoisies = pistesChoisiesQuick(activityId);
   // On n envoie un reglage QUE si l activite en a un : une cle inutile sur une
   // ligne qui ne la comprend pas est du bruit que le serveur devra ignorer, et
   // un jour ne plus ignorer.
@@ -43712,6 +43790,38 @@ function rsCompteurPistesHtml() {
   return rsCompteurHtml('Pistes', n, n > plancher ? `rsFixer(() => rsFixerPistes(${n - 1}))` : '', n < (getAvailabilityLaneCount() || n) ? `rsFixer(() => rsFixerPistes(${n + 1}))` : '', 'data-pistes-pas="1"');
 }
 
+// LES PISTES DU DUCKPIN (2026-11-22) : le meme compteur, du conseil du centre jusqu aux pistes qu il a
+// (pistesDuckpin). Rien pour une autre activite.
+function rsPistesDuckpinActuelles(id) {
+  return pistesDuckpin(getCenterActivity(id), getQuickVisitParticipants(id), pistesChoisiesQuick(id));
+}
+
+function rsPasPistesDuckpin(p) {
+  const pas = (x) => `rsFixer(() => setQuickPistesDuckpin(this.dataset.activite,${x}))`;
+  return { moins: p.n > p.conseillees ? pas(p.n - 1) : '', plus: p.n < p.plafond ? pas(p.n + 1) : '' };
+}
+
+function rsCompteurPistesDuckpinHtml(id) {
+  const p = rsPistesDuckpinActuelles(id);
+  if (!p) return '';
+  const { moins, plus } = rsPasPistesDuckpin(p);
+  return rsCompteurHtml('Pistes', p.n, moins, plus, `data-activite="${escapeHtml(id)}" data-pistes-duckpin="1"`, `Pistes, ${rsNomTuile(id)}`);
+}
+
+// Sur la page de l activite, la meme rangee que ses joueurs, et ce que le centre conseille.
+function rsRangPistesDuckpin(id) {
+  const p = rsPistesDuckpinActuelles(id);
+  if (!p) return '';
+  const { moins, plus } = rsPasPistesDuckpin(p);
+  return rsRang('Pistes', `${rsPasHtml(moins, plus, p.n, 'Pistes', `data-activite="${escapeHtml(id)}" data-pistes-duckpin="1"`)}<span class="rs-note">${escapeHtml(pistesDuckpinNote(p, getQuickVisitParticipants(id)))}</span>`);
+}
+
+// « 2 pistes », « 3 pistes en 2 tours » : ce que le duckpin prend, sur sa ligne du ticket.
+function rsPistesDuckpinDites(id) {
+  const p = rsPistesDuckpinActuelles(id);
+  return p ? `${rvPluriel(p.n, 'piste')}${p.tours > 1 ? ` en ${p.tours} tours` : ''}` : '';
+}
+
 // LES RETENUES D UN BLOC (2026-11-05, Ansar : « ça montre si ya des pistes ou des armes laser
 // qui sont en cours de reservation par les clients avec le formulaire [...] precisement et
 // joliement »). Une phrase par client : quoi, quand, et dans combien de temps ca se libere.
@@ -43870,10 +43980,13 @@ function rsJoueursPetitsHtml(petites) {
     const enfants = Boolean(activite && activityCountsChildren(activite));
     const joueurs = enPlus(c.id) ? (rsEtat().faits.combien ? rsCompteurJoueursEnPlusHtml(c.id, `${nom}${enfants ? ', enfants' : ''}`, `${enfants ? 'Enfants' : 'Joueurs'}, ${nom} en plus`) : '')
       : compteurs ? rsCompteurJoueursHtml(c.id, `${nom}${enfants ? ', enfants' : ''}`, `${enfants ? 'Enfants' : 'Joueurs'}, ${nom}`) : '';
+    // (le duckpin a ses pistes a cote de ses joueurs, comme le bowling sur son bloc ; pas sur une
+    // activite en plus d une formule, dont la ligne se fait ailleurs)
+    const pistes = compteurs && !enPlus(c.id) ? rsCompteurPistesDuckpinHtml(c.id) : '';
     const heure = rsBoutonHeureHtml(c.id);
     if (!joueurs && !heure) return '';
     const tete = joueurs || `<span class="rs-cpt"><span class="rs-cpt-l">${escapeHtml(nom)}</span></span>`;
-    return `<span class="rs-act-l" data-act="${escapeHtml(c.id)}">${tete}${heure}</span>${rsHeuresActiviteHtml(c.id)}`;
+    return `<span class="rs-act-l" data-act="${escapeHtml(c.id)}">${tete}${pistes}${heure}</span>${rsHeuresActiviteHtml(c.id)}`;
   }).join('');
   return lignes ? `<div class="rs-joueurs-petits" role="group" aria-label="Joueurs et heure par activité">${lignes}</div>` : '';
 }
@@ -45440,9 +45553,12 @@ function rsDetailLigne(id, etapes, ligne, ids) {
   // Une activite libre apres la premiere, sans heure a elle : le planning la tient pendant
   // la visite (son bloc dure toute la visite), elle se dit comme telle. Une heure posee a la main
   // se dit meme quand le plan ne la montre pas (il refuse, ou il calcule encore).
-  if (!etapes.length) return ligne && ligne.posee ? ligne.heure : ligne && ligne.index > 0 && !ligne.ancrable ? 'accès libre pendant la visite' : '';
+  // (le duckpin dit ses pistes en dernier, comme le bowling : « 15:00 à 16:00, 2 pistes »)
+  const pistes = rsPistesDuckpinDites(id);
+  const avecPistes = (texte) => [texte, pistes].filter(Boolean).join(', ');
+  if (!etapes.length) return avecPistes(ligne && ligne.posee ? ligne.heure : ligne && ligne.index > 0 && !ligne.ancrable ? 'accès libre pendant la visite' : '');
   const e = etapes[0];
-  if (e.debut == null) return e.d || '';
+  if (e.debut == null) return avecPistes(e.d || '');
   const avant = ligne && ligne.index > 0 ? ids[ligne.index - 1] : '';
   const suite = ligne && ligne.foulee && avant ? `à la suite ${avant === 'bowling' ? 'du bowling' : avant === 'laser_game' ? 'du laser' : `de ${rvMinuscule(rsNomCourt(avant))}`}` : '';
   if (id === 'laser_game') {
@@ -45452,7 +45568,7 @@ function rsDetailLigne(id, etapes, ligne, ids) {
   const fin = etapes[etapes.length - 1].fin;
   const plage = fin != null ? `${e.h} à ${numToTime(fin)}` : e.h;
   if (id === 'bowling') return [plage, String(e.d || '').replace(/, dans la foulée$/, ''), suite].filter(Boolean).join(', ');
-  return [plage, suite].filter(Boolean).join(', ');
+  return [plage, pistes, suite].filter(Boolean).join(', ');
 }
 
 // LE CLIENT AU TICKET (Ansar, 2026-11-11 : « à l endroit où on marque le nom du client
@@ -46351,6 +46467,9 @@ function rsReglagesActivite(id) {
   if (activite.priceType === 'grid_bowling') {
     const courant = Number(getQuickVisitOptions(id).duration) || 1;
     rangs.push(rsRang('Durée', DURATION_OPTIONS.map((o) => rsPetite(rvHeuresLabel(Number(o.value)), courant === Number(o.value), `rsFixer(() => setQuickVisitActivityDuration(this.dataset.activite,${o.value}))`, `data-activite="${sid}"`)).join(''), DURATION_OPTIONS.length));
+    // (le duckpin : ses pistes, au-dessus du conseil si l equipe le veut)
+    const pistes = rsRangPistesDuckpin(id);
+    if (pistes) rangs.push(pistes);
   } else if (activite.priceType === 'grid_fun_run') {
     const courant = getQuickVisitMinutes(id);
     rangs.push(rsRang('Session', FUN_RUN_OPTIONS.map((o) => rsPetite(o.label, courant === Number(o.minutes), `rsFixer(() => setQuickVisitMinutes(this.dataset.activite,${o.minutes}))`, `data-activite="${sid}"`, rsMontantOption(id, { minutes: Number(o.minutes) }))).join(''), FUN_RUN_OPTIONS.length));

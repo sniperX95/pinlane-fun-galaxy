@@ -466,6 +466,7 @@
     "test:telemetrie-surfaces": "node scripts/telemetrie-surfaces-check.js && node scripts/telemetrie-surfaces-check.js --mutate",
     "test:pricing-tier-ceiling": "node scripts/pricing-tier-ceiling-check.js && node scripts/pricing-tier-ceiling-check.js --mutate",
     "test:duckpin-summary": "node scripts/duckpin-summary-parity-check.js && node scripts/duckpin-summary-parity-check.js --mutate",
+    "test:duckpin-deux-pistes": "node scripts/duckpin-deux-pistes-check.js && node scripts/duckpin-deux-pistes-check.js --contre-preuves",
     "test:center-required": "node scripts/center-required-writes-check.js && node scripts/center-required-writes-check.js --mutate",
     "test:orphan-center": "node scripts/orphan-center-scope-check.js && node scripts/orphan-center-scope-check.js --mutate",
     "test:tunnel-mobile-matrix": "node scripts/tunnel-mobile-matrix-check.js",

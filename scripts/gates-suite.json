@@ -181,6 +181,7 @@
     "test:telemetrie-surfaces",
     "test:pricing-tier-ceiling",
     "test:duckpin-summary",
+    "test:duckpin-deux-pistes",
     "test:center-required",
     "test:orphan-center",
     "test:laser-waves",

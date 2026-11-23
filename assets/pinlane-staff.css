@@ -1801,9 +1801,10 @@ button.staff-date-label:focus-visible,
 .activity-seg.on { background: var(--accent); }
 .activity-pill.done .activity-seg { background: var(--success); }
 
-/* Carte planning dont TOUTES les activités de formule sont faites : grisée + coche.
-   Signal « ce groupe a tout terminé » d'un coup d'œil sur le planning. */
-.booking.activities-complete, .laser-group-card.activities-complete { opacity: 0.6; }
+/* Carte planning dont TOUTES les activités du dossier sont cochées : grisée + coche.
+   Signal « ce groupe a tout terminé » d'un coup d'œil sur le planning, pour toute
+   réservation depuis le 2026-11-23 (suiviDuDossier). */
+.booking.activities-complete, .lp .lp-g.activities-complete { opacity: 0.6; }
 .booking.activities-complete .booking-name { text-decoration: line-through; text-decoration-color: var(--line-strong); }
 .booking.activities-complete::after {
   content: '✓'; position: absolute; top: 3px; right: 4px;
@@ -1812,6 +1813,21 @@ button.staff-date-label:focus-visible,
   width: 15px; height: 15px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center; z-index: 2;
 }
+/* LA COCHE ATTENDUE (2026-11-23, le gerant : « faut cocher tout le temps manuellement prcq sinon
+   on sait pas voir si c lancé ou pas ») : son heure venue, le groupe sur place, le bowling que
+   personne n a coche se cerne de la barre de son etat et porte une case vide devant son heure.
+   Passee sans coche, la carte ne grise pas (is-passee ne s y pose pas). Aucune largeur de plus
+   que la case : le cadre est une ombre interne. */
+.booking.is-a-cocher:is(.conf, .arr, .paid) { box-shadow: inset 1px 0 0 var(--bk-barre), inset 0 0 0 2px var(--bk-barre); }
+.booking.is-a-cocher .bk-time::before { content: ''; display: inline-block; box-sizing: border-box; width: 9px; height: 9px; margin-right: 3px; border: 1.5px solid currentColor; border-radius: 2px; vertical-align: 0; }
+/* LE PLANNING LASER, LA MEME REGLE PAR PARTIE : a cocher, cernee de sa teinte et une case vide
+   devant le nom, meme dans un depart joue ; cochee, une coche devant le nom. */
+.lp .lp-g.is-a-cocher:not(.is-choisi) { box-shadow: inset 0 0 0 1.5px var(--lp-c); }
+.lp-compact .lp-g.is-a-cocher:not(.is-choisi) { box-shadow: inset 3px 0 0 var(--lp-c), inset 0 0 0 1.5px var(--lp-c); }
+.lp .lp-g.is-a-cocher .lp-g__nom::before, .lp .lp-g.is-coche .lp-g__nom::before { content: ''; flex: none; box-sizing: border-box; width: 10px; height: 10px; border-radius: 2px; }
+.lp .lp-g.is-a-cocher .lp-g__nom::before { border: 1.5px solid var(--lp-c); }
+.lp .lp-g.is-coche .lp-g__nom::before { background: currentColor; -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5' fill='none' stroke='%23000' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5' fill='none' stroke='%23000' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat; }
+.lp .lp-g .activity-pill { flex: none; }
 
 /* z-index 25 : AU-DESSUS de la ligne « maintenant » (20). Sans ça, faire
    glisser la grille vers la droite faisait passer la barre bleue par-dessus la
@@ -19693,8 +19709,9 @@ html[data-theme] .booking.is-absent { z-index: 1; --bk-haut: var(--subtle); --bk
 .lp-dep.is-joue .lp-dep__h { color: var(--lp-muted); }
 .lp-dep.is-joue:hover, .lp-dep.is-ferme:hover { background: transparent; }
 /* (2026-10-27) Un depart joue passe au gris, comme une carte bowling passee
-   (la vue capacite de ROLLER) : l oeil va au present. Le statut reste ecrit. */
-.lp .lp-dep.is-joue :is(.lp-g, .lp-cases i) { --lp-c: var(--lp-line-strong); }
+   (la vue capacite de ROLLER) : l oeil va au present. Le statut reste ecrit.
+   (2026-11-23) Sauf la partie que personne n a cochee, groupe sur place : elle garde sa teinte. */
+.lp .lp-dep.is-joue :is(.lp-g:not(.is-a-cocher), .lp-cases i) { --lp-c: var(--lp-line-strong); }
 /* Un depart ferme n a pas de case libre : ses cases vides se hachurent sans
    contour. Un groupe pose la avant le blocage garde sa couleur, le conflit
    reste visible. */
@@ -19836,7 +19853,7 @@ body.lp-glisse, body.lp-glisse * { cursor: grabbing !important; user-select: non
   .lp-compact.lp-cards-tight .lp-dep__h::after { display: none; }
   .lp-compact .lp-g.is-la b::after { width: 6px; height: 6px; margin-left: 6px; vertical-align: 2px; background: var(--lp-c); }
   .lp-compact .lp-g.is-enligne { --lp-c: var(--lp-line-strong); }
-  .lp-compact .lp-dep.is-joue .lp-g b { color: var(--lp-muted); }
+  .lp-compact .lp-dep.is-joue .lp-g:not(.is-a-cocher) b { color: var(--lp-muted); }
   .lp-compact .lp-file { padding-top: 6px; padding-bottom: 6px; }
   .lp-compact .lp-file > .lp-placer { padding: 2px 4px 2px 8px; gap: 6px; }
   .lp-compact .lp-placer .lp-btn { height: 30px; }

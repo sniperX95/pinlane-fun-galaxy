@@ -444,6 +444,7 @@
     "test:planning-frame",
     "test:planning-global",
     "test:grand-tableau",
+    "test:suivi-activites",
     "test:planning-barre",
     "test:retards-places",
     "test:retards-console",

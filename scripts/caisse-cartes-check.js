@@ -19,8 +19,8 @@
 //       appeler), puis A venir, Sur place, A cloturer, Terminees ; chaque
 //       dossier une fois ; une carte terminee tient sur sa tete
 //   [B] le programme de chaque carte : les heures du planning, les pistes, et
-//       l aide de chaque activite a 15:10 (Fini, En cours · fin 15:25, Dans
-//       50 min, Dans 20 min, À leur rythme)
+//       l aide de chaque activite a 15:10 (Non coché, À lancer · fin 15:25, Dans
+//       50 min, Dans 20 min, À leur rythme : depuis le 2026-11-23 l heure ne coche rien)
 //   [C] les encadres : a valider, prix ajuste (avec le tarif), anniversaire
 //       et formule, note du client ; aucun sur un dossier ordinaire
 //   [D] le seuil de retard : a 15:03, le groupe de 15:00 est « Attendu » et
@@ -80,7 +80,7 @@ const MUTATIONS = [
   { nom: 'Encaisser oublie le moyen', cible: '[E]', fichier: 'assets/app-main.js',
     de: "  setReservationStatusDirect(id, 'paid', ev, { paymentMethod: moyen });", vers: "  setReservationStatusDirect(id, 'paid', ev);" },
   { nom: 'l aide de l activite ne lit plus l heure', cible: '[B]', fichier: 'assets/app-main.js',
-    de: "  if (now >= etape.start) return { cle: 'encours', mot: `En cours · fin ${formatClockDisplay(etape.end)}` };", vers: "  if (now >= etape.start) return { cle: 'prevu', mot: '' };" },
+    de: "  if (now >= etape.start) return { cle: 'lancer', mot: `À lancer · fin ${formatClockDisplay(etape.end)}` };", vers: "  if (now >= etape.start) return { cle: 'prevu', mot: '' };" },
   { nom: 'le prix ajuste n a plus d encadre', cible: '[C]', fichier: 'assets/app-main.js',
     de: '  if (marquePrix) encadres.push', vers: '  if (false) encadres.push' },
   { nom: 'la fiche reprend l heure de la premiere fenetre', cible: '[F]', fichier: 'assets/app-main.js',
@@ -304,8 +304,10 @@ async function scenarioBlocs(browser, jour) {
     // [B] LE PROGRAMME ET L AIDE
     const dupont = carte(sections, 81004);
     const aides = dupont ? dupont.etapes.map((e) => `${e.heure.slice(0, 5)} ${e.aide}`) : [];
-    ok(aides.join(' | ') === '14:00 Fini | 15:00 En cours · fin 15:25 | 16:00 Dans 50 min', '[B] Dupont : bowling fini, laser en cours, la 2e partie dans 50 min', aides.join(' | '));
-    ok(dupont && dupont.etapes[1].focus && !dupont.etapes[0].focus, '[B] l activite en cours porte le contour', dupont && JSON.stringify(dupont.etapes.map((e) => e.focus)));
+    // (depuis le 2026-11-23, l heure ne coche rien : passee sans coche, « Non coché » ; son heure
+    // venue, « À lancer » tant que personne ne l a cochee, jamais « Fini » ni « En cours »)
+    ok(aides.join(' | ') === '14:00 Non coché | 15:00 À lancer · fin 15:25 | 16:00 Dans 50 min', '[B] Dupont : bowling passe non coche, laser a lancer, la 2e partie dans 50 min', aides.join(' | '));
+    ok(dupont && dupont.etapes[1].focus && !dupont.etapes[0].focus, '[B] l activite a lancer porte le contour', dupont && JSON.stringify(dupont.etapes.map((e) => e.focus)));
     ok(dupont && pistesDupont.length === 2 && dupont.etapes[0].quoi.includes(`pistes ${pistesDupont.join(', ')}`) && /partie 2\/2/.test(dupont.etapes[2].quoi), `[B] les pistes et le rang de la partie se lisent sur la ligne (pistes ${pistesDupont.join(', ')})`, dupont && dupont.etapes.map((e) => e.quoi).join(' | '));
     const lambda = carte(sections, 81008);
     const plageLambda = pistesLambda.length === 5 && pistesLambda[4] - pistesLambda[0] === 4 ? `pistes ${pistesLambda[0]} à ${pistesLambda[4]}` : '(5 pistes cote a cote attendues)';

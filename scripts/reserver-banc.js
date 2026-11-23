@@ -138,6 +138,24 @@ function requeteDeLaFiche(s, p, client) {
     if (tx) tx.reservations.set(row.id, row); else banc.base.reservations.set(row.id, row);
     return { rows: [copieLigne(row)], rowCount: 1 };
   }
+  // UNE COCHE DU PROGRAMME (2026-11-23, scripts/suivi-activites-check.js) : la cle ajoutee ou retiree sur ce
+  // qui est en base, cent cles au plus (lib/database.js, setReservationActivityDone, la meme requete).
+  if (s.startsWith("update reservations set activity_progress = case when $4::jsonb is null then coalesce(activity_progress, '{}'::jsonb) - $3::text") && / where id = \$1 and center_id = \$2 .* returning \*;?$/.test(s)) {
+    const avant = vueReservations(tx).get(Number(p[0]));
+    if (!avant || avant.center_id !== p[1]) return { rows: [], rowCount: 0 };
+    const suivi = { ...(avant.activity_progress && typeof avant.activity_progress === 'object' ? avant.activity_progress : {}) };
+    if (p[3] === null || p[3] === undefined) delete suivi[p[2]];
+    else if (Object.prototype.hasOwnProperty.call(suivi, p[2]) || Object.keys(suivi).length < 100) suivi[p[2]] = JSON.parse(p[3]);
+    else return { rows: [], rowCount: 0 };
+    const precedent = avant.updated_at ? new Date(avant.updated_at).getTime() : 0;
+    const row = { ...avant, activity_progress: suivi, updated_at: new Date(Math.max(Date.now(), precedent + 1)) };
+    if (tx) tx.reservations.set(row.id, row); else banc.base.reservations.set(row.id, row);
+    return { rows: [copieLigne(row)], rowCount: 1 };
+  }
+  if (/^select 1 from reservations where id = \$1 and center_id = \$2;?$/.test(s)) {
+    const row = vueReservations(tx).get(Number(p[0]));
+    return row && row.center_id === p[1] ? { rows: [{ '?column?': 1 }], rowCount: 1 } : { rows: [], rowCount: 0 };
+  }
   return null;
 }
 

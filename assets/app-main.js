@@ -24753,7 +24753,7 @@ function voirListeDuJour() {
 }
 
 // LA LEGENDE DES CASES : le statut est sur la barre, ceci dit lire une case.
-const PB_LEGENDE_CASES = '<span><i class="gf-leg is-encours" aria-hidden="true"></i>en cours</span><span><i class="gf-leg is-fini" aria-hidden="true"></i>fini</span><span><i class="gf-leg is-libre" aria-hidden="true"></i>Libre : sans heure fixe</span>';
+const PB_LEGENDE_CASES = '<span><i class="gf-leg is-lancer" aria-hidden="true"></i>à lancer : pas encore coché</span><span><i class="gf-leg is-fini" aria-hidden="true"></i>fait : coché</span><span><i class="gf-leg is-plus" aria-hidden="true"></i>en plus de la formule</span><span><i class="gf-leg is-libre" aria-hidden="true"></i>Libre : sans heure fixe</span>';
 
 // LE MENU « ⋯ » DES TROIS PLANNINGS : la meme liste, au meme endroit. Ce que les
 // tetes de chaque planning faisaient et que la barre ne montre pas : les filtres,
@@ -27462,6 +27462,9 @@ function renderPlanning() {
   // n a plus rien a dire. Son dossier reste en base pour les chiffres et les IA.
   const res = todaysReservations().filter(r => tientSesPlaces(r) && reservationMatchesStaffResource(r, 'bowling') && getBowlingWindowsFromReservation(r).length > 0);
   const momentsDesCartes = getStaffReservationMoments(todaysReservations());
+  // (le suivi d un dossier se lit une fois par rendu : ses cartes, une par piste, le partagent)
+  const suivis = new Map();
+  const suiviDe = (r) => { if (!suivis.has(r)) suivis.set(r, suiviDuDossier(r)); return suivis.get(r); };
   const isToday = state.currentDate === todayStr();
   const curH = currentTimeDecimal();
   const curPos = isToday && curH >= startHour && curH <= closeHour ? (curH - startHour) * HH + HEADER_H : -1;
@@ -27589,14 +27592,25 @@ function renderPlanning() {
       // (renderCardLaserBadge) ; une formule d une heure, dont l offre occupe
       // cette place, garde son marqueur laser dans la tete : l offre passe
       // avant. Pas de badge sur une carte d une seule ligne.
-      const progressionHtml = renderActivityProgressPill(r);
+      // LE SUIVI, POUR TOUTE RESERVATION (suiviDuDossier, 2026-11-23) : la jauge et « tout est
+      // fait » ; ce bowling, son heure venue et le groupe sur place, attend sa coche
+      // (cocheAttendue). Passee sans coche, la carte ne grise pas : elle attend toujours.
+      const suivi = suiviDe(r);
+      const present = r.status === 'arrived' || r.status === 'paid' || suivi.done > 0;
+      const etapeIci = suivi.etapes.find(e => e.activityId === 'bowling' && Number.isFinite(e.start) && Math.abs(e.start - st) < 0.02);
+      const attendue = isToday && present ? cocheAttendue(etapeIci, { present, reparti: groupeReparti(r, momentsDesCartes.get(String(r.id)), curH), now: curH }) : '';
+      // (le pied n a pas la place des deux, la feuille le mesure : sur une formule la jauge passe
+      // avant le montant, comme avant ; hors formule, un prix revu garde sa place sur la carte,
+      // la coche se lit au planning complet, au laser et dans la fiche)
+      const progressionHtml = prixHtml && !reservationHasFormulaActivities(r) ? '' : renderActivityProgressPill(r, suivi);
       const laserHtml = densClass === 'dens-xs' || (!offreSurSaLigne && offreHtml) ? '' : renderCardLaserBadge(r);
       const casLaser = laserHtml ? ' a-laser-pied' : '';
       const casProgression = progressionHtml ? ' a-progression' : '';
       // LES PISTES GARDEES A VOLONTE (2026-11-19, lib/a-volonte.js) : la carte le dit, et son
       // infobulle dit lesquelles et jusqu a quand.
       const volonte = item.window.aVolonte && window.PinlaneAVolonte ? window.PinlaneAVolonte.phraseDuBloc(r.opsPlan, item.window) : '';
-      bkHtml += `<div class="booking ${cls} ${densClass} ${getReservationHighlightClasses(r)}${delayedClass}${retardClass}${activitiesCompleteClass(r)}${casLaser}${casProgression}${/^Allergie · /.test(noteDuCoin) ? ' a-allergie' : ''}${modifCarte || (essentiel && (essentiel.notes || essentiel.mesure || essentiel.adaptee)) ? ' a-dossier' : ''}${retenues.has(String(r.id)) ? '' : ' is-grise'}${isToday && item.window.end <= curH + 1e-6 ? ' is-passee' : ''}${peutDeplacerIci ? '' : ' is-fixe'}" data-booking-res-id="${r.id}" data-booking-lane="${i}" data-booking-start="${st}" data-range="${formatClockDisplay(st)} - ${end}" data-extra="${cls === 'paid' ? 'payé' : cls === 'arr' ? 'sur place' : 'confirmé'}" role="button" tabindex="0" aria-label="${escapeHtml(r.name || 'Client')} · ${formatClockDisplay(st)} - ${end}${volonte ? ` · ${escapeHtml(volonte)}` : ''}"${volonte ? ` title="${escapeHtml(volonte)}" data-a-volonte="1"` : ''} style="top:${top}px;height:${height}px;--bk-order:${i};" ${peutDeplacerIci ? `aria-keyshortcuts="M" onkeydown="planningMoveKey(event,'bowling',${r.id},${i},${st})" onmousedown="startBowlingBookingPointerDrag(event, ${r.id}, ${i}, ${st})" ${planningTouchAttrs(`startBowlingBookingTouchDrag(event, ${r.id}, ${i}, ${st})`)}` : ''} onclick="if(shouldIgnoreBowlingDragClick(event)) return; event.stopPropagation();openPos(${r.id})">
+      const motCoche = attendue === 'lancer' ? 'à lancer, pas encore coché' : attendue ? 'pas encore coché' : '';
+      bkHtml += `<div class="booking ${cls} ${densClass} ${getReservationHighlightClasses(r)}${delayedClass}${retardClass}${activitiesCompleteClass(r, suivi)}${attendue ? ` is-a-cocher${attendue === 'noncoche' ? ' is-non-coche' : ''}` : ''}${casLaser}${casProgression}${/^Allergie · /.test(noteDuCoin) ? ' a-allergie' : ''}${modifCarte || (essentiel && (essentiel.notes || essentiel.mesure || essentiel.adaptee)) ? ' a-dossier' : ''}${retenues.has(String(r.id)) ? '' : ' is-grise'}${isToday && item.window.end <= curH + 1e-6 && !attendue ? ' is-passee' : ''}${peutDeplacerIci ? '' : ' is-fixe'}" data-booking-res-id="${r.id}" data-booking-lane="${i}" data-booking-start="${st}" data-range="${formatClockDisplay(st)} - ${end}" data-extra="${cls === 'paid' ? 'payé' : cls === 'arr' ? 'sur place' : 'confirmé'}" role="button" tabindex="0" aria-label="${escapeHtml(r.name || 'Client')} · ${formatClockDisplay(st)} - ${end}${volonte ? ` · ${escapeHtml(volonte)}` : ''}${motCoche ? ` · ${motCoche}` : ''}"${volonte ? ` title="${escapeHtml(volonte)}" data-a-volonte="1"` : ''} style="top:${top}px;height:${height}px;--bk-order:${i};" ${peutDeplacerIci ? `aria-keyshortcuts="M" onkeydown="planningMoveKey(event,'bowling',${r.id},${i},${st})" onmousedown="startBowlingBookingPointerDrag(event, ${r.id}, ${i}, ${st})" ${planningTouchAttrs(`startBowlingBookingTouchDrag(event, ${r.id}, ${i}, ${st})`)}` : ''} onclick="if(shouldIgnoreBowlingDragClick(event)) return; event.stopPropagation();openPos(${r.id})">
         ${noteDuCoin ? `<span class="bk-coin" title="${escapeHtml(noteDuCoin)}" aria-hidden="true"></span>` : ''}
         <div class="booking-head">
           <span class="bk-time">${formatClockDisplay(st)}</span>
@@ -27919,7 +27933,10 @@ function lpModele() {
       .sort((a, b) => a.fenetre.start - b.fenetre.start);
   }
 
-  return { jour, config, capacite, lancements, minutes, bloc, aujourdHui, maintenant, resas, fenetres, enLigne, attente, departs, prochain, enJeu, retards, enRetard, trouve, creneau };
+  // (le suivi d un dossier se lit une fois par rendu : chacune de ses parties le partage, lpLegende)
+  const suivis = new Map();
+  const suiviDe = (r) => { if (!suivis.has(r)) suivis.set(r, suiviDuDossier(r)); return suivis.get(r); };
+  return { jour, config, capacite, lancements, minutes, bloc, aujourdHui, maintenant, resas, fenetres, enLigne, attente, departs, prochain, enJeu, retards, enRetard, trouve, creneau, moments: momentsDuJour, suiviDe };
 }
 
 function lpCibleDecalage(modele, reservation, siennes, depuis) {
@@ -28088,6 +28105,15 @@ function lpLegende(modele, d, choisi) {
     const etat = enRetard ? ' is-retard' : (r.status === 'arrived' || r.status === 'paid') ? ' is-la' : '';
     const choisiIci = choisi && choisi.id === id && choisi.unitKey === unitKey ? ' is-choisi' : '';
     const grise = modele.trouve(r) ? '' : ' is-grise';
+    // LA COCHE DE CETTE PARTIE (2026-11-23, la regle des plannings, cocheAttendue) : son heure
+    // venue, le groupe sur place, elle attend sa coche, meme dans un depart joue ; cochee, elle
+    // le dit ; tout le dossier coche, le groupe passe en transparent (suiviDuDossier).
+    const suivi = modele.suiviDe(r);
+    const etapeIci = suivi.etapes.find(e => e.activityId === 'laser_game' && Number.isFinite(e.start) && Math.abs(e.start - w.start) < 0.02);
+    const present = r.status === 'arrived' || r.status === 'paid' || suivi.done > 0;
+    const attendue = modele.aujourdHui && present ? cocheAttendue(etapeIci, { present, reparti: groupeReparti(r, modele.moments.get(String(id)), modele.maintenant), now: modele.maintenant }) : '';
+    const coche = attendue ? ` is-a-cocher${attendue === 'noncoche' ? ' is-non-coche' : ''}` : etapeIci && etapeIci.fait ? ' is-coche' : '';
+    const motCoche = attendue === 'lancer' ? ' · à lancer, pas encore coché' : attendue ? ' · pas encore coché' : etapeIci && etapeIci.fait ? ' · fait' : '';
     const titre = `${r.name || 'Groupe'} : ${lpPluriel(lpGroupe(w), 'joueur')}${suite ? `, ${suite}` : ''}. Toucher : sa fiche. Glisser : le déplacer.`;
     const statut = r.status === 'paid' ? 'Payé' : enRetard ? 'En retard' : r.status === 'arrived' ? 'Arrivé' : 'Confirmé';
     const partie = Number(w.countIndex || 1);
@@ -28103,7 +28129,7 @@ function lpLegende(modele, d, choisi) {
     // Dans une rangee serree, les pictos cedent et un coin replie dit la note : il rougit
     // avec une allergie, et l infobulle de la carte dit la note en entier.
     const noteLaser = texteNoteDeCarte(essentielDuDossier(r));
-    return `<button type="button" class="lp-g ${k}${etat}${choisiIci}${grise}${/^Allergie · /.test(noteLaser) ? ' a-allergie' : ''}" ${lpAttrsGroupe(id, unitKey, { fiche: true })}${volonteLaser ? ' data-a-volonte="1"' : ''} title="${escapeHtml(`${titre} ${infos}${volonteLaser ? ` · ${volonteLaser}` : ''} · ${statut}${noteLaser ? ` · ${noteLaser}` : ''}`)}"><i aria-hidden="true"></i><span class="lp-g__nom"><b>${escapeHtml(r.name || 'Groupe')}</b>${lpPictos(r)}</span><span class="lp-g__sous"><span class="lp-card-info">${escapeHtml(infos)}</span><span class="lp-card-status">${statut}</span></span></button>`;
+    return `<button type="button" class="lp-g ${k}${etat}${choisiIci}${grise}${coche}${activitiesCompleteClass(r, suivi)}${/^Allergie · /.test(noteLaser) ? ' a-allergie' : ''}" ${lpAttrsGroupe(id, unitKey, { fiche: true })}${volonteLaser ? ' data-a-volonte="1"' : ''} title="${escapeHtml(`${titre} ${infos}${volonteLaser ? ` · ${volonteLaser}` : ''}${motCoche} · ${statut}${noteLaser ? ` · ${noteLaser}` : ''}`)}"><i aria-hidden="true"></i><span class="lp-g__nom"><b>${escapeHtml(r.name || 'Groupe')}</b>${lpPictos(r)}</span><span class="lp-g__sous"><span class="lp-card-info">${escapeHtml(infos)}</span>${renderActivityProgressPill(r, suivi)}<span class="lp-card-status">${statut}</span></span></button>`;
   });
   // Un client retient ces armes en ligne : la carte dit quand elles se
   // liberent (comme la carte du planning bowling) et ne lance rien au toucher.
@@ -29474,6 +29500,11 @@ function joindrePistes(pistes) {
 // « À lancer » : l equipe lance la piste ou la partie. Tant que le groupe n est
 // pas pointe arrive, une activite dont l heure est la ne dit pas « en cours »
 // (il n est pas la) mais « Groupe pas arrivé ».
+// L HEURE NE COCHE RIEN (2026-11-23, le gerant : « faut cocher tout le temps manuellement prcq
+// sinon on sait pas voir si c lancé ou pas par les students si ça se fait automatiquement »).
+// Une activite passee sans coche est « Non coché », a la carte comme en formule, jamais
+// « Fini » ; son heure venue, elle reste « À lancer » tant que personne ne l a cochee, jamais
+// « En cours ».
 const GROUPE_FENETRE_LANCEMENT_H = 5 / 60;
 function getGroupeEtapePhase(etape, contexte) {
   if (etape.fait) return { cle: 'fait', mot: 'Fait' };
@@ -29481,18 +29512,50 @@ function getGroupeEtapePhase(etape, contexte) {
   if (etape.aPlacer) return { cle: 'aplacer', mot: 'Heure à placer' };
   if (!contexte.aujourdhui) return { cle: 'prevu', mot: '' };
   const now = contexte.now;
-  // Une activite de formule passee sans coche n est pas « finie » : personne
-  // n a dit qu elle a eu lieu (meme mot que la page Formules).
-  if (now >= etape.end) return etape.exige ? { cle: 'noncoche', mot: 'Non coché' } : { cle: 'fini', mot: 'Fini' };
+  if (now >= etape.end) return { cle: 'noncoche', mot: 'Non coché' };
   // Le groupe n est pas pointe : son heure est la, rien ne se lance. En
   // retard, le bandeau de la carte le dit deja ; avant, « Attendu ».
   if (now >= etape.start - GROUPE_FENETRE_LANCEMENT_H && !contexte.present) return contexte.late ? { cle: 'prevu', mot: '' } : { cle: 'attente', mot: 'Attendu' };
   if (now >= etape.start - GROUPE_FENETRE_LANCEMENT_H && now < etape.start + GROUPE_FENETRE_LANCEMENT_H) {
     return { cle: 'lancer', mot: now < etape.start ? `À lancer à ${formatClockDisplay(etape.start)}` : 'À lancer maintenant' };
   }
-  if (now >= etape.start) return { cle: 'encours', mot: `En cours · fin ${formatClockDisplay(etape.end)}` };
+  if (now >= etape.start) return { cle: 'lancer', mot: `À lancer · fin ${formatClockDisplay(etape.end)}` };
   const dans = etape.start - now;
   return dans <= 1 ? { cle: 'bientot', mot: `Dans ${formatStaffTerrainDelay(dans)}` } : { cle: 'prevu', mot: '' };
+}
+
+// LA MEME REGLE SUR LES PLANNINGS : une activite a heure dont l heure est venue (5 min avant),
+// groupe sur place et pas reparti, attend sa coche. « lancer » tant que son heure court,
+// « noncoche » une fois passee, rien sinon. Une activite sans heure fixe n attend rien a une
+// minute. Le planning complet (gfEtat), les cartes bowling et les groupes du planning laser la
+// lisent ; la fiche et les cartes de la liste disent la meme chose en mots (getGroupeEtapePhase).
+function cocheAttendue(etape, { present, reparti, now }) {
+  if (!etape || etape.fait || etape.libre || etape.aPlacer || reparti || !present) return '';
+  if (!Number.isFinite(now) || !Number.isFinite(etape.start)) return '';
+  const fin = Number.isFinite(etape.end) ? etape.end : etape.start;
+  if (now >= fin - 1e-6) return 'noncoche';
+  return now >= etape.start - GROUPE_FENETRE_LANCEMENT_H - 1e-6 ? 'lancer' : '';
+}
+
+// LE GROUPE EST REPARTI : note pas venu, ou paye et sa visite finie. Plus rien ne se lance pour
+// lui. (la ligne du planning complet le lit pareil, gpModele)
+function groupeReparti(r, moment, now, span = null) {
+  const etat = moment && moment.etat;
+  if (etat === 'done' || etat === 'absent') return true;
+  if (!r || r.status !== 'paid' || etat !== 'onsite' || !Number.isFinite(now)) return false;
+  return (span || getStaffTerrainSpan(r)).end <= now;
+}
+
+// LE SUIVI D UN DOSSIER, POUR TOUS (2026-11-23, le gerant : « quand c'est une formule ça montre
+// le suivi des activités faites genre par une barre la petite et une fois fini ça les genre met
+// en transparent avec un V [...] bah pourquoi pas faire la même pour tout ? »). Chaque ligne du
+// programme de la fiche a sa coche (getGroupeProgramme) : a la carte, en formule, sur mesure ou
+// en acces illimite, la jauge des cartes et le « tout est fait » se comptent sur elles.
+// (la page Formules garde son propre suivi, celui des etapes de la formule)
+function suiviDuDossier(r) {
+  const etapes = r && r.status !== 'cancelled' ? getGroupeProgramme(r).filter(etape => etape.coche) : [];
+  const done = etapes.filter(etape => etape.fait).length;
+  return { etapes, done, total: etapes.length, allDone: etapes.length > 0 && done === etapes.length };
 }
 
 function getGroupeContexte(r, moment) {
@@ -29513,9 +29576,7 @@ function groupeAJoue(r) {
   return Boolean(r) && getGroupeProgramme(r).some(etape => etape.coche && etape.fait);
 }
 function groupeToutFait(r) {
-  if (!r || r.status === 'cancelled') return false;
-  const etapes = getGroupeProgramme(r).filter(etape => etape.coche);
-  return etapes.length > 0 && etapes.every(etape => etape.fait);
+  return suiviDuDossier(r).allDone;
 }
 
 // « Tout est fait » : coche d un geste ce qui reste. Une coche a la fois vers
@@ -30725,16 +30786,14 @@ function ouvrirOngletFiche(cible) {
   renderPos();
 }
 
-// Classe « toutes les activités faites » pour styliser (griser) une carte planning.
-function activitiesCompleteClass(r) {
-  if (typeof reservationHasFormulaActivities !== 'function' || !reservationHasFormulaActivities(r)) return '';
-  return getFormulaActivityProgressSummary(r).allDone ? ' activities-complete' : '';
+// Classe « toutes les activités faites » pour styliser (griser) une carte planning,
+// sur le suivi du dossier : toute reservation, pas seulement une formule (suiviDuDossier).
+function activitiesCompleteClass(r, suivi = suiviDuDossier(r)) {
+  return suivi.allDone ? ' activities-complete' : '';
 }
 
-// Pill compacte « faites/total » pour les cartes planning (formules uniquement).
-function renderActivityProgressPill(r) {
-  if (typeof reservationHasFormulaActivities === 'function' && !reservationHasFormulaActivities(r)) return '';
-  const summary = getFormulaActivityProgressSummary(r);
+// Pill compacte « faites/total » pour les cartes planning, toute reservation (suiviDuDossier).
+function renderActivityProgressPill(r, summary = suiviDuDossier(r)) {
   if (!summary.total) return '';
   // UNE PROGRESSION SE VOIT, ELLE NE SE LIT PAS.
   // Movsar, 2026-08-14 : « le 0/4, le design je le trouve pas fou ». Deux

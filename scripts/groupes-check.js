@@ -17,12 +17,14 @@
 //       (15:10 puis 15:40) ; le plan les rend telles quelles et le dossier les ecrit.
 //   [C] CE QUI COINCE SE DIT SUR LA CASE : deux groupes au bowling a la meme heure sans assez de pistes,
 //       deux groupes au laser au-dela des armes, l arene prise par un autre groupe du dossier, un groupe a
-//       deux endroits, une heure qui manque, un autre dossier qui tient l arene. Chaque refus porte son
-//       groupe et son activite (`coincent`). Deux petits groupes qui tiennent ensemble au laser passent.
+//       deux endroits, une heure qui manque, un autre dossier qui tient l arene, une heure avant l ouverture
+//       ou qui finit apres la fermeture (avec l heure qui coince). Chaque refus porte son groupe et son
+//       activite (`coincent`). Deux petits groupes qui tiennent ensemble au laser passent.
 //   [D] LA MODIFICATION GARDE CE QUE LE COMPTOIR A POSE : un joueur de plus garde les heures (27, 27, 27),
 //       le dossier decale d une demi-heure decale chaque groupe, de nouvelles heures s ecrivent au prix du
 //       calcul a blanc, des heures qui coincent se refusent (a blanc avec `coincent`, et rien ne s ecrit) ;
-//       4 groupes choisis le restent quand le groupe change.
+//       4 groupes choisis le restent quand le groupe change ; un groupe pose avant l arrivee fait commencer
+//       le dossier avec lui (Modifier et creation), au meme prix.
 //   [E] LES DOSSIERS EN DEUX GROUPES D AVANT RESTENT JUSTES : un dossier ecrit avant ce lot (sans heures
 //       ni nombre dans son plan) garde ses deux groupes et sa rotation quand le groupe change, et un laser
 //       qu il avait deplace au planning reste a son heure.
@@ -73,6 +75,11 @@ const MUTATIONS = [
   { nom: 'conflits-sans-groupe', lettre: 'C', fichier: MOTEUR, de: '    if (Number(block.sousGroupe) > 0) {\n      for (let rang = conflitsAvant;', vers: '    if (false) {\n      for (let rang = conflitsAvant;' },
   { nom: 'chevauchement-sans-case', lettre: 'C', fichier: MOTEUR, de: '        ...(sousGroupe ? { conflict: { sousGroupe, activityId: current.activityId, avec: previous.activityId } } : {}),\n', vers: '' },
   { nom: 'coincent-perdus', lettre: 'C', fichier: OPS, de: '    ...(noSafePlan && coincent.length ? { groupesQuiCoincent: coincent } : {}),\n', vers: '' },
+  // [C] un groupe hors des horaires du centre ne se dit plus sur sa case, ou plus avec son heure.
+  { nom: 'horaires-sans-case', lettre: 'C', fichier: MOTEUR, de: '        ...(horsHoraires ? { conflict: horsHoraires.conflict } : {}),\n', vers: '' },
+  { nom: 'horaires-phrase-du-dossier', lettre: 'C', fichier: MOTEUR, de: '    const reason = horsHoraires ? horsHoraires.raison : !manqueLeLibre', vers: '    const reason = !manqueLeLibre' },
+  // [D] un groupe pose avant l arrivee laisse le dossier commencer apres lui.
+  { nom: 'arrivee-apres-un-groupe', lettre: 'D', fichier: OPS, de: '    ...(avanceeParUnGroupe ? { startTime: minutesToTime(premierGroupe) } : {}),\n', vers: '' },
   // [D] la modification refait la rotation par-dessus les heures posees, oublie le nombre choisi, ou ecrit
   // des groupes qui ne tiennent pas.
   { nom: 'modif-sans-heures', lettre: 'D', fichier: OPS, de: "  const heures = garde.auxHeures === true || request.opsPlan.laserManual === true ? require('./grand-groupe').heuresDesBlocs(request.opsPlan, ecart) : null;", vers: "  const heures = request.opsPlan.laserManual === true ? require('./grand-groupe').heuresDesBlocs(request.opsPlan, ecart) : null;" },
@@ -262,6 +269,13 @@ async function principal() {
       const manque = await essai([{ bowling: '14:00', laser_game: '15:00' }, { bowling: '15:00' }, { laser_game: '16:00', bowling: '16:00' }]);
       ok(manque.disponible === false && coince(manque, 2, 'laser_game', /Groupe 2 : donnez l’heure du laser/),
         '[C] le groupe 2 sans heure de laser : sa case le demande', manque.coincent || manque.refus);
+      // Une heure hors des horaires du centre (la journee de la fixture : 10:00 a 22:00) : la case du groupe le dit.
+      const tot = await essai([{ bowling: '14:00', laser_game: '15:00' }, { laser_game: '08:00', bowling: '15:00' }, { laser_game: '16:00', bowling: '16:30' }]);
+      ok(tot.disponible === false && coince(tot, 2, 'laser_game', /^Groupe 2 : le laser à 08:00 commence avant l’ouverture \(10:00\)\.$/) && (tot.coincent || []).length === 1,
+        '[C] le laser du groupe 2 a 08:00 : sa case dit qu il commence avant l ouverture (10:00)', tot.coincent || tot.refus);
+      const tard = await essai([{ bowling: '14:00', laser_game: '15:00' }, { laser_game: '14:00', bowling: '15:00' }, { bowling: '16:00', laser_game: '21:40' }]);
+      ok(tard.disponible === false && coince(tard, 3, 'laser_game', /^Groupe 3 : le laser finit à 22:05, après la fermeture \(22:00\)\.$/),
+        '[C] le laser du groupe 3 a 21:40 : sa case dit qu il finit a 22:05, apres la fermeture', tard.coincent || tard.refus);
       const ensemble = await simuler(corps(80, { impose: true, nombre: 6, heures: [
         { bowling: '14:00', laser_game: '15:00' }, { bowling: '14:00', laser_game: '15:00' },
         { laser_game: '14:00', bowling: '15:00' }, { laser_game: '14:30', bowling: '15:00' },
@@ -325,6 +339,26 @@ async function principal() {
         ok(moins.statut === 200 && r4.ops_plan.grandGroupe.nombre === 4 && joueursDe(r4) === '20/20/20/19',
           '[D] 4 groupes choisis : un joueur de moins, ils restent 4 (20, 20, 20 et 19)', `${moins.statut} ${moins.json.message || ''} ${r4 && r4.ops_plan.grandGroupe.nombre} ${joueursDe(r4)}`);
       } else ok(false, '[D] le dossier en 4 groupes est cree', `${c4.statut} ${c4.json.message || ''}`);
+      // Un groupe pose AVANT l arrivee : le dossier commence avec lui (sa fiche, sa ligne au planning complet),
+      // a blanc comme pour de bon, au meme prix ; a la creation aussi, sans se fier a l arrivee du corps.
+      vider();
+      const c60 = await creer(corps(60, { impose: true }, { debut: '15:30' }));
+      const d60 = c60.json.reservation;
+      if (d60) {
+        const prixAvant = Number(ligne(d60.id).price);
+        const avance = { id: d60.id, centerId: 'libramont', preference: { grandGroupe: { impose: true, nombre: 2, tailles: [30, 30], heures: [{ bowling: '15:30', laser_game: '16:30' }, { laser_game: '15:00', bowling: '16:30' }] } } };
+        const blanc = await serveur.appeler('POST', '/api/staff-reservations', { dryRun: true, centerId: 'libramont', modification: { ...avance, baseUpdatedAt: version(ligne(d60.id)) } });
+        const vrai = await serveur.appeler('PATCH', '/api/staff-reservations', { ...avance, baseUpdatedAt: version(ligne(d60.id)) });
+        const r = ligne(d60.id);
+        const annonce = blanc.json.reservation ? String(blanc.json.reservation.startTime).slice(0, 5) : '';
+        ok(vrai.statut === 200 && String(r.start_time).slice(0, 5) === '15:00' && annonce === '15:00' && horaireDe(r) === 'B1@15:30 B2@16:30 L1@16:30 L2@15:00' && Number(r.price) === prixAvant,
+          '[D] le laser du groupe 2 avance a 15:00 dans un dossier arrive a 15:30 : le dossier commence a 15:00 (a blanc aussi), au meme prix', { statut: vrai.statut, message: vrai.json.message, debut: r.start_time, annonce, horaire: horaireDe(r), prix: r.price, avant: prixAvant });
+      } else ok(false, '[D] le dossier de 60 est cree', `${c60.statut} ${c60.json.message || ''}`);
+      vider();
+      const tot = await creer(corps(80, { impose: true, nombre: 3, heures: [{ bowling: '14:30', laser_game: '15:30' }, { laser_game: '14:00', bowling: '15:30' }, { laser_game: '16:00', bowling: '16:30' }] }, { debut: '14:30' }));
+      const rt = tot.json.reservation && ligne(tot.json.reservation.id);
+      ok(tot.statut < 300 && Boolean(rt) && String(rt.start_time).slice(0, 5) === '14:00' && horaireDe(rt) === 'B1@14:30 B2@15:30 B3@16:30 L1@15:30 L2@14:00 L3@16:00',
+        '[D] a la creation, une arrivee a 14:30 envoyee avec le groupe 2 au laser a 14:00 : le dossier commence a 14:00', rt ? { debut: rt.start_time, horaire: horaireDe(rt) } : `${tot.statut} ${tot.json.message || ''}`);
     }
 
     // =======================================================================

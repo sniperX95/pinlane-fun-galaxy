@@ -507,6 +507,8 @@ async function capture(page, nom, avant = null) {
   if (!CAPTURES) return;
   fs.mkdirSync(CAPTURES, { recursive: true });
   if (avant) await page.evaluate(avant);
+  // (la confirmation « Configuration enregistree » ne couvre pas l image : elle ne dit rien du sujet)
+  await page.evaluate(() => { const t = document.getElementById('toast'); if (t) t.style.display = 'none'; });
   await page.waitForTimeout(250);
   await page.screenshot({ path: path.join(CAPTURES, `${nom}.png`) });
 }

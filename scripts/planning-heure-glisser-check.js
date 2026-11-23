@@ -1101,6 +1101,12 @@ const MUTATIONS = [
   { nom: 'groupe-ligne-muette', lettre: 'T3', scenarios: ['groupe'], editions: [{ fichier: MODULE, de: "          : { minute: m, mode: mode, passe: false, texte: v.cle ? gfNeTientPas(gfNomDeCle(r, v.cle), gfActiviteDeCle(v.cle), v.heure || '', v.plancher ? 'déjà passé, il est ' + gpHeure(currentTimeDecimal()) + '.' : v.raison) : gfNeTientPas('Tout le groupe', '', '', v.raison) });", vers: '          : { minute: m, mode: mode, passe: false, texte: gfNeTientPas(p.point.nom, p.point.activityId, heure, v.raison) });' }] },
   // (l avis tait l activite et l heure qui coincent)
   { nom: 'groupe-avis-muet', lettre: 'T4', scenarios: ['groupe'], editions: [{ fichier: MODULE, de: "    var texte = (lu.cle ? gfNeTientPas(gfNomDeCle(r, lu.cle), gfActiviteDeCle(lu.cle), String(lu.heure || ''), gfPhraseErreur(erreur)) : gfPhraseErreur(erreur)).replace(/\\s*$/, '');", vers: '    var texte = gfPhraseErreur(erreur);' }] },
+  // (Entree ne fait que juger : l heure qui passe ne s enregistre plus au clavier)
+  { nom: 'minute-entree-morte', lettre: 'M1', scenarios: ['minute'], editions: [{ fichier: MODULE, de: '    if (p.juge && p.juge.passe === true && p.juge.minute === m && p.juge.mode === p.mode) { gfValiderPop(); return; }\n', vers: '' }] },
+  // (« Tout le groupe » juge comme « Cette activité » : ses propres arcades rebloquent 16:00, la demande d Ansar)
+  { nom: 'groupe-juge-comme-seul', lettre: 'T1', scenarios: ['groupe'], editions: [{ fichier: MODULE, de: "    if (p.mode === 'groupe') { gfRemplirGroupe(r); return; }\n", vers: '' }] },
+  // (un toucher sur une heure du groupe ne part pas)
+  { nom: 'groupe-toucher-mort', lettre: 'T2', scenarios: ['groupe'], editions: [{ fichier: MODULE, de: '      if (r && ve && ve.passe) gfEnregistrerGroupe(r, point, offset, e);\n', vers: '' }] },
 ];
 
 async function jouer(browser, noms) {

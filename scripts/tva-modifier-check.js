@@ -26,6 +26,13 @@
 //        ne s ouvre pas ; le poll les apporte ; TVAC par defaut ; HTVA : Total et Par joueur hors TVA,
 //        la TVA par taux, la formule repartie ; un Total ou un Par joueur tape en HTVA : la base garde le
 //        TVAC, jamais le HTVA.
+//   [B3] QUAND MODIFIER S OUVRE HORS TVA (Ansar, 23/11 : « on choisit, c est pas mis d office, mais des que
+//        c est un groupe team building ou juste un grand groupe, la oui ») : « Prix hors TVA à l’ouverture »
+//        dit « Jamais » pour un centre qui ne regle rien ; « Les groupes seulement » puis Enregistrer : la
+//        vraie sauvegarde l ecrit, la page le relit ; Modifier s ouvre alors en HTVA pour les Collegues de
+//        bureau (un team building) et en TVAC pour l anniversaire de Sacha ; le choix du comptoir tient tant
+//        que la fiche est ouverte ; fermee puis rouverte, elle repart du reglage ; sans la page Etablissement,
+//        le poll l apporte. La regle entiere, sans navigateur : scripts/tva-ouverture-check.js.
 //   [*]  Zero erreur JavaScript.
 //
 // Le gate joue le VRAI handler api/staff-reservations.js (PATCH de Modifier), la vraie sauvegarde de
@@ -36,7 +43,7 @@
 // le disque n est jamais touche), et exige que chacune rougisse sa cible ; `--contre-preuves=nom,nom`
 // en joue quelques-unes ; `--ancres` verifie que chaque ancre existe une seule fois ; `--seul=V1,V2`
 // ne joue que ces lettres (V1 et V2 n ouvrent aucun navigateur). TVA_MODIFIER_CAPTURES=<dossier> :
-// les captures 1366 x 768 de B1 et B2, sans rien changer aux verdicts.
+// les captures 1366 x 768 de B1, B2 et B3, sans rien changer aux verdicts.
 //
 // Zero reseau sortant, zero vraie base : rien ne part.
 'use strict';
@@ -96,6 +103,12 @@ const MUTATIONS = [
   { nom: 'poll-ignore', lettre: 'B2', cible: '[B2] le poll apporte les taux du centre : HTVA s ouvre', fichier: APP, de: '    if (payload.vatRates) state.staffTva = payload.vatRates;\n', vers: '' },
   { nom: 'htva-en-base', lettre: 'B2', cible: '[B2] un Total tape en HTVA : la base garde le TVAC', fichier: APP, de: '  state.editState.price = prixHorsTvaEdition() ? tvacDuHorsTva(valeur) : valeur;', vers: '  state.editState.price = valeur;' },
   { nom: 'htva-par-joueur-en-base', lettre: 'B2', cible: '[B2] un Par joueur tape en HTVA : la base garde le TVAC', fichier: APP, de: '  state.editState.price = prixHorsTvaEdition() ? tvacDuHorsTva(totalTape) : totalTape;', vers: '  state.editState.price = totalTape;' },
+  // [B3] quand Modifier s ouvre hors TVA (le reste de la regle se juge sans navigateur : scripts/tva-ouverture-check.js)
+  { nom: 'b3-envoi-oublie', lettre: 'B3', cible: '[B3] « Les groupes seulement » puis Enregistrer : la vraie sauvegarde l ecrit, la page le relit', fichier: APP, de: "  return champ ? String(champ.value || '') : undefined;", vers: '  return undefined;' },
+  { nom: 'b3-projection-sans-reglage', lettre: 'B3', cible: '[B3] « Les groupes seulement » puis Enregistrer : la vraie sauvegarde l ecrit, la page le relit', serveur: true, fichier: PROJECTION, de: '    // Quand Modifier s ouvre hors TVA (2026-11-23), meme raison : l ecran le montre et le remet en place.\n    htvaParDefaut: config.htvaParDefaut,\n', vers: '' },
+  { nom: 'b3-ouverture-sans-reglage', lettre: 'B3', cible: '[B3] « Les groupes seulement » : Modifier s ouvre en HTVA pour un team building', fichier: APP, de: '  etat.prixVu = prixVuALOuverture(reservation);\n', vers: '' },
+  { nom: 'b3-choix-defait', lettre: 'B3', cible: '[B3] le choix du comptoir tient tant que la fiche est ouverte', fichier: APP, de: '  if (prixVuDeLaFiche && r && Number(prixVuDeLaFiche.id) === Number(r.id)) return prixVuDeLaFiche.vu;\n', vers: '' },
+  { nom: 'b3-poll-oublie', lettre: 'B3', cible: '[B3] sans la page Etablissement, le poll apporte le reglage', fichier: APP, de: '    if (payload.htvaParDefaut) state.staffHtvaParDefaut = payload.htvaParDefaut;\n', vers: '' },
 ];
 const LES_MUTATIONS = new Map(MUTATIONS.map((m) => [m.nom, m]));
 
@@ -431,7 +444,7 @@ async function lectureDuBanc(url, tauxALaPage) {
   if (u.searchParams.get('action') === 'surMesureCatalogue') return (await B.appeler(ops(), 'GET', url)).json;
   if (u.searchParams.get('action') === 'centerConfig' && tauxALaPage) {
     const projete = projection().projectCenterRow(B.base.centers[0]);
-    return { ok: true, centers: [{ ...CENTRE_FIXTURE, vatRates: projete.vatRates }], activities: [] };
+    return { ok: true, centers: [{ ...CENTRE_FIXTURE, vatRates: projete.vatRates, htvaParDefaut: projete.htvaParDefaut }], activities: [] };
   }
   return null;
 }
@@ -455,8 +468,8 @@ async function ouvrirConsole(browser, { tauxALaPage = false } = {}) {
   const { ctx, page, erreurs } = m;
   page.setDefaultTimeout(8000);
   await page.evaluate((sacha) => {
-    // La sauvegarde de la config part au vrai handler ; le poll recoit les taux du vrai poll quand le
-    // gate le demande (window.__tvaDuPoll). Le reste reste celui de la fixture.
+    // La sauvegarde de la config part au vrai handler ; le poll recoit les taux et le reglage du vrai poll
+    // quand le gate le demande (window.__tvaDuPoll). Le reste reste celui de la fixture.
     const avant = window.fetch;
     const J = (corps, status) => new Response(JSON.stringify(corps), { status, headers: { 'content-type': 'application/json; charset=utf-8' } });
     window.fetch = async (input, init) => {
@@ -471,7 +484,7 @@ async function ouvrirConsole(browser, { tauxALaPage = false } = {}) {
       if (u.pathname === '/api/staff-state' && window.__tvaDuPoll && rep.status === 200) {
         const j = await rep.clone().json();
         const vrai = await window.__vraiPoll(u.pathname + u.search);
-        return J({ ...j, vatRates: vrai && vrai.vatRates }, 200);
+        return J({ ...j, vatRates: vrai && vrai.vatRates, htvaParDefaut: vrai && vrai.htvaParDefaut }, 200);
       }
       return rep;
     };
@@ -724,7 +737,108 @@ async function scenarioB2(browser) {
 }
 
 // ---------------------------------------------------------------------------
-const SCENARIOS = { V1: scenarioV1, V2: scenarioV2, B1: scenarioB1, B2: scenarioB2 };
+// [B3] QUAND MODIFIER S OUVRE HORS TVA (2026-11-23, Ansar : « on choisit, c est pas mis d office, mais des que
+// c est un groupe team building ou juste un grand groupe, la oui »). La regle elle-meme (trois reglages ×
+// normale, team building, grand groupe) se juge sans navigateur, avec ses contre-preuves :
+// scripts/tva-ouverture-check.js. Ici, la vraie console : le reglage d Etablissement s enregistre et se relit,
+// Modifier s ouvre en HTVA pour un team building et en TVAC pour l anniversaire de Sacha, le choix du comptoir
+// tient tant que la fiche est ouverte, et le poll apporte le reglage sans la page Etablissement.
+// ---------------------------------------------------------------------------
+// « Collègues de bureau » dans la journee « pic » : l occasion « entreprise », un team building.
+const COLLEGUES = 1622;
+const htvaEnBase = () => (((B.base.centers[0] || {}).settings || {}).config || {}).htvaParDefaut;
+// La ligne « Prix hors TVA à l ouverture » de la rubrique TVA : ses trois mots, celui qui est choisi, le select.
+const lireOuverture = (page) => page.evaluate(() => {
+  const seg = document.querySelector('[data-estab-page] [data-eb-seg="estab-tva-ouverture"]');
+  const boutons = seg ? [...seg.querySelectorAll('.eb-seg-btn')] : [];
+  const choisi = boutons.find((b) => b.getAttribute('aria-checked') === 'true');
+  const select = document.getElementById('estab-tva-ouverture');
+  return { mots: boutons.map((b) => b.textContent.trim()), choisi: choisi ? choisi.dataset.ebV : '', valeur: select ? select.value : '' };
+});
+
+async function scenarioB3(browser) {
+  console.log('\n[B3] Etablissement : « Prix hors TVA à l’ouverture », puis Modifier');
+  poserCentre({});
+  await rafraichir();
+  const m = await ouvrirConsole(browser, { tauxALaPage: true });
+  const { page, journal } = m;
+  const groupe = await page.evaluate((id) => { const r = state.reservations.find((x) => x.id === id); return r ? { occasion: r.occasion, pax: r.pax } : null; }, COLLEGUES);
+  ok(Boolean(groupe) && groupe.occasion === 'entreprise', 'MONTAGE les Collègues de bureau sont un team building (occasion « entreprise »)', groupe);
+
+  // Un centre qui ne regle rien : « Jamais ».
+  await ouvrirEtablissement(page);
+  const avant = await lireOuverture(page);
+  ok(egal(avant.mots, ['Jamais', 'Toutes les réservations', 'Les groupes seulement']) && avant.choisi === 'jamais' && avant.valeur === 'jamais',
+    '[B3] un centre qui ne regle rien : la rubrique TVA dit « Jamais »', avant);
+  await capture(page, 'tva-5-etablissement-ouverture');
+
+  // « Les groupes seulement », puis Enregistrer : la vraie sauvegarde l ecrit, la page le relit.
+  await page.click('[data-estab-page] [data-eb-seg="estab-tva-ouverture"] [data-eb-v="groupes"]');
+  await page.waitForTimeout(150);
+  const barre = await page.evaluate(() => ((document.getElementById('ebBarN') || {}).textContent || '').trim());
+  ok(barre.includes('Prix hors TVA à l’ouverture : les groupes seulement'), '[B3] la barre dit le changement avant l enregistrement', barre);
+  await page.click('#estabSaveBtn');
+  const t = Date.now();
+  while (!journal.some((j) => j.m === 'OPS' && j.action === 'saveCenterConfig') && Date.now() - t < 10000) await page.waitForTimeout(80); // eslint-disable-line no-await-in-loop
+  await page.waitForFunction(() => !submitCenterConfigInFlight, null, { timeout: 10000 }).catch(() => null);
+  await page.waitForTimeout(500);
+  const envoi = journal.filter((j) => j.m === 'OPS' && j.action === 'saveCenterConfig').pop();
+  // (la page quittee puis rouverte : elle se redessine sur ce que le serveur relit, pas sur le clic)
+  await retourAuPlanning(page);
+  await ouvrirEtablissement(page);
+  const relu = await lireOuverture(page);
+  ok(Boolean(envoi) && envoi.statut === 200 && envoi.corps.config.htvaParDefaut === 'groupes' && htvaEnBase() === 'groupes' && relu.choisi === 'groupes' && relu.valeur === 'groupes',
+    '[B3] « Les groupes seulement » puis Enregistrer : la vraie sauvegarde l ecrit, la page le relit', { statut: envoi && envoi.statut, envoye: envoi && envoi.corps.config.htvaParDefaut, message: envoi && (envoi.json.message || envoi.json.error), enBase: htvaEnBase(), relu });
+  await capture(page, 'tva-6-etablissement-groupes', () => { const g = document.getElementById('eb-tva'); if (g) g.scrollIntoView({ block: 'center' }); });
+
+  // Modifier : le team building s ouvre en HTVA, l anniversaire de Sacha en TVAC.
+  await retourAuPlanning(page);
+  await ouvrirModifier(page, COLLEGUES);
+  const tb = await lireTva(page);
+  ok(tb.vu === 'htva' && !tb.htvaFerme && tb.libelleTotal === 'Total HTVA' && tb.libelleParJoueur === 'Par joueur HTVA',
+    '[B3] « Les groupes seulement » : Modifier s ouvre en HTVA pour un team building', tb);
+  await capture(page, 'tva-7-modifier-team-building-htva', montrerLePrix);
+  await ouvrirModifier(page, SACHA);
+  const sacha = await lireTva(page);
+  ok(sacha.vu === 'tvac' && sacha.libelleTotal === 'Total', '[B3] « Les groupes seulement » : l anniversaire de Sacha s ouvre en TVAC', sacha);
+
+  // Le comptoir repasse le team building en TVAC : son choix tient tant que la fiche est ouverte, quoi qu il arrive
+  // apres l ouverture (le catalogue qui repeint, le poll de la journee, l echo du serveur, Infos puis Modifier).
+  await ouvrirModifier(page, COLLEGUES);
+  await basculer(page, 'tvac');
+  const bascule = await lireTva(page);
+  await page.evaluate(async () => {
+    repeindreFormuleDuDossierEdition();
+    await syncDateReservations(state.currentDate, { silent: true });
+    applyOptimisticReservation({ ...state.selectedRes }, { preserveEditState: true });
+    renderPos();
+  });
+  await page.waitForTimeout(400);
+  const apres = await lireTva(page);
+  // (l onglet Infos puis Modifier, par la fonction des deux onglets ; setTab y ajoute seulement la garde d une saisie)
+  await page.evaluate(() => { ouvrirOngletFiche('details'); ouvrirOngletFiche('modifier'); });
+  await page.waitForSelector('#posOverlay [data-tva="tvac"]', { timeout: 8000 });
+  const infos = await lireTva(page);
+  ok(bascule.vu === 'tvac' && apres.vu === 'tvac' && apres.libelleTotal === 'Total' && infos.vu === 'tvac',
+    '[B3] le choix du comptoir tient tant que la fiche est ouverte (catalogue, poll, echo du serveur, Infos puis Modifier)', { bascule, apres, infos });
+
+  // Fermee puis rouverte : la fiche repart du reglage.
+  await ouvrirModifier(page, COLLEGUES);
+  const rouvert = await lireTva(page);
+  ok(rouvert.vu === 'htva', '[B3] fermee puis rouverte, la fiche repart du reglage : HTVA', rouvert);
+
+  // Sans la page Etablissement (sa liste videe), le poll apporte le reglage enregistre.
+  await page.evaluate(async () => { closePos(); staffCenterConfigCache.centers = []; window.__tvaDuPoll = true; await syncDateReservations(state.currentDate, { silent: true }); });
+  const duPoll = await page.evaluate(() => ({ reglage: state.staffHtvaParDefaut || null, taux: Boolean(state.staffTva) }));
+  await ouvrirModifier(page, COLLEGUES);
+  const parLePoll = await lireTva(page);
+  ok(duPoll.reglage === 'groupes' && duPoll.taux && parLePoll.vu === 'htva', '[B3] sans la page Etablissement, le poll apporte le reglage : le team building s ouvre en HTVA', { duPoll, parLePoll });
+  ok(journal.filter((j) => j.m === 'PATCH').length === 0, '[B3] ouvrir, basculer et rouvrir n ecrivent rien : aucun PATCH', journal.filter((j) => j.m === 'PATCH').length);
+  await m.finir('B3');
+}
+
+// ---------------------------------------------------------------------------
+const SCENARIOS = { V1: scenarioV1, V2: scenarioV2, B1: scenarioB1, B2: scenarioB2, B3: scenarioB3 };
 const SANS_NAVIGATEUR = new Set(['V1', 'V2']);
 
 function verifierLesAncres() {

@@ -33418,6 +33418,8 @@ function editionChangeLePrix() {
   // Une autre formule, un autre tarif (un acces illimite redevenu un programme normal aussi), et une activite en
   // plus retiree ou changee.
   if (formuleChangeeEdition() || poseEditionChange() || e.versProgrammeNormal || enPlusEditionChange()) return true;
+  // (d autres groupes, d autres pistes : le serveur dit le prix, le champ le suit)
+  if (demandeGroupesEdition()) return true;
   if (r.formuleId && editProgramAChange() && Number(e.pax) === Number(r.pax)) {
     const sansEffectif = value => JSON.stringify(JSON.parse(value), (key, entry) => key === 'participants' ? undefined : entry);
     if (sansEffectif(JSON.stringify(e.programmeEdite)) === sansEffectif(e.programmeEditeInitial)) return false;
@@ -34203,7 +34205,8 @@ function editionReplanifie() {
     || String(e.date || '') !== String(origine.date || '')
     || Number(e.pax) !== Number(origine.pax)
     || (e.duration != null && Number(e.duration) !== Number(origine.duration))
-    || areneChangeeEdition();
+    || areneChangeeEdition()
+    || Boolean(demandeGroupesEdition());
 }
 
 // LES MEMES REGLAGES QUE RESERVER (2026-11-19, Ansar a Gembloux : « toutes les activites, on ne
@@ -35735,6 +35738,8 @@ function resumeModifsEdition() {
   const pistesApres = parseLaneInput(e.lanesStr);
   if (pistesApres.length && JSON.stringify(pistesAvant) !== JSON.stringify(pistesApres)) modifs.push(`Pistes ${pistesAvant.length ? joindrePistes(pistesAvant) : 'aucune'} → ${joindrePistes(pistesApres)}`);
   modifs.push(...modifsProgrammeEdition());
+  // (les groupes d un grand groupe : leur nombre, leurs joueurs, leurs heures, modifsGroupesEdition)
+  modifs.push(...modifsGroupesEdition());
   modifs.push(...modifsEnPlusEdition());
   // (une heure donnee a un bowling que le programme portait sans que le plan le place, le dossier
   // 1953 : « Bowling à 18:30 » ; une activite ajoutee dit deja la sienne dans « Ajout »)
@@ -35929,7 +35934,9 @@ function lireVerdictEdition(reponse, envoi) {
     if (reponse.refus.code === 'reservation_modifiee') return null;
     // (une activite en plus qui ne tient pas se dit aussi a sa rangee, rangeeEnPlusEditionHtml)
     const enPlus = reponse.refus.enPlus ? { enPlusRefuse: { id: String(reponse.refus.enPlus), phrase: String(reponse.refus.message || '').replace(/\s*Rien n’a changé\.\s*$/, '') } } : {};
-    return { refus: String(reponse.refus.message || 'le serveur n’a pas donné de motif.').replace(/\s*Rien n’a changé\.\s*$/, ''), lignes: [], ecrit: null, prixSuivi: false, ...enPlus };
+    // (des groupes qui ne tiennent pas : le groupe et la case qui coincent, rangeeGroupeEditionHtml)
+    const coincent = Array.isArray(reponse.refus.coincent) && reponse.refus.coincent.length ? { coincent: reponse.refus.coincent.map((x) => ({ groupe: Number(x.groupe) || 0, activite: String(x.activite || ''), raison: String(x.raison || '') })) } : {};
+    return { refus: String(reponse.refus.message || 'le serveur n’a pas donné de motif.').replace(/\s*Rien n’a changé\.\s*$/, ''), lignes: [], ecrit: null, prixSuivi: false, ...enPlus, ...coincent };
   }
   const ecrit = reponse.reservation;
   const r = state.selectedRes;
@@ -36189,6 +36196,8 @@ function peindreVerdictEdition() {
   peindreRefusHeuresEdition();
   // (celui d une activite en plus, a sa rangee ; son heure et son prix, ceux que le serveur ecrirait)
   peindreRangeesEnPlusEdition();
+  // (les groupes d un grand groupe : ceux que le serveur ecrirait, ce qui coince sur sa case)
+  peindreGroupesApresVerdictEdition();
   if (ton === 'calcul') return;
   const programme = document.querySelector('#posOverlay .fm-programme');
   const r = state.selectedRes;
@@ -37089,6 +37098,7 @@ ${!adapte || (!isLaserRes && !editNeedsLanes && String(rf.type || '') !== 'formu
           <section class="fm-programme${editionReplanifie() ? ' is-replan' : ''}${dossierEcritDuVerdict() ? ' a-verdict' : ''}${verdictRefuseEdition() ? ' a-refus' : ''}" aria-labelledby="fmProgrammeTitre">
             <h4 class="fm-titre" id="fmProgrammeTitre">Programme</h4>
             ${contenuBloc}${!peutAdapterLeProgramme(r) ? pistesBloc : ''}
+            ${groupesEditionHtml()}
             ${!peutAdapterLeProgramme(r) && !autreJour ? renderDossierLaserEditor(r) : ''}
           </section>
           ${adapte ? renderEditExtras(r) : ''}
@@ -37244,6 +37254,355 @@ function failEdit(message) {
   toast(message);
 }
 
+// ── LES GROUPES DANS MODIFIER (2026-11-23) ───────────────────────────────────
+// Ansar : « pour quand ça divise en groupe, faut qu'on puisse tout modifier et choisir [...] ET sur le
+// planning complet et les autres : tout doit être simple et parfaitement compréhensible quand c'est
+// plusieurs groupes ». Le meme bloc que la page des groupes de Reserver (rsGroupesHtml) : le nombre de
+// groupes, une rangee par groupe (ses joueurs, son programme, l heure de chaque activite a la minute), le
+// total contre le groupe. Ce qui est regle ici part dans la preference (`grandGroupe` : le nombre, les
+// joueurs et les heures que le bloc montre) ; le serveur rejuge tout (api/staff-reservations.js : « Ces
+// groupes ne tiennent pas au planning ») et le verdict a blanc dit sur la case ce qui coince, avant
+// « Enregistrer ». Rien de touche ici : le serveur garde les groupes du dossier (lib/reservation-ops.js
+// grandGroupeGarde), un joueur de plus les refait a l identique.
+
+// Les groupes d un dossier, lus sur son plan : [{ n, joueurs, passages: { bowling: { debut, fin, pistes,
+// parties }, laser_game: {...} } }]. [] pour un dossier qui n est pas en groupes.
+function groupesDuPlanEdition(dossier) {
+  const blocs = dossier && dossier.opsPlan && Array.isArray(dossier.opsPlan.resourceBlocks) ? dossier.opsPlan.resourceBlocks : [];
+  const parGroupe = new Map();
+  blocs.forEach((b) => {
+    const n = Number(b && b.sousGroupe) || 0;
+    if (!n || !['bowling_lane', 'laser_arena'].includes(b.resourceType) || !b.startTime) return;
+    if (!parGroupe.has(n)) parGroupe.set(n, []);
+    parGroupe.get(n).push(b);
+  });
+  if (parGroupe.size < 2) return [];
+  const gg = dossier.opsPlan.grandGroupe && typeof dossier.opsPlan.grandGroupe === 'object' ? dossier.opsPlan.grandGroupe : {};
+  const tailles = Array.isArray(gg.tailles) ? gg.tailles : [];
+  return [...parGroupe.entries()].sort((a, b) => a[0] - b[0]).map(([n, liste]) => {
+    const passages = {};
+    RV_ANCRABLES.forEach((id) => {
+      const siens = liste.filter((b) => (b.resourceType === 'bowling_lane' ? 'bowling' : 'laser_game') === id)
+        .sort((x, y) => String(x.startTime).localeCompare(String(y.startTime)));
+      if (!siens.length) return;
+      passages[id] = { debut: String(siens[0].startTime).slice(0, 5), fin: String(siens[siens.length - 1].endTime || '').slice(0, 5), pistes: (siens[0].lanes || []).map(Number), parties: siens.length, joueurs: Math.max(0, ...siens.map((b) => Number(b.joueursReels ?? b.players) || 0)) };
+    });
+    const joueurs = Number(tailles[n - 1]) || Math.max(0, ...liste.map((b) => Number(b.joueursReels ?? b.players) || 0));
+    return { n, joueurs, passages };
+  });
+}
+
+// Les joueurs de chaque activite a heure du programme edite (sinon celui du dossier).
+function joueursDesGroupesEdition() {
+  const e = state.editState;
+  const r = state.selectedRes;
+  const pax = Math.max(1, Number(e && e.pax) || 1);
+  const items = getEditProgramItems();
+  const liste = items.length ? items : ((r && r.program && (Array.isArray(r.program) ? r.program : r.program.items)) || []);
+  const joueurs = {};
+  RV_ANCRABLES.forEach((id) => {
+    const item = liste.find((x) => x && x.activityId === id);
+    if (item) joueurs[id] = Math.max(1, Math.min(pax, Number(item.participants) || pax));
+  });
+  return joueurs;
+}
+
+// LE BLOC TEL QU IL SE MONTRE : le nombre de groupes (celui tape, sinon celui du plan, jamais moins que ce
+// que la place du centre demande), les joueurs de chacun (tapes pour ce groupe, sinon ceux du plan quand
+// ils font le groupe, sinon des parts egales), l heure de chacun a chaque activite (tapee, sinon celle du
+// plan). Le plan est celui que le serveur ecrirait (le verdict a blanc), sinon celui du dossier.
+// null : le dossier n est pas en groupes.
+function grandGroupeEdition() {
+  const e = state.editState;
+  const r = state.selectedRes;
+  if (!e || !r || formuleChangeeEdition() || e.versProgrammeNormal) return null;
+  const plan = groupesDuPlanEdition(dossierEcritDuVerdict() || r);
+  const voulu = e.groupes && typeof e.groupes === 'object' ? e.groupes : null;
+  if (!plan.length && !voulu) return null;
+  const pax = Math.max(1, Number(e.pax) || 1);
+  const joueurs = joueursDesGroupesEdition();
+  const ids = RV_ANCRABLES.filter((id) => joueurs[id]);
+  if (!ids.includes('bowling')) return null;
+  const minimum = Math.max(1, ...ids.map((id) => (id === 'bowling' ? splitGroupIntoBowlingServices(joueurs.bowling).length : getLaserWaveCount(joueurs.laser_game))));
+  const tape = Math.trunc(Number(voulu && voulu.nombre)) || 0;
+  const choisi = tape >= Math.max(2, minimum) && tape <= Math.min(RV_GROUPES_MAX, pax) ? tape : 0;
+  const nombre = choisi || Math.min(Math.min(RV_GROUPES_MAX, pax), Math.max(2, minimum, plan.length));
+  if (nombre < 2) return null;
+  const duPlan = plan.length === nombre ? plan : null;
+  const taillesTapees = Boolean(voulu && Array.isArray(voulu.tailles) && voulu.tailles.length === nombre && voulu.pourPax === pax);
+  const taillesDuPlan = duPlan ? duPlan.map((g) => g.joueurs) : null;
+  const tailles = taillesTapees ? voulu.tailles.map((n) => Math.max(0, Math.trunc(Number(n)) || 0))
+    : taillesDuPlan && taillesDuPlan.reduce((t, n) => t + n, 0) === pax ? taillesDuPlan : rvPartsEgales(pax, nombre);
+  const heuresTapees = Boolean(voulu && Array.isArray(voulu.heures) && voulu.heures.length === nombre);
+  const lire = (h) => Object.fromEntries(ids.map((id) => [id, /^\d{2}:\d{2}$/.test(String((h || {})[id] || '')) ? String(h[id]) : '']));
+  const heures = heuresTapees ? voulu.heures.map(lire) : duPlan ? duPlan.map((g) => lire(Object.fromEntries(ids.map((id) => [id, g.passages[id] ? g.passages[id].debut : ''])))) : null;
+  return { ids, minimum, nombre, choisi: Boolean(choisi), tourne: ids.length > 1, joueurs, tailles, taillesTapees, heures, heuresTapees, plan: duPlan };
+}
+
+// Les groupes du dossier a l ouverture de Modifier : ce qui a change se mesure contre eux.
+function groupesDOrigineEdition() {
+  const e = state.editState;
+  return groupesDuPlanEdition((e && departsEdition().get(e)?.origine) || state.selectedRes);
+}
+
+// CE QUI PART AU SERVEUR, quand le comptoir a touche aux groupes et que le bloc dit autre chose que le
+// dossier : le nombre, les joueurs quand ils font le groupe, les heures quand toutes sont posees. Ce que le
+// bloc montre et que personne n a touche part aussi, tel quel : un groupe change de taille, les autres
+// heures restent celles du dossier (le moteur ne refait pas la rotation par-dessus). null sinon.
+function demandeGroupesEdition() {
+  const e = state.editState;
+  const g = e && e.groupes ? grandGroupeEdition() : null;
+  if (!g) return null;
+  const pax = Math.max(1, Number(e.pax) || 1);
+  const origine = groupesDOrigineEdition();
+  const tailles = g.tailles.reduce((t, n) => t + n, 0) === pax && g.tailles.every((n) => n >= 1) ? g.tailles : null;
+  const heures = g.heures && g.heures.every((h) => g.ids.every((id) => h[id])) ? g.heures : null;
+  const memeNombre = origine.length === g.nombre;
+  const autresTailles = Boolean(tailles) && (!memeNombre || tailles.some((n, i) => n !== origine[i].joueurs));
+  const autresHeures = Boolean(heures) && (!memeNombre || heures.some((h, i) => g.ids.some((id) => (origine[i].passages[id] || {}).debut !== h[id])));
+  if (memeNombre && !autresTailles && !autresHeures) return null;
+  return { impose: true, nombre: g.nombre, ...(tailles ? { tailles: tailles.slice() } : {}), ...(heures ? { heures: heures.map((h) => ({ ...h })) } : {}) };
+}
+
+// Ce qui empeche « Enregistrer » : des joueurs tapes qui ne font pas le groupe, une heure tapee qui manque.
+function groupesIncompletsEdition() {
+  const e = state.editState;
+  const g = e && e.groupes ? grandGroupeEdition() : null;
+  if (!g) return '';
+  const pax = Math.max(1, Number(e.pax) || 1);
+  const total = g.tailles.reduce((t, n) => t + n, 0);
+  if (g.taillesTapees && total !== pax) return `Les groupes font ${rvPluriel(total, 'joueur')} sur ${pax} : corrigez un groupe.`;
+  const rang = g.heuresTapees ? g.heures.findIndex((h) => g.ids.some((id) => !h[id])) : -1;
+  if (rang < 0) return '';
+  const id = g.ids.find((x) => !g.heures[rang][x]);
+  return `Groupe ${rang + 1} : donnez l’heure du ${id === 'laser_game' ? 'laser' : 'bowling'}.`;
+}
+
+// « Groupes 2 → 3 », « Groupe 2 : 30 → 28 joueurs », « Groupe 1 : bowling 15:30 → 15:10 » : la barre du bas.
+function modifsGroupesEdition() {
+  const e = state.editState;
+  const g = e && e.groupes ? grandGroupeEdition() : null;
+  if (!g) return [];
+  const origine = groupesDOrigineEdition();
+  if (origine.length !== g.nombre) return [`Groupes ${origine.length || 1} → ${g.nombre}`];
+  const lignes = [];
+  g.tailles.forEach((n, i) => { if (g.taillesTapees && n !== origine[i].joueurs) lignes.push(`Groupe ${i + 1} : ${origine[i].joueurs} → ${rvPluriel(n, 'joueur')}`); });
+  if (g.heures) {
+    g.heures.forEach((h, i) => g.ids.forEach((id) => {
+      const avant = (origine[i].passages[id] || {}).debut || '';
+      // (une heure effacee se dit aussi : la barre la montre, et le verdict dit l heure qui manque avant
+      // « Enregistrer », groupesIncompletsEdition ; sans ligne, rien ne partait au calcul a blanc)
+      if (g.heuresTapees && h[id] !== avant) lignes.push(`Groupe ${i + 1} : ${id === 'laser_game' ? 'laser' : 'bowling'} ${avant || 'sans heure'} → ${h[id] || 'sans heure'}`);
+    }));
+  }
+  return lignes;
+}
+
+// Ce qui coince, groupe par groupe, tel que le verdict a blanc le dit ({ groupe, activite, raison }).
+function coincentEdition() {
+  const v = verdictEdition();
+  return state.editState && v.pour === state.editState && !v.enCours && v.resultat && Array.isArray(v.resultat.coincent) ? v.resultat.coincent : [];
+}
+
+// Ce qu un groupe peut faire d un coup : les armes de l arene, les pistes du centre a leur capacite de
+// secours (seules comptent les activites que tout le groupe joue).
+function plafondDUnGroupeEdition(g) {
+  const pax = Math.max(1, Number(state.editState.pax) || 1);
+  const plafonds = g.ids.filter((id) => g.joueurs[id] >= pax).map((id) => (id === 'laser_game'
+    ? getLaserArenaCapacity()
+    : (getAvailabilityLaneCount() || getTotalLanes()) * Math.max(getMaxPerLane(), getEmergencyMaxPerLane())));
+  return plafonds.length ? Math.min(...plafonds) : pax;
+}
+
+function rangeeGroupeEditionHtml(g, n, joueurs, heures, coincent, plafond) {
+  const signe = (plus) => `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="${plus ? 'M5 12h14M12 5v14' : 'M5 12h14'}"/></svg>`;
+  const passages = g.ids.map((id, rang) => ({ id, rang, heure: String((heures || {})[id] || '') }))
+    .sort((a, b) => (a.heure ? minutesHeureEdition(a.heure) : 1e4) - (b.heure ? minutesHeureEdition(b.heure) : 1e4) || a.rang - b.rang);
+  const groupe = g.plan ? g.plan[n - 1] : null;
+  const cases = passages.map((p) => {
+    const nom = p.id === 'laser_game' ? 'Laser' : 'Bowling';
+    const raison = coincent.find((x) => x.groupe === n && x.activite === p.id);
+    const passe = groupe && groupe.passages[p.id] && groupe.passages[p.id].debut === p.heure ? groupe.passages[p.id] : null;
+    // (une activite que tout le groupe ne joue pas, 40 au laser sur 60 : la case dit combien du groupe y vont)
+    const combien = passe && passe.joueurs > 0 && passe.joueurs < joueurs ? `${rvPluriel(passe.joueurs, 'joueur')}, ` : '';
+    const detail = raison ? 'ne tient pas' : !passe ? '' : p.id === 'bowling' ? `${combien}${rvPistesDites(passe.pistes)}` : `${combien}${passe.parties > 1 ? `${passe.parties} parties, ` : ''}jusqu’à ${passe.fin}`;
+    const champ = `editGg${n}-${p.id}`;
+    return `<label class="fm-gg-c is-${p.id === 'bowling' ? 'bowling' : 'laser'}${raison ? ' is-ko' : ''}" for="${champ}" data-groupe="${n}" data-activite="${escapeHtml(p.id)}" data-heure-groupe="${escapeHtml(p.heure)}"><span class="fm-gg-a"><b>${nom}</b>${detail ? `<small>${escapeHtml(detail)}</small>` : ''}</span><input id="${champ}" class="input" type="time" step="60" value="${escapeHtml(p.heure)}" data-pl-focus="fiche.edit.groupe.${n}.${escapeHtml(p.id)}" aria-label="${escapeHtml(`Groupe ${n}, heure du ${p.id === 'laser_game' ? 'laser' : 'bowling'}${raison ? `, ne tient pas : ${raison.raison}` : ''}`)}"${raison ? ' aria-invalid="true"' : ''} oninput="groupesHeureEdition(${n}, '${p.id}', this.value)" onblur="groupesSortieEdition()"></label>`;
+  }).join('<span class="fm-gg-fl" aria-hidden="true">→</span>');
+  const raisons = [...new Set(coincent.filter((x) => x.groupe === n).map((x) => String(x.raison || '')))].filter(Boolean);
+  const inverser = g.ids.length === 2 && passages.every((p) => p.heure)
+    ? `<button type="button" class="fm-gg-inv" id="editGgInverser-${n}" aria-label="${escapeHtml(`Groupe ${n} : jouer d’abord au ${passages[1].id === 'laser_game' ? 'laser' : 'bowling'}, aux mêmes heures`)}" title="Inverser l’ordre" onclick="groupesInverserEdition(${n})"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h11l-3-3M17 17H6l3 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`
+    : '';
+  const programme = passages.map((p) => `${p.id === 'laser_game' ? 'Laser' : 'Bowling'} ${p.heure || 'sans heure'}`).join(' → ');
+  return `<div class="fm-gg-l${raisons.length ? ' is-ko' : ''}" role="listitem" data-groupe="${n}" aria-label="${escapeHtml(`Groupe ${n} · ${rvPluriel(joueurs, 'joueur')} · ${programme}`)}">
+                <b class="fm-gg-q">Groupe ${n}</b>
+                <div class="es-stepper staff-stepper fm-stepper fm-gg-j">
+                  <button type="button" class="es-step staff-stepper-btn" aria-label="${escapeHtml(`Groupe ${n}, un joueur de moins`)}" ${joueurs > 1 ? `onclick="groupesTaillePasEdition(${n}, -1)"` : 'disabled'}>${signe(false)}</button>
+                  <input id="editGg${n}-joueurs" class="input" type="number" min="1" max="${plafond}" inputmode="numeric" value="${joueurs}" data-pl-focus="fiche.edit.groupe.${n}.joueurs" aria-label="${escapeHtml(`Joueurs du groupe ${n}`)}" oninput="groupesTailleEdition(${n}, this.value)" onblur="groupesSortieEdition()">
+                  <button type="button" class="es-step staff-stepper-btn" aria-label="${escapeHtml(`Groupe ${n}, un joueur de plus`)}" ${joueurs + 1 <= plafond ? `onclick="groupesTaillePasEdition(${n}, 1)"` : 'disabled'}>${signe(true)}</button>
+                </div>
+                <span class="fm-gg-prog">${cases}</span>
+                ${inverser}
+                ${raisons.length ? `<small class="fm-gg-ko" role="alert">${escapeHtml(raisons.join(' '))}</small>` : ''}
+              </div>`;
+}
+
+// LE BLOC DES GROUPES de Modifier, sous le programme. Toujours pose (vide et cache quand le dossier n est
+// pas en groupes) : le verdict a blanc le remplit en place.
+function groupesEditionHtml() {
+  const g = grandGroupeEdition();
+  if (!g) return '<div class="fm-groupes" id="editGroupes" hidden></div>';
+  const e = state.editState;
+  const pax = Math.max(1, Number(e.pax) || 1);
+  const signe = (plus) => `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="${plus ? 'M5 12h14M12 5v14' : 'M5 12h14'}"/></svg>`;
+  const plancher = Math.max(2, g.minimum);
+  const raison = g.ids.includes('laser_game') && getLaserWaveCount(g.joueurs.laser_game) === g.minimum ? `${getLaserArenaCapacity()} armes au laser` : `${getAvailabilityLaneCount() || getTotalLanes()} pistes au bowling`;
+  const dit = g.nombre <= plancher && g.minimum >= 2 ? `au moins ${g.minimum} : ${raison}` : '';
+  const coincent = coincentEdition();
+  const plafond = plafondDUnGroupeEdition(g);
+  const rangees = g.tailles.map((joueurs, rang) => rangeeGroupeEditionHtml(g, rang + 1, joueurs, g.heures ? g.heures[rang] : null, coincent, plafond)).join('');
+  const total = g.tailles.reduce((t, n) => t + n, 0);
+  const totalDit = total === pax ? `${total} joueurs sur ${pax}` : total < pax ? `${total} joueurs sur ${pax} : il en manque ${pax - total}` : `${total} joueurs sur ${pax} : ${total - pax} de trop`;
+  const egal = g.taillesTapees ? '<button type="button" class="attr-b" id="editGgEgal" onclick="groupesEgalesEdition()">Partager également</button>' : '';
+  const remettre = g.heuresTapees ? '<button type="button" class="attr-b" id="editGgHeures" onclick="groupesHeuresDuPlanEdition()">Remettre les heures</button>' : '';
+  const vide = !g.heures ? `<p class="fm-gg-texte" id="editGgCalcul">${verdictEdition().enCours ? 'Le planning partage le groupe…' : 'Le planning dira qui joue où à l’enregistrement.'}</p>` : '';
+  return `<div class="fm-groupes" id="editGroupes" role="group" aria-labelledby="editGroupesTitre">
+              <div class="fm-gg-tete">
+                <h5 class="fm-gg-titre" id="editGroupesTitre">${escapeHtml(`${pax} joueurs en ${g.nombre} groupes`)}</h5>
+                <div class="es-stepper staff-stepper fm-stepper fm-gg-nombre" role="group" aria-label="Nombre de groupes">
+                  <button type="button" class="es-step staff-stepper-btn" aria-label="Un groupe de moins" ${g.nombre > plancher ? 'onclick="groupesNombreEdition(-1)"' : 'disabled'}>${signe(false)}</button>
+                  <b class="fm-gg-n" id="editGgNombre">${g.nombre}</b>
+                  <button type="button" class="es-step staff-stepper-btn" aria-label="Un groupe de plus" ${g.nombre < Math.min(RV_GROUPES_MAX, pax) ? 'onclick="groupesNombreEdition(1)"' : 'disabled'}>${signe(true)}</button>
+                </div>
+                ${dit ? `<small class="fm-gg-dit" id="editGgNombreDit">${escapeHtml(dit)}</small>` : ''}
+              </div>
+              <div class="fm-gg-liste" role="list" aria-label="Les groupes, leurs joueurs et leurs heures">${rangees}</div>
+              ${vide}
+              <div class="fm-gg-pied"><p class="fm-gg-total${total === pax ? '' : ' is-ko'}" id="editGgTotal" role="status">${escapeHtml(totalDit)}</p>${egal}${remettre}</div>
+            </div>`;
+}
+
+// Le bloc, en place : un champ du bloc qui a le focus le retrouve (sa cle data-pl-focus).
+function peindreGroupesEdition() {
+  const zone = document.getElementById('editGroupes');
+  if (!zone) return;
+  const actif = document.activeElement;
+  const cle = actif && zone.contains(actif) && actif.getAttribute ? actif.getAttribute('data-pl-focus') : '';
+  zone.outerHTML = groupesEditionHtml();
+  if (!cle) return;
+  const repose = Array.from(document.querySelectorAll('#editGroupes [data-pl-focus]')).find((n) => n.getAttribute('data-pl-focus') === cle);
+  if (repose) repose.focus({ preventScroll: true });
+}
+
+// Apres le verdict a blanc : le bloc se repeint, sauf sous le champ ou une frappe est en cours (le champ tape
+// resterait sous les doigts ; sa sortie repeint le bloc, groupesSortieEdition). Un autre champ du bloc, atteint
+// d une tabulation, retrouve son focus : la case qui coince se voit sans quitter le bloc.
+function peindreGroupesApresVerdictEdition() {
+  const zone = document.getElementById('editGroupes');
+  const actif = document.activeElement;
+  const cle = zone && actif && zone.contains(actif) && actif.getAttribute ? actif.getAttribute('data-pl-focus') : '';
+  if (cle && state.editState && state.editState.groupesFrappe === cle) return;
+  peindreGroupesEdition();
+}
+
+// La sortie d un champ du bloc : la frappe est finie, le bloc se repeint (le champ qui prend le focus le garde).
+function groupesSortieEdition() {
+  if (state.editState) state.editState.groupesFrappe = '';
+  setTimeout(() => peindreGroupesApresVerdictEdition(), 0);
+}
+
+// Un geste du bloc : l etat, puis le bloc, le prix et la barre du bas (et le verdict a blanc).
+function apresGesteGroupesEdition(repeindre = true) {
+  if (state.editError) setEditError('');
+  if (repeindre) peindreGroupesEdition();
+  refreshEditPreview();
+}
+
+// Un autre nombre de groupes repart de parts egales et des heures que le planning proposera.
+function groupesNombreEdition(delta) {
+  const e = state.editState;
+  const g = grandGroupeEdition();
+  if (!e || !g) return;
+  const pax = Math.max(1, Number(e.pax) || 1);
+  const n = Math.max(Math.max(2, g.minimum), Math.min(RV_GROUPES_MAX, pax, g.nombre + (Math.trunc(Number(delta)) || 0)));
+  e.groupes = { nombre: n };
+  apresGesteGroupesEdition();
+}
+
+function groupesTailleEdition(n, valeur, repeindre = false) {
+  const e = state.editState;
+  // (une frappe dans le champ, meme vide ou a moitie tapee : le verdict ne le repeint pas sous les doigts)
+  if (e && !repeindre) e.groupesFrappe = `fiche.edit.groupe.${n}.joueurs`;
+  const g = grandGroupeEdition();
+  const lu = Math.trunc(Number(valeur));
+  if (!e || !g || n < 1 || n > g.nombre || !Number.isFinite(lu) || lu < 1) return;
+  const tailles = g.tailles.slice();
+  tailles[n - 1] = Math.min(lu, Math.max(1, Number(e.pax) || 1));
+  e.groupes = { ...(e.groupes || {}), nombre: g.nombre, tailles, pourPax: Math.max(1, Number(e.pax) || 1) };
+  apresGesteGroupesEdition(repeindre);
+  // (la frappe ne repeint pas le bloc : le total se lit en place)
+  if (!repeindre) {
+    const total = document.getElementById('editGgTotal');
+    const vu = grandGroupeEdition();
+    if (total && vu) {
+      const pax = Math.max(1, Number(e.pax) || 1);
+      const somme = vu.tailles.reduce((t, x) => t + x, 0);
+      total.textContent = somme === pax ? `${somme} joueurs sur ${pax}` : somme < pax ? `${somme} joueurs sur ${pax} : il en manque ${pax - somme}` : `${somme} joueurs sur ${pax} : ${somme - pax} de trop`;
+      total.classList.toggle('is-ko', somme !== pax);
+    }
+  }
+}
+
+function groupesTaillePasEdition(n, delta) {
+  const g = grandGroupeEdition();
+  if (!g) return;
+  groupesTailleEdition(n, (g.tailles[n - 1] || 0) + (Math.trunc(Number(delta)) || 0), true);
+}
+
+function groupesEgalesEdition() {
+  const e = state.editState;
+  if (!e || !e.groupes) return;
+  const { tailles: _t, pourPax: _p, ...reste } = e.groupes;
+  e.groupes = reste;
+  apresGesteGroupesEdition();
+}
+
+// L heure d un groupe a une activite : les heures du bloc, celle-ci changee, deviennent celles du comptoir.
+function groupesHeureEdition(n, id, heure) {
+  const e = state.editState;
+  // (une frappe dans le champ, meme a moitie tapee : le verdict ne le repeint pas sous les doigts)
+  if (e) e.groupesFrappe = `fiche.edit.groupe.${n}.${id}`;
+  const g = grandGroupeEdition();
+  if (!e || !g || n < 1 || n > g.nombre || !g.ids.includes(id)) return;
+  const valeur = /^\d{2}:\d{2}$/.test(String(heure || '').slice(0, 5)) ? String(heure).slice(0, 5) : '';
+  const heures = (g.heures || Array.from({ length: g.nombre }, () => ({}))).map((h) => ({ ...h }));
+  heures[n - 1] = { ...heures[n - 1], [id]: valeur };
+  e.groupes = { ...(e.groupes || {}), nombre: g.nombre, heures };
+  apresGesteGroupesEdition(false);
+}
+
+// Un groupe joue son autre activite d abord, aux memes heures.
+function groupesInverserEdition(n) {
+  const e = state.editState;
+  const g = grandGroupeEdition();
+  if (!e || !g || !g.heures || g.ids.length !== 2 || n < 1 || n > g.nombre) return;
+  const [a, b] = g.ids;
+  const heures = g.heures.map((h) => ({ ...h }));
+  if (!heures[n - 1][a] || !heures[n - 1][b]) return;
+  heures[n - 1] = { ...heures[n - 1], [a]: heures[n - 1][b], [b]: heures[n - 1][a] };
+  e.groupes = { ...(e.groupes || {}), nombre: g.nombre, heures };
+  apresGesteGroupesEdition();
+}
+
+// Les heures tapees partent : celles du plan reviennent.
+function groupesHeuresDuPlanEdition() {
+  const e = state.editState;
+  if (!e || !e.groupes) return;
+  const { heures: _h, ...reste } = e.groupes;
+  e.groupes = reste;
+  apresGesteGroupesEdition();
+}
+
 // CE QUE « ENREGISTRER » ENVERRAIT pour l etat d edition courant
 // (state.editState sur state.selectedRes) : les controles de la saisie, puis
 // l action `appliquer` (dossier -> dossier) qui pose ce qui a change et
@@ -37307,6 +37666,9 @@ function preparerModificationEdition(options = {}) {
   // (une arrivee changee pour une heure deja passee se dit d abord, avant tout autre calcul)
   const arriveePassee = arriveeDejaPasseeEdition(es, origine);
   if (arriveePassee) return { erreur: arriveePassee };
+  // (des groupes regles ici partent tels que leur bloc les montre : des joueurs qui font le groupe, chacun a ses heures)
+  const groupesIncomplets = groupesIncompletsEdition();
+  if (groupesIncomplets) return { erreur: groupesIncomplets };
   const slotCheck = validateSlotWindow(jourChange ? es.date : state.selectedRes.date, es.startTime, duration, { allowPastStart: true });
   if (!slotCheck.ok) return { erreur: slotCheck.message };
   // Un autre jour part avec les pistes du dossier, inchangees : le serveur les
@@ -37404,7 +37766,7 @@ function preparerModificationEdition(options = {}) {
   // avec la formule et pose leur prix du catalogue (calculerLaModification). Sans geste, rien ne part.
   const enPlusEnvoyes = peutAdapterLeProgramme(state.selectedRes) && enPlusEditionChange() ? enPlusEnvoyesEdition() : null;
   const prixSuivi = !es.prixFige && Boolean(estimeEcran && estimeEcran.utilisable) && editionChangeLePrix()
-    && (formuleChangee || versProgrammeNormal || poseEditionChange() || editProgramAChange() || Boolean(enPlusEnvoyes) || Number(es.pax) !== Number(state.selectedRes.pax));
+    && (formuleChangee || versProgrammeNormal || poseEditionChange() || editProgramAChange() || Boolean(enPlusEnvoyes) || Boolean(demandeGroupesEdition()) || Number(es.pax) !== Number(state.selectedRes.pax));
   // Les extras partent s ils ont change (nourriture, boissons, le reste).
   const extrasNouveaux = peutAdapterFormule() && editExtrasAChange() ? extrasDepuisLignes(es.extrasEdites, es.pax) : null;
   // L heure tapee sur une activite ajoutee part avec le programme (heuresNouvellesEnvoyees), et
@@ -37416,6 +37778,9 @@ function preparerModificationEdition(options = {}) {
   const programmeAdapte = Boolean(programme) && modifsProgrammeEdition().length > 0;
   // L arene choisie part dans la preference : le serveur replanifie le laser (areneDemandee).
   const areneVoulue = areneChangeeEdition() ? areneEdition() : '';
+  // LES GROUPES REGLES ICI (demandeGroupesEdition) : leur nombre, leurs joueurs et leurs heures partent dans la
+  // preference ; le serveur les rejuge et refuse ce qui ne tient pas, sans rien ecrire.
+  const groupesEnvoyes = demandeGroupesEdition();
 
   // L ACTION, rejouable sur une version plus recente du dossier : elle pose ce
   // que la personne a change et recalcule le prix sur ce qui est en base.
@@ -37489,6 +37854,7 @@ function preparerModificationEdition(options = {}) {
       updated.preference = { activityOrder: ids, preferredTimes: { ...(bowling ? { bowling: updated.startTime } : {}), ...(ids.includes('laser_game') ? { laser_game: apres } : {}) }, ...(ids.includes('laser_game') ? { laserGameTimes: [apres], laserPlacement: 'scheduled' } : {}) };
     }
     if (prixEcran !== null) updated.price = prixEcran;
+    if (groupesEnvoyes) updated.preference = { ...(updated.preference && typeof updated.preference === 'object' ? updated.preference : {}), grandGroupe: { ...groupesEnvoyes } };
     // (sur la preference deja posee : celle du dossier, ou celle d un acces illimite redevenu normal)
     if (areneVoulue) updated.preference = { ...(updated.preference && typeof updated.preference === 'object' ? updated.preference : {}), arene: areneVoulue };
     return updated;
@@ -42695,6 +43061,13 @@ function rvPreference(ids, heures, programme) {
 // en services l un apres l autre, le bowling et le laser en sous-groupes qui tournent (le groupe 1
 // au bowling pendant que le groupe 2 joue au laser, puis ils échangent). La fenetre ne recalcule
 // aucun plan : elle lit celui du serveur. Une formule et un laser seul gardent le leur.
+// TOUT SE CHOISIT (2026-11-23, Ansar : « faut qu'on puisse tout modifier et choisir [...] choisir
+// l'heure de passage, choisir de diviser en plus de 2 groupes, genre 3, 4, etc., pouvoir mettre
+// facilement quel groupe va où, et quand, à combien »). `minimum` : le plus petit nombre de groupes que
+// la place du centre demande ; `nombre` : celui que le comptoir a choisi (au moins le minimum), sinon le
+// minimum. Les joueurs et l heure de chaque groupe se corrigent case par case (rsGroupesHtml), et le
+// serveur rejuge tout.
+const RV_GROUPES_MAX = 12; // SOUS_GROUPES_MAX, lib/grand-groupe.js
 function rvGrandGroupe(s = quickBookState) {
   if (!s || s !== quickBookState || s.type === 'formule' || s.type === 'laser' || s.type === 'activity' || rsFmActive(s)) return null;
   const ids = rvActivites().filter((id) => RV_ANCRABLES.includes(id));
@@ -42702,36 +43075,47 @@ function rvGrandGroupe(s = quickBookState) {
   const parts = ids.map((id) => (id === 'bowling'
     ? splitGroupIntoBowlingServices(getQuickVisitParticipants('bowling')).length
     : getLaserWaveCount(getQuickVisitParticipants('laser_game'))));
-  const nombre = Math.max(1, ...parts);
-  return nombre > 1 ? { ids, nombre, tourne: ids.length > 1 } : null;
+  const minimum = Math.max(1, ...parts);
+  if (minimum < 2) return null;
+  const pax = Math.max(1, Number(s.pax) || 1);
+  const voulu = Math.trunc(Number(s.grandGroupe && s.grandGroupe.nombre)) || 0;
+  const choisi = voulu >= minimum && voulu <= Math.min(RV_GROUPES_MAX, pax) ? voulu : 0;
+  return { ids, nombre: choisi || minimum, minimum, choisi: Boolean(choisi), tourne: ids.length > 1 };
 }
 
-// Ce que le comptoir a regle pour le grand groupe : les tailles de ses sous-groupes, tant qu elles
-// font le groupe, et l activite du groupe 1. Rien de regle : le moteur fait des parts egales.
+// Ce que le comptoir a regle pour le grand groupe : le nombre de groupes qu il a choisi, les joueurs de
+// chacun tant qu ils font le groupe, l heure de chacun a chaque activite quand toutes sont posees, sinon
+// l activite du groupe 1. Rien de regle : le moteur fait des parts egales et propose ses heures.
 // `impose` : les sous-groupes sont voulus. Un bowling seul trop grand pour un service n a pas de
 // plan d avant (un seul service refusait chaque heure) ; bowling et laser ne tournent d office que
-// quand le plan d avant ne tient pas, sinon seulement quand le comptoir l a choisi (rsFaireTourner).
+// quand le plan d avant ne tient pas, sinon seulement quand le comptoir l a choisi (rsFaireTourner,
+// un nombre de groupes, des heures).
 function rvDemandeGrandGroupe(grand = rvGrandGroupe()) {
   const s = quickBookState;
   const voulu = (s && s.grandGroupe) || {};
-  const pax = Math.max(1, Number(s && s.pax) || 1);
-  const tailles = grand && Array.isArray(voulu.tailles) && voulu.tailles.length === grand.nombre
-    && voulu.tailles.every((n) => Number.isInteger(n) && n >= 1) && voulu.tailles.reduce((t, n) => t + n, 0) === pax
-    ? voulu.tailles.slice() : null;
+  const tailles = grand ? rvTaillesVoulues(grand) : null;
+  const heures = grand ? rvHeuresVoulues(grand) : null;
   const premier = grand && grand.tourne && grand.ids.includes(voulu.premier) ? voulu.premier : '';
-  const impose = Boolean(grand) && (!grand.tourne || voulu.tourne === true);
-  return { ...(tailles ? { tailles } : {}), ...(premier ? { premier } : {}), ...(impose ? { impose: true } : {}) };
+  const impose = Boolean(grand) && (!grand.tourne || voulu.tourne === true || grand.choisi || Boolean(heures));
+  return {
+    ...(tailles ? { tailles } : {}),
+    ...(premier && !heures ? { premier } : {}),
+    // (des heures valent pour leur nombre de groupes : il part avec elles)
+    ...(grand && (grand.choisi || heures) ? { nombre: grand.nombre } : {}),
+    ...(heures ? { heures } : {}),
+    ...(impose ? { impose: true } : {}),
+  };
 }
 
 // LES GROUPES TOURNENT-ILS ? (2026-11-22, le coordinateur : « aucun changement de prix silencieux
-// pour les groupes qui passaient déjà »). Bowling et laser : oui quand le comptoir l a choisi, ou
-// quand le plan du serveur les a poses d office (le plan d avant ne tenait pas) ; pendant un calcul,
-// ce que le dernier plan disait. Un bowling seul trop grand : ses services l un apres l autre sont
-// toujours en jeu (rvGroupesEnJeu).
+// pour les groupes qui passaient déjà »). Bowling et laser : oui quand le comptoir l a choisi (un
+// nombre de groupes, des heures), ou quand le plan du serveur les a poses d office (le plan d avant ne
+// tenait pas) ; pendant un calcul, ce que le dernier plan disait. Un bowling seul trop grand : ses
+// services l un apres l autre sont toujours en jeu (rvGroupesEnJeu).
 function rvRotationEnJeu(grand = rvGrandGroupe()) {
   const s = quickBookState;
   if (!s || !grand || !grand.tourne) return false;
-  if (s.grandGroupe && s.grandGroupe.tourne === true) return true;
+  if (s.grandGroupe && (s.grandGroupe.tourne === true || grand.choisi || rvHeuresPosees(grand))) return true;
   const plan = rvPlanCourant();
   if (plan) return Boolean(plan.grandGroupe && plan.grandGroupe.tourne);
   return Boolean(s.rotationVue);
@@ -42760,13 +43144,79 @@ function rvDureeAJuger(annoncee) {
   return grand && grand.tourne ? Math.min(visite, rvDureeDUnGroupe()) : visite;
 }
 
-// Les tailles des sous-groupes : celles du plan du serveur quand il les dit, sinon celles reglees,
-// sinon le groupe entier (le plan les donnera).
-function rvTaillesDuGrandGroupe(grand = rvGrandGroupe(), plan = rvPlanCourant()) {
-  const duPlan = plan && plan.grandGroupe && Array.isArray(plan.grandGroupe.tailles) ? plan.grandGroupe.tailles : null;
-  if (duPlan && grand && duPlan.length === grand.nombre) return duPlan.map(Number);
-  const reglees = rvDemandeGrandGroupe(grand).tailles;
-  return reglees || [];
+// Un total reparti en parts egales, les plus grandes d abord (80 en 3 : 27, 27 et 26), comme le moteur
+// (lib/grand-groupe.js partsEgales).
+function rvPartsEgales(total, nombre) {
+  const n = Math.max(0, Math.trunc(Number(total)) || 0);
+  const parts = Math.max(1, Math.trunc(Number(nombre)) || 1);
+  return Array.from({ length: parts }, (_, rang) => Math.floor(n / parts) + (rang < n % parts ? 1 : 0));
+}
+
+// LES JOUEURS DE CHAQUE GROUPE, A L ECRAN : ceux que le comptoir a tapes pour ce nombre de joueurs (meme
+// quand leur total ne fait pas encore le groupe : le pied le dit), sinon ceux du plan du serveur, sinon
+// des parts egales.
+function rvTaillesAffichees(grand = rvGrandGroupe(), plan = rvPlanCourant()) {
+  if (!grand) return [];
+  const s = quickBookState;
+  const pax = Math.max(1, Number(s && s.pax) || 1);
+  const voulu = (s && s.grandGroupe) || {};
+  if (Array.isArray(voulu.tailles) && voulu.tailles.length === grand.nombre && voulu.pourPax === pax) return voulu.tailles.map((n) => Math.max(0, Math.trunc(Number(n)) || 0));
+  const duPlan = plan && plan.grandGroupe && Array.isArray(plan.grandGroupe.tailles) && plan.grandGroupe.tailles.length === grand.nombre ? plan.grandGroupe.tailles.map(Number) : null;
+  return duPlan || rvPartsEgales(pax, grand.nombre);
+}
+
+// Les joueurs qui partent au serveur : ceux du comptoir, seulement quand ils font le groupe.
+function rvTaillesVoulues(grand) {
+  const s = quickBookState;
+  const voulu = (s && s.grandGroupe) || {};
+  const pax = Math.max(1, Number(s && s.pax) || 1);
+  const tailles = Array.isArray(voulu.tailles) && voulu.pourPax === pax ? voulu.tailles : null;
+  return tailles && tailles.length === grand.nombre && tailles.every((n) => Number.isInteger(n) && n >= 1)
+    && tailles.reduce((t, n) => t + n, 0) === pax ? tailles.slice() : null;
+}
+
+// LES HEURES POSEES AU COMPTOIR, une entree par groupe ({ bowling, laser_game }, '' tant qu une heure
+// manque). Elles valent pour ce nombre de groupes, ces activites et ce depart : toucher une autre seance
+// repart des heures que le moteur propose.
+function rvHeuresPosees(grand) {
+  const s = quickBookState;
+  const voulu = (s && s.grandGroupe) || {};
+  const heures = Array.isArray(voulu.heures) ? voulu.heures : null;
+  if (!grand || !heures || heures.length !== grand.nombre || voulu.pourDepart !== s.startTime || voulu.pourActivites !== grand.ids.join(',')) return null;
+  return heures.map((h) => Object.fromEntries(grand.ids.map((id) => [id, /^\d{2}:\d{2}$/.test(String((h || {})[id] || '')) ? String(h[id]) : ''])));
+}
+
+// Les heures qui partent au serveur : toutes, ou aucune (le moteur propose alors les siennes).
+function rvHeuresVoulues(grand) {
+  const posees = rvHeuresPosees(grand);
+  return posees && posees.every((h) => grand.ids.every((id) => h[id])) ? posees : null;
+}
+
+// Les heures de chaque groupe, a l ecran : celles du comptoir, sinon celles du plan du serveur (sur ses
+// blocs quand il ne les dit pas), sinon rien (le plan les donnera, ou le comptoir les pose).
+function rvHeuresAffichees(grand = rvGrandGroupe(), plan = rvPlanCourant()) {
+  if (!grand) return null;
+  const posees = rvHeuresPosees(grand);
+  if (posees) return posees;
+  const gg = plan && plan.grandGroupe;
+  if (gg && Array.isArray(gg.heures) && gg.heures.length === grand.nombre) return gg.heures.map((h) => ({ ...h }));
+  const groupes = rvGroupesDuPlan(plan);
+  if (groupes.length !== grand.nombre) return null;
+  return groupes.map((g) => Object.fromEntries(grand.ids.map((id) => [id, (g.passages.find((p) => p.activite === id) || {}).debut || ''])));
+}
+
+// CE QUI EMPECHE « CRÉER » sur la page des groupes : un total qui ne fait pas le groupe, une heure qui
+// manque. Le dossier ne part qu avec ce que la page montre.
+function rvGroupesIncomplets(grand = rvGrandGroupe()) {
+  if (!grand || !rvGroupesEnJeu(grand)) return '';
+  const pax = Math.max(1, Number(quickBookState.pax) || 1);
+  const total = rvTaillesAffichees(grand).reduce((t, n) => t + n, 0);
+  if (total !== pax) return `Les groupes font ${rvPluriel(total, 'joueur')} sur ${pax} : corrigez un groupe.`;
+  const posees = rvHeuresPosees(grand);
+  const rang = posees ? posees.findIndex((h) => grand.ids.some((id) => !h[id])) : -1;
+  if (rang < 0) return '';
+  const id = grand.ids.find((x) => !posees[rang][x]);
+  return `Groupe ${rang + 1} : donnez l’heure du ${id === 'laser_game' ? 'laser' : rvMinuscule(rsNomCourt(id))}, ou touchez « Proposer les heures ».`;
 }
 
 // LE PLAN PAR SOUS-GROUPE, tel que le serveur l a pose : pour chaque groupe, ses passages dans
@@ -42784,6 +43234,11 @@ function rvGroupesDuPlan(plan = rvPlanCourant()) {
   });
   return [...groupes.entries()].sort((a, b) => a[0] - b[0])
     .map(([n, passages]) => ({ n, passages: passages.sort((x, y) => timeToNum(x.debut) - timeToNum(y.debut)) }));
+}
+
+// Ce qui coince, groupe par groupe, tel que le serveur le dit (plan.coincent) : { groupe, activite, raison }.
+function rvCoincentDuPlan(plan = rvPlanCourant()) {
+  return plan && !plan.disponible && Array.isArray(plan.coincent) ? plan.coincent : [];
 }
 
 // Les pistes d un passage, dites comme au planning : « pistes 4 à 8 ».
@@ -42807,15 +43262,29 @@ function rvLigneDuGrandGroupe(id) {
   return { detail, apres };
 }
 
-// LA LIGNE DES SOUS-GROUPES AU TICKET : combien de groupes, de combien, et s ils tournent. Un
-// toucher ouvre leurs reglages (rsGroupesHtml).
+// Les passages d un groupe dans l ordre de ses heures (une activite sans heure a la fin).
+function rvPassagesDuGroupe(grand, heures) {
+  return grand.ids.map((id, rang) => ({ id, rang, heure: String((heures || {})[id] || '') }))
+    .sort((a, b) => (a.heure ? rvMinutesDe(a.heure) : 1e4) - (b.heure ? rvMinutesDe(b.heure) : 1e4) || a.rang - b.rang);
+}
+
+// Le programme d un groupe en une ligne, dans l ordre de ses heures : « Laser 14:00 → Bowling 15:00 ».
+function rvProgrammeDuGroupe(grand, heures) {
+  return rvPassagesDuGroupe(grand, heures).map((p) => `${rsNomCourt(p.id)} ${p.heure || 'sans heure'}`).join(' → ');
+}
+
+// LA LIGNE DES SOUS-GROUPES AU TICKET : combien de groupes, de combien, puis une ligne par groupe
+// (« Groupe 2 · 27 · Laser 14:00 → Bowling 15:00 »). Un toucher ouvre leurs reglages (rsGroupesHtml).
 function rsLigneGrandGroupeHtml() {
   const grand = rvGrandGroupe();
   if (!rvGroupesEnJeu(grand) || !rsEtat().faits.combien) return '';
-  const tailles = rvTaillesDuGrandGroupe(grand);
+  const plan = rvPlanCourant();
+  const tailles = rvTaillesAffichees(grand, plan);
+  const heures = rvHeuresAffichees(grand, plan);
   const nom = grand.tourne ? `${grand.nombre} groupes qui tournent` : `${grand.nombre} groupes, l’un après l’autre`;
-  const detail = tailles.length ? `${rvListe(tailles)} joueurs` : `${Math.max(1, Number(quickBookState.pax) || 1)} joueurs à partager`;
-  return rsLigne({ cle: 'groupes', action: "rsOuvrir('groupes')", icone: RV_I.groupes, nom, detail, aria: rsAriaLigne(nom, detail, '') });
+  const detail = `${rvListe(tailles)} joueurs`;
+  const lignes = heures ? tailles.map((n, rang) => `Groupe ${rang + 1} · ${n} · ${rvProgrammeDuGroupe(grand, heures[rang])}`) : [];
+  return rsLigne({ cle: 'groupes', action: "rsOuvrir('groupes')", icone: RV_I.groupes, nom, detail, lignes, aria: rsAriaLigne(nom, [detail, ...lignes].join(', '), '') });
 }
 
 // Ce qu un groupe peut faire d un coup : les armes de l arene, les pistes du centre a leur capacite
@@ -42829,9 +43298,16 @@ function rvPlafondDUnGroupe(grand) {
   return plafonds.length ? Math.min(...plafonds) : pax;
 }
 
+// Pourquoi il faut au moins ce nombre de groupes : les armes, sinon les pistes.
+function rvRaisonDuMinimum(grand) {
+  if (grand.ids.includes('laser_game') && getLaserWaveCount(getQuickVisitParticipants('laser_game')) === grand.minimum) return `${getLaserArenaCapacity()} armes au laser`;
+  return `${getAvailabilityLaneCount() || getTotalLanes()} pistes au bowling`;
+}
+
 // « Le groupe 1 au bowling pendant que le groupe 2 joue au laser, puis ils échangent. »
 function rvPhraseDesGroupes(grand, groupes, plan) {
   const fin = plan && plan.disponible && plan.fin ? ` Fin vers ${plan.fin}.` : '';
+  if (rvHeuresPosees(grand)) return `Les heures sont celles que vous avez posées.${fin}`;
   if (!grand.tourne) return `Les groupes jouent l’un après l’autre.${fin}`;
   const premiers = groupes.map((g) => g.passages[0]).filter(Boolean);
   const depart = premiers.length ? premiers[0].debut : '';
@@ -42843,74 +43319,108 @@ function rvPhraseDesGroupes(grand, groupes, plan) {
   return `Chaque groupe joue au bowling et au laser, à tour de rôle.${fin}`;
 }
 
-// LE PLAN D UN COUP D OEIL : une rangee par groupe, une colonne par depart, ce que chacun y joue.
-// Les passages qui se suivent sur la meme activite (les parties de laser d un groupe) font une case.
-function rsGrilleDesGroupesHtml(groupes, tailles) {
-  if (!groupes.length) {
-    return `<p class="rs-texte" id="rsGgCalcul">${escapeHtml(rvPlanEnCalcul() ? 'Le planning partage le groupe…' : 'Le planning dira qui joue où dès qu’une heure tient.')}</p>`;
-  }
-  const lignes = groupes.map((g) => {
-    const cases = [];
-    g.passages.forEach((p) => {
-      const derniere = cases[cases.length - 1];
-      if (derniere && derniere.activite === p.activite && derniere.fin && timeToNum(p.debut) - timeToNum(derniere.fin) < 0.1) {
-        derniere.fin = p.fin;
-        derniere.parties += 1;
-        return;
-      }
-      cases.push({ activite: p.activite, debut: p.debut, fin: p.fin, pistes: p.pistes, parties: 1 });
-    });
-    return { n: g.n, cases };
-  });
-  const departs = [...new Set(lignes.flatMap((l) => l.cases.map((c) => c.debut)))].sort((a, b) => timeToNum(a) - timeToNum(b));
-  const tete = `<div class="rs-gg-r is-tete" role="row"><span role="columnheader" class="rs-gg-q">Groupe</span>${departs.map((h) => `<span role="columnheader">${escapeHtml(h)}</span>`).join('')}</div>`;
-  const rangees = lignes.map((l) => {
-    const taille = Number(tailles[l.n - 1]) || 0;
-    const cellules = departs.map((h) => {
-      const c = l.cases.find((x) => x.debut === h);
-      if (!c) return '<span role="cell" class="rs-gg-c is-vide"></span>';
-      const quoi = c.activite === 'bowling' ? rvPistesDites(c.pistes) : c.parties > 1 ? `${c.parties} parties` : `jusqu’à ${c.fin}`;
-      return `<span role="cell" class="rs-gg-c is-${c.activite === 'bowling' ? 'bowling' : 'laser'}" data-groupe="${l.n}" data-activite="${escapeHtml(c.activite)}" data-heure="${escapeHtml(h)}"><b>${escapeHtml(rsNomCourt(c.activite))}</b><small>${escapeHtml(quoi)}</small></span>`;
-    }).join('');
-    return `<div class="rs-gg-r" role="row"><span role="rowheader" class="rs-gg-q"><b>Groupe ${l.n}</b>${taille ? `<small>${escapeHtml(rvPluriel(taille, 'joueur'))}</small>` : ''}</span>${cellules}</div>`;
-  }).join('');
-  return `<div class="rs-gg-grille" id="rsGgGrille" role="table" aria-label="Qui joue où, groupe par groupe" style="--gg-cols:${departs.length}">${tete}${rangees}</div>`;
+// LE NOMBRE DE GROUPES : un de moins, un de plus. Jamais moins que ce que la place du centre demande
+// (« au moins 3 : 30 armes au laser »), jamais plus que 12 ni que le groupe.
+function rsNombreDeGroupesHtml(grand) {
+  const pax = Math.max(1, Number(quickBookState.pax) || 1);
+  const n = grand.nombre;
+  const moins = n > grand.minimum ? `rsFixer(() => rsNombreDeGroupes(${n - 1}))` : '';
+  const plus = n < Math.min(RV_GROUPES_MAX, pax) ? `rsFixer(() => rsNombreDeGroupes(${n + 1}))` : '';
+  const dit = n <= grand.minimum ? `au moins ${grand.minimum} : ${rvRaisonDuMinimum(grand)}` : '';
+  return `<div class="rs-rangee rs-gg-n"><span class="rs-lbl" id="rsGgNombreT">Groupes</span><div class="rs-gg-nv">${rsPasHtml(moins, plus, n, 'Nombre de groupes', 'data-gg-nombre="1"')}${dit ? `<small class="rs-gg-dit" id="rsGgNombreDit">${escapeHtml(dit)}</small>` : ''}</div></div>`;
 }
 
-// LA TAILLE DE CHAQUE GROUPE (« nombre par sous-groupe ») : un de plus, un de moins, le dernier
-// groupe prend le reste. Jamais plus que ce que le centre prend d un coup : la touche s arrete la.
-function rsTaillesDesGroupesHtml(grand, tailles) {
-  if (tailles.length !== grand.nombre) return '';
-  const plafond = rvPlafondDUnGroupe(grand);
-  const dernier = tailles.length - 1;
-  const cases = tailles.map((n, rang) => {
-    if (rang === dernier) return `<span class="rs-cpt rs-gg-t" data-groupe="${rang + 1}"><span class="rs-cpt-l">Groupe ${rang + 1}</span><b class="rs-gg-reste" aria-label="${escapeHtml(`Groupe ${rang + 1}, ${rvPluriel(n, 'joueur')}, le reste du groupe`)}">${n}</b></span>`;
-    const reste = tailles[dernier];
-    const moins = n > 1 && reste + 1 <= plafond ? `rsFixer(() => rsTailleGroupe(${rang}, ${n - 1}))` : '';
-    const plus = n + 1 <= plafond && reste > 1 ? `rsFixer(() => rsTailleGroupe(${rang}, ${n + 1}))` : '';
-    return rsCompteurHtml(`Groupe ${rang + 1}`, n, moins, plus, `data-groupe="${rang + 1}"`, `Joueurs du groupe ${rang + 1}`);
-  });
-  return `<div class="rs-rangee rs-gg-tailles"><span class="rs-lbl">Joueurs</span><div class="rs-gg-ts" role="group" aria-label="Joueurs par groupe">${cases.join('')}</div></div>`;
-}
-
-// L ACTIVITE DU GROUPE 1 quand ils tournent : l autre groupe commence par l autre.
+// L ACTIVITE DU GROUPE 1 quand ils tournent aux heures du moteur : l autre groupe commence par l autre,
+// et le moteur repose tout le monde.
 function rsPremierDesGroupesHtml(grand, plan) {
   const actuel = (plan && plan.grandGroupe && grand.ids.includes(plan.grandGroupe.premier) && plan.grandGroupe.premier) || rvDemandeGrandGroupe(grand).premier || grand.ids[0];
   const cles = grand.ids.map((id) => `<button type="button" class="${id === actuel ? 'is-on' : ''}" id="rsGgPremier-${escapeHtml(id)}" data-premier="${escapeHtml(id)}" aria-pressed="${id === actuel}" onclick="rsFixer(() => rsPremierGroupe(this.dataset.premier))">${escapeHtml(rsNomCourt(id))}</button>`).join('');
   return `<div class="rs-rangee rs-gg-premier"><span class="rs-lbl" id="rsGgPremierT">Groupe 1</span><div class="rs-seg" role="group" aria-labelledby="rsGgPremierT">${cles}</div><small class="rs-gg-dit">commence par cette activité</small></div>`;
 }
 
-function rsTailleGroupe(rang, n) {
+// UNE CASE : une activite d un groupe, ce que le plan en dit (ses pistes, sa fin) ou ce qui coince, en
+// rouge, et son heure, qui se touche et se tape a la minute.
+function rsCaseDuGroupeHtml(n, p, plan, coincent, taille = 0) {
+  const b = rsEtat();
+  const cle = `t:${n}-${p.id}`;
+  const nom = rsNomCourt(p.id);
+  // (ce que le plan dit de la case, seulement a l heure qu elle montre : une heure tapee que le plan n a pas
+  // encore jugee ne garde pas les pistes ni la fin de l ancienne)
+  const tous = (plan && Array.isArray(plan.blocs) ? plan.blocs : []).filter((x) => Number(x.sousGroupe) === n && x.activite === p.id && x.debut).sort((x, y) => timeToNum(x.debut) - timeToNum(y.debut));
+  const blocs = tous.length && tous[0].debut === p.heure ? tous : [];
+  const raison = coincent.find((x) => x.groupe === n && x.activite === p.id);
+  const parties = blocs.length > 1 && p.id === 'laser_game' ? `${blocs.length} parties, ` : '';
+  // (une activite que tout le groupe ne joue pas, 40 au laser sur 60 : la case dit combien du groupe y vont)
+  const ici = blocs.length ? Math.max(...blocs.map((x) => Number(x.joueursReels || x.joueurs) || 0)) : 0;
+  const combien = ici > 0 && taille > 0 && ici < taille ? `${rvPluriel(ici, 'joueur')}, ` : '';
+  const detail = raison ? 'ne tient pas' : !blocs.length ? '' : p.id === 'bowling' ? `${combien}${rvPistesDites(blocs[0].pistes)}` : `${combien}${parties}jusqu’à ${blocs[blocs.length - 1].fin}`;
+  const quoi = p.id === 'laser_game' ? 'laser' : rvMinuscule(nom);
+  const heure = b && b.saisie === cle
+    ? `<input class="rs-pas-champ rs-gg-champ" id="rsSaisie" type="text" inputmode="numeric" maxlength="5" enterkeyhint="done" autocomplete="off" spellcheck="false" value="${escapeHtml(p.heure)}" aria-label="${escapeHtml(`Groupe ${n}, heure du ${quoi}, tapez l’heure, par exemple 14:10`)}" data-saisie="${escapeHtml(cle)}" onkeydown="rsSaisieTouche(event, this)" onblur="rsSaisieSortie(this)">`
+    : `<b class="rs-gg-h" role="button" tabindex="0" data-saisie="${escapeHtml(cle)}" aria-label="${escapeHtml(`Groupe ${n}, ${quoi} à ${p.heure || 'heure à poser'}${raison ? `, ne tient pas : ${raison.raison}` : ''}, changer l’heure`)}" title="Changer l’heure" onclick="rsOuvrirSaisie(this.dataset.saisie)" onkeydown="rsToucheNombre(event, this)">${escapeHtml(p.heure || '--:--')}</b>`;
+  return `<span class="rs-gg-c is-${p.id === 'bowling' ? 'bowling' : 'laser'}${raison ? ' is-ko' : ''}" data-groupe="${n}" data-activite="${escapeHtml(p.id)}" data-heure-groupe="${escapeHtml(p.heure)}"><span class="rs-gg-a"><b>${escapeHtml(nom)}</b>${detail ? `<small>${escapeHtml(detail)}</small>` : ''}</span>${heure}${rsSaisieDitHtml(cle)}</span>`;
+}
+
+// UNE RANGEE PAR GROUPE (2026-11-23) : « Groupe 2 · 27 joueurs · Laser 14:00 → Bowling 15:00 ». Ses
+// joueurs se comptent et se tapent, chaque heure se touche, l ordre s inverse d un toucher ; ce qui
+// coince se dit dessous, avec la phrase du serveur.
+function rsRangeeDuGroupeHtml(grand, n, joueurs, heures, plan, coincent, plafond) {
+  const passages = rvPassagesDuGroupe(grand, heures);
+  const cases = passages.map((p) => rsCaseDuGroupeHtml(n, p, plan, coincent, joueurs)).join('<span class="rs-gg-fl" aria-hidden="true">→</span>');
+  const moins = joueurs > 1 ? `rsFixer(() => rsTailleDuGroupe(${n}, ${joueurs - 1}))` : '';
+  const plus = joueurs + 1 <= plafond ? `rsFixer(() => rsTailleDuGroupe(${n}, ${joueurs + 1}))` : '';
+  const raisons = [...new Set(coincent.filter((x) => x.groupe === n).map((x) => rsPhrase(x.raison)))];
+  const inverser = grand.ids.length === 2 && passages.every((p) => p.heure)
+    ? `<button type="button" class="rs-gg-inv" id="rsGgInverser-${n}" aria-label="${escapeHtml(`Groupe ${n} : jouer d’abord au ${passages[1].id === 'laser_game' ? 'laser' : rvMinuscule(rsNomCourt(passages[1].id))}, aux mêmes heures`)}" title="Inverser l’ordre" onclick="rsFixer(() => rsInverserLeGroupe(${n}))"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h11l-3-3M17 17H6l3 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`
+    : '';
+  const dit = `Groupe ${n} · ${rvPluriel(joueurs, 'joueur')} · ${rvProgrammeDuGroupe(grand, heures)}`;
+  return `<div class="rs-gg-l${raisons.length ? ' is-ko' : ''}" role="listitem" data-groupe="${n}" aria-label="${escapeHtml(dit)}"><b class="rs-gg-q">Groupe ${n}</b><span class="rs-gg-j">${rsPasHtml(moins, plus, joueurs, `Joueurs du groupe ${n}`, `data-groupe="${n}"`, `g:${n}`)}<span class="rs-gg-u">${joueurs > 1 ? 'joueurs' : 'joueur'}</span></span><span class="rs-gg-prog">${cases}</span>${inverser}${raisons.length ? `<small class="rs-gg-ko" role="alert">${escapeHtml(raisons.join(' '))}</small>` : ''}</div>`;
+}
+
+// Le pied : le total contre le groupe (« 80 joueurs sur 80 », rouge s il ne le fait pas), les parts
+// egales quand des joueurs ont ete tapes, les heures du moteur quand des heures ont ete posees.
+function rsPiedDesGroupesHtml(grand, tailles) {
+  const s = quickBookState;
+  const pax = Math.max(1, Number(s.pax) || 1);
+  const total = tailles.reduce((t, n) => t + n, 0);
+  const phrase = total === pax ? `${total} joueurs sur ${pax}` : total < pax ? `${total} joueurs sur ${pax} : il en manque ${pax - total}` : `${total} joueurs sur ${pax} : ${total - pax} de trop`;
+  const tapees = Array.isArray(s.grandGroupe && s.grandGroupe.tailles) && s.grandGroupe.pourPax === pax;
+  const egal = tapees ? '<button type="button" class="attr-b" id="rsGgEgal" onclick="rsFixer(() => rsTaillesEgales())">Partager également</button>' : '';
+  const auto = rvHeuresPosees(grand) ? '<button type="button" class="attr-b" id="rsGgAuto" onclick="rsFixer(() => rsHeuresProposees())">Proposer les heures</button>' : '';
+  return `<div class="rs-gg-pied"><p class="rs-gg-total${total === pax ? '' : ' is-ko'}" id="rsGgTotal" role="status">${escapeHtml(phrase)}</p>${egal}${auto}</div>`;
+}
+
+// Un autre nombre de groupes repart de parts egales et des heures du moteur. Revenu au minimum, il
+// n est plus un choix : le plan d avant peut reprendre (« Ne pas faire tourner »).
+function rsNombreDeGroupes(n) {
   const s = quickBookState;
   const grand = rvGrandGroupe();
   if (!s || !grand) return;
-  const tailles = rvTaillesDuGrandGroupe(grand).slice();
-  const dernier = tailles.length - 1;
-  if (tailles.length !== grand.nombre || rang < 0 || rang >= dernier) return;
-  tailles[rang] = Math.max(1, Math.trunc(Number(n)) || 1);
-  tailles[dernier] = Math.max(1, Number(s.pax) || 1) - tailles.slice(0, dernier).reduce((t, x) => t + x, 0);
-  if (tailles[dernier] < 1) return;
-  s.grandGroupe = { ...(s.grandGroupe || {}), tailles };
+  const pax = Math.max(1, Number(s.pax) || 1);
+  const voulu = Math.max(grand.minimum, Math.min(RV_GROUPES_MAX, pax, Math.trunc(Number(n)) || grand.minimum));
+  const { tailles: _t, pourPax: _p, heures: _h, pourDepart: _d, pourActivites: _a, nombre: _n, ...reste } = s.grandGroupe || {};
+  s.grandGroupe = voulu > grand.minimum ? { ...reste, nombre: voulu } : reste;
+  s.forcer = false;
+  s.error = '';
+}
+
+// Les joueurs d un groupe : les autres gardent les leurs, le total se lit au pied.
+function rsTailleDuGroupe(n, valeur) {
+  const s = quickBookState;
+  const grand = rvGrandGroupe();
+  if (!s || !grand || n < 1 || n > grand.nombre) return;
+  const tailles = rvTaillesAffichees(grand).slice();
+  tailles[n - 1] = Math.max(1, Math.trunc(Number(valeur)) || 1);
+  s.grandGroupe = { ...(s.grandGroupe || {}), tailles, pourPax: Math.max(1, Number(s.pax) || 1) };
+  s.forcer = false;
+  s.error = '';
+}
+
+function rsTaillesEgales() {
+  const s = quickBookState;
+  if (!s || !s.grandGroupe) return;
+  const { tailles: _t, pourPax: _p, ...reste } = s.grandGroupe;
+  s.grandGroupe = reste;
   s.forcer = false;
   s.error = '';
 }
@@ -42924,9 +43434,108 @@ function rsPremierGroupe(id) {
   s.error = '';
 }
 
-// LA PAGE DES SOUS-GROUPES (2026-11-22). Le plan du serveur d un coup d oeil (qui joue ou, a quelle
-// heure, sur quelles pistes), puis ce qui se regle : la taille de chaque groupe et, quand ils
-// tournent, l activite du groupe 1. Chaque reglage repart au serveur, qui recalcule tout.
+// L HEURE D UN GROUPE A UNE ACTIVITE : les heures a l ecran, celle-ci changee, deviennent celles du
+// comptoir (rvPoserLesHeuresDesGroupes).
+function rsHeureDuGroupe(n, id, heure) {
+  const s = quickBookState;
+  const grand = rvGrandGroupe();
+  if (!s || !grand || n < 1 || n > grand.nombre || !grand.ids.includes(id)) return;
+  const heures = rvHeuresAffichees(grand) || Array.from({ length: grand.nombre }, () => ({}));
+  heures[n - 1] = { ...heures[n - 1], [id]: heure };
+  rvPoserLesHeuresDesGroupes(grand, heures);
+}
+
+// Un groupe joue son autre activite d abord, aux memes heures : ses deux heures s echangent.
+function rsInverserLeGroupe(n) {
+  const grand = rvGrandGroupe();
+  const heures = grand && grand.ids.length === 2 ? rvHeuresAffichees(grand) : null;
+  if (!heures || n < 1 || n > heures.length) return;
+  const [a, b] = grand.ids;
+  if (!heures[n - 1][a] || !heures[n - 1][b]) return;
+  heures[n - 1] = { ...heures[n - 1], [a]: heures[n - 1][b], [b]: heures[n - 1][a] };
+  rvPoserLesHeuresDesGroupes(grand, heures);
+}
+
+// Les heures du comptoir. Toutes posees, le dossier commence a la plus tot (sa ligne au planning,
+// « Créer à ») et cette heure ne bouge plus toute seule ; une heure qui manque garde le depart.
+function rvPoserLesHeuresDesGroupes(grand, heures) {
+  const s = quickBookState;
+  const toutes = heures.flatMap((h) => grand.ids.map((id) => String((h || {})[id] || ''))).filter((h) => /^\d{2}:\d{2}$/.test(h));
+  const completes = toutes.length === heures.length * grand.ids.length;
+  if (completes && !s.lockStartTime) {
+    s.startTime = rvEnHeure(Math.min(...toutes.map(rvMinutesDe)));
+    s.heureProposee = false;
+    s.heureArretee = true;
+  }
+  s.grandGroupe = { ...(s.grandGroupe || {}), heures: heures.map((h) => ({ ...h })), pourDepart: s.startTime, pourActivites: grand.ids.join(',') };
+  s.forcer = false;
+  s.error = '';
+}
+
+// Les heures du moteur reviennent : celles posees au comptoir partent.
+function rsHeuresProposees() {
+  const s = quickBookState;
+  if (!s || !s.grandGroupe) return;
+  const { heures: _h, pourDepart: _d, pourActivites: _a, ...reste } = s.grandGroupe;
+  s.grandGroupe = reste;
+  s.forcer = false;
+  s.error = '';
+}
+
+// Une heure tapee : « 14:10 », « 1410 », « 14h10 », « 14.10 », « 905 » (09:05), « 14h ». '' quand ce n en
+// est pas une.
+function rvHeureTapee(texte) {
+  const brut = String(texte == null ? '' : texte).trim().toLowerCase();
+  const lu = /^(\d{1,2})\s*[:h.]\s*(\d{2})$/.exec(brut) || /^(\d{1,2})(\d{2})$/.exec(brut) || /^(\d{1,2})\s*h$/.exec(brut);
+  if (!lu) return '';
+  const h = Number(lu[1]);
+  const m = lu[2] === undefined ? 0 : Number(lu[2]);
+  return h <= 23 && m <= 59 ? rvEnHeure(h * 60 + m) : '';
+}
+
+// LA SAISIE D UNE CASE DES GROUPES (rsSaisieValider) : `g:<groupe>` ses joueurs, `t:<groupe>-<activite>`
+// son heure. Un nombre ou une heure qui ne va pas se dit sous la case, et rien ne bouge.
+function rsGgSaisieValider(cle, sorte, quoi, brut, clavier) {
+  const b = rsEtat();
+  const grand = rvGrandGroupe();
+  const [groupe, activite] = String(quoi).split('-');
+  const n = Math.trunc(Number(groupe)) || 0;
+  let refus = '';
+  let faire = null;
+  // (une case d un autre nombre de groupes, repeinte entre-temps : rien ne bouge)
+  if (!grand || n < 1 || n > grand.nombre) faire = null;
+  else if (sorte === 'g') {
+    const actuel = rvTaillesAffichees(grand)[n - 1];
+    const pax = Math.max(1, Number(quickBookState.pax) || 1);
+    const plafond = rvPlafondDUnGroupe(grand);
+    if (brut === '' || (/^\d+$/.test(brut) && Number(brut) === actuel)) faire = null;
+    else if (!/^\d{1,3}$/.test(brut) || Number(brut) < 1) refus = `Groupe ${n} : tapez un nombre, par exemple 20.`;
+    else if (Number(brut) > pax) refus = `Groupe ${n} : ${pax} au plus, le groupe compte ${rvPluriel(pax, 'personne')}.`;
+    else if (Number(brut) > plafond) refus = `Groupe ${n} : ${plafond} au plus à la fois.`;
+    else faire = () => rsTailleDuGroupe(n, Number(brut));
+  } else if (grand.ids.includes(activite)) {
+    const heure = rvHeureTapee(brut);
+    const actuelle = (rvHeuresAffichees(grand) || [])[n - 1];
+    if (brut === '' || (heure && actuelle && actuelle[activite] === heure)) faire = null;
+    else if (!heure) refus = `Groupe ${n} : tapez une heure, par exemple 14:10.`;
+    else faire = () => rsHeureDuGroupe(n, activite, heure);
+  }
+  rsFermerSaisie();
+  rsGeste(() => {
+    if (refus) b.saisieDit = { cle, texte: refus };
+    else if (faire) faire();
+  }, { focus: false });
+  if (clavier) { rsRendreLeNombre(cle); return; }
+  setTimeout(() => {
+    const actif = document.activeElement;
+    if (quickBookState && (!actif || actif === document.body)) rsRendreLeNombre(cle);
+  }, 0);
+}
+
+// LA PAGE DES GROUPES (2026-11-22, refaite le 2026-11-23). Tout d un coup d oeil, tout se corrige sur
+// place : le nombre de groupes, puis une rangee par groupe (ses joueurs, son programme, ses heures a la
+// minute), le total contre le groupe. Le moteur propose ; chaque reglage repart au serveur, qui rejuge
+// tout et dit sur la case ce qui coince (pistes, armes, un groupe a deux endroits).
 function rsGroupesHtml() {
   const s = quickBookState;
   const grand = rvGrandGroupe();
@@ -42937,13 +43546,26 @@ function rsGroupesHtml() {
   }
   const plan = rvPlanCourant();
   const groupes = rvGroupesDuPlan(plan);
-  const tailles = rvTaillesDuGrandGroupe(grand, plan);
+  const tailles = rvTaillesAffichees(grand, plan);
+  const heures = rvHeuresAffichees(grand, plan);
+  const posees = rvHeuresPosees(grand);
+  const coincent = rvCoincentDuPlan(plan);
+  const plafond = rvPlafondDUnGroupe(grand);
+  const manque = posees && !rvHeuresVoulues(grand) ? 'Donnez l’heure de chaque case : le planning juge les groupes dès qu’elles y sont toutes.' : '';
+  const calcul = !heures ? (rvPlanEnCalcul() ? 'Le planning partage le groupe…' : 'Le planning dira qui joue où dès qu’une heure tient.') : manque;
+  // (un refus qui ne tient a aucune case, le centre ferme ce jour-la, un nombre de groupes qui ne va pas : la
+  // phrase du serveur se lit sous les groupes ; celui d une case se lit deja sous sa rangee)
+  const refus = plan && plan.disponible === false && !coincent.length && !manque && plan.refus ? rsPhrase(plan.refus) : '';
+  const rangees = tailles.map((joueurs, rang) => rsRangeeDuGroupeHtml(grand, rang + 1, joueurs, heures ? heures[rang] : null, plan, coincent, plafond)).join('');
   return `${rsRetourHtml()}
     <section class="rs-seance is-page rs-gg" aria-labelledby="rsQ">
       <div class="rs-s-t"><div class="rs-s-n"><h2 class="rs-q" id="rsQ" tabindex="-1">${escapeHtml(`${pax} joueurs en ${grand.nombre} groupes`)}</h2><small id="rsGgPhrase">${escapeHtml(rvPhraseDesGroupes(grand, groupes, plan))}</small></div></div>
-      ${rsGrilleDesGroupesHtml(groupes, tailles)}
-      ${rsTaillesDesGroupesHtml(grand, tailles)}
-      ${grand.tourne ? rsPremierDesGroupesHtml(grand, plan) : ''}
+      ${rsNombreDeGroupesHtml(grand)}
+      ${grand.tourne && !posees ? rsPremierDesGroupesHtml(grand, plan) : ''}
+      <div class="rs-gg-liste" id="rsGgListe" role="list" aria-label="Les groupes, leurs joueurs et leurs heures">${rangees}</div>
+      ${calcul ? `<p class="rs-texte" id="rsGgCalcul">${escapeHtml(calcul)}</p>` : ''}
+      ${refus ? `<p class="rs-texte rs-heure-refus" id="rsGgRefus" role="alert">${escapeHtml(refus)}</p>` : ''}
+      ${rsPiedDesGroupesHtml(grand, tailles)}
     </section>`;
 }
 
@@ -42971,6 +43593,9 @@ function rvConstruire({ simulation = false } = {}) {
   if (!s.startTime) return { erreur: 'Choisissez une heure.' };
   // (le dossier ne part jamais avec deux heures en meme temps : « Créer » attend, rvChevauchements)
   if (!simulation && rvChevauchements().size) return { erreur: `${rsDitChevauchement(rvChevauchements())} : changez l’une des deux heures.` };
+  // (un grand groupe ne part qu avec ce que sa page montre : des groupes qui font le groupe, chacun a ses heures)
+  const groupesIncomplets = simulation ? '' : rvGroupesIncomplets();
+  if (groupesIncomplets) return { erreur: groupesIncomplets };
   const formule = s.type === 'formule' ? resolveDisplayFormule(s.formuleId) : null;
   if (s.type === 'formule' && !formule) return { erreur: 'Sélectionnez une formule.' };
   const adaptee = Boolean(formule) && rvFormuleVraimentAdaptee();
@@ -44194,6 +44819,8 @@ function rsSaisieValider(cle, texte, { clavier = false } = {}) {
   if (!s || !b || b.saisie !== cle) return;
   const [sorte, quoi] = String(cle).split(':');
   const brut = String(texte == null ? '' : texte).trim();
+  // (les cases de la page des groupes : les joueurs et l heure de chaque groupe, rsGgSaisieValider)
+  if (sorte === 'g' || sorte === 't') { rsGgSaisieValider(cle, sorte, quoi, brut, clavier); return; }
   const actuel = sorte === 'p' ? rsJoueursDesParties()[Number(quoi)] : getQuickVisitParticipants(quoi);
   const pareil = brut === '' || (/^\d+$/.test(brut) && Number(brut) === actuel);
   const refus = pareil ? '' : rsRefusDuNombre(sorte, quoi, brut);

@@ -18,10 +18,10 @@
 //   [B] 60 JOUEURS AU BOWLING ET AU LASER a 15:30 : le plan d avant tient (le bowling en deux services, puis
 //       le laser), il reste, 990 € ; le ticket propose « Faire tourner 2 groupes : fin à 17:30, 990 € ».
 //       Touche : deux groupes de 30 qui tournent (le groupe 1 au bowling pendant que le groupe 2 joue au
-//       laser, puis ils echangent), et l inverse se propose. La page des groupes montre le plan d un coup
-//       d oeil et tient a l ecran ; l activite du groupe 1 se change d un toucher et le moteur recalcule ;
-//       une taille ne depasse jamais les 30 armes ; planning et fiche par groupe ; « Ils sont 58 » a
-//       l arrivee refait le plan, les deux groupes et leur ordre restent.
+//       laser, puis ils echangent), et l inverse se propose. La page des groupes montre une rangee par groupe
+//       et tient a l ecran ; l activite du groupe 1 se change d un toucher et le moteur recalcule ;
+//       un groupe ne depasse jamais les 30 armes (pas de « + » a 30) ; planning et fiche par groupe ;
+//       « Ils sont 58 » a l arrivee refait le plan, les deux groupes et leur ordre restent.
 //   [C] LE PLAN IMPOSSIBLE : 60 joueurs a 19:30 un jour charge. Le plan d avant ne rentre pas avant la
 //       fermeture, et les groupes qui tournent manquent de 12 armes au laser de 19:30 (18 places sur 30).
 //       La rangee du bowling dit le verdict de tout le groupe (« laser, manque 12 armes »), le ticket aussi
@@ -52,6 +52,14 @@
 //       990 € ; a 19:40 (laser tape a 21:40), les groupes tournent d office des 19:40, fin 21:40 ; le dossier
 //       nait a 15:10 en base, chaque groupe a un seul endroit. Au comptoir, en vrais clics : « Autre heure »
 //       16:10 sur 60 au bowling, le ticket dit groupe 1 a 16:10 et groupe 2 a 17:10, et le dossier nait ainsi.
+//   [I] LA DEMANDE A D ANSAR (2026-11-23, « 3, 4 groupes ou plus [...] qui va où, quand, combien », simple
+//       aussi au planning complet). 60 joueurs a 15:30, « Faire tourner », la page des groupes : « + » deux
+//       fois, 4 groupes de 15 ; chaque heure se touche et se tape (les groupes 1 et 2 au laser a 15:30 puis au
+//       bowling a 16:30, les groupes 3 et 4 l inverse) ; rien ne coince, le ticket dit les 4 groupes ; le
+//       dossier nait ainsi, au prix annonce ; le planning complet marque chaque groupe (« groupes 1 et 2 » sur
+//       la partie de laser qu ils jouent ensemble) ; la fiche aussi. Modifier montre le bloc des groupes : le
+//       laser du groupe 4 a 17:00 s ecrit, le reste ne bouge pas, au meme prix, et le planning suit ; une
+//       heure a 08:00 rend la case du groupe 1 rouge avec sa raison, avant « Enregistrer ».
 //   [*] Zero erreur JavaScript.
 //
 // CONTRE-PREUVES : `--contre-preuves` rejoue le gate sur du code casse expres, une mutation a la fois, en
@@ -99,15 +107,16 @@ const FENETRE = 'lib/reserver-fenetre.js';
 const MUTATIONS = [
   // [A] le bowling seul repart en un service (la panne d Ansar) ; le planning et la fiche oublient le groupe.
   { nom: 'bowling-en-un-service', lettre: 'A', fichier: APP, de: "  const programme = s.type === 'visite' || adaptee || rsFmActive(s) || Boolean(rvGrandGroupe());", vers: "  const programme = s.type === 'visite' || adaptee || rsFmActive(s);" },
-  { nom: 'planning-sans-groupe', lettre: 'A', fichier: PLANNING, de: "      var groupe = e.groupe ? 'groupe ' + e.groupe : '';", vers: "      var groupe = '';" },
+  { nom: 'planning-sans-groupe', lettre: 'A', fichier: PLANNING, de: "      var groupe = e.groupe ? 'groupe ' + e.groupe : e.groupes && e.groupes.length > 1 ? 'groupes ' + gfGroupesEnMots(e.groupes) : '';", vers: "      var groupe = '';" },
   { nom: 'fiche-sans-groupes', lettre: 'A', fichier: APP, de: "  const groupes = r.status === 'cancelled' ? null : sousGroupesDuDossier(r);", vers: '  const groupes = null;' },
   // [B] plus de rotation ; l activite du groupe 1 ne part pas ; une taille au-dela des armes ; la page deborde.
   { nom: 'sans-rotation', lettre: 'B', serveur: true, fichier: MOTEUR, de: "  const demandeGrandGroupe = input.channel === 'staff' ? lireGrandGroupe(preference.grandGroupe) : null;", vers: '  const demandeGrandGroupe = null;' },
   { nom: 'premier-oublie', lettre: 'B', fichier: APP, de: "  const premier = grand && grand.tourne && grand.ids.includes(voulu.premier) ? voulu.premier : '';", vers: "  const premier = '';" },
-  { nom: 'tailles-sans-plafond', lettre: 'B', fichier: APP, de: '  return plafonds.length ? Math.min(...plafonds) : pax;', vers: '  return pax;' },
+  // (le plafond de Reserver seul : Modifier a la meme fin de fonction, plafondDUnGroupeEdition)
+  { nom: 'tailles-sans-plafond', lettre: 'B', fichier: APP, de: '  const plafonds = grand.ids.filter((id) => getQuickVisitParticipants(id) >= pax)', vers: '  const plafonds = grand.ids.filter(() => false)' },
   { nom: 'groupes-qui-debordent', lettre: 'B', fichier: CSS, de: '.qb-modal.rv.rs .rs-gg-c { display: flex; flex-direction: column; justify-content: center; gap: 1px; min-width: 0; min-height: 52px;', vers: '.qb-modal.rv.rs .rs-gg-c { display: flex; flex-direction: column; justify-content: center; gap: 1px; min-width: 0; min-height: 220px;' },
   { nom: 'sous-groupe-a-deux-endroits', lettre: 'B', serveur: true, fichier: MOTEUR, de: '    const cle = Number(fenetre.sousGroupe) || 0;', vers: '    const cle = 0;' },
-  { nom: 'compte-sans-groupes', lettre: 'B', serveur: true, fichier: OPS, de: '    ...(isEdit ? grandGroupeGarde(request) : {}),\n', vers: '' },
+  { nom: 'compte-sans-groupes', lettre: 'B', serveur: true, fichier: OPS, de: '    ...(isEdit ? grandGroupeGarde(request, shiftMinutes) : {}),\n', vers: '' },
   // [C] la rangee se tait, la proche se cherche sur le laser, le refus dit l heure de la ligne.
   { nom: 'rangee-muette', lettre: 'C', fichier: APP, de: '  if (rvRotationEnJeu(grand) && id === grand.ids[0]) return v;\n', vers: '' },
   { nom: 'proche-sur-le-laser', lettre: 'C', fichier: APP, de: '  const id = rvGroupesEnJeu(grand) ? grand.ids[0] : ids.includes(refus.activite) ? refus.activite : ids[0];', vers: '  const id = ids.includes(refus.activite) ? refus.activite : ids[0];' },
@@ -117,7 +126,7 @@ const MUTATIONS = [
   { nom: 'laser-sur-les-tailles', lettre: 'D', serveur: true, fichier: GG, de: '    const parts = joueurs === personnes ? choisies.slice() : partsAuProrata(joueurs, choisies);', vers: '    const parts = choisies.slice();' },
   { nom: 'tailles-ignorees', lettre: 'D', serveur: true, fichier: GG, de: '    choisies = posees;\n', vers: '' },
   { nom: 'armes-depassees', lettre: 'D', serveur: true, fichier: GG, de: '    const trop = capacite > 0 ? parts.findIndex((part) => part > capacite) : -1;', vers: '    const trop = -1;' },
-  { nom: 'modification-sans-groupes', lettre: 'D', serveur: true, fichier: OPS, de: '    ...(isEdit ? grandGroupeGarde(request) : {}),\n', vers: '' },
+  { nom: 'modification-sans-groupes', lettre: 'D', serveur: true, fichier: OPS, de: '    ...(isEdit ? grandGroupeGarde(request, shiftMinutes) : {}),\n', vers: '' },
   { nom: 'public-lit-la-demande', lettre: 'D', serveur: true, fichier: MOTEUR, de: "  const demandeGrandGroupe = input.channel === 'staff' ? lireGrandGroupe(preference.grandGroupe) : null;", vers: '  const demandeGrandGroupe = lireGrandGroupe(preference.grandGroupe);' },
   { nom: 'pistes-du-groupe-partagees', lettre: 'D', serveur: true, fichier: MOTEUR, de: "      const occupees = dejaPoses.length ? [...reservations, pseudoReservationFromBlocks('grand-groupe', dejaPoses)] : reservations;", vers: '      const occupees = reservations;' },
   // [E] les groupes tournent d office meme quand le plan d avant tient (le prix change en silence) ;
@@ -138,9 +147,16 @@ const MUTATIONS = [
   { nom: 'sous-groupe-deplace-a-deux-endroits', lettre: 'G', serveur: true, fichier: MOUVEMENT, de: '    const groupe = Number(movedBlock && movedBlock.sousGroupe) || 0;', vers: '    const groupe = 0;' },
   // [H] un grand groupe a la minute : la rotation refuse la minute, se cale sur la grille du centre, ou
   // ses heures posees se rejouent par-dessus les groupes.
-  { nom: 'rotation-refuse-la-minute', lettre: 'H', serveur: true, fichier: MOTEUR, de: "  if (!aLaMinute && debut % PROGRAM_GRID_MINUTES !== 0) return { ok: false, code: 'off_grid'", vers: "  if (debut % PROGRAM_GRID_MINUTES !== 0) return { ok: false, code: 'off_grid'" },
+  { nom: 'rotation-refuse-la-minute', lettre: 'H', serveur: true, fichier: MOTEUR, de: "  if (!heuresVoulues && !aLaMinute && debut % PROGRAM_GRID_MINUTES !== 0) return { ok: false, code: 'off_grid'", vers: "  if (!heuresVoulues && debut % PROGRAM_GRID_MINUTES !== 0) return { ok: false, code: 'off_grid'" },
   { nom: 'rotation-sur-la-grille-du-centre', lettre: 'H', serveur: true, fichier: GG, de: '  const origine = ((Number(debut) % grille) + grille) % grille;', vers: '  const origine = 0;' },
   { nom: 'heures-posees-rejouees-sur-les-groupes', lettre: 'H', serveur: true, fichier: FENETRE, de: "  const aPoser = enSousGroupes ? heuresPosees.filter((posee) => posee.activityId !== 'bowling' && posee.activityId !== 'laser_game') : heuresPosees;", vers: '  const aPoser = heuresPosees;' },
+  // [I] les heures posees a la page des groupes ne partent pas ; deux groupes au laser ensemble perdent leurs
+  // numeros au planning complet ; Modifier n a plus le bloc des groupes ; une heure hors horaires ne se dit plus
+  // sur sa case.
+  { nom: 'heures-des-groupes-non-envoyees', lettre: 'I', fichier: APP, de: '    ...(heures ? { heures } : {}),\n', vers: '' },
+  { nom: 'planning-groupes-ensemble-sans-numero', lettre: 'I', fichier: PLANNING, de: "      var groupe = e.groupe ? 'groupe ' + e.groupe : e.groupes && e.groupes.length > 1 ? 'groupes ' + gfGroupesEnMots(e.groupes) : '';", vers: "      var groupe = e.groupe ? 'groupe ' + e.groupe : '';" },
+  { nom: 'modifier-sans-bloc-des-groupes', lettre: 'I', fichier: APP, de: '            ${groupesEditionHtml()}\n', vers: '' },
+  { nom: 'horaires-hors-case', lettre: 'I', serveur: true, fichier: MOTEUR, de: '        ...(horsHoraires ? { conflict: horsHoraires.conflict } : {}),\n', vers: '' },
 ];
 
 // ---------------------------------------------------------------------------
@@ -390,7 +406,7 @@ async function principal() {
     return { col: col ? col.scrollHeight - col.clientHeight : 99, dehors: r.top < 0 || r.bottom > window.innerHeight ? 1 : 0 };
   });
 
-  const navigateur = ['A', 'B', 'C', 'E', 'F', 'H'].some(joue);
+  const navigateur = ['A', 'B', 'C', 'E', 'F', 'H', 'I'].some(joue);
   if (navigateur) {
     const { chromium } = require('playwright-core');
     browser = await chromium.launch({ executablePath: BROWSER_PATH, headless: true });
@@ -484,16 +500,18 @@ async function principal() {
         ok(ecranActivites.col <= 1 && !ecranActivites.dehors, '[B] Reserver tient a l ecran en 1366 x 768 (activites)', ecranActivites);
         await capture(page, '60-bowling-laser-ticket');
         await toucher(page, '#rsTourneRegler-laser_game');
-        await page.waitForSelector('#rsGgGrille', { timeout: 15000 });
-        const cellule = (g, a, h) => `#rsGgGrille [data-groupe="${g}"][data-activite="${a}"][data-heure="${h}"]`;
+        // (la page refaite le 2026-11-23 : une rangee par groupe, chaque case porte son groupe, son activite et
+        // son heure, rsCaseDuGroupeHtml)
+        await page.waitForSelector('#rsGgListe', { timeout: 15000 });
+        const cellule = (g, a, h) => `#rsGgListe .rs-gg-c[data-groupe="${g}"][data-activite="${a}"][data-heure-groupe="${h}"]`;
         const grille = await page.evaluate((sels) => sels.map((s) => Boolean(document.querySelector(s))), [cellule(1, 'bowling', '15:30'), cellule(1, 'laser_game', '16:30'), cellule(2, 'laser_game', '15:30'), cellule(2, 'bowling', '16:30')]);
         ok(grille.every(Boolean), '[B] la page des groupes : groupe 1 bowling 15:30 puis laser 16:30, groupe 2 laser 15:30 puis bowling 16:30', grille);
         const phrase = await texte(page, '#rsGgPhrase');
         ok(/Le groupe 1 au bowling pendant que le groupe 2 joue au laser, puis ils échangent\./.test(phrase), '[B] la phrase du plan : le groupe 1 au bowling pendant que le groupe 2 joue au laser', phrase);
-        // (les tailles se reglent par « un de plus » et « un de moins » ; un champ a taper, s il vient, ne
-        // change rien a la regle : aucun bouton du groupe 1 n est actif)
-        const pas = await page.evaluate(() => Array.from(document.querySelectorAll('.rs-gg-ts [data-groupe="1"]')).filter((b) => b.tagName === 'BUTTON').map((b) => b.disabled));
-        ok(pas.length === 2 && pas.every(Boolean), '[B] 30 et 30 avec 30 armes : ni un de plus ni un de moins au groupe 1', pas);
+        // (les joueurs de chaque groupe se reglent d un « + » et d un « − », le total se lit au pied : un groupe
+        // de 30 avec 30 armes n a pas de « + », son « − » reste)
+        const pas = await page.evaluate(() => Array.from(document.querySelectorAll('#rsGgListe button[data-groupe="1"]')).map((b) => `${b.getAttribute('aria-label')}=${b.disabled ? 'off' : 'on'}`));
+        ok(pas.includes('Joueurs du groupe 1, un de plus=off') && pas.includes('Joueurs du groupe 1, un de moins=on'), '[B] 30 et 30 avec 30 armes : pas un de plus au groupe 1, un de moins se peut', pas);
         const ecranGroupes = await tientALEcran(page);
         ok(ecranGroupes.col <= 1 && !ecranGroupes.dehors, '[B] la page des groupes tient a l ecran en 1366 x 768', ecranGroupes);
         await capture(page, '60-bowling-laser-groupes');
@@ -884,6 +902,125 @@ async function principal() {
         ok(Boolean(rc) && String(rc.start_time).slice(0, 5) === '16:10' && services === '1@16:10-17:10x30 2@17:10-18:10x30',
           '[H] le dossier nait a 16:10 : groupe 1 de 16:10 a 17:10, groupe 2 de 17:10 a 18:10', rc ? `${rc.start_time} ${services}` : 'aucun dossier');
         ok(erreurs.length === 0, '[*] zero erreur JavaScript (H)', erreurs.slice(0, 3).join(' | '));
+      } finally { await ctx.close(); }
+    }
+
+    // =======================================================================
+    if (joue('I')) {
+      section('[I] 60 JOUEURS EN 4 GROUPES, CHACUN A SON HEURE : RESERVER, PLANNING COMPLET, FICHE, MODIFIER');
+      const { ctx, page, erreurs, avant } = await ouvrir('vide');
+      // (une fenetre de confirmation, s il en vient une, se valide : le gate juge ce qui s ecrit)
+      page.on('dialog', (d) => d.accept().catch(() => {}));
+      const horaireDe = (r) => blocsDe(r).map((b) => `${b.resourceType === 'bowling_lane' ? 'B' : 'L'}${b.sousGroupe || 0}@${String(b.startTime).slice(0, 5)}x${b.players}`).sort().join(' ');
+      try {
+        await bowlingEtLaser(page, 60, '15:30');
+        await attendreOption(page, '1');
+        await toucher(page, '#rsGgOption');
+        await tournent(page);
+        await pret(page).catch(() => {});
+        await toucher(page, '#rsL-groupes');
+        await page.waitForSelector('#rsGgListe', { timeout: 15000 });
+        // Deux groupes de plus, au « + » du nombre : 4 groupes de 15.
+        for (let n = 3; n <= 4; n += 1) {
+          await toucher(page, 'button[aria-label="Nombre de groupes, un de plus"]');
+          await page.waitForFunction((k) => document.querySelectorAll('#rsGgListe .rs-gg-l').length === k, n, { timeout: 15000 }).catch(() => {});
+          await pret(page).catch(() => {});
+        }
+        const quatre = await page.evaluate(() => Array.from(document.querySelectorAll('#rsGgListe .rs-gg-l')).map((l) => l.getAttribute('aria-label')));
+        ok(quatre.length === 4 && quatre.every((t) => / · 15 joueurs · /.test(t)), '[I] « + » deux fois au nombre : 4 groupes de 15', quatre);
+        // Chaque heure se touche et se tape, comme au comptoir : les groupes 1 et 2 au laser a 15:30 (15 + 15
+        // armes sur 30) puis au bowling a 16:30, les groupes 3 et 4 l inverse.
+        const poserHeure = async (groupe, activite, heure) => {
+          await page.locator(`#rsGgListe b.rs-gg-h[data-saisie="t:${groupe}-${activite}"]`).first().click();
+          await page.waitForSelector('#rsSaisie', { timeout: 8000 });
+          await page.keyboard.press('Control+A');
+          await page.keyboard.type(heure.replace(':', ''));
+          await page.keyboard.press('Enter');
+          await page.waitForFunction((x) => Boolean(document.querySelector(`#rsGgListe .rs-gg-c[data-groupe="${x[0]}"][data-activite="${x[1]}"][data-heure-groupe="${x[2]}"]`)), [groupe, activite, heure], { timeout: 15000 }).catch(() => {});
+          await pret(page).catch(() => {});
+        };
+        const voulues = [[1, 'laser_game', '15:30'], [1, 'bowling', '16:30'], [2, 'laser_game', '15:30'], [2, 'bowling', '16:30'], [3, 'bowling', '15:30'], [3, 'laser_game', '16:30'], [4, 'bowling', '15:30'], [4, 'laser_game', '16:30']];
+        for (const [groupe, activite, heure] of voulues) await poserHeure(groupe, activite, heure);
+        const lignes = await page.evaluate(() => Array.from(document.querySelectorAll('#rsGgListe .rs-gg-l')).map((l) => l.getAttribute('aria-label')));
+        ok(JSON.stringify(lignes) === JSON.stringify([
+          'Groupe 1 · 15 joueurs · Laser 15:30 → Bowling 16:30',
+          'Groupe 2 · 15 joueurs · Laser 15:30 → Bowling 16:30',
+          'Groupe 3 · 15 joueurs · Bowling 15:30 → Laser 16:30',
+          'Groupe 4 · 15 joueurs · Bowling 15:30 → Laser 16:30',
+        ]), '[I] chaque groupe a ses heures, ses cases dans l ordre de ses heures', lignes);
+        const rougesPage = await page.evaluate(() => document.querySelectorAll('#rsGgListe .is-ko').length);
+        const phraseI = await texte(page, '#rsGgPhrase');
+        ok(rougesPage === 0 && /Les heures sont celles que vous avez posées\./.test(phraseI), '[I] rien ne coince : aucune case rouge, la page dit que les heures sont celles posees', { rougesPage, phraseI });
+        const ecranI = await tientALEcran(page);
+        ok(ecranI.col <= 1 && !ecranI.dehors, '[I] la page des 4 groupes tient a l ecran en 1366 x 768', ecranI);
+        await capture(page, '60-en-4-groupes-page');
+        await toucher(page, '#rsRetour');
+        await page.waitForSelector('#rsL-groupes', { timeout: 12000 });
+        await pret(page).catch(() => {});
+        const ticket = await texte(page, '#rsL-groupes');
+        ok(/4 groupes qui tournent/.test(ticket) && /Groupe 1 · 15 · Laser 15:30 → Bowling 16:30/.test(ticket) && /Groupe 4 · 15 · Bowling 15:30 → Laser 16:30/.test(ticket),
+          '[I] le ticket dit les 4 groupes, un par ligne', ticket);
+        const prixAnnonce = await page.evaluate(() => { const p = rvPlanCourant(); return p && p.prix != null ? Number(p.prix) : null; });
+        await capture(page, '60-en-4-groupes-ticket');
+        const r = await creer(page, avant);
+        const gg = r && r.ops_plan && r.ops_plan.grandGroupe;
+        ok(Boolean(r) && String(r.start_time).slice(0, 5) === '15:30' && horaireDe(r) === 'B1@16:30x15 B2@16:30x15 B3@15:30x15 B4@15:30x15 L1@15:30x15 L2@15:30x15 L3@16:30x15 L4@16:30x15'
+          && gg && gg.nombre === 4 && gg.auxHeures === true && prixAnnonce !== null && Number(r.price) === prixAnnonce,
+        '[I] le dossier nait en 4 groupes de 15, aux heures posees, au prix que la fenetre annoncait', r ? { debut: r.start_time, horaire: horaireDe(r), gg, prix: r.price, annonce: prixAnnonce } : 'aucun dossier');
+        ok(r && sansChevauchement(blocsDe(r)), '[I] aucun groupe n est a deux endroits a la fois', r && resume(blocsDe(r)));
+        // Le planning complet marque chaque groupe : « groupe N » au bowling, « groupes 1 et 2 » sur la partie de laser
+        // qu ils jouent ensemble.
+        const cases = r ? await casesDuPlanning(page, r.id) : [];
+        ok(cases.some((t) => /^Laser à 15:30 · groupes 1 et 2 ·/.test(t)) && cases.some((t) => /^Laser à 16:30 · groupes 3 et 4 ·/.test(t))
+          && [1, 2].every((n) => cases.some((t) => new RegExp(`^Bowling de 16:30 à 17:30 · groupe ${n} ·`).test(t)))
+          && [3, 4].every((n) => cases.some((t) => new RegExp(`^Bowling de 15:30 à 16:30 · groupe ${n} ·`).test(t))),
+        '[I] le planning complet marque chaque groupe, « groupes 1 et 2 » sur la partie de laser qu ils jouent ensemble', cases);
+        await capture(page, '60-en-4-groupes-planning');
+        const fiche = r ? await ouvrirLaFiche(page, r.id) : { groupes: '' };
+        ok(/4 groupes qui tournent/.test(fiche.groupes) && /Groupe 1, 15 joueurs : laser 15:30, bowling 16:30/.test(fiche.groupes) && /Groupe 4, 15 joueurs : bowling 15:30, laser 16:30/.test(fiche.groupes),
+          '[I] la fiche dit qui joue quoi et quand, groupe par groupe', fiche.groupes);
+        // MODIFIER : le bloc des groupes. Le laser du groupe 4 passe a 17:00, le calcul a blanc le juge, « Enregistrer »
+        // l ecrit ; le reste ne bouge pas, au meme prix.
+        if (r) {
+          await page.evaluate((i) => { serveurSaitModifierABlanc = true; closePos(); openPos(i); setTab('modifier'); }, r.id);
+          await page.waitForSelector('#editGroupes .fm-gg-l', { timeout: 12000 });
+          const bloc = await page.evaluate(() => ({ titre: ((document.getElementById('editGroupesTitre') || {}).textContent || '').trim(), lignes: Array.from(document.querySelectorAll('#editGroupes .fm-gg-l')).map((l) => l.getAttribute('aria-label')) }));
+          ok(bloc.titre === '60 joueurs en 4 groupes' && bloc.lignes.length === 4 && bloc.lignes[0] === 'Groupe 1 · 15 joueurs · Laser 15:30 → Bowling 16:30',
+            '[I] Modifier montre le bloc des groupes : 4 rangees, leurs joueurs et leurs heures', bloc);
+          await capture(page, '60-en-4-groupes-modifier');
+          await page.locator('#editGg4-laser_game').fill('17:00');
+          await page.keyboard.press('Tab');
+          await page.waitForFunction(() => /Groupe 4 : laser 16:30 → 17:00/.test((document.getElementById('editModifs') || {}).textContent || ''), null, { timeout: 12000 }).catch(() => {});
+          await page.waitForFunction(() => { const v = document.getElementById('editVerdict'); return Boolean(v) && !v.hidden && !/Vérification/.test(v.textContent || ''); }, null, { timeout: 15000 }).catch(() => {});
+          const barre = await texte(page, '#editModifs');
+          const verdict = await texte(page, '#editVerdict');
+          ok(/Groupe 4 : laser 16:30 → 17:00/.test(barre) && !/Ne passera pas/.test(verdict), '[I] Modifier : le laser du groupe 4 a 17:00, la barre du bas le dit et le calcul a blanc ne refuse rien', { barre, verdict });
+          await page.click('#posOverlay .es-save');
+          let apres = null;
+          for (let i = 0; i < 100; i += 1) {
+            await page.waitForTimeout(100);
+            apres = B.base.reservations.get(Number(r.id)) || B.base.reservations.get(r.id);
+            if (apres && /L4@17:00/.test(horaireDe(apres))) break;
+          }
+          ok(apres && horaireDe(apres) === 'B1@16:30x15 B2@16:30x15 B3@15:30x15 B4@15:30x15 L1@15:30x15 L2@15:30x15 L3@16:30x15 L4@17:00x15' && Number(apres.price) === Number(r.price),
+            '[I] « Enregistrer » : le laser du groupe 4 passe a 17:00, le reste ne bouge pas, au meme prix', apres && { horaire: horaireDe(apres), prix: apres.price, avant: r.price });
+          await page.evaluate(() => { if (typeof closePos === 'function') closePos(); });
+          await page.waitForFunction((id) => Array.from(document.querySelectorAll(`.gf-r[data-gf-id="${id}"] .gf-x`)).some((x) => /^Laser à 17:00 · groupe 4/.test(x.getAttribute('title') || '')), r.id, { timeout: 15000 }).catch(() => {});
+          const cases2 = await casesDuPlanning(page, r.id);
+          ok(cases2.some((t) => /^Laser à 16:30 · groupe 3 ·/.test(t)) && cases2.some((t) => /^Laser à 17:00 · groupe 4 ·/.test(t)),
+            '[I] le planning complet suit : le groupe 3 seul au laser a 16:30, le groupe 4 a 17:00', cases2);
+          // Une heure avant l ouverture : la case du groupe 1 le dit en rouge, avant « Enregistrer ».
+          await page.evaluate((i) => { closePos(); openPos(i); setTab('modifier'); }, r.id);
+          await page.waitForSelector('#editGroupes .fm-gg-l', { timeout: 12000 });
+          await page.locator('#editGg1-laser_game').fill('08:00');
+          await page.keyboard.press('Tab');
+          await page.waitForSelector('#editGroupes .fm-gg-c.is-ko[data-groupe="1"][data-activite="laser_game"]', { timeout: 15000 }).catch(() => {});
+          const ko = await texte(page, '#editGroupes .fm-gg-l[data-groupe="1"] .fm-gg-ko');
+          ok(/Groupe 1 : le laser à 08:00 commence avant l’ouverture \(\d{2}:\d{2}\)\./.test(ko), '[I] Modifier : le laser du groupe 1 a 08:00, sa case est rouge et dit pourquoi, avant « Enregistrer »', ko);
+          await capture(page, '60-en-4-groupes-modifier-refus');
+          await page.evaluate(() => { if (typeof closePos === 'function') closePos(); });
+        }
+        ok(erreurs.length === 0, '[*] zero erreur JavaScript (I)', erreurs.slice(0, 3).join(' | '));
       } finally { await ctx.close(); }
     }
   } catch (error) {

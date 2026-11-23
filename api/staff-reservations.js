@@ -559,7 +559,7 @@ async function modifierABlanc(req, res, corps) {
   } catch (error) {
     if ((error && error.statusCode >= 500) || estErreurInfra(error)) throw error;
     dansLesMotsDuComptoir(error);
-    return { ok: true, dryRun: true, modification: true, refus: { message: String(error.message), statut: error.statusCode || 400, ...(error.code ? { code: error.code } : {}), ...(Number.isInteger(error.rangDuDeplacement) ? { rang: error.rangDuDeplacement, suggestions: error.heuresProches || [] } : {}), ...(error.enPlus ? { enPlus: String(error.enPlus) } : {}) } };
+    return { ok: true, dryRun: true, modification: true, refus: { message: String(error.message), statut: error.statusCode || 400, ...(error.code ? { code: error.code } : {}), ...(Number.isInteger(error.rangDuDeplacement) ? { rang: error.rangDuDeplacement, suggestions: error.heuresProches || [] } : {}), ...(error.enPlus ? { enPlus: String(error.enPlus) } : {}), ...(Array.isArray(error.coincent) && error.coincent.length ? { coincent: error.coincent } : {}) } };
   }
 }
 
@@ -1229,6 +1229,15 @@ async function calculerLaModification({ body, current, session, requestedCenterI
     const motif = String(ops.planRefusal || ops.planWarning || 'le moteur n’a pas donné de motif.').trim();
     throw createHttpError(`Ce programme ne tient pas au planning : ${motif}`, 422);
   }
+  // DES GROUPES REGLES DANS MODIFIER QUI NE TIENNENT PAS (2026-11-23, lib/grand-groupe.js) : leur nombre,
+  // leurs joueurs ou leurs heures. Rien ne s ecrit : l ancien plan sous des groupes que l ecran montrait
+  // autres serait un mensonge. Le refus dit le groupe et l activite qui coincent (`coincent`).
+  const groupesDemandes = patch.preference && typeof patch.preference === 'object' ? patch.preference.grandGroupe : null;
+  if (shouldReplan && ops.planAvailable === false && groupesDemandes && typeof groupesDemandes === 'object'
+    && (Array.isArray(groupesDemandes.heures) || Array.isArray(groupesDemandes.tailles) || Number(groupesDemandes.nombre) >= 2)) {
+    const motif = String(ops.planRefusal || ops.planWarning || 'le moteur n’a pas donné de motif.').trim();
+    throw Object.assign(createHttpError(`Ces groupes ne tiennent pas au planning : ${motif}`, 422), { coincent: Array.isArray(ops.groupesQuiCoincent) ? ops.groupesQuiCoincent : [] });
+  }
   if (heuresAPoser.length && shouldReplan && ops.opsPlan && ops.planAvailable !== false) {
     const jour = String(patch.date ?? current.date);
     const lu = await readStaffState(jour, requestedCenterId, { avecBlocages: true, avecFermetures: true });
@@ -1321,8 +1330,13 @@ async function calculerLaModification({ body, current, session, requestedCenterI
     const pistesDuPlan = (ops.opsPlan?.resourceBlocks || []).filter((block) => block.resourceType === 'bowling_lane').flatMap((block) => block.lanes || []).map(Number);
     if (Array.isArray(patch.lanes) && !patch.lanes.length && pistesDuPlan.length) patch.lanes = [...new Set(pistesDuPlan)];
   }
-  if (shouldReplan && JSON.stringify((patch.lanes ?? current.lanes ?? []).map(Number))
-    === JSON.stringify((current.lanes || []).map(Number))) {
+  // UN PLAN EN SOUS-GROUPES TIENT SES PISTES GROUPE PAR GROUPE (2026-11-23, lib/grand-groupe.js) : le moteur les
+  // choisit pour chaque groupe, les pistes du dossier sont leur reunion, jamais celles que le corps propose.
+  // Modifier en envoyait d autres (les pistes libres a l heure du premier bowling, quand un autre dossier tient
+  // une piste d un groupe qui joue plus tard) et la base refusait « Ce créneau vient de changer ».
+  const pistesDuGrandGroupe = (ops.opsPlan?.resourceBlocks || []).some((block) => block && block.resourceType === 'bowling_lane' && Number(block.sousGroupe) > 0);
+  if (shouldReplan && (pistesDuGrandGroupe || JSON.stringify((patch.lanes ?? current.lanes ?? []).map(Number))
+    === JSON.stringify((current.lanes || []).map(Number)))) {
     const allocated = (ops.opsPlan?.resourceBlocks || []).filter((block) => block.resourceType === 'bowling_lane')
       .flatMap((block) => block.lanes || []);
     if (allocated.length) patch.lanes = [...new Set(allocated.map(Number))];

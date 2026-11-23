@@ -627,12 +627,13 @@ async function scenarioR(browser) {
     // Le bouton : le champ devient celui de l e-mail, rien ne part.
     const avant = ecritures(journal).length;
     await page.click('#rsContactBascule');
+    await page.mouse.move(2, 2); // la souris quitte le bouton : son fond de survol n est pas son fond de repos
     await page.waitForTimeout(300);
     const c2 = await lireContact(page);
     ok(!c2.tel && Boolean(c2.mail) && c2.mail.type === 'email' && c2.mail.inputmode === 'email' && c2.mail.autocomplete === 'off' && !c2.mail.requis && c2.mail.valeur === '' && c2.mail.placeholder === 'prenom@email.be'
       && /^E-mail/.test(c2.libelle) && /facultatif/.test(c2.libelle) && !/obligatoire/.test(c2.libelle) && Boolean(c2.bouton) && c2.bouton.texte === 'Par téléphone' && c2.lien === 'Occasion',
     '[R] « Par mail » : le champ devient celui de l e-mail, facultatif, au clavier e-mail ; « Par téléphone » a sa place', { mail: c2.mail, libelle: c2.libelle, bouton: c2.bouton && c2.bouton.texte, lien: c2.lien });
-    ok(c2.focus === 'qbEmail' && ecritures(journal).length === avant && encadre(c2) && aDroite(c2), '[R] le focus passe dans le champ de l e-mail, le bouton reste a sa place, rien ne part au serveur', { focus: c2.focus, ecritures: ecritures(journal).length - avant });
+    ok(c2.focus === 'qbEmail' && ecritures(journal).length === avant && encadre(c2) && aDroite(c2), '[R] le focus passe dans le champ de l e-mail, le bouton reste a sa place, rien ne part au serveur', { focus: c2.focus, bouton: c2.bouton, fondChamp: c2.fondChamp, champRect: c2.champRect, ecritures: ecritures(journal).length - avant });
     await photo(page, 'reserver-par-mail', '#quickBookOverlay .rs-tk');
 
     // Créer sans adresse : le dossier part, sans numero ni adresse, en un envoi.

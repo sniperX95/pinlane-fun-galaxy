@@ -37060,7 +37060,7 @@ function groupesDuPlanEdition(dossier) {
       const siens = liste.filter((b) => (b.resourceType === 'bowling_lane' ? 'bowling' : 'laser_game') === id)
         .sort((x, y) => String(x.startTime).localeCompare(String(y.startTime)));
       if (!siens.length) return;
-      passages[id] = { debut: String(siens[0].startTime).slice(0, 5), fin: String(siens[siens.length - 1].endTime || '').slice(0, 5), pistes: (siens[0].lanes || []).map(Number), parties: siens.length };
+      passages[id] = { debut: String(siens[0].startTime).slice(0, 5), fin: String(siens[siens.length - 1].endTime || '').slice(0, 5), pistes: (siens[0].lanes || []).map(Number), parties: siens.length, joueurs: Math.max(0, ...siens.map((b) => Number(b.joueursReels ?? b.players) || 0)) };
     });
     const joueurs = Number(tailles[n - 1]) || Math.max(0, ...liste.map((b) => Number(b.joueursReels ?? b.players) || 0));
     return { n, joueurs, passages };
@@ -37198,7 +37198,9 @@ function rangeeGroupeEditionHtml(g, n, joueurs, heures, coincent, plafond) {
     const nom = p.id === 'laser_game' ? 'Laser' : 'Bowling';
     const raison = coincent.find((x) => x.groupe === n && x.activite === p.id);
     const passe = groupe && groupe.passages[p.id] && groupe.passages[p.id].debut === p.heure ? groupe.passages[p.id] : null;
-    const detail = raison ? 'ne tient pas' : !passe ? '' : p.id === 'bowling' ? rvPistesDites(passe.pistes) : `${passe.parties > 1 ? `${passe.parties} parties, ` : ''}jusqu’à ${passe.fin}`;
+    // (une activite que tout le groupe ne joue pas, 40 au laser sur 60 : la case dit combien du groupe y vont)
+    const combien = passe && passe.joueurs > 0 && passe.joueurs < joueurs ? `${rvPluriel(passe.joueurs, 'joueur')}, ` : '';
+    const detail = raison ? 'ne tient pas' : !passe ? '' : p.id === 'bowling' ? `${combien}${rvPistesDites(passe.pistes)}` : `${combien}${passe.parties > 1 ? `${passe.parties} parties, ` : ''}jusqu’à ${passe.fin}`;
     const champ = `editGg${n}-${p.id}`;
     return `<label class="fm-gg-c is-${p.id === 'bowling' ? 'bowling' : 'laser'}${raison ? ' is-ko' : ''}" for="${champ}" data-groupe="${n}" data-activite="${escapeHtml(p.id)}" data-heure-groupe="${escapeHtml(p.heure)}"><span class="fm-gg-a"><b>${nom}</b>${detail ? `<small>${escapeHtml(detail)}</small>` : ''}</span><input id="${champ}" class="input" type="time" step="60" value="${escapeHtml(p.heure)}" data-pl-focus="fiche.edit.groupe.${n}.${escapeHtml(p.id)}" aria-label="${escapeHtml(`Groupe ${n}, heure du ${p.id === 'laser_game' ? 'laser' : 'bowling'}${raison ? `, ne tient pas : ${raison.raison}` : ''}`)}"${raison ? ' aria-invalid="true"' : ''} oninput="groupesHeureEdition(${n}, '${p.id}', this.value)" onblur="groupesSortieEdition()"></label>`;
   }).join('<span class="fm-gg-fl" aria-hidden="true">→</span>');
@@ -43110,14 +43112,20 @@ function rsPremierDesGroupesHtml(grand, plan) {
 
 // UNE CASE : une activite d un groupe, ce que le plan en dit (ses pistes, sa fin) ou ce qui coince, en
 // rouge, et son heure, qui se touche et se tape a la minute.
-function rsCaseDuGroupeHtml(n, p, plan, coincent) {
+function rsCaseDuGroupeHtml(n, p, plan, coincent, taille = 0) {
   const b = rsEtat();
   const cle = `t:${n}-${p.id}`;
   const nom = rsNomCourt(p.id);
-  const blocs = (plan && Array.isArray(plan.blocs) ? plan.blocs : []).filter((x) => Number(x.sousGroupe) === n && x.activite === p.id && x.debut).sort((x, y) => timeToNum(x.debut) - timeToNum(y.debut));
+  // (ce que le plan dit de la case, seulement a l heure qu elle montre : une heure tapee que le plan n a pas
+  // encore jugee ne garde pas les pistes ni la fin de l ancienne)
+  const tous = (plan && Array.isArray(plan.blocs) ? plan.blocs : []).filter((x) => Number(x.sousGroupe) === n && x.activite === p.id && x.debut).sort((x, y) => timeToNum(x.debut) - timeToNum(y.debut));
+  const blocs = tous.length && tous[0].debut === p.heure ? tous : [];
   const raison = coincent.find((x) => x.groupe === n && x.activite === p.id);
   const parties = blocs.length > 1 && p.id === 'laser_game' ? `${blocs.length} parties, ` : '';
-  const detail = raison ? 'ne tient pas' : !blocs.length ? '' : p.id === 'bowling' ? rvPistesDites(blocs[0].pistes) : `${parties}jusqu’à ${blocs[blocs.length - 1].fin}`;
+  // (une activite que tout le groupe ne joue pas, 40 au laser sur 60 : la case dit combien du groupe y vont)
+  const ici = blocs.length ? Math.max(...blocs.map((x) => Number(x.joueursReels || x.joueurs) || 0)) : 0;
+  const combien = ici > 0 && taille > 0 && ici < taille ? `${rvPluriel(ici, 'joueur')}, ` : '';
+  const detail = raison ? 'ne tient pas' : !blocs.length ? '' : p.id === 'bowling' ? `${combien}${rvPistesDites(blocs[0].pistes)}` : `${combien}${parties}jusqu’à ${blocs[blocs.length - 1].fin}`;
   const quoi = p.id === 'laser_game' ? 'laser' : rvMinuscule(nom);
   const heure = b && b.saisie === cle
     ? `<input class="rs-pas-champ rs-gg-champ" id="rsSaisie" type="text" inputmode="numeric" maxlength="5" enterkeyhint="done" autocomplete="off" spellcheck="false" value="${escapeHtml(p.heure)}" aria-label="${escapeHtml(`Groupe ${n}, heure du ${quoi}, tapez l’heure, par exemple 14:10`)}" data-saisie="${escapeHtml(cle)}" onkeydown="rsSaisieTouche(event, this)" onblur="rsSaisieSortie(this)">`
@@ -43130,7 +43138,7 @@ function rsCaseDuGroupeHtml(n, p, plan, coincent) {
 // coince se dit dessous, avec la phrase du serveur.
 function rsRangeeDuGroupeHtml(grand, n, joueurs, heures, plan, coincent, plafond) {
   const passages = rvPassagesDuGroupe(grand, heures);
-  const cases = passages.map((p) => rsCaseDuGroupeHtml(n, p, plan, coincent)).join('<span class="rs-gg-fl" aria-hidden="true">→</span>');
+  const cases = passages.map((p) => rsCaseDuGroupeHtml(n, p, plan, coincent, joueurs)).join('<span class="rs-gg-fl" aria-hidden="true">→</span>');
   const moins = joueurs > 1 ? `rsFixer(() => rsTailleDuGroupe(${n}, ${joueurs - 1}))` : '';
   const plus = joueurs + 1 <= plafond ? `rsFixer(() => rsTailleDuGroupe(${n}, ${joueurs + 1}))` : '';
   const raisons = [...new Set(coincent.filter((x) => x.groupe === n).map((x) => rsPhrase(x.raison)))];

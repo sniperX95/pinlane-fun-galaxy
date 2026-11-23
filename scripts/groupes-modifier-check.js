@@ -235,6 +235,15 @@ function jouer(source) {
       '[A] 30 joueurs au groupe 1, 30 armes : pas un de plus, un de moins se peut', r1 && r1.html.slice(0, 900));
     ok('A', /<p class="fm-gg-total" id="editGgTotal" role="status">60 joueurs sur 60<\/p>/.test(page) && !/id="editGgEgal"/.test(page) && !/id="editGgHeures"/.test(page) && /id="editGgInverser-1"/.test(page),
       '[A] le total : 60 joueurs sur 60, rien a remettre, chaque groupe peut inverser son ordre', page.slice(-700));
+    // 40 au laser sur 60 : la case du laser dit combien du groupe y vont.
+    const d40 = DOSSIER();
+    d40.program.items[1].participants = 40;
+    d40.opsPlan.resourceBlocks = d40.opsPlan.resourceBlocks.map((x) => (x.resourceType === 'laser_arena' ? { ...x, players: 20 } : x));
+    ouvrir(d40);
+    page = appel('groupesEditionHtml()');
+    const q1 = rangee(page, 1);
+    ok('A', q1 && /<small>20 joueurs, jusqu’à 16:55<\/small>/.test(q1.html) && /<small>pistes 1 à 5<\/small>/.test(q1.html),
+      '[A] 40 au laser sur 60 : la case du laser du groupe 1 dit « 20 joueurs », celle du bowling ses pistes', q1 && q1.html.slice(0, 900));
     // 80 joueurs en 3 groupes : le « − » s arrete a 3.
     ouvrir(DOSSIER(80, TROIS_GROUPES(80)));
     page = appel('groupesEditionHtml()');
@@ -389,6 +398,7 @@ function jouer(source) {
 // contexte pour n exister qu une fois : Reserver a des lignes soeurs (scripts/groupes-reserver-check.js).
 const MUTATIONS = [
   { nom: 'bloc-jamais-montre', lettre: 'A', de: "  if (!ids.includes('bowling')) return null;\n  const minimum = Math.max(1, ...ids.map((id) => (id === 'bowling' ? splitGroupIntoBowlingServices(joueurs.bowling).length", vers: "  return null;\n  const minimum = Math.max(1, ...ids.map((id) => (id === 'bowling' ? splitGroupIntoBowlingServices(joueurs.bowling).length" },
+  { nom: 'case-sans-combien', lettre: 'A', de: "    const combien = passe && passe.joueurs > 0 && passe.joueurs < joueurs ? `${rvPluriel(passe.joueurs, 'joueur')}, ` : '';", vers: "    const combien = '';" },
   { nom: 'plancher-a-deux', lettre: 'A', de: '  const plancher = Math.max(2, g.minimum);', vers: '  const plancher = 2;' },
   { nom: 'programme-dans-l-ordre-des-activites', lettre: 'A', de: '    .sort((a, b) => (a.heure ? minutesHeureEdition(a.heure) : 1e4) - (b.heure ? minutesHeureEdition(b.heure) : 1e4) || a.rang - b.rang);', vers: '    .sort((a, b) => a.rang - b.rang);' },
   { nom: 'joueurs-au-dela-des-armes', lettre: 'A', de: '${joueurs + 1 <= plafond ? `onclick="groupesTaillePasEdition(${n}, 1)"` : \'disabled\'}', vers: '${`onclick="groupesTaillePasEdition(${n}, 1)"`}' },

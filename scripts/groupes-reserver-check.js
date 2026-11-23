@@ -226,6 +226,20 @@ function jouer(source) {
   page = appel('rsGroupesHtml()');
   ok('C', /<p class="rs-texte rs-heure-refus" id="rsGgRefus" role="alert">Le centre est fermé à cette date\.<\/p>/.test(page),
     '[C] un refus sans case : la phrase du serveur se lit sous les groupes, en rouge', (/rs-gg-liste[\s\S]*$/.exec(page) || [''])[0].slice(-600));
+  // 40 au laser sur 60 : la case du laser dit combien du groupe y vont, celle du bowling ses pistes seules.
+  const partiel = PLAN_DEUX();
+  partiel.blocs = partiel.blocs.map((x) => ({ ...x, joueurs: x.activite === 'laser_game' ? 20 : 30 }));
+  poser(etat({ joueurs: { laser_game: 40 }, planCourant: partiel }));
+  page = appel('rsGroupesHtml()');
+  const p1 = rangee(page, 1);
+  ok('C', p1 && /<small>20 joueurs, jusqu’à 16:55<\/small>/.test(p1.html) && /<small>pistes 1 à 5<\/small>/.test(p1.html),
+    '[C] 40 au laser sur 60 : la case du laser du groupe 1 dit « 20 joueurs », celle du bowling ses pistes', p1 && p1.html.slice(0, 700));
+  // Une heure tapee que le plan n a pas encore jugee : sa case ne garde pas la fin de l ancienne heure.
+  poser(etat({ grandGroupe: { heures: [{ bowling: '15:30', laser_game: '17:00' }, { bowling: '16:30', laser_game: '15:30' }], pourDepart: '15:30', pourActivites: 'bowling,laser_game' } }));
+  page = appel('rsGroupesHtml()');
+  const t1 = rangee(page, 1);
+  ok('C', t1 && /data-activite="laser_game" data-heure-groupe="17:00"><span class="rs-gg-a"><b>Laser<\/b><\/span>/.test(t1.html) && /<small>pistes 1 à 5<\/small>/.test(t1.html),
+    '[C] le laser du groupe 1 tape a 17:00, pas encore juge : sa case ne dit pas « jusqu’à 16:55 »', t1 && t1.html.slice(0, 700));
   // Le total qui ne fait pas le groupe.
   poser(etat({ grandGroupe: { tailles: [30, 28], pourPax: 60 } }));
   page = appel('rsGroupesHtml()');
@@ -331,6 +345,8 @@ const MUTATIONS = [
   { nom: 'heures-a-moitie-envoyees', lettre: 'B', de: '  return posees && posees.every((h) => grand.ids.every((id) => h[id])) ? posees : null;', vers: '  return posees;' },
   // (le saut de ligne devant : la meme ligne existe plus indentee dans Modifier, rangeeGroupeEditionHtml)
   { nom: 'case-sans-rouge', lettre: 'C', de: '\n  const raison = coincent.find((x) => x.groupe === n && x.activite === p.id);', vers: '\n  const raison = null;' },
+  { nom: 'case-sans-combien', lettre: 'C', de: "  const combien = ici > 0 && taille > 0 && ici < taille ? `${rvPluriel(ici, 'joueur')}, ` : '';", vers: "  const combien = '';" },
+  { nom: 'case-garde-l-ancienne-heure', lettre: 'C', de: '  const blocs = tous.length && tous[0].debut === p.heure ? tous : [];', vers: '  const blocs = tous;' },
   { nom: 'refus-sans-case-muet', lettre: 'C', de: "  const refus = plan && plan.disponible === false && !coincent.length && !manque && plan.refus ? rsPhrase(plan.refus) : '';", vers: "  const refus = '';" },
   { nom: 'refus-de-case-redit', lettre: 'C', de: "  const refus = plan && plan.disponible === false && !coincent.length && !manque && plan.refus ? rsPhrase(plan.refus) : '';", vers: "  const refus = plan && plan.disponible === false && !manque && plan.refus ? rsPhrase(plan.refus) : '';" },
   { nom: 'total-muet', lettre: 'C', de: '<p class="rs-gg-total${total === pax ? \'\' : \' is-ko\'}"', vers: '<p class="rs-gg-total"' },

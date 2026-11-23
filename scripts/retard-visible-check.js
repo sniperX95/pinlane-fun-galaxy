@@ -869,7 +869,8 @@ const MUTATIONS = [
   { nom: 'groupe-qui-joue-pousse', lettre: 'G', scenarios: ['gel'], editions: [
     { fichier: LIB, serveur: true, de: '  if (enJeu && enJeu.exclusif) throw refus(enJeu.phrase, 409);', vers: '' },
     { fichier: 'api/staff-reservations.js', serveur: true, de: '      try { return validateActivityMoveResources(essai, move, autres, snapshot.laneStatuses, snapshot.blocks || [], current.date); }', vers: "      try { return validateActivityMoveResources(essai, move, autres.filter((o) => !['arrived', 'paid'].includes(o.status)), snapshot.laneStatuses, snapshot.blocks || [], current.date); }" },
-    { fichier: BASE, serveur: true, de: '        try { return validateActivityMoveResources(essai, move, reservations, laneStatuses, blocks, current.date); }', vers: "        try { return validateActivityMoveResources(essai, move, reservations.filter((o) => !['arrived', 'paid'].includes(o.status)), laneStatuses, blocks, current.date); }" },
+    // (celle du retard : le decalage de tout le groupe, ecrireLeGroupeDecale, porte depuis c82ff34 la meme ligne)
+    { fichier: BASE, serveur: true, de: '      const essayer = jugeDuRetard({ current, autres: reservations, maintenant, valider: (essai, move) => {\n        try { return validateActivityMoveResources(essai, move, reservations, laneStatuses, blocks, current.date); }', vers: "      const essayer = jugeDuRetard({ current, autres: reservations, maintenant, valider: (essai, move) => {\n        try { return validateActivityMoveResources(essai, move, reservations.filter((o) => !['arrived', 'paid'].includes(o.status)), laneStatuses, blocks, current.date); }" },
   ] },
 ];
 

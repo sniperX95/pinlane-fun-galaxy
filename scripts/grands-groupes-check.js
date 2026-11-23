@@ -57,9 +57,11 @@
 //       fois, 4 groupes de 15 ; chaque heure se touche et se tape (les groupes 1 et 2 au laser a 15:30 puis au
 //       bowling a 16:30, les groupes 3 et 4 l inverse) ; rien ne coince, le ticket dit les 4 groupes ; le
 //       dossier nait ainsi, au prix annonce ; le planning complet marque chaque groupe (« groupes 1 et 2 » sur
-//       la partie de laser qu ils jouent ensemble) ; la fiche aussi. Modifier montre le bloc des groupes : le
-//       laser du groupe 4 a 17:00 s ecrit, le reste ne bouge pas, au meme prix, et le planning suit ; une
-//       heure a 08:00 rend la case du groupe 1 rouge avec sa raison, avant « Enregistrer ».
+//       la partie de laser qu ils jouent ensemble) ; la fiche aussi. Modifier montre le bloc des groupes, lisible
+//       (aucune case coupee, le bouton qui inverse sur la ligne de son groupe), et son programme dit le vrai
+//       numero de chaque groupe au bowling : le laser du groupe 4 a 17:00 s ecrit, le reste ne bouge pas, au meme
+//       prix, et le planning suit ; une heure a 08:00 rend la case du groupe 1 rouge avec sa raison, avant
+//       « Enregistrer ».
 //   [*] Zero erreur JavaScript.
 //
 // CONTRE-PREUVES : `--contre-preuves` rejoue le gate sur du code casse expres, une mutation a la fois, en
@@ -157,6 +159,10 @@ const MUTATIONS = [
   { nom: 'planning-groupes-ensemble-sans-numero', lettre: 'I', fichier: PLANNING, de: "      var groupe = e.groupe ? 'groupe ' + e.groupe : e.groupes && e.groupes.length > 1 ? 'groupes ' + gfGroupesEnMots(e.groupes) : '';", vers: "      var groupe = e.groupe ? 'groupe ' + e.groupe : '';" },
   { nom: 'modifier-sans-bloc-des-groupes', lettre: 'I', fichier: APP, de: '            ${groupesEditionHtml()}\n', vers: '' },
   { nom: 'horaires-hors-case', lettre: 'I', serveur: true, fichier: MOTEUR, de: '        ...(horsHoraires ? { conflict: horsHoraires.conflict } : {}),\n', vers: '' },
+  // [I] Modifier : le programme d un groupe revient a cote de son nom (cases coupees, bouton qui inverse sous la
+  // rangee) ; le bowling du programme redit « 1er groupe, 2e groupe » au lieu du vrai numero.
+  { nom: 'modifier-programme-a-cote', lettre: 'I', fichier: CSS, de: 'body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-prog { flex: 1 1 100%; order: 2;', vers: 'body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-prog { flex: 1 1 320px; order: 0;' },
+  { nom: 'programme-groupes-ordinaux', lettre: 'I', fichier: APP, de: "${Number(etape.sousGroupe) > 0 ? `Groupe ${Number(etape.sousGroupe)}` : `${index ? `${index + 1}e` : '1er'} groupe`} à", vers: "${index ? `${index + 1}e` : '1er'} groupe à" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -987,6 +993,23 @@ async function principal() {
           const bloc = await page.evaluate(() => ({ titre: ((document.getElementById('editGroupesTitre') || {}).textContent || '').trim(), lignes: Array.from(document.querySelectorAll('#editGroupes .fm-gg-l')).map((l) => l.getAttribute('aria-label')) }));
           ok(bloc.titre === '60 joueurs en 4 groupes' && bloc.lignes.length === 4 && bloc.lignes[0] === 'Groupe 1 · 15 joueurs · Laser 15:30 → Bowling 16:30',
             '[I] Modifier montre le bloc des groupes : 4 rangees, leurs joueurs et leurs heures', bloc);
+          // (le premier passage au navigateur, 2026-11-23 : « Bowlin » coupe, « jusqu’ / à / 15:55 » sur trois lignes,
+          // et le programme disait « 1er groupe à 15:30 » pour le groupe 3)
+          await page.evaluate(() => { const z = document.getElementById('editGroupes'); if (z) z.scrollIntoView({ block: 'start' }); });
+          const lecture = await page.evaluate(() => {
+            const z = document.getElementById('editGroupes');
+            const textes = Array.from(z.querySelectorAll('.fm-gg-a b, .fm-gg-a small'));
+            return {
+              coupes: textes.filter((e) => e.scrollWidth > e.clientWidth + 1).map((e) => e.textContent),
+              surPlusieursLignes: Array.from(z.querySelectorAll('.fm-gg-a small')).filter((e) => e.getClientRects().length > 1 || e.getBoundingClientRect().height > 24).map((e) => e.textContent),
+              inverserSousLaRangee: Array.from(z.querySelectorAll('.fm-gg-l')).filter((l) => { const b = l.querySelector('.fm-gg-inv'); const q = l.querySelector('.fm-gg-q'); return b && q && b.getBoundingClientRect().top > q.getBoundingClientRect().bottom; }).length,
+            };
+          });
+          ok(lecture.coupes.length === 0 && lecture.surPlusieursLignes.length === 0 && lecture.inverserSousLaRangee === 0,
+            '[I] Modifier : le bloc des groupes se lit a 1366 x 768, aucun nom ni detail coupe ou casse, le bouton qui inverse sur la ligne de son groupe', lecture);
+          const services = await texte(page, '#posOverlay .fm-act-parties[data-parties-activite="bowling"]');
+          ok(services === 'Groupe 3 à 15:30 · Groupe 4 à 15:30 · Groupe 1 à 16:30 · Groupe 2 à 16:30',
+            '[I] Modifier, le programme : le bowling dit le vrai numero de chaque groupe, comme le bloc des groupes', services);
           await capture(page, '60-en-4-groupes-modifier');
           await page.locator('#editGg4-laser_game').fill('17:00');
           await page.keyboard.press('Tab');

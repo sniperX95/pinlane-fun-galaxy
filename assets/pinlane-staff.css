@@ -20456,7 +20456,11 @@ body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-l { display: flex; flex-wrap:
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-l + .fm-gg-l { border-top: 1px solid var(--line); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-q { flex: 0 0 72px; font-size: 14px; font-weight: 650; color: var(--text); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-j.fm-stepper { width: 140px; }
-body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-prog { flex: 1 1 320px; display: flex; align-items: stretch; gap: 6px; min-width: 0; }
+/* LE PROGRAMME D UN GROUPE SOUS SA LIGNE (2026-11-23, le premier passage au navigateur) : a cote du nom et des
+   joueurs, il restait 360 px a deux cases dont l heure en prend 112 ; « Bowlin » se coupait, « jusqu’ / à / 15:55 »
+   passait sur trois lignes et le bouton qui inverse tombait seul sous la rangee. Le nom, les joueurs et ce bouton
+   d abord, puis les deux cases sur toute la largeur : chaque case se lit sur une ligne. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-prog { flex: 1 1 100%; order: 2; display: flex; align-items: stretch; gap: 6px; min-width: 0; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-fl { flex: none; align-self: center; color: var(--faint); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-c { flex: 1 1 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; min-height: 52px; padding: 4px 4px 4px 12px; border-radius: 8px; background: var(--fz-carte); box-shadow: inset 3px 0 0 var(--act-bowling, var(--console-selected)); cursor: pointer; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-c.is-laser { box-shadow: inset 3px 0 0 var(--act-laser, var(--console-selected)); }
@@ -20467,11 +20471,11 @@ body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-a small { font-size: 12.5px; 
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-c.is-ko .fm-gg-a small { color: var(--danger); font-weight: 600; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-c .input { flex: none; width: 112px; min-height: 44px; font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-c.is-ko .input { border-color: var(--danger); box-shadow: 0 0 0 1px var(--danger); }
-body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-inv { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--fz-carte); color: var(--text); cursor: pointer; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-inv { flex: none; order: 1; margin-left: auto; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--fz-carte); color: var(--text); cursor: pointer; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-inv svg { width: 20px; height: 20px; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-inv:hover { border-color: var(--console-selected); color: var(--console-selected); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-inv:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 2px; }
-body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-ko { flex: 1 1 100%; font-size: 13px; font-weight: 600; line-height: 1.45; color: var(--danger); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-ko { flex: 1 1 100%; order: 3; font-size: 13px; font-weight: 600; line-height: 1.45; color: var(--danger); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-texte { margin: 0; font-size: 13px; color: var(--muted); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-pied { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-gg-total { flex: 1 1 auto; margin: 0; font-size: 14px; font-weight: 650; font-variant-numeric: tabular-nums; color: var(--text); }

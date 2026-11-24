@@ -43,6 +43,13 @@
 //       suit son heure posee. Le laser en groupes de 10 et 14, et 40 joueurs en 2 vagues de 20, sans grand groupe,
 //       se decalent pareil. Rien de ce qui passait ne se refuse : un groupe grandi de 25 a 35 sans plan refait
 //       place la 2e vague que les armes comptent, avec les 10 joueurs qui n en ont pas.
+//   [K] DEUX GROUPES DU DOSSIER DANS L ARENE (2026-11-24 : le laser du groupe 3 pose a 15:10 pendant celui du groupe 1
+//       passait, deux parties a la fois que Reserver refuse). La regle de Reserver, pas plus, pas moins : une vague
+//       seule sur la partie d autres groupes du dossier se refuse, a blanc comme a l ecriture, et la phrase nomme la
+//       vague qui gene et dit quoi faire ; partir avec eux se refuse quand les armes ne suffisent pas (45 sur 30) et
+//       passe quand elles suffisent (15 + 15) ; deux groupes d un depart commun deplaces ensemble a la minute passent,
+//       a blanc et a l ecriture ; un autre dossier dans la partie compte ses armes avec celles des groupes qui y
+//       partent ensemble (15 + 10 + 15 sur 30 : refuse).
 //
 // CONTRE-PREUVES : `--contre-preuves` rejoue le gate sur du code casse expres, une mutation a la fois, en
 // memoire (le crochet de compilation du banc : le disque n est jamais touche), et exige que chacune
@@ -131,6 +138,20 @@ const MUTATIONS = [
   { nom: 'unites-sur-les-armes', lettre: 'J', fichier: MOUVEMENT, de: '      return vaguesDeLaPartie(old, countIndex, players, Number(center.resources?.laser?.weaponCount || 30)).map(vague => ({ countIndex, groupWaveIndex: vague.wave, groupWaveCount: vague.count, unitKey: `${countIndex}.${vague.wave}`, pax: vague.pax, ...identiteDeLaVague(vague.modele) }));', vers: '      const waves = Math.ceil(players / Number(center.resources?.laser?.weaponCount || 30));\n      return Array.from({ length: waves }, (_, index) => ({ countIndex, groupWaveIndex: index + 1, groupWaveCount: waves, unitKey: `${countIndex}.${index + 1}`, pax: Math.floor(players / waves) + (index < players % waves ? 1 : 0) }));' },
   // [J] la frise ne suit plus le decalage : le minigolf a son heure et les etapes du bowling restent ou elles etaient.
   { nom: 'frise-du-grand-groupe-figee', lettre: 'J', fichier: 'lib/decaler-le-groupe.js', de: '  if (Array.isArray(plan.timeline)) sortie.timeline = plan.timeline.map((b) => decalerUnBloc(b, ecart));\n', vers: '' },
+  // [K] les groupes du dossier ne comptent plus dans l arene au deplacement ; le refus ne dit plus quoi faire ; un geste
+  // qui deplace deux groupes d un depart commun se juge a chaque etape contre l autre pas encore deplace (le PATCH, son
+  // calcul a blanc, l ecriture) ; les armes des groupes qui partent ensemble ne comptent plus avec un autre
+  // dossier.
+  { nom: 'freres-du-dossier-ignores', lettre: 'K', fichier: MOUVEMENT, de: "  if (activity === 'laser_game' && !removing) {\n    const armes = Number(center.resources?.laser?.weaponCount) || 30;", vers: "  if (false) {\n    const armes = Number(center.resources?.laser?.weaponCount) || 30;" },
+  { nom: 'refus-sans-conseil', lettre: 'K', fichier: MOUVEMENT, de: " : une seule partie à la fois. ${ensembleTient ? `Partez avec ${saPartie.length > 1 ? 'eux' : 'lui'} à ${clock(start(gene))}, ou dès ${clock(end(gene))}.` : `Partez dès ${clock(end(gene))}.`}`);", vers: ' : une seule partie à la fois.`);' },
+  { nom: 'geste-sans-ensemble', lettre: 'K', fichier: MOUVEMENT, de: '        && start(block) < end(movedBlock) && start(movedBlock) < end(block) && !bougeEncore(block));', vers: '        && start(block) < end(movedBlock) && start(movedBlock) < end(block));' },
+  // [K] plus que Reserver : un depart commun que les armes tiennent se refuse.
+  { nom: 'depart-commun-refuse-au-serveur', lettre: 'K', fichier: MOUVEMENT, de: '      if (parties <= lancements && prises + joueurs <= armes) continue;', vers: '      if (parties < lancements && prises + joueurs <= armes) continue;' },
+  { nom: 'patch-sans-ensemble', lettre: 'K', fichier: API, de: '            const suivant = buildActivityMove(candidate, deplacement, { aLaMinute: true, ensemble: deplacements });', vers: '            const suivant = buildActivityMove(candidate, deplacement, { aLaMinute: true });' },
+  { nom: 'blanc-sans-ensemble', lettre: 'K', fichier: API, de: '        candidat = essayer(candidat, deplacement, deplacements);', vers: '        candidat = essayer(candidat, deplacement);' },
+  { nom: 'essais-sans-ensemble', lettre: 'K', fichier: API, de: '() => essayer(base, move, essai));', vers: '() => essayer(base, move));' },
+  { nom: 'ecriture-sans-ensemble', lettre: 'K', fichier: 'lib/database.js', de: 'deplacements[0], input, deplacements.length > 1 ? 0 : null, deplacements);', vers: 'deplacements[0], input, deplacements.length > 1 ? 0 : null);' },
+  { nom: 'armes-des-freres-ignorees', lettre: 'K', fichier: 'lib/database.js', de: '    const autresEtFreres = freres.length ? [...reservations, { ...payload, opsPlan: { resourceBlocks: freres } }] : reservations;', vers: '    const autresEtFreres = reservations;' },
   // [J] le bowling deplace donne toutes les pistes du dossier a chaque groupe.
   { nom: 'pistes-de-tout-le-groupe', lettre: 'J', fichier: MOUVEMENT, de: 'lanes: (block.lanes || []).map(lane => mapping.get(lane)), requiredLanes: (block.lanes || []).length,', vers: 'lanes: [...mapping.values()], requiredLanes: mapping.size,' },
 ];
@@ -743,6 +764,76 @@ async function principal() {
           const y = await decaler(id, 30);
           ok(blanc.essais && blanc.essais[0] && blanc.essais[0].passe === true && y.statut === 200 && empreinte(ligne(id)) === attendu.blocs && autresDe(ligne(id)) === attendu.autres,
             '[J] le minigolf a son heure : « Tout le groupe » +30 min passe (a blanc aussi), le minigolf et chaque groupe 30 min plus tard', { blanc: blanc.essais || blanc.refus, statut: dire(y), autres: autresDe(ligne(id)), attendues: attendu.autres });
+        }
+      }
+    }
+
+    // =======================================================================
+    if (joue('K')) {
+      section('[K] DEUX GROUPES DU DOSSIER DANS L ARENE : LA REGLE DE RESERVER, PAS PLUS, PAS MOINS');
+      const vrai = (condition, quoi, detail) => { ok(condition, quoi, detail); return Boolean(condition); };
+      const dire = (x) => `${x.statut} ${x.json.message || ''}`.trim();
+      const lasersK = (id) => blocsDe(ligne(id)).filter((b) => b.resourceType === 'laser_arena').map((b) => `L${b.sousGroupe}@${String(b.startTime).slice(0, 5)}`).sort().join(' ');
+      const glisser = (id, activityMove) => serveur.appeler('PATCH', '/api/staff-reservations', { id, centerId: 'libramont', baseUpdatedAt: version(ligne(id)), activityMove });
+      const enBloc = (id, activityMoves) => serveur.appeler('PATCH', '/api/staff-reservations', { id, centerId: 'libramont', baseUpdatedAt: version(ligne(id)), activityMoves });
+      const essais = async (id, listes) => (await serveur.appeler('POST', '/api/staff-reservations', { dryRun: true, centerId: 'libramont', deplacement: { id, centerId: 'libramont', baseUpdatedAt: version(ligne(id)), essais: listes } })).json;
+      const laser = (groupe, startTime) => ({ activityId: 'laser_game', unitKey: `1.${groupe}`, startTime });
+      // Les groupes 1 et 2 au laser a 16:00 puis au bowling a 16:30 ; les groupes 3 et 4 au bowling a 17:30 puis au
+      // laser a 18:30. A 16:10, les groupes 3 et 4 ne jouent rien : seule l arene peut refuser.
+      vider();
+      const cree = await creer(corps(60, { impose: true, nombre: 4, tailles: [15, 15, 15, 15], heures: [
+        { laser_game: '16:00', bowling: '16:30' }, { laser_game: '16:00', bowling: '16:30' }, { bowling: '17:30', laser_game: '18:30' }, { bowling: '17:30', laser_game: '18:30' }] }, { debut: '16:00' }));
+      const d = cree.json.reservation && ligne(cree.json.reservation.id);
+      if (vrai(cree.statut < 300 && Boolean(d) && lasersK(d.id) === 'L1@16:00 L2@16:00 L3@18:30 L4@18:30',
+        '[K] MONTAGE : 4 groupes de 15, les groupes 1 et 2 partent ensemble au laser a 16:00, les groupes 3 et 4 a 18:30', d ? lasersK(d.id) : dire(cree))) {
+        const id = d.id;
+        // Une vague seule sur la partie d une autre : refusee, a blanc comme a l ecriture, la phrase nomme la vague qui
+        // gene et dit quoi faire ; rien ne bouge.
+        const avant = lasersK(id);
+        const blanc = await essais(id, [[laser(3, '16:10')]]);
+        const x = await glisser(id, laser(3, '16:10'));
+        const prise = /^Arène laser déjà prise à 16:10 par le laser des groupes 1 et 2, de 16:00 à 16:25 : une seule partie à la fois\. Partez dès 16:25\./;
+        ok(blanc.essais && blanc.essais[0] && blanc.essais[0].passe === false && prise.test(blanc.essais[0].raison || ''),
+          '[K] a blanc : le laser du groupe 3 a 16:10, pendant celui des groupes 1 et 2 (16:00 a 16:25), ne passe pas, la phrase nomme la vague et dit « Partez dès 16:25 »', blanc.essais || blanc.refus);
+        ok(x.statut === 422 && prise.test(x.json.message || '') && lasersK(id) === avant,
+          '[K] le PATCH le refuse avec la meme phrase (422) et rien ne bouge (deux parties a la fois : Reserver le refuse)', { statut: dire(x), lu: lasersK(id) });
+        // Partir avec eux : 30 + 15 armes, refuse, la phrase dit ce qui reste.
+        const y = await glisser(id, laser(3, '16:00'));
+        ok(y.statut === 422 && /^Laser à 16:00 : plus aucune place sur 30 \(le laser des groupes 1 et 2 y joue, de 16:00 à 16:25\), il en faut 15\. Partez dès 16:25\./.test(y.json.message || '') && lasersK(id) === avant,
+          '[K] au depart des groupes 1 et 2 : 45 armes sur 30, refuse, « plus aucune place sur 30 [...] il en faut 15 », rien ne bouge', { statut: dire(y), lu: lasersK(id) });
+        // Pas moins que Reserver : le groupe 4 part seul a 19:00, revient au depart du groupe 3 (15 + 15 armes) ; a 18:40,
+        // pendant la partie du groupe 3, il est refuse et la phrase propose leur depart commun.
+        const z1 = await glisser(id, laser(4, '19:00'));
+        const z2 = await glisser(id, laser(4, '18:40'));
+        const z3 = await glisser(id, laser(4, '18:30'));
+        ok(z1.statut === 200 && z2.statut === 422 && /^Arène laser déjà prise à 18:40 par le laser du groupe 3, de 18:30 à 18:55 : une seule partie à la fois\. Partez avec lui à 18:30, ou dès 18:55\./.test(z2.json.message || '')
+          && z3.statut === 200 && lasersK(id) === 'L1@16:00 L2@16:00 L3@18:30 L4@18:30',
+        '[K] le groupe 4 seul a 19:00 passe ; a 18:40, pendant le groupe 3, refuse (« Partez avec lui à 18:30, ou dès 18:55 ») ; au depart du groupe 3, 15 + 15 armes, il passe', { z1: dire(z1), z2: dire(z2), z3: dire(z3), lu: lasersK(id) });
+        // Un geste qui deplace les deux groupes d un depart commun a la minute (la pastille « groupes 3 et 4 » du planning
+        // complet) : chaque vague se joue a son tour, l autre va encore bouger, il passe, a blanc et a l ecriture.
+        const blancBloc = await essais(id, [[laser(3, '18:40'), laser(4, '18:40')]]);
+        const w = await enBloc(id, [laser(3, '18:40'), laser(4, '18:40')]);
+        ok(blancBloc.essais && blancBloc.essais[0] && blancBloc.essais[0].passe === true && w.statut === 200 && lasersK(id) === 'L1@16:00 L2@16:00 L3@18:40 L4@18:40',
+          '[K] les groupes 3 et 4 ensemble a 18:40 (un geste, deux vagues) : a blanc et a l ecriture, ils passent et partent ensemble', { blanc: blancBloc.essais || blancBloc.refus, statut: dire(w), lu: lasersK(id) });
+        // (les memes deux heures changees dans Modifier : le calcul a blanc des deplacements ; rien ne s ecrit)
+        const lasersDu = (r) => ((r && r.opsPlan && r.opsPlan.resourceBlocks) || []).filter((b) => b.resourceType === 'laser_arena').map((b) => `L${b.sousGroupe}@${String(b.startTime).slice(0, 5)}`).sort().join(' ');
+        const blancDeplacements = (await serveur.appeler('POST', '/api/staff-reservations', { dryRun: true, centerId: 'libramont', deplacement: { id, centerId: 'libramont', baseUpdatedAt: version(ligne(id)), activityMoves: [laser(3, '18:50'), laser(4, '18:50')] } })).json;
+        ok(!blancDeplacements.refus && lasersDu(blancDeplacements.reservation) === 'L1@16:00 L2@16:00 L3@18:50 L4@18:50' && lasersK(id) === 'L1@16:00 L2@16:00 L3@18:40 L4@18:40',
+          '[K] Modifier, les groupes 3 et 4 a 18:50 : le calcul a blanc des deplacements les fait partir ensemble, rien ne s ecrit', { deplacements: blancDeplacements.refus || lasersDu(blancDeplacements.reservation), lu: lasersK(id) });
+        // Un autre dossier dans la partie du groupe 3 (10 joueurs, arrive a 18:30, son laser a 18:40) : le groupe 4 qui la
+        // rejoint ferait 40 armes sur 30.
+        const s1 = await glisser(id, laser(4, '19:30'));
+        const autre = await serveur.appeler('POST', '/api/staff-reservations', {
+          name: 'Laser Dix', phone: '0470999777', email: '', notes: '', occasion: '', date: jour, startTime: '18:30', duration: 1, totalDuration: 1, lanes: [], pax: 10, status: 'pending', type: 'laser', formuleId: '',
+          program: [{ activityId: 'laser_game', pax: 10, participants: 10, games: 1 }], laserGames: 1, extras: [], channel: 'staff', requiresLanes: false, centerId: 'libramont',
+          preference: { activityOrder: ['laser_game'], preferredTimes: { laser_game: '18:30' } },
+        });
+        const idAutre = autre.json && autre.json.reservation && autre.json.reservation.id;
+        const sonLaser = idAutre ? blocsDe(ligne(idAutre)).filter((b) => b.resourceType === 'laser_arena').map((b) => String(b.startTime).slice(0, 5)).join(' ') : '';
+        if (vrai(s1.statut === 200 && autre.statut < 300 && sonLaser === '18:40', 'MONTAGE le groupe 4 a 19:30, un autre dossier de 10 joueurs dans la partie du groupe 3 (18:40)', { s1: dire(s1), autre: dire(autre), sonLaser })) {
+          const s2 = await glisser(id, laser(4, '18:40'));
+          ok(s2.statut === 409 && /^Plus assez d’armes pour le laser à 18:40 : il en reste 5 sur 30, il en faut 15\./.test(s2.json.message || '') && /L4@19:30/.test(lasersK(id)),
+            '[K] le groupe 4 au depart du groupe 3 et de l autre dossier : 15 + 10 + 15 armes sur 30, refuse (« il en reste 5 sur 30, il en faut 15 »), il reste a 19:30', { statut: dire(s2), lu: lasersK(id) });
         }
       }
     }

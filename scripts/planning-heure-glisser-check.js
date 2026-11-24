@@ -70,6 +70,8 @@
 //        passage du meme ecart, sur ses pistes, avec ses joueurs ; a 4 groupes par la pop-up (des heures qui
 //        passent, « Tout décaler » actif, le planning 30 min plus tard, les groupes 1 et 2 partis ensemble,
 //        « Annuler ») ; l arene prise par un autre dossier : le refus nomme « groupe 3 sur 4 », rien ne bouge ;
+//   [T6] deux groupes du dossier dans l arene (2026-11-24) : le laser du groupe 3 tape a 16:10, pendant la partie des
+//        groupes 1 et 2 (16:00 a 16:25) ; la pop-up dit le refus du serveur, la vague qui gene et quoi faire, rien ne part ;
 //   [D1] au telephone (390 px, au doigt) : toucher le champ de l heure ne ferme pas la pop-up, la saisie se
 //        juge ; le clavier qui reduit la fenetre non plus, elle se repose entiere contre sa pastille ; sans le
 //        champ en main, la page qui defile la ferme ;
@@ -1219,6 +1221,50 @@ async function scenarioGrandGroupe(browser) {
 }
 
 // ---------------------------------------------------------------------------
+// [T6] : deux groupes du dossier dans l arene. Les groupes 1 et 2 au laser a 16:00, les groupes 3 et 4 au
+// bowling a 17:30 puis au laser a 18:30 ; le groupe 4 part seul a 19:00, le laser du groupe 3 a sa pastille.
+// ---------------------------------------------------------------------------
+async function scenarioArene(browser) {
+  const { ctx, page, erreurs, serveur, patchs } = await monter(browser, { fixture: 'vide', horlogeServeur: true });
+  try {
+    const jour = FX.lireFixture('vide').staffState.date;
+    const cree = await serveur.appeler('POST', '/api/staff-reservations', {
+      name: 'Groupe Arène 4', phone: '0470111222', email: '', notes: '', occasion: '', date: jour, startTime: '16:00', duration: 1, totalDuration: 3, lanes: [], pax: 60, status: 'pending', type: 'visite', formuleId: '',
+      program: [{ activityId: 'bowling', pax: 60, participants: 60, duration: 1 }, { activityId: 'laser_game', pax: 60, participants: 60, games: 1 }],
+      laserGames: 0, extras: [], channel: 'staff', requiresLanes: true, centerId: 'libramont',
+      preference: { activityOrder: ['bowling', 'laser_game'], preferredTimes: { bowling: '16:00', laser_game: '16:00' }, grandGroupe: { nombre: 4, tailles: [15, 15, 15, 15], impose: true,
+        heures: [{ laser_game: '16:00', bowling: '16:30' }, { laser_game: '16:00', bowling: '16:30' }, { bowling: '17:30', laser_game: '18:30' }, { bowling: '17:30', laser_game: '18:30' }] } },
+    });
+    const id = cree.json && cree.json.reservation && cree.json.reservation.id;
+    const seul = id ? await serveur.appeler('PATCH', '/api/staff-reservations', { id, centerId: 'libramont', baseUpdatedAt: enBase(id).version, activityMove: { activityId: 'laser_game', unitKey: '1.4', startTime: '19:00' } }) : { statut: 0, json: {} };
+    if (!ok(cree.statut === 201 && seul.statut === 200 && seul.json.reservation, 'MONTAGE le grand groupe aux heures posees, le groupe 4 seul a 19:00', { cree: cree.statut, message: cree.json && cree.json.message, seul: seul.statut, refus: seul.json && seul.json.message })) return;
+    await page.evaluate((d) => {
+      window.__FIXTURE__.jours[window.__FIXTURE__.jour].push({ ...d });
+      state.reservations.push({ ...d });
+      renderStaff();
+    }, seul.json.reservation);
+    await page.waitForSelector(`#globalPlanningGridWrap tr[data-gf-id="${id}"]`, { timeout: 10000 }).catch(() => null);
+    const planning = await heuresDuPlanning(page, id);
+    ok(planning.includes('laser_game:1.1+1.2@16:00') && planning.includes('laser_game:1.3@18:30') && planning.includes('laser_game:1.4@19:00'),
+      '[T6] au planning complet : les groupes 1 et 2 ensemble au laser a 16:00, le groupe 3 seul a 18:30, le groupe 4 a 19:00', planning);
+    const depart = brut(id);
+    const n = patchs.length;
+    await ouvrirHeure(page, id, 'laser_game:1.3');
+    await page.fill('#gfHeurePop [data-gf-hp-champ]', '16:10');
+    const v = await verdictLu(page, '16:10');
+    await capture(page, 'arene-refusee');
+    ok(v && v.ton === 'bloque' && v.desactive === true && /Arène laser déjà prise à 16:10 par le laser des groupes 1 et 2, de 16:00 à 16:25 : une seule partie à la fois\. Partez dès 16:25\./.test(v.verdict),
+      '[T6] le laser du groupe 3 tape a 16:10, pendant la partie des groupes 1 et 2 : la pop-up dit le refus du serveur (la vague qui gene, « Partez dès 16:25 »), « Déplacer » eteint', v);
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(300);
+    ok(patchs.length === n && brut(id) === depart, '[T6] rien ne part, rien ne bouge', { patchs: patchs.length - n });
+    ok(erreurs.length === 0, '[J1] aucune erreur JS (deux groupes dans l arene)', erreurs);
+  } finally {
+    await ctx.close();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // [D1] : au telephone, le champ de l heure (Henrard, bowling 16:00).
 // ---------------------------------------------------------------------------
 function lireTelephone(id) {
@@ -1377,6 +1423,7 @@ const MUTATIONS = [
   // (le refus d un grand groupe ne dit plus quel groupe coince : « Laser » au lieu de « Laser, groupe 3 sur 4 »)
   { nom: 'grand-groupe-refus-sans-nom', lettre: 'T5', scenarios: ['grand'], editions: [{ fichier: MODULE, de: "    return gfPartieDit(r, unite) + (vagues > 1 ? ', groupe ' + (Number(unite.split('.')[1]) || 1) + ' sur ' + vagues : '');", vers: '    return gfPartieDit(r, unite);' }] },
   // (apres un refus, la pop-up rouverte repropose l heure refusee : ses verdicts gardes ne voient pas l arene prise)
+  { nom: 'arene-du-dossier-ignoree', lettre: 'T6', scenarios: ['arene'], editions: [{ serveur: true, fichier: 'lib/reservation-activity-move.js', de: "  if (activity === 'laser_game' && !removing) {\n    const armes = Number(center.resources?.laser?.weaponCount) || 30;", vers: "  if (false) {\n    const armes = Number(center.resources?.laser?.weaponCount) || 30;" }] },
   { nom: 'verdicts-gardes-apres-refus', lettre: 'T5', scenarios: ['grand'], editions: [{ fichier: MODULE, de: '    if (r && r.id != null) gfOublierLesVerdicts(r.id);\n', vers: '' }] },
 ];
 
@@ -1392,6 +1439,7 @@ async function jouer(browser, noms) {
     if (nom === 'minute') await scenarioMinute(browser);
     if (nom === 'groupe') await scenarioGroupe(browser);
     if (nom === 'grand') await scenarioGrandGroupe(browser);
+    if (nom === 'arene') await scenarioArene(browser);
     if (nom === 'telephone') await scenarioTelephone(browser);
   }
 }
@@ -1402,7 +1450,7 @@ async function main() {
   const t0 = Date.now();
   try {
     if (!process.argv.includes('--contre-preuves')) {
-      await jouer(browser, liste(process.env.HG_SCENARIOS) || ['pop', 'souris', 'doigt', 'ligne', 'gele', 'fiche', 'vagues', 'minute', 'groupe', 'grand', 'telephone']);
+      await jouer(browser, liste(process.env.HG_SCENARIOS) || ['pop', 'souris', 'doigt', 'ligne', 'gele', 'fiche', 'vagues', 'minute', 'groupe', 'grand', 'arene', 'telephone']);
     } else {
       console.log('[K] contre-preuves : chaque garde retiree fait rougir sa lettre');
       for (const m of MUTATIONS.filter((x) => !process.env.HG_MUTATIONS || liste(process.env.HG_MUTATIONS).includes(x.nom))) {

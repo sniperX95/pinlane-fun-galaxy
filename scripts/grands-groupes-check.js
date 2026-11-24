@@ -186,6 +186,9 @@ const MUTATIONS = [
   { nom: 'carte-en-vague', lettre: 'J', fichier: APP, de: '${Number(w.sousGroupe) > 0 ? ` · G${Number(w.sousGroupe)}/${Number(w.sousGroupes) || vagues}` : vagues > 1 ?', vers: '${vagues > 1 ?' },
   { nom: 'toast-en-vague', lettre: 'J', fichier: CORE, de: "    const unitLabel = Number(unit.sousGroupe) > 0 ? `Laser du groupe ${unit.sousGroupe}/${unit.sousGroupes || unit.waveCount} placé`\n      : ", vers: '    const unitLabel = ' },
   { nom: 'modifier-sur-les-armes', lettre: 'J', fichier: APP, de: '  if (!partenaires.length) return vaguesLaserEnMots(joueurs, r, e && e.pax);', vers: '  if (!partenaires.length) return vaguesLaserEnMots(joueurs);' },
+  // [J] le planning laser refuse le depart commun de deux groupes du grand groupe (son verdict, ou son controle au placement).
+  { nom: 'depart-commun-refuse', lettre: 'J', fichier: APP, de: '  const dessus = siennes.find(w => w.start < fin - 0.001 && w.end > d.t + 0.001 && !memeDepart(w));', vers: '  const dessus = siennes.find(w => w.start < fin - 0.001 && w.end > d.t + 0.001);' },
+  { nom: 'depart-commun-refuse-au-placement', lettre: 'J', fichier: CORE, de: '    if (overlapping.some(window => Number(window.reservation?.id) === Number(reservation.id) && !memeDepart(window))) {', vers: '    if (overlapping.some(window => Number(window.reservation?.id) === Number(reservation.id))) {' },
   { nom: 'bulle-sur-les-armes', lettre: 'J', fichier: APP, de: 'vaguesLaserEnMots(joueursLaser, r, n) };', vers: 'vaguesLaserEnMots(joueursLaser) };' },
   { nom: 'nombre-de-groupes-oublie', lettre: 'J', fichier: APP, de: '  const nombre = Math.min(12, groupe, voulu >= 2 ? Math.max(voulu, coupe) : coupe);', vers: '  const nombre = Math.min(12, groupe, coupe);' },
   { nom: 'part-du-laser-oubliee', lettre: 'J', fichier: APP, de: '  if (n >= groupe) return tailles;', vers: '  return tailles;' },
@@ -1195,6 +1198,18 @@ async function principal() {
           const toastG = await page.evaluate(() => ((document.getElementById('toast') || {}).textContent || '').replace(/\s+/g, ' ').trim());
           ok(aPlacerDe(g.id) === '' && lasersDe(g.id) === '1.1@15:30x15g1 1.2@15:30x15g2 1.3@17:00x15g3 1.4@16:30x15g4' && (await file()).length === 0 && /Laser du groupe 3\/4 placé à 17:00/.test(toastG),
             '[J] touche a 17:00 : le groupe 3 y joue, ses 15 joueurs et son groupe gardes, il quitte la file, le toast le dit', { lasers: lasersDe(g.id), aPlacer: aPlacerDe(g.id), file: await file(), toast: toastG });
+          // Partir avec le groupe 4 a 16:30 (15 + 15 armes) : Reserver le fait, le planning laser aussi (le geste le prend
+          // a 17:00, M, puis touche le depart de 16:30).
+          const sel17 = `#laserPlanningGridWrap .lp-dep[data-lp-t="17"] .lp-g[data-laser-res-id="${g.id}"][data-laser-unit="1.3"]`;
+          await page.waitForSelector(sel17, { timeout: 10000 });
+          await page.focus(sel17);
+          await page.keyboard.press('m');
+          await page.waitForSelector('#laserPlanningGridWrap .lp-placer', { timeout: 8000 });
+          await page.locator('#laserPlanningGridWrap .lp-dep[data-lp-t="16.5"] .lp-dep__jauge').click();
+          await attendreBase(() => /1\.3@16:30/.test(lasersDe(g.id)));
+          const raisonCommun = await bandeau();
+          ok(lasersDe(g.id) === '1.1@15:30x15g1 1.2@15:30x15g2 1.3@16:30x15g3 1.4@16:30x15g4',
+            '[J] le groupe 3 rejoint le depart du groupe 4 (16:30, 15 + 15 armes) : comme a Reserver, ils partent ensemble', { lasers: lasersDe(g.id), bandeau: raisonCommun });
 
           // LE LASER EN GROUPES DE 10 ET 14 : la vague 2 (18:00) se retire et se replace.
           const prisL = await retirer(l.id, '1.2', 18);
@@ -1253,6 +1268,7 @@ async function principal() {
         ok(erreurs.length === 0, '[*] zero erreur JavaScript (J)', erreurs.slice(0, 3).join(' | '));
       } finally { await ctx.close(); }
     }
+
   } catch (error) {
     ok(false, `exception : ${error.message}`, String(error.stack || '').split('\n').slice(0, 4).join(' | '));
   } finally {

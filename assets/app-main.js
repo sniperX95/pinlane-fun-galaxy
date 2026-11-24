@@ -28192,7 +28192,10 @@ function lpVerdict(modele, choisi, d) {
   const id = choisi.id;
   const siennes = modele.fenetres.filter(w => Number(w.reservation.id) === id && laserBlockUnitKey(w) !== choisi.unitKey);
   const fin = d.t + modele.bloc;
-  const dessus = siennes.find(w => w.start < fin - 0.001 && w.end > d.t + 0.001);
+  // (un autre groupe du grand groupe au meme depart joue la meme partie, comme a Reserver : ses armes
+  // comptent plus bas avec celles du depart ; lib/reservation-activity-move.js, « deux groupes du dossier »)
+  const memeDepart = (w) => Number(choisi.sousGroupe) > 0 && Number(w.sousGroupe) > 0 && Number(w.sousGroupe) !== Number(choisi.sousGroupe) && Math.abs(w.start - d.t) < 0.001;
+  const dessus = siennes.find(w => w.start < fin - 0.001 && w.end > d.t + 0.001 && !memeDepart(w));
   if (dessus) return { ok: false, raison: `${h} : ce groupe y joue déjà${lpNomUnite(dessus) ? ` (${lpNomUnite(dessus)})` : ''}.` };
   const avant = siennes.filter(w => Number(w.countIndex || 1) < choisi.countIndex && w.start >= d.t - 0.001).sort((a, b) => b.start - a.start)[0];
   if (avant) return { ok: false, raison: `${h} : avant sa ${lpRang(avant.countIndex)} partie (${lpHeure(avant.start)}).` };

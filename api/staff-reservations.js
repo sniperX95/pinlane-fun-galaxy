@@ -602,7 +602,7 @@ async function deplacerAvantLeReste(current, deplacements, session) {
   const lu = await readStaffState(current.date, current.centerId || 'libramont', { avecBlocages: true, avecFermetures: true });
   const voisins = (Array.isArray(lu.reservations) ? lu.reservations : []).filter((row) => Number(row.id) !== Number(current.id));
   const tenir = (dossier, d) => {
-    const suivant = buildActivityMove(dossier, d, { aLaMinute: true });
+    const suivant = buildActivityMove(dossier, d, { aLaMinute: true, ensemble: deplacements });
     let verdict = null;
     try {
       verdict = validateActivityMoveResources(suivant, d, voisins, lu.laneStatuses || {}, lu.blocks || [], current.date);
@@ -672,8 +672,9 @@ async function deplacerABlanc(req, res, corps) {
     // heures proposees seulement : la fenetre dit elle-meme pourquoi une heure plus tot ne va pas.
     const auPlusTot = Number.isFinite(Number(corps.auPlusTot)) && corps.auPlusTot !== null && corps.auPlusTot !== ''
       ? Math.max(0, Math.min(48 * 60, Math.round(Number(corps.auPlusTot)))) : null;
-    const essayer = (base, deplacement) => {
-      const essai = buildActivityMove(base, deplacement, { aLaMinute: true });
+    // (`ensemble` : les deplacements du meme essai, lib/reservation-activity-move.js)
+    const essayer = (base, deplacement, ensemble = []) => {
+      const essai = buildActivityMove(base, deplacement, { aLaMinute: true, ensemble });
       let verdict = null;
       try {
         verdict = validateActivityMoveResources(essai, deplacement, autres, snapshot.laneStatuses, blocs, current.date);
@@ -694,7 +695,7 @@ async function deplacerABlanc(req, res, corps) {
           tot.plancher = true;
           throw tot;
         }
-        candidat = essayer(candidat, deplacement);
+        candidat = essayer(candidat, deplacement, deplacements);
       } catch (error) {
         if (!error || !error.statusCode || error.statusCode >= 500 || estErreurInfra(error)) throw error;
         if (error.code === 'reservation_modifiee') throw error;
@@ -734,7 +735,7 @@ function heuresDesEssais({ current, essais, autres, auPlusTot, essayer }) {
         const voulue = minuteDeLaFenetre(move && move.startTime);
         if (auPlusTot !== null && Number.isFinite(voulue) && voulue < auPlusTot) return { passe: false, plancher: true, raison: 'Trop tôt : le groupe n’est pas encore là à cette heure.' };
         const base = dossier;
-        dossier = sansLesGroupesQuiJouent(base, move, autres, maintenant, () => essayer(base, move));
+        dossier = sansLesGroupesQuiJouent(base, move, autres, maintenant, () => essayer(base, move, essai));
       }
       return { passe: true };
     } catch (error) {
@@ -1908,7 +1909,7 @@ const traiter = async (req, res) => {
         let candidate = current;
         deplacements.forEach((deplacement, rang) => {
           try {
-            const suivant = buildActivityMove(candidate, deplacement, { aLaMinute: true });
+            const suivant = buildActivityMove(candidate, deplacement, { aLaMinute: true, ensemble: deplacements });
             let verdict = null;
             try {
               verdict = validateActivityMoveResources(suivant, deplacement, voisins, snapshot.laneStatuses, snapshot.blocks || [], current.date);

@@ -1747,6 +1747,7 @@ function buildManualLaserPassBlocks(reservation, unitRef, targetStart, targetEnd
     groupWaveIndex: unit.waveIndex,
     groupWaveCount: unit.waveCount,
     weaponNeed: Math.min(unit.players, getLaserArenaCapacity()),
+    ...laserSousGroupe(unit),
   }];
 }
 
@@ -1797,7 +1798,11 @@ function checkManualLaserPassPlacement(reservation, unitRef, targetStart, target
     const candidateEnd = Number(candidate.end) / 60;
     const candidateDuration = Math.max(0, candidateEnd - candidateStart);
     const overlapping = allWindows.filter(window => overlap(candidateStart, candidateDuration, window.start, window.duration));
-    if (overlapping.some(window => Number(window.reservation?.id) === Number(reservation.id))) {
+    // (un autre groupe du grand groupe au meme depart joue la meme partie, comme a Reserver : ses armes
+    // comptent plus bas ; lib/reservation-activity-move.js, « deux groupes du dossier »)
+    const memeDepart = window => Number(candidate.sousGroupe) > 0 && Number(window.sousGroupe) > 0 && Number(window.sousGroupe) !== Number(candidate.sousGroupe)
+      && Math.abs(window.start - candidateStart) < 0.001 && Math.abs(window.end - candidateEnd) < 0.001;
+    if (overlapping.some(window => Number(window.reservation?.id) === Number(reservation.id) && !memeDepart(window))) {
       return { ok: false, message: 'Ce groupe a déjà une partie Laser Game sur ce créneau.' };
     }
     const key = `${hourToMinuteInt(candidateStart)}-${hourToMinuteInt(candidateEnd)}`;

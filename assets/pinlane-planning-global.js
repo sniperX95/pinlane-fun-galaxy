@@ -2918,8 +2918,19 @@
     if (peint && !peint.fiche && fiche && !fiche.classList.contains('hidden') && state.selectedRes && Number(state.selectedRes.id) === Number(dossier.id) && typeof renderPos === 'function') renderPos();
   }
   // Un refus : rien n est ecrit ; un collegue a change le dossier, sa version devient celle de l ecran.
-  function gfApresRefus(erreur) {
+  // UN REFUS DU SERVEUR DIT QUE LA JOURNEE A CHANGE SOUS LES VERDICTS GARDES (2026-11-24) : gardes tant que le
+  // dossier ne change pas, ils ne voient pas un autre groupe prendre l arene ou des pistes entre-temps. Ceux de
+  // ce dossier s oublient : la pop-up rouverte redemande au serveur, au lieu de reproposer l heure qu il vient
+  // de refuser (« Tout le groupe » +30 min refuse, puis propose encore, a 4 groupes).
+  function gfApresRefus(erreur, r) {
     if (erreur && erreur.reservation && typeof applyOptimisticReservation === 'function') applyOptimisticReservation(erreur.reservation);
+    if (r && r.id != null) gfOublierLesVerdicts(r.id);
+  }
+  function gfOublierLesVerdicts(id) {
+    var debut = String(id) + '|';
+    [gfMemoire, gfMemoireDecalage, gfMemoireGroupe].forEach(function (memoire) {
+      Array.from(memoire.keys()).forEach(function (cle) { if (String(cle).indexOf(debut) === 0) memoire.delete(cle); });
+    });
   }
   // (les vagues d une partie laser partent ensemble : toutes ou aucune, le serveur les juge et les ecrit
   // d un bloc)
@@ -2954,7 +2965,7 @@
       if (typeof toastAnnulable === 'function') toastAnnulable(dit, function () { gfDefaireHeure(ecrit.id, point, offset, retour); });
       return ecrit;
     }, function (erreur) {
-      gfApresRefus(erreur);
+      gfApresRefus(erreur, r);
       gfRefusDeLHeure(erreur, point, moves, ' à ' + gpHeure(d + offset), 'Pas déplacé');
       return null;
     }).then(function (x) { gfEcritures.delete(Number(r.id)); return x; });
@@ -2967,7 +2978,7 @@
       gfAdopter(ecrit, ['lanes', 'opsPlan']);
       if (typeof toast === 'function') toast((r.name || 'Le groupe') + ' : ' + point.nom + ' revient à ' + gpHeure(point.debut + offset) + '.');
     }, function (erreur) {
-      gfApresRefus(erreur);
+      gfApresRefus(erreur, r);
       gfRefusDeLHeure(erreur, point, retour, '', 'Pas remis');
     }).then(function () { gfEcritures.delete(Number(id)); });
   }
@@ -3001,7 +3012,7 @@
       if (typeof toastAnnulable === 'function') toastAnnulable(dit, function () { gfDefaireGroupe(ecrit.id, ecart, autres ? pistesAvant : null); });
       return ecrit;
     }, function (erreur) {
-      gfApresRefus(erreur);
+      gfApresRefus(erreur, r);
       gfRefusDuGroupe(erreur, r, 'Pas déplacé');
       return null;
     }).then(function (x) { gfEcritures.delete(Number(r.id)); return x; });
@@ -3014,7 +3025,7 @@
       gfAdopter(payload && payload.reservation, ['startTime', 'lanes', 'opsPlan']);
       if (typeof toast === 'function') toast((r.name || 'Le groupe') + ' : tout le groupe revient à ses heures.');
     }, function (erreur) {
-      gfApresRefus(erreur);
+      gfApresRefus(erreur, r);
       gfRefusDuGroupe(erreur, r, 'Pas remis');
     }).then(function () { gfEcritures.delete(Number(id)); });
   }
@@ -3056,13 +3067,13 @@
           gfAdopter(rendu && rendu.reservation, champs);
           if (typeof toast === 'function') toast(nom + ' : réservation remise à ' + avant + '.');
         }, function (erreur) {
-          gfApresRefus(erreur);
+          gfApresRefus(erreur, courant);
           if (typeof showPlanningMoveNotice === 'function') showPlanningMoveNotice('Pas remis', nom + ' : ' + gfPhraseErreur(erreur), 'warning');
         }).then(function () { gfEcritures.delete(Number(courant.id)); });
       });
       return ecrit;
     }, function (erreur) {
-      gfApresRefus(erreur);
+      gfApresRefus(erreur, r);
       if (typeof showPlanningMoveNotice === 'function') showPlanningMoveNotice('Pas déplacé', nom + ' à ' + heure + ' : ' + gfPhraseErreur(erreur), 'warning');
       return null;
     }).then(function (x) { gfEcritures.delete(Number(r.id)); return x; });

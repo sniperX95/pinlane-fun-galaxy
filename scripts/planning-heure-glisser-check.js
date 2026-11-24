@@ -66,6 +66,10 @@
 //        celle qu on a touchee ; ce qui passe dit chaque activite a sa nouvelle heure ;
 //   [T4] des pistes se prennent entre le verdict et le toucher : le serveur refuse, l avis dit quelle
 //        activite coince, a quelle heure, et que rien n a bouge ;
+//   [T5] un grand groupe pose au comptoir (2 puis 4 groupes) : « Tout le groupe » +30 min passe (200), chaque
+//        passage du meme ecart, sur ses pistes, avec ses joueurs ; a 4 groupes par la pop-up (des heures qui
+//        passent, « Tout décaler » actif, le planning 30 min plus tard, les groupes 1 et 2 partis ensemble,
+//        « Annuler ») ; l arene prise par un autre dossier : le refus nomme « groupe 3 sur 4 », rien ne bouge ;
 //   [D1] au telephone (390 px, au doigt) : toucher le champ de l heure ne ferme pas la pop-up, la saisie se
 //        juge ; le clavier qui reduit la fenetre non plus, elle se repose entiere contre sa pastille ; sans le
 //        champ en main, la page qui defile la ferme ;
@@ -181,15 +185,17 @@ async function monter(browser, { appareil = 'ordinateur', mouvementReduit = fals
   const serveur = B.monter({ mutations: [...horloge, ...(mutation ? mutation.editions.filter((ed) => ed.serveur) : [])], session: B.sessionDuRole('manager', { nom: 'Rachel' }) });
   reglerHorloge(journee.date);
   const patchs = [];
+  const reponses = [];
   const blancs = [];
   const { ctx, page, erreurs } = await FX.monter(browser, {
     fixture, variante, appareil, theme: 'light', port: PORT, heure: '15:10', mouvementReduit,
     avantChargement: async (p) => {
-      await p.exposeFunction('__fixtureServeur', async (corps) => { patchs.push(corps); return serveur.appeler('PATCH', '/api/staff-reservations', corps); });
+      // (chaque PATCH et sa reponse, dans l ordre : [T5] lit le statut du serveur)
+      await p.exposeFunction('__fixtureServeur', async (corps) => { patchs.push(corps); const rep = await serveur.appeler('PATCH', '/api/staff-reservations', corps); reponses.push(rep); return rep; });
       await p.exposeFunction('__fixtureBlanc', async (corps) => { blancs.push(corps); return serveur.appeler('POST', '/api/staff-reservations', corps); });
     },
   });
-  return { ctx, page, erreurs, serveur, patchs, blancs };
+  return { ctx, page, erreurs, serveur, patchs, reponses, blancs };
 }
 
 // LES HEURES QUE LE SERVEUR LAISSE PASSER, demandees ici sans la console : chaque demi-heure du jour,
@@ -727,7 +733,15 @@ async function scenarioGele(browser) {
     // et le serveur disent la coche, mot pour mot.
     const manon = B.base.reservations.get(MANON);
     B.base.reservations.set(MANON, { ...manon, activity_progress: { 'laser_game-1': { done: true } } });
-    await page.evaluate((id) => { const r = state.reservations.find((x) => Number(x.id) === id); r.activityProgress = { 'laser_game-1': { done: true } }; }, MANON);
+    // (la coche aussi dans la journee que la console relit : posee sur state seul, un rafraichissement
+    // l effacait avant le toucher, la pop-up redisait la phrase du serveur et la console n etait pas jugee)
+    await page.evaluate((id) => {
+      const coche = { 'laser_game-1': { done: true } };
+      const r = state.reservations.find((x) => Number(x.id) === id);
+      r.activityProgress = coche;
+      const servie = window.__FIXTURE__.jours[window.__FIXTURE__.jour].find((x) => Number(x.id) === id);
+      if (servie) servie.activityProgress = coche;
+    }, MANON);
     await ligneEnHaut(page, MANON);
     await page.click(PASTILLE(MANON, 'laser_game:1.1'));
     await page.waitForTimeout(500);
@@ -1063,28 +1077,35 @@ async function scenarioGroupe(browser) {
 
 // ---------------------------------------------------------------------------
 // [T5] « Tout le groupe » sur un GRAND GROUPE dont les heures ont ete posees au comptoir (2026-11-23).
-// 60 joueurs en 4 groupes, chacun a son heure (groupes 1 et 2 : laser 15:30 puis bowling 16:30 ; groupes 3 et 4 :
-// bowling 15:30 puis laser 16:30). Le serveur decale tout le groupe de +30 min : ou chaque groupe, chaque activite,
-// passe du MEME ecart (et rien d autre ne bouge), ou il refuse avec une phrase et n ecrit rien. Jamais la moitie.
+// 60 joueurs en 2 groupes, puis en 4, chacun a son heure (groupes 1 et 2 : laser 15:30 puis bowling 16:30 ;
+// groupes 3 et 4 : bowling 15:30 puis laser 16:30). Le plan tient : « Tout le groupe » +30 min PASSE (200), a
+// 2 comme a 4 groupes, et chaque passage (le bowling et le laser de chaque groupe) bouge du meme ecart, sur ses
+// pistes, avec ses joueurs. A 4 groupes, par la pop-up : des heures qui passent, « Tout décaler » actif, puis le
+// planning complet 30 min plus tard, les groupes 1 et 2 toujours partis ensemble ; « Annuler » remet tout. Un vrai
+// refus (l arene prise a 17:00 par un autre dossier, entre le verdict et le toucher) nomme « groupe 3 sur 4 » et
+// rien ne bouge ; la pop-up le redit avant le toucher. Jamais la moitie.
 // ---------------------------------------------------------------------------
-const heuresDesBlocs = (id) => {
+// Les passages d un grand groupe en base : le bowling et le laser de chaque groupe, leur heure, leurs pistes,
+// leurs joueurs.
+const passagesDe = (id) => {
   const row = B.base.reservations.get(Number(id));
   const plan = typeof row.ops_plan === 'string' ? JSON.parse(row.ops_plan) : (row.ops_plan || {});
   return (plan.resourceBlocks || []).filter((b) => b && (b.resourceType === 'laser_arena' || b.resourceType === 'bowling_lane'))
-    .map((b) => `${b.resourceType === 'laser_arena' ? 'L' : 'B'}${Number(b.sousGroupe) || 0}@${b.startTime}`).sort();
+    .map((b) => ({ cle: `${b.resourceType === 'laser_arena' ? 'laser' : 'bowling'} groupe ${Number(b.sousGroupe) || 0}`, de: b.startTime, a: b.endTime, pistes: (b.lanes || []).map(Number).sort((x, y) => x - y).join(','), joueurs: Number(b.players) || 0 }))
+    .sort((x, y) => x.cle.localeCompare(y.cle));
 };
+const passagesDecales = (liste, ecart) => liste.map((p) => ({ ...p, de: hhmm(minutes(p.de) + ecart), a: hhmm(minutes(p.a) + ecart) }));
+const memesPassages = (x, y) => JSON.stringify(x) === JSON.stringify(y);
+// Les heures que le planning complet montre pour un dossier : chaque pastille, sa cle et son heure.
+const heuresDuPlanning = (page, id) => page.evaluate((i) => Array.from(document.querySelectorAll(`#globalPlanningGridWrap tr[data-gf-id="${i}"] [data-gf-act]`))
+  .map((a) => `${a.getAttribute('data-gf-act')}@${(/\d{1,2}:\d{2}/.exec(a.textContent) || [''])[0]}`).sort(), id);
 async function scenarioGrandGroupe(browser) {
-  const { ctx, page, erreurs, serveur } = await monter(browser, { fixture: 'vide', horlogeServeur: true });
+  const { ctx, page, erreurs, serveur, patchs, reponses } = await monter(browser, { fixture: 'vide', horlogeServeur: true });
   try {
     const jour = FX.lireFixture('vide').staffState.date;
-    const decale = (liste, ecart) => liste.map((x) => { const [t, h] = x.split('@'); return `${t}@${hhmm(minutes(h) + ecart)}`; }).sort();
-    // Deux groupes (30 + 30), puis quatre (15 x 4) : les groupes 1 et 2 au laser puis au bowling, les autres l inverse.
-    for (const [nombre, tailles, heures] of [
-      [2, [30, 30], [{ bowling: '16:30', laser_game: '15:30' }, { bowling: '15:30', laser_game: '16:30' }]],
-      [4, [15, 15, 15, 15], [{ bowling: '16:30', laser_game: '15:30' }, { bowling: '16:30', laser_game: '15:30' }, { bowling: '15:30', laser_game: '16:30' }, { bowling: '15:30', laser_game: '16:30' }]],
-    ]) {
+    const creer = async (nombre, tailles, heures) => {
       // (le dossier d avant s en va : la journee est vide pour le suivant, les memes heures)
-      for (const [cle, ligne] of [...B.base.reservations]) if (/^DÉMO|^Groupe Posé/.test(String(ligne.name)) && /^Groupe Posé/.test(String(ligne.name))) B.base.reservations.delete(cle);
+      for (const [cle, ligne] of [...B.base.reservations]) if (/^Groupe Posé/.test(String(ligne.name))) B.base.reservations.delete(cle);
       const cree = await serveur.appeler('POST', '/api/staff-reservations', {
         name: `Groupe Posé ${nombre}`, phone: '0470111222', email: '', notes: '', occasion: '', date: jour, startTime: '15:30', duration: 1, totalDuration: 3, lanes: [], pax: 60, status: 'pending', type: 'visite', formuleId: '',
         program: [{ activityId: 'bowling', pax: 60, participants: 60, duration: 1 }, { activityId: 'laser_game', pax: 60, participants: 60, games: 1 }],
@@ -1092,18 +1113,105 @@ async function scenarioGrandGroupe(browser) {
         preference: { activityOrder: ['bowling', 'laser_game'], preferredTimes: { bowling: '15:30', laser_game: '15:30' }, grandGroupe: { nombre, tailles, heures, impose: true } },
       });
       const id = cree.json && cree.json.reservation && cree.json.reservation.id;
-      const avant = id ? heuresDesBlocs(id) : [];
-      if (!ok(cree.statut === 201 && avant.length >= nombre * 2 && avant.some((x) => x.endsWith('@16:30')) && avant.some((x) => x.endsWith('@15:30')), `[T5] le grand groupe pose au comptoir nait en ${nombre} groupes, chacun a ses heures`, { statut: cree.statut, message: cree.json && cree.json.message, avant })) continue;
-      const rep = await serveur.appeler('PATCH', '/api/staff-reservations', { id, centerId: 'libramont', baseUpdatedAt: enBase(id).version, toutLeGroupe: { ecart: 30 } });
-      if (process.env.HG_DEBUG) console.log('DEBUG', nombre, rep.statut, JSON.stringify(rep.json).slice(0, 700));
-      const apres = heuresDesBlocs(id);
-      const tousDecales = JSON.stringify(apres) === JSON.stringify(decale(avant, 30));
-      const refuse = rep.statut >= 400 && typeof (rep.json && rep.json.message) === 'string' && rep.json.message.length > 15 && JSON.stringify(apres) === JSON.stringify(avant);
-      ok((rep.statut === 200 && tousDecales) || refuse,
-        `[T5] « Tout le groupe » +30 min sur ${nombre} groupes poses : chaque groupe passe du meme ecart, ou le serveur refuse avec une phrase et rien ne bouge (reponse ${rep.statut}${rep.statut === 200 ? ', les passages decales' : ''})`, { statut: rep.statut, message: rep.json && rep.json.message, avant, apres });
-      // (deux groupes : le plan tient, il DOIT passer ; la barre est plus haute que le refus)
-      if (nombre === 2) ok(rep.statut === 200 && tousDecales, '[T5] deux groupes : « Tout le groupe » passe, les quatre passages decales de 30 min', { statut: rep.statut, message: rep.json && rep.json.message, avant, apres });
+      const avant = id ? passagesDe(id) : [];
+      const ne = ok(cree.statut === 201 && avant.length === nombre * 2 && avant.some((p) => p.de === '16:30') && avant.some((p) => p.de === '15:30') && avant.every((p) => p.joueurs === 60 / nombre),
+        `[T5] le grand groupe pose au comptoir nait en ${nombre} groupes, chacun a ses heures, ses pistes et ses joueurs`, { statut: cree.statut, message: cree.json && cree.json.message, avant });
+      return { id: ne ? id : null, avant, reservation: cree.json && cree.json.reservation };
+    };
+
+    // DEUX GROUPES (30 + 30), au serveur.
+    const deux = await creer(2, [30, 30], [{ bowling: '16:30', laser_game: '15:30' }, { bowling: '15:30', laser_game: '16:30' }]);
+    if (deux.id) {
+      const rep = await serveur.appeler('PATCH', '/api/staff-reservations', { id: deux.id, centerId: 'libramont', baseUpdatedAt: enBase(deux.id).version, toutLeGroupe: { ecart: 30 } });
+      const apres = passagesDe(deux.id);
+      ok(rep.statut === 200 && memesPassages(apres, passagesDecales(deux.avant, 30)), '[T5] deux groupes : « Tout le groupe » +30 min passe (200), les 4 passages decales de 30 min, memes pistes, memes joueurs', { statut: rep.statut, message: rep.json && rep.json.message, avant: deux.avant, apres });
     }
+
+    // QUATRE GROUPES (15 x 4), par la pop-up du planning complet.
+    const quatre = await creer(4, [15, 15, 15, 15], [{ bowling: '16:30', laser_game: '15:30' }, { bowling: '16:30', laser_game: '15:30' }, { bowling: '15:30', laser_game: '16:30' }, { bowling: '15:30', laser_game: '16:30' }]);
+    if (!quatre.id) return;
+    const id = quatre.id;
+    await page.evaluate((d) => {
+      const liste = window.__FIXTURE__.jours[window.__FIXTURE__.jour];
+      liste.push({ ...d });
+      state.reservations.push({ ...d });
+      renderStaff();
+    }, quatre.reservation);
+    await page.waitForSelector(`#globalPlanningGridWrap tr[data-gf-id="${id}"]`, { timeout: 10000 }).catch(() => null);
+    // (les groupes 1 et 2 partent ensemble : une seule heure au planning, qui les emporte tous les deux)
+    const COMMUN = 'laser_game:1.1+1.2';
+    const planningAvant = await heuresDuPlanning(page, id);
+    ok(planningAvant.includes(`${COMMUN}@15:30`) && planningAvant.includes('laser_game:1.3+1.4@16:30'), '[T5] au planning complet, les groupes 1 et 2 partent ensemble au laser a 15:30, les groupes 3 et 4 a 16:30', planningAvant);
+    const ouvrirLeGroupe = async () => {
+      await ouvrirHeure(page, id, COMMUN);
+      await page.click('#gfHeurePop [data-gf-hp-mode="groupe"]');
+      await page.waitForFunction(() => { const z = document.querySelector('#gfHeurePop [data-gf-hp-heures]'); return Boolean(z) && z.getAttribute('data-gf-hp-pour') === 'groupe'; }, null, { timeout: 10000 }).catch(() => null);
+      return page.evaluate(lireMinute);
+    };
+    const groupe = await ouvrirLeGroupe();
+    ok(groupe && groupe.mode === 'groupe' && groupe.bouton === 'Tout décaler' && groupe.raccourcis.length > 0 && groupe.raccourcis.some((x) => x.heure === '16:00' && x.ecart === '+30 min'),
+      '[T5] 4 groupes : « Tout le groupe » propose des heures qui passent, 16:00 (+30 min) comprise', groupe && groupe.raccourcis);
+    await page.fill('#gfHeurePop [data-gf-hp-champ]', '16:00');
+    const trente = await verdictLu(page, '16:00');
+    ok(trente && /^Tout le groupe passe 30 min plus tard : /.test(trente.verdict) && trente.ton === 'passe' && trente.desactive === false && trente.bouton === 'Tout décaler',
+      '[T5] 4 groupes, 16:00 : « Tout le groupe passe 30 min plus tard », « Tout décaler » actif', trente);
+    await capture(page, 'grand-groupe-pop');
+    const np = patchs.length;
+    await page.click('#gfHeurePop [data-gf-hp-valider]');
+    await attendre(page, async () => reponses.length > np);
+    await page.waitForTimeout(500);
+    const envoi = patchs[np] || {};
+    const rep = reponses[np] || {};
+    const apres = passagesDe(id);
+    ok(patchs.length === np + 1 && JSON.stringify(envoi.toutLeGroupe) === '{"ecart":30}' && rep.statut === 200 && memesPassages(apres, passagesDecales(quatre.avant, 30)),
+      '[T5] « Tout décaler » sur 4 groupes : un PATCH toutLeGroupe +30 min, 200, les 8 passages decales de 30 min, memes pistes, memes joueurs', { envoi, statut: rep.statut, message: rep.json && rep.json.message, avant: quatre.avant, apres });
+    const planningApres = await heuresDuPlanning(page, id);
+    const attendu = planningAvant.map((x) => { const [c, h] = x.split('@'); return `${c}@${hhmm(minutes(h) + 30)}`; }).sort();
+    ok(memesPassages(planningApres, attendu) && planningApres.includes(`${COMMUN}@16:00`),
+      '[T5] le planning complet montre tout le groupe 30 min plus tard, les groupes 1 et 2 toujours partis ensemble (laser 16:00)', { planningAvant, planningApres });
+    await capture(page, 'grand-groupe-decale');
+    const toast = await page.evaluate(lireToast);
+    if (toast.annuler) await page.click('#toast .toast-annuler');
+    await attendre(page, async () => reponses.length > np + 1);
+    await page.waitForTimeout(500);
+    ok(toast.annuler && patchs.length === np + 2 && JSON.stringify((patchs[np + 1] || {}).toutLeGroupe) === '{"ecart":-30}' && memesPassages(passagesDe(id), quatre.avant) && memesPassages(await heuresDuPlanning(page, id), planningAvant),
+      '[T5] « Annuler » remet les 4 groupes a leurs heures, d un PATCH', { toast, patchs: patchs.length - np, base: passagesDe(id) });
+
+    // UN VRAI REFUS : entre le verdict et le toucher, un autre dossier prend l arene a 17:00 (ses 30 armes),
+    // l heure ou les groupes 3 et 4 iraient. Le serveur refuse tout, l avis nomme le groupe qui coince, rien ne
+    // bouge.
+    const verdictAvant = await ouvrirLeGroupe();
+    await page.fill('#gfHeurePop [data-gf-hp-champ]', '16:00');
+    const encore = await verdictLu(page, '16:00');
+    const bloqueur = await serveur.appeler('POST', '/api/staff-reservations', {
+      name: 'Groupe Arène 17h', phone: '0470111333', email: '', notes: '', occasion: '', date: jour, startTime: '17:00', duration: 1, totalDuration: 1, lanes: [], pax: 30, status: 'pending', type: 'laser', formuleId: '',
+      program: [{ activityId: 'laser_game', pax: 30, participants: 30, games: 1 }], laserGames: 1, extras: [], channel: 'staff', requiresLanes: false, centerId: 'libramont',
+      preference: { activityOrder: ['laser_game'], preferredTimes: { laser_game: '17:00' } },
+    });
+    const idBloqueur = bloqueur.json && bloqueur.json.reservation && bloqueur.json.reservation.id;
+    const arene = idBloqueur ? passagesDe(idBloqueur) : [];
+    ok(verdictAvant && encore && encore.ton === 'passe' && bloqueur.statut === 201 && arene.length === 1 && arene[0].de === '17:00',
+      'MONTAGE le verdict de 16:00 passe, puis un autre dossier prend l arene a 17:00', { encore: encore && encore.verdict, statut: bloqueur.statut, message: bloqueur.json && bloqueur.json.message, arene });
+    const depart = brut(id);
+    const departBloqueur = idBloqueur ? brut(idBloqueur) : '';
+    const n2 = patchs.length;
+    await page.click('#gfHeurePop [data-gf-hp-valider]');
+    await attendre(page, async () => reponses.length > n2);
+    await page.waitForTimeout(500);
+    const refus = reponses[n2] || {};
+    const avis = await page.evaluate(lireAvis);
+    await capture(page, 'grand-groupe-refuse');
+    ok(patchs.length === n2 + 1 && refus.statut >= 400 && refus.json && refus.json.cle === 'laser_game:1.3' && refus.json.heure === '17:00'
+      && /groupe 3 sur 4 ne tient pas à 17:00 : /.test(avis) && /Rien n’a bougé\./.test(avis) && brut(id) === depart && brut(idBloqueur) === departBloqueur,
+      '[T5] l arene prise a 17:00 : le serveur refuse tout (le laser du groupe 3), l avis nomme « groupe 3 sur 4 » et l heure, rien ne bouge', { statut: refus.statut, json: refus.json && { message: refus.json.message, cle: refus.json.cle, heure: refus.json.heure }, avis });
+    // (la pop-up rouverte le dit avant le toucher : « Tout décaler » reste eteint)
+    await ouvrirLeGroupe();
+    await page.fill('#gfHeurePop [data-gf-hp-champ]', '16:00');
+    const bloque = await verdictLu(page, '16:00');
+    ok(bloque && /groupe 3 sur 4 ne tient pas à 17:00 : /.test(bloque.verdict) && bloque.ton === 'bloque' && bloque.desactive === true && !bloque.raccourcis.some((x) => x.ecart === '+30 min'),
+      '[T5] rouverte, la pop-up le dit avant le toucher : « groupe 3 sur 4 ne tient pas à 17:00 », « Tout décaler » eteint, +30 min n est plus propose', bloque);
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(300);
     ok(erreurs.length === 0, '[J1] aucune erreur JS (grand groupe, tout le groupe)', erreurs);
   } finally {
     await ctx.close();
@@ -1264,6 +1372,12 @@ const MUTATIONS = [
   { nom: 'telephone-defile-reste', lettre: 'D1', scenarios: ['telephone'], editions: [{ fichier: MODULE, de: '    if (!p || (a && Math.abs(a.getBoundingClientRect().top - p.haut) < 8)) return;\n', vers: '    if (true) return;\n' }] },
   // (« Tout le groupe » sur un grand groupe pose : le groupe 2 reste a son heure pendant que les autres passent a +30 min, la moitie du dossier)
   { nom: 'tout-le-groupe-sauf-le-groupe-2', lettre: 'T5', scenarios: ['grand'], editions: [{ serveur: true, fichier: 'lib/decaler-le-groupe.js', de: '  if (Array.isArray(plan.resourceBlocks)) sortie.resourceBlocks = plan.resourceBlocks.map((b) => decalerUnBloc(b, ecart));', vers: '  if (Array.isArray(plan.resourceBlocks)) sortie.resourceBlocks = plan.resourceBlocks.map((b) => (Number(b.sousGroupe) === 2 ? b : decalerUnBloc(b, ecart)));' }] },
+  // (le bowling decale echange ses pistes : la meme rangee, mais chaque groupe ne garde plus les siennes)
+  { nom: 'tout-le-groupe-autres-pistes', lettre: 'T5', scenarios: ['grand'], editions: [{ serveur: true, fichier: 'lib/decaler-le-groupe.js', de: "      move = { activityId: 'bowling', startTime: heureDe(debut + ecart), lanes: voulues };", vers: "      move = { activityId: 'bowling', startTime: heureDe(debut + ecart), lanes: voulues, laneMapping: Object.fromEntries(leurs.map((p, i) => [p, voulues[voulues.length - 1 - i]])) };" }] },
+  // (le refus d un grand groupe ne dit plus quel groupe coince : « Laser » au lieu de « Laser, groupe 3 sur 4 »)
+  { nom: 'grand-groupe-refus-sans-nom', lettre: 'T5', scenarios: ['grand'], editions: [{ fichier: MODULE, de: "    return gfPartieDit(r, unite) + (vagues > 1 ? ', groupe ' + (Number(unite.split('.')[1]) || 1) + ' sur ' + vagues : '');", vers: '    return gfPartieDit(r, unite);' }] },
+  // (apres un refus, la pop-up rouverte repropose l heure refusee : ses verdicts gardes ne voient pas l arene prise)
+  { nom: 'verdicts-gardes-apres-refus', lettre: 'T5', scenarios: ['grand'], editions: [{ fichier: MODULE, de: '    if (r && r.id != null) gfOublierLesVerdicts(r.id);\n', vers: '' }] },
 ];
 
 async function jouer(browser, noms) {

@@ -363,10 +363,11 @@ button.gf-bloc__in:focus-visible { outline: 2px solid var(--console-focus); outl
    heures du groupe en rouge, la pastille « En retard · 12 min » cerclee, l heure prevue a cote.
    Arrive avec du retard : le filet et « Arrivé avec 12 min de retard », plus sobres. */
 .gf-h__retard [data-gf-retard] { box-shadow: inset 0 0 0 1px var(--danger); color: var(--danger); }
-/* (a l etroit, l heure prevue passe sous la pastille, jamais hors de la case) */
+/* (a l etroit, l heure prevue passe sous la pastille, jamais hors de la case ni sur le nom) */
+.gf-h__rt { display: inline-flex; flex: 0 1 auto; flex-wrap: wrap; align-items: center; column-gap: 6px; min-width: 0; }
 .gf-h__retard:not(.is-arrive) { flex: 0 1 auto; min-width: 0; flex-wrap: wrap; column-gap: 6px; white-space: normal; }
 .gf-h__retard > span, .gf-h__prevu { white-space: nowrap; }
-.gf-h__prevu { color: var(--text); font-size: 12px; font-weight: 600; }
+.gf-h__prevu { color: var(--text); font-size: 12px; font-weight: 600; line-height: 20px; }
 .gf-h__retard.is-arrive { flex: 0 1 auto; min-width: 0; white-space: normal; padding: 0 6px; border-radius: 6px; box-shadow: inset 0 0 0 1px var(--danger); color: var(--danger); font-weight: 600; cursor: default; }
 .gf-t .gf-r.is-rt > td.gf-h { background: var(--danger); }
 .gf-t .gf-r.is-rt { border-left-color: var(--danger); }

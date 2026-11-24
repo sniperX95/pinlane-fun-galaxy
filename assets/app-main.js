@@ -7459,7 +7459,9 @@ function getFormulaActivityLabel(formule, activityId) {
 // - ANCRES : bowling et laser uniquement (vraies ressources à créneau).
 // - TABLE : au groupe dès l'arrivée, jamais choisie.
 // - PASS LIBERTÉ : tout le reste, sans aucune heure.
+// (une formule tout illimite n en a aucune, quels que soient les mots de sa carte : rien ne s y reserve)
 function getFormulaAnchorIds(formule) {
+  if (typeof formuleToutIllimite === 'function' && formuleToutIllimite(formule)) return [];
   return getFormulaActivityIds(formule).filter((id) => ['bowling', 'laser_game'].includes(id));
 }
 
@@ -25654,7 +25656,7 @@ function getReservationFirstResourceStart(reservation, view = getStaffResourceVi
 }
 
 function getFormulaLaserGameCount(formule) {
-  if (!formule) return 0;
+  if (!formule || (typeof formuleToutIllimite === 'function' && formuleToutIllimite(formule))) return 0;
   return (formule.desc || []).reduce((max, line) => {
     const text = normalizeActivityText(line);
     if (!text.includes('laser game')) return max;
@@ -27549,6 +27551,54 @@ function poserVariableSiChange(el, nom, valeur) {
   if (el && el.style.getPropertyValue(nom) !== valeur) el.style.setProperty(nom, valeur);
 }
 
+// LE BANDEAU « À VOLONTÉ » DES PLANNINGS BOWLING ET LASER (2026-11-24, Ansar : « faudrait faire un truc adapté pour le
+// planning bowling et lasergame »). Un groupe Kids Fun Day n a ni piste ni arme : il joue quand il y a de la place
+// (dossierToutIllimite, booking-core). Le bandeau dit qui est attendu ou la, et jusqu a quelle heure ; un toucher ouvre
+// la fiche. Il ne compte dans aucun total et se tait un jour sans ces groupes, ou pour une activite que le centre
+// n a pas.
+const BANDEAUX_VOLONTE = {
+  bowling: { zone: 'planningVolonte', phrase: 'Aucune piste réservée : ils jouent quand une piste est libre.' },
+  laser_game: { zone: 'laserVolonte', phrase: 'Aucune arme réservée : ils jouent quand un départ a de la place.' },
+};
+
+function groupesAVolonte(activityId) {
+  if (typeof dossierToutIllimite !== 'function' || !activitesToutIllimite().some(activite => String(activite.id) === activityId)) return [];
+  return todaysReservations()
+    .filter(r => tientSesPlaces(r) && dossierToutIllimite(r))
+    .sort((a, b) => timeToNum(a.startTime) - timeToNum(b.startTime) || String(a.name || '').localeCompare(String(b.name || ''), 'fr'));
+}
+
+function renderBandeauVolonte(activityId) {
+  const { zone: idZone, phrase } = BANDEAUX_VOLONTE[activityId];
+  const zone = document.getElementById(idZone);
+  if (!zone) return;
+  const groupes = groupesAVolonte(activityId);
+  const moments = groupes.length ? getStaffReservationMoments(todaysReservations()) : new Map();
+  const maintenant = state.currentDate === todayStr() ? currentTimeDecimal() : NaN;
+  const trouve = lpChercheur(state.searchTerm);
+  // (« Kids Fun Day », le nom de la formule tel que le planning complet l ecrit)
+  const formules = [...new Set(groupes.map(r => String((resolveDisplayFormule(r.formuleId || r.formulaId) || {}).name || r.label || '')))].filter(Boolean)
+    .map(nom => nom === nom.toUpperCase() ? nom.toLowerCase().replace(/(^|[\s/])(\p{L})/gu, (x, avant, lettre) => avant + lettre.toUpperCase()) : nom);
+  const liste = groupes.map(r => {
+    const span = getStaffTerrainSpan(r);
+    const moment = moments.get(String(r.id));
+    const la = r.status === 'arrived' || r.status === 'paid';
+    const parti = la && groupeReparti(r, moment, maintenant, span);
+    const retard = !la && groupeEnRetardAuPlanning(r, moment);
+    const formule = resolveDisplayFormule(r.formuleId || r.formulaId);
+    const periode = Number(formule && formule.timeLimit && formule.timeLimit.max);
+    const etat = parti ? 'Parti' : la ? 'Arrivé' : retard ? 'En retard' : `Attendu à ${formatClockDisplay(timeToNum(r.startTime))}`;
+    const morceaux = [joueursDuDossier(r), etat, `jusqu’à ${formatClockDisplay(periode > 0 ? periode : span.end)}`];
+    const nom = r.name || 'Groupe';
+    return `<button type="button" class="pl-volonte__g${parti ? ' is-parti' : la ? ' is-la' : retard ? ' is-retard' : ''}${trouve(r) ? '' : ' is-grise'}" data-volonte="${Number(r.id)}" aria-label="${escapeHtml(`${[nom, ...morceaux].join(', ')}. Ouvrir sa fiche`)}" onclick="openPos(${Number(r.id)})"><i aria-hidden="true"></i> <b>${escapeHtml(nom)}</b> <span>${escapeHtml(morceaux[0])}</span> <span class="pl-volonte__e">${escapeHtml(etat)}</span> <span>${escapeHtml(morceaux[2])}</span></button>`;
+  }).join('');
+  const html = liste ? `<p class="pl-volonte__t"><b>À volonté</b> <span class="pl-volonte__f">${escapeHtml(formules.join(', '))}</span> <span>${escapeHtml(phrase)}</span></p><div class="pl-volonte__l">${liste}</div>` : '';
+  if (zone.__rendu === html) return;
+  zone.__rendu = html;
+  zone.innerHTML = html;
+  zone.hidden = !html;
+}
+
 function renderPlanning() {
   ensureAvailabilityBlocksForPlanning();
   ensureStaffCenterConfigForPlanning();
@@ -27563,6 +27613,8 @@ function renderPlanning() {
   // On mémorise la position pour ne pas faire sauter la vue en mode plein écran.
   // Lue avant le rendu, reposée après (voir ouvrirLotDefilement).
   const [prevScrollTop, prevScrollLeft] = lireDefilementRendu(wrap);
+  // (avant la mesure de la grille : sa hauteur est celle qui reste sous le bandeau)
+  renderBandeauVolonte('bowling');
   pbBulleBowling();
   const config = planningDisplayWindow('bowling');
   if (config.closed && !config.showExisting) {
@@ -28572,6 +28624,7 @@ function renderLaserPlanning() {
   if (lpEtat.glisse) { lpEtat.differe = true; return; }
   const [prevScrollTop, prevScrollLeft] = lireDefilementRendu(wrap);
   const focus = lpFocusAvant(wrap);
+  renderBandeauVolonte('laser_game');
   const modele = lpModele();
   if (modele.config.closed && !modele.config.showExisting) {
     poserHtmlSurface(wrap, '<div class="empty-state"><div class="e-title">Centre fermé ce jour</div><div class="e-sub">Aucun nouveau créneau disponible.</div></div>');
@@ -29551,8 +29604,22 @@ function getGroupeProgramme(r) {
       coche: item.key,
       exige: true,
     }));
+  // LE KIDS FUN DAY : CHAQUE ACTIVITE DU CENTRE, « ILLIMITÉ » (2026-11-24, Ansar : « kids fun day c'est toutes les
+  // activités en illimité »). Sans heure ni place, cochable comme le reste ; celle que le groupe a aussi achetee
+  // en plus garde sa coche a elle.
+  const toutIllimite = typeof dossierToutIllimite === 'function' && dossierToutIllimite(r);
+  if (toutIllimite) {
+    const aHeure = new Set(etapes.map(etape => etape.activityId));
+    getFormulaActivityProgressSummary(r).items.forEach(item => {
+      const coche = !(['bowling', 'laser_game'].includes(item.activityId) && aHeure.has(item.activityId));
+      etapes.push({
+        cle: `illimite-${item.activityId}`, activityId: item.activityId, nom: item.label, quoi: '', ou: '', groupe: '',
+        start: null, end: null, libre: true, volonte: true, illimite: true, fait: coche && Boolean(item.done), ...(coche ? { coche: item.key, exige: true } : {}),
+      });
+    });
+  }
   // Une activite de formule sans heure au plan reste au programme, cochable.
-  if (formuleSuivie) {
+  if (formuleSuivie && !toutIllimite) {
     getFormulaActivityProgressSummary(r).items
       // (une petite activite en plus libre n en est pas une : une formule lue d apres son plan la comptait deux fois)
       .filter(item => !item.startTime && item.activityId !== 'bowling' && item.activityId !== 'laser_game' && !pasEnPlus.some(step => step.flexible === true && step.activityId === item.activityId))
@@ -29576,7 +29643,7 @@ function getGroupeProgramme(r) {
       fait: faite(`laser_game-${partie}`),
       coche: `laser_game-${partie}`,
     }));
-  const items = r && r.program && Array.isArray(r.program.items) ? r.program.items : [];
+  const items = !toutIllimite && r && r.program && Array.isArray(r.program.items) ? r.program.items : [];
   // « Venir plus tot » (2026-11-05) : ce que le groupe fait avant sa premiere activite a heure, a l heure que le plan lui
   // donne. L equipe sait ce qu il vient faire.
   // (une formule adaptee, le dossier 1953 : ce que sa formule comprend est deja au programme par elle, une ligne
@@ -29817,6 +29884,7 @@ function renderGroupeEtapes(r, moment, options = {}) {
     const toutFait = libres.every(etape => etape.fait);
     // (les activites d un acces illimite sont toutes « à volonté » : le mot se dit une fois, en tete)
     const volonte = libres.every(etape => etape.volonte);
+    const illimite = libres.every(etape => etape.illimite);
     const puces = libres.map(etape => {
       const cochable = Boolean(etape.coche) && r.status !== 'cancelled' && peutCocher;
       const appel = cochable ? `toggleFormulaActivity(${Number(r.id)}, '${escapeJsString(etape.coche)}', event)` : '';
@@ -29825,7 +29893,7 @@ function renderGroupeEtapes(r, moment, options = {}) {
     // « Libre » dit deja « a leur rythme » : la ligne laisse toute la place
     // aux puces (le mot reste pour les lecteurs d ecran).
     return `<li class="gc-step gc-step-libres is-${toutFait ? 'fait' : 'libre'}">
-      <span class="gc-step-time is-free">${volonte ? 'À volonté' : 'Libre'}<span class="visually-hidden">, ${toutFait ? 'tout est fait' : 'à leur rythme'}</span></span>
+      <span class="gc-step-time is-free">${illimite ? 'Illimité' : volonte ? 'À volonté' : 'Libre'}<span class="visually-hidden">, ${toutFait ? 'tout est fait' : 'à leur rythme'}</span></span>
       <span class="gc-libres">${puces}</span>
     </li>`;
   };
@@ -29854,7 +29922,7 @@ function renderGroupeEtapes(r, moment, options = {}) {
       : debut;
     const quand = etape.start !== null && etape.start !== undefined
       ? `<span class="gc-step-time">${heureDebut}${etape.end !== null && etape.end !== undefined && formatClockDisplay(etape.end) !== formatClockDisplay(etape.start) ? `<small>${formatClockDisplay(etape.end)}</small>` : ''}</span>`
-      : `<span class="gc-step-time is-free">${etape.aPlacer ? '--:--' : 'Libre'}</span>`;
+      : `<span class="gc-step-time is-free">${etape.aPlacer ? '--:--' : etape.illimite ? 'Illimité' : 'Libre'}</span>`;
     const details = [etape.quoi, etape.ou, etape.groupe].filter(Boolean).join(' · ');
     // (une ligne ajoutee dont le prix se regle au comptoir le dit, jamais « 0 € »)
     const montant = prix && prix.has(etape.cle) ? `<span class="gc-step-price">${escapeHtml(prix.get(etape.cle))}</span>`
@@ -33144,6 +33212,10 @@ function illimiteDeSaCarte(r) {
 
 function buildEditProgramFromReservation(r) {
   const etat = { bowling: { on: false, duration: 1 }, laser_game: { on: false, games: 1 }, others: {}, othersOptions: {} };
+  // LE KIDS FUN DAY N A RIEN A REGLER (2026-11-24, Ansar, devant une carte « Bowling » a l heure vide et sans duree sur
+  // un de ses dossiers : « pq ça montre bowling comme ça wtf »). Sa fiche du catalogue portait un bowling de 5 h, que
+  // cette lecture allumait. Ses activites sont comprises, sans piste ni partie (renderEditFormuleBloc les liste).
+  if (typeof dossierToutIllimite === 'function' && dossierToutIllimite(r)) return etat;
   // (un banc qui ne charge que cette fonction n a pas illimiteDeSaCarte : le programme du dossier fait foi)
   const items = r && r.program && Array.isArray(r.program.items) && !(typeof illimiteDeSaCarte === 'function' && illimiteDeSaCarte(r)) ? r.program.items : null;
   if (items && items.length) {
@@ -33377,6 +33449,8 @@ function activitesDeLaFormuleEdition(formule) {
   const ids = new Set(formule ? getFormulaFreePassIds(formule) : []);
   if (formule && formule.hasBowling) ids.add('bowling');
   if (getFormulaLaserGameCount(formule) > 0) ids.add('laser_game');
+  // (une formule qui comprend tout, le Kids Fun Day : chaque activite du centre, aucune ne se paie a part)
+  if (typeof formuleToutIllimite === 'function' && formuleToutIllimite(formule)) activitesToutIllimite().forEach((activite) => ids.add(String(activite.id)));
   return ids;
 }
 
@@ -34170,7 +34244,8 @@ function formuleDOrigineEdition(origine) {
 // Sous le menu : ce que le changement fait, et une formule hors regles le dit.
 function indiceFormuleEdition() {
   // (a la carte, rien a dire tant qu aucune formule n est choisie)
-  if (!formuleChangeeEdition()) return { texte: formuleDOrigineEdition(departsEdition().get(state.editState)?.origine) ? 'Changer une activité ne vaut que pour cette visite.' : '', hors: false };
+  // (une formule qui comprend tout n a aucune activite a changer, renderEditFormuleBloc)
+  if (!formuleChangeeEdition()) return { texte: formuleDOrigineEdition(departsEdition().get(state.editState)?.origine) && !toutIllimiteEdition() ? 'Changer une activité ne vaut que pour cette visite.' : '', hors: false };
   const formule = resolveDisplayFormule(state.editState.formuleId);
   const dispo = formule ? disponibiliteFormuleEdition(formule) : { ok: true };
   return dispo.ok
@@ -34225,6 +34300,16 @@ function changerFormuleEdition(id) {
   e.label = retour ? origine.label : formule.name;
   e.duration = retour ? origine.duration : getFormuleLaneDuration(formule);
   e.totalDuration = retour ? origine.totalDuration : getFormuleTotalDuration(formule);
+  // (une formule qui comprend tout, le Kids Fun Day : ce que le dossier avait en plus y est compris, une autre formule
+  // le lui rend)
+  if (!retour && typeof formuleToutIllimite === 'function' && formuleToutIllimite(formule)) {
+    e.enPlusAvantIllimite = e.enPlusAvantIllimite || enPlusEdition();
+    const comprises = activitesToutIllimite().map((activite) => String(activite.id));
+    e.enPlusEdite = e.enPlusAvantIllimite.filter((x) => !comprises.includes(x.id));
+  } else if (e.enPlusAvantIllimite) {
+    e.enPlusEdite = e.enPlusAvantIllimite;
+    delete e.enPlusAvantIllimite;
+  }
   delete e.programmeEdite;
   delete e.programmeEditeInitial;
   ensureEditProgram(dossierPourFormule(r));
@@ -34678,7 +34763,7 @@ function heureEnPlusProposeeEdition(id, variante) {
 // une autre libre pendant la visite tant qu on ne lui en pose pas.
 function ajouterEnPlusEdition(id) {
   const e = state.editState;
-  if (!e || !id || !enPlusPossibleEdition() || enPlusEditeDe(id)) return;
+  if (!e || !id || !enPlusPossibleEdition() || enPlusEditeDe(id) || toutIllimiteEdition()) return;
   const ancre = RV_ANCRABLES.includes(id);
   const variante = ancre ? 1 : null;
   e.enPlusEdite = [...enPlusEdition(), { id, variante, heure: ancre ? heureEnPlusProposeeEdition(id, variante) : '', joueurs: null }];
@@ -34692,6 +34777,7 @@ function ajouterEnPlusEdition(id) {
 function ajouterActiviteEdition(id) {
   const acces = typeof choixIllimiteEdition === 'function' && choixIllimiteEdition() ? resolveDisplayFormule(state.editState.formuleId) : null;
   if (acces && activitesDeLIllimite(acces).includes(String(id))) { basculerIllimiteEdition(id); return; }
+  if (toutIllimiteEdition()) return;
   if (enPlusPossibleEdition()) { ajouterEnPlusEdition(id); return; }
   toggleEditActivity(id);
 }
@@ -34708,6 +34794,8 @@ function basculerAdapterEdition() {
 function adapterEditionHtml(r) {
   const e = state.editState;
   if (!e || !formuleTelleQuelleEdition(r) || estFormuleIllimitee(resolveDisplayFormule(r.formuleId))) return '';
+  // (une formule qui comprend tout n a rien a adapter)
+  if (typeof dossierToutIllimite === 'function' && dossierToutIllimite(r)) return '';
   const on = Boolean(e.adapterLaFormule);
   return `<div class="fm-adapter" id="editAdapter"><button type="button" class="qb-dur-btn dossier-option${on ? ' active' : ''}" aria-pressed="${on}" aria-describedby="editAdapterAide" onclick="basculerAdapterEdition()">Adapter à ce groupe</button><span class="fm-adapter-aide" id="editAdapterAide">${on ? 'Les activités ajoutées entrent dans la formule, chacune à son prix.' : '« Ajouter » met l’activité en plus de la formule, à son prix.'}</span></div>`;
 }
@@ -34784,8 +34872,18 @@ function detailEnPlusEdition(x) {
   return [repli ? (e && e.versProgrammeNormal ? 'entre dans le programme' : 'entre dans la formule adaptée') : 'en plus de la formule', !montantsMasques() && prix !== null ? formatMoneyCentimes(prix) : ''].filter(Boolean).join(' · ');
 }
 
-// La rangee d une activite en plus : son heure a gauche, son nom, « en plus de la formule » et son prix, « Retirer »,
-// puis son heure a taper, ses joueurs et sa duree ou ses parties.
+// Les pistes d un bowling en plus, comme le planning les tient : celles du verdict a jour, sinon celles du dossier
+// tant que rien n a change. (2026-11-24 : sa rangee disait l heure et la duree, jamais les pistes)
+function pistesEnPlusEdition(x) {
+  if (x.id !== 'bowling') return '';
+  const dossier = dossierEcritDuVerdict() || (editionReplanifie() || enPlusEditionChange() ? null : state.selectedRes);
+  const blocs = ((dossier && dossier.opsPlan && dossier.opsPlan.resourceBlocks) || []).filter((b) => b && b.enPlus && b.resourceType === 'bowling_lane');
+  const pistes = [...new Set(blocs.flatMap((b) => b.lanes || []).map(Number).filter(Number.isFinite))].sort((a, b) => a - b);
+  return pistes.length ? `piste${pistes.length > 1 ? 's' : ''} ${joindrePistes(pistes)}` : '';
+}
+
+// La rangee d une activite en plus : son heure a gauche, son nom, « en plus de la formule » et son prix, ses pistes,
+// « Retirer », puis son heure a taper, ses joueurs et sa duree ou ses parties.
 function rangeeEnPlusEditionHtml(r, x, rang) {
   const e = state.editState;
   const nom = nomActiviteHeureEdition(x.id);
@@ -34816,7 +34914,7 @@ function rangeeEnPlusEditionHtml(r, x, rang) {
   const html = `<section class="fm-act dossier-activity is-on is-en-plus${refus ? ' is-refus' : ''}" data-edit-en-plus="${sid}" aria-label="${escapeHtml(`${nom}, en plus de la formule`)}">
       <div class="fm-act-heure"><span class="visually-hidden">Heure prévue : </span><span class="fm-heures">${touche}</span>${ficheVisuelActivite(r, { activityId: x.id, nom })}</div>
       <div class="fm-act-corps">
-        <div class="fm-act-tete"><h5>${escapeHtml(nom)}</h5><span class="fm-act-detail" data-en-plus-detail="${sid}">${escapeHtml(detail)}</span><button type="button" class="dossier-remove-activity fm-retirer" aria-label="${escapeHtml(`Retirer ${nom}, en plus de la formule`)}" data-en-plus="${sid}" onclick="retirerEnPlusEdition(this.dataset.enPlus)">Retirer</button></div>
+        <div class="fm-act-tete"><h5>${escapeHtml(nom)}</h5><span class="fm-act-detail" data-en-plus-detail="${sid}">${escapeHtml(detail)}</span><span class="fm-act-pistes" data-en-plus-pistes="${sid}">${escapeHtml(pistesEnPlusEdition(x))}</span><button type="button" class="dossier-remove-activity fm-retirer" aria-label="${escapeHtml(`Retirer ${nom}, en plus de la formule`)}" data-en-plus="${sid}" onclick="retirerEnPlusEdition(this.dataset.enPlus)">Retirer</button></div>
         <div class="fm-act-reglages">${champ}${phrase}${compteur}${variante}</div>
       </div>
     </section>`;
@@ -34839,6 +34937,8 @@ function peindreRangeesEnPlusEdition() {
     }
     const detail = rangee.querySelector('[data-en-plus-detail]');
     if (detail) detail.textContent = detailEnPlusEdition(x);
+    const pistes = rangee.querySelector('[data-en-plus-pistes]');
+    if (pistes) pistes.textContent = pistesEnPlusEdition(x);
     const refus = refusEnPlusEdition(id);
     rangee.classList.toggle('is-refus', Boolean(refus));
     const zone = rangee.querySelector('[data-en-plus-refus]');
@@ -34851,13 +34951,31 @@ function peindreRangeesEnPlusEdition() {
   });
 }
 
+// LE KIDS FUN DAY DANS MODIFIER (2026-11-24, Ansar : « kids fun day c'est toutes les activités en illimité », « pas
+// besoin de booker des places ») : ce qu il comprend se lit, une ligne par activite du centre, « Illimité ». Pas
+// d heure, de duree, de piste ni de joueurs a regler, et « Ajouter » ne le repropose pas en payant.
+function toutIllimiteEdition() {
+  return typeof dossierToutIllimite === 'function' && dossierToutIllimite(dossierPourFormule(state.selectedRes));
+}
+
+function illimiteComprisEditionHtml(r) {
+  const liste = activitesToutIllimite();
+  if (!liste.length) return '';
+  return `<ul class="fm-illimite" aria-label="Activités comprises">${liste.map((activite) => {
+    const nom = FORMULA_ACTIVITY_LABELS[activite.id] || activite.name || activite.id;
+    return `<li data-illimite="${escapeHtml(activite.id)}">${ficheVisuelActivite(r, { activityId: activite.id, nom })}<span>${escapeHtml(nom)}</span><strong>Illimité</strong></li>`;
+  }).join('')}</ul><p class="fm-illimite-dit">Rien à réserver : ils jouent quand une piste ou un départ est libre.</p>`;
+}
+
 function renderEditFormuleBloc(r, formule, lignes, controls = {}) {
+  const toutIllimite = typeof dossierToutIllimite === 'function' && dossierToutIllimite(r);
+  const comprises = toutIllimite ? illimiteComprisEditionHtml(r) : '';
   if (!peutAdapterLeProgramme(r)) {
-    const items = Array.isArray(r.program?.items) ? r.program.items : [];
+    const items = !toutIllimite && Array.isArray(r.program?.items) ? r.program.items : [];
     return `<div class="fm-lecture dossier-program">
       ${peutAdapterFormule() && typeof niveauStaff === 'function' && niveauStaff('formule') !== 'oui' ? droitManquantHtml('formule', ' pour changer le programme', 'fmDroitFormule') : ''}
       ${formule?.name ? `<p class="dossier-formula-origin">Formule <strong>${escapeHtml(formule.name)}</strong></p>` : ''}
-      ${items.length ? `<ul class="dossier-program-summary">${items.map(item => `<li><span>${escapeHtml(nomActivite(item))}</span><strong>${participantsLigneProgramme(item, r.pax)} ${getCenterActivity(item.activityId) && activityCountsChildren(getCenterActivity(item.activityId)) ? 'enfants' : 'joueurs'}</strong></li>`).join('')}</ul>` : lignes.length ? `<ul class="edit-formule-list">${lignes.map(ligne => `<li>${escapeHtml(String(ligne))}</li>`).join('')}</ul>` : `<p class="field-hint">${escapeHtml(getReservationLabel(r))} · ${Number(r.pax) || 0} participants</p>`}
+      ${items.length ? `<ul class="dossier-program-summary">${items.map(item => `<li><span>${escapeHtml(nomActivite(item))}</span><strong>${participantsLigneProgramme(item, r.pax)} ${getCenterActivity(item.activityId) && activityCountsChildren(getCenterActivity(item.activityId)) ? 'enfants' : 'joueurs'}</strong></li>`).join('')}</ul>` : lignes.length ? `<ul class="edit-formule-list">${lignes.map(ligne => `<li>${escapeHtml(String(ligne))}</li>`).join('')}</ul>` : `<p class="field-hint">${escapeHtml(getReservationLabel(r))} · ${Number(r.pax) || 0} participants</p>`}${comprises}
       ${enPlusEdition().length ? `<ul class="dossier-program-summary" data-en-plus-lecture>${enPlusEdition().map(x => `<li><span>${escapeHtml(`${nomActiviteHeureEdition(x.id)} en plus${x.heure ? `, à ${x.heure}` : ''}`)}</span><strong>${joueursEnPlusEdition(x)} joueurs</strong></li>`).join('')}</ul>` : ''}
     </div>`;
   }
@@ -34889,6 +35007,8 @@ function renderEditFormuleBloc(r, formule, lignes, controls = {}) {
     const estLaser = choice.id === 'laser_game';
     const actif = estBowling ? !!programme.bowling.on : estLaser ? !!programme.laser_game.on : !!(programme.others || {})[choice.id];
     if (!actif) {
+      // (une formule qui comprend tout : l activite se lit « Illimité », elle ne se vend pas en plus)
+      if (toutIllimite) return '';
       // (une activite deja en plus de la formule a sa rangee : elle ne s ajoute pas une deuxieme fois)
       if (!enPlusEditeDe(choice.id)) ajouts.push(`<button type="button" class="fm-ajout" onclick="ajouterActiviteEdition('${escapeJsString(choice.id)}')">${plus}${escapeHtml(choice.label)}</button>`);
       return '';
@@ -34955,7 +35075,7 @@ function renderEditFormuleBloc(r, formule, lignes, controls = {}) {
     : '';
   return `${choixAcces}${versNormal}${renderEditFormuleChoix() || (formule?.name && !versNormal && !estFormuleIllimitee(formule) ? `<p class="dossier-formula-origin">Formule <strong>${escapeHtml(formule.name)}</strong> · les changements ne valent que pour cette visite.</p>` : '')}
     <p class="fm-replan" role="status">Les heures seront recalculées à l’enregistrement.</p>
-    <div class="fm-acts">${rangees || sansActivite}</div>
+    <div class="fm-acts">${toutIllimite ? `${sansActivite}${comprises}${rangees}` : rangees || sansActivite}</div>
     ${ajouts.length ? `<div class="fm-ajouts" role="group" aria-labelledby="fmAjoutsTitre"><span class="fm-ajouts-titre" id="fmAjoutsTitre">Ajouter</span>${ajouts.join('')}</div>` : ''}${adapterEditionHtml(r)}`;
 }
 
@@ -37286,7 +37406,7 @@ function renderPosEdit(r) {
               <label class="lbl" for="editStartInput">Arrivée</label>
               <input id="editStartInput" class="input" type="time" value="${e.startTime}" oninput="setEditField('startTime', this.value, true)" onkeydown="gardeArriveeEdition(event)" onwheel="if (document.activeElement === this) this.blur()" required>
             </div>
-${!adapte || (!isLaserRes && !editNeedsLanes && String(rf.type || '') !== 'formule') ? durationControl : ''}
+${(!adapte || (!isLaserRes && !editNeedsLanes && String(rf.type || '') !== 'formule')) && !toutIllimiteEdition() ? durationControl : ''}
             <div class="fm-champ fm-joueurs">
               <label class="lbl" for="editPaxInput">Joueurs</label>
               <div class="es-stepper staff-stepper fm-stepper">
@@ -40303,9 +40423,20 @@ function rvEnPlusPossible() {
   return Boolean(s) && s.type === 'formule' && !s.adaptee && Boolean(s.formuleId) && Boolean(rvFormule());
 }
 
+// LE KIDS FUN DAY COMPREND TOUT, EN ILLIMITE (2026-11-24, lib/formule-tout-illimite.js) : aucune de ses activites ne
+// se reserve ni ne se vend en plus. Sa tuile et son bloc disent « illimité », un toucher le redit sans rien ajouter.
+function rvToutIllimite() {
+  const s = quickBookState;
+  return Boolean(s) && s.type === 'formule' && !s.adaptee && typeof formuleToutIllimite === 'function' && formuleToutIllimite(rvFormule());
+}
+
+function rvComprisEnIllimite(id) {
+  return rvToutIllimite() && activitesToutIllimite().some((activite) => String(activite.id) === String(id));
+}
+
 function rvEnPlus() {
   const s = quickBookState;
-  return rvEnPlusPossible() && Array.isArray(s.enPlus) ? s.enPlus : [];
+  return rvEnPlusPossible() && Array.isArray(s.enPlus) ? s.enPlus.filter((x) => !rvComprisEnIllimite(x.id)) : [];
 }
 
 function rvEnPlusDe(id) {
@@ -40411,7 +40542,7 @@ function rvHeureEnPlusProposee(id, variante) {
 // place pas sans) ; une autre activite part libre pendant la visite tant qu on ne lui en pose pas.
 function rvAjouterEnPlus(id, { variante, heure, joueurs } = {}) {
   const s = quickBookState;
-  if (!rvEnPlusPossible() || !id) return false;
+  if (!rvEnPlusPossible() || !id || rvComprisEnIllimite(id)) return false;
   const liste = Array.isArray(s.enPlus) ? s.enPlus.slice() : [];
   const avant = liste.find((x) => x.id === id) || null;
   const ancre = RV_ANCRABLES.includes(id);
@@ -40536,6 +40667,11 @@ function rsToucherEnPlus(id, { variante, heure, basculer = true } = {}) {
   const s = quickBookState;
   if (!rvEnPlusPossible()) return false;
   s.error = '';
+  if (rvComprisEnIllimite(id)) {
+    const nom = rsLeNom(id);
+    s.error = `${nom.charAt(0).toUpperCase()}${nom.slice(1)} ${/^les /.test(nom) ? 'sont' : 'est'} déjà dans ${rvNomFormule(rvFormule())}, en illimité : rien à ajouter.`;
+    return true;
+  }
   if (rvDansLAcces(id)) {
     const f = rvFormuleIllimitee();
     const choix = rsChoixIllimite(f);
@@ -40698,6 +40834,7 @@ function rsCompteurJoueursEnPlusHtml(id, mot = 'Joueurs', aria = `Joueurs, ${rsN
 // Dans une formule telle quelle, le bloc du bowling ou du laser vend l activite en plus : son prix, et ce
 // que la formule ou l acces en a deja (« dans la formule », « dans l’accès »).
 function rsInfoBlocEnPlus(id, tarif) {
+  if (rvComprisEnIllimite(id)) return 'illimité, rien à réserver';
   if (rvDansLAcces(id)) return rvPrisDansLAcces(id) ? 'dans l’accès' : 'hors accès';
   const x = rvEnPlusDe(id);
   const armes = id === 'laser_game' && rsEtat().faits.combien ? `, ${rvPluriel(Math.max(1, Number(x && x.joueurs) || Number(quickBookState.pax) || 1), 'arme')}` : '';
@@ -41329,6 +41466,7 @@ function rvNomFormule(f) {
 function rvResumeFormule(f) {
   if (!f) return '';
   if (estFormuleIllimitee(f) && Number(f.illimite.minutes) > 0) return phraseDeLIllimite(f).court;
+  if (typeof formuleToutIllimite === 'function' && formuleToutIllimite(f)) return 'toutes les activités, en illimité';
   const prog = buildEditProgramFromReservation({ formuleId: f.id });
   return rvIdsDeComposition(prog).map((id) => (id === 'laser_game' ? rvPluriel(Number(prog.laser_game && prog.laser_game.games) || 1, 'laser') : rvNomBref(id))).join(', ');
 }
@@ -43176,6 +43314,8 @@ function rvAdapterFormule(on) {
   if (!s || s.type !== 'formule') return;
   const formule = rvFormule();
   if (!formule) return;
+  // (une formule qui comprend tout n a rien a adapter)
+  if (on && rvToutIllimite()) return;
   if (on) {
     const base = buildEditProgramFromReservation({ formuleId: formule.id });
     s.visit = { bowling: { ...base.bowling }, laser_game: { ...base.laser_game }, others: { ...base.others }, options: { ...(base.othersOptions || {}) } };
@@ -44651,7 +44791,7 @@ function rsMontantTouche(id, quantite) {
 function rsPrixTouche(id, quantite) {
   if (quickBookState.type === 'formule') {
     // (une formule telle quelle : une activite en plus se paie a son prix, la touche le dit, « + 39 € »)
-    if (!rvEnPlusPossible() || rvDansLAcces(id) || (rvActivites().includes(id) && !RV_ANCRABLES.includes(id))) return '';
+    if (!rvEnPlusPossible() || rvDansLAcces(id) || rvComprisEnIllimite(id) || (rvActivites().includes(id) && !RV_ANCRABLES.includes(id))) return '';
     const prix = rvMontantEnPlus({ id, variante: RV_ANCRABLES.includes(id) ? (quantite != null ? quantite : rsVariante(id)) : null });
     return prix != null ? rsEuros(prix) : 'sur place';
   }
@@ -45377,11 +45517,12 @@ function rsBlocHtml(id) {
     const choisir = !enPlus && id !== 'bowling' && rvBowlingProposeIntact();
     // (dans un acces illimite : une activite qu il comprend s y reprend ; prise, il n y a rien a ajouter)
     const acces = enPlus && rvDansLAcces(id);
+    const compris = enPlus && rvComprisEnIllimite(id);
     const mot = choisir ? 'Choisir' : acces ? 'Reprendre' : 'Ajouter';
     const aria = choisir ? `Choisir ${rvMinuscule(nom)}, à la place du bowling proposé` : acces ? `Reprendre ${rvMinuscule(nom)} dans l’accès` : enPlus ? `Ajouter ${rvMinuscule(nom)} en plus de la formule` : `Ajouter ${rvMinuscule(nom)} à la réservation`;
-    const bouton = acces && rvPrisDansLAcces(id) ? '' : `<button type="button" class="rs-ajout" id="rsAjout-${escapeHtml(id)}" data-quoi="${escapeHtml(id)}" aria-label="${escapeHtml(aria)}" onclick="rsAjouterBloc(this.dataset.quoi)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg>${mot}</button>`;
+    const bouton = compris || (acces && rvPrisDansLAcces(id)) ? '' : `<button type="button" class="rs-ajout" id="rsAjout-${escapeHtml(id)}" data-quoi="${escapeHtml(id)}" aria-label="${escapeHtml(aria)}" onclick="rsAjouterBloc(this.dataset.quoi)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg>${mot}</button>`;
     return `<section class="rs-seance is-replie" aria-label="${escapeHtml(nom)}">
-    <div class="rs-s-t"><span class="rs-ic">${rsIcone(id)}</span><div class="rs-s-n"><b>${escapeHtml(nom)}</b><small>${escapeHtml(rsInfoBloc(id))}</small></div>${acces ? '' : segment}${bouton}</div>${rsRetenuesHtml(id)}
+    <div class="rs-s-t"><span class="rs-ic">${rsIcone(id)}</span><div class="rs-s-n"><b>${escapeHtml(nom)}</b><small>${escapeHtml(rsInfoBloc(id))}</small></div>${acces || compris ? '' : segment}${bouton}</div>${rsRetenuesHtml(id)}
   </section>`;
   }
   // (un grand groupe qui tourne : la deuxieme activite part avec la premiere, rsTourneAvecHtml)
@@ -45852,10 +45993,13 @@ function rsTuileHtml(id, etapes) {
   // illimite dit si l acces la prend)
   const enPlus = rvEnPlusPossible() ? rvEnPlusDe(id) : null;
   const acces = rvEnPlusPossible() && rvDansLAcces(id);
+  // (le Kids Fun Day comprend tout : la tuile le dit, sans prix)
+  const compris = rvComprisEnIllimite(id);
   // (le bowling et le laser en tuile, sur la page Sur mesure : la tuile est celle de l activite en plus)
-  const pris = RV_ANCRABLES.includes(id) && rvEnPlusPossible() && !acces ? Boolean(enPlus) : rsAuTicket(id) || Boolean(enPlus);
+  const pris = compris || (RV_ANCRABLES.includes(id) && rvEnPlusPossible() && !acces ? Boolean(enPlus) : rsAuTicket(id) || Boolean(enPlus));
   let mot = '';
-  if (enPlus) mot = enPlus.heure || 'en plus';
+  if (compris) mot = 'illimité';
+  else if (enPlus) mot = enPlus.heure || 'en plus';
   else if (acces) mot = pris ? 'dans l’accès' : 'hors accès';
   else if (pris) {
     const e = etapes.find((x) => x.id === id);
@@ -45904,7 +46048,7 @@ async function rsChiffrerTuiles() {
   const s = quickBookState;
   // Une formule ne vend pas ses activites a la piece : ses tuiles ne disent pas de prix. Prise telle quelle,
   // une activite en plus se paie a son prix : le serveur le dit, comme a la carte (2026-11-22).
-  if (!s || s.submitting || (s.type === 'formule' && !rvEnPlusPossible()) || !rsEtat().faits.combien || !['activites', 'mesure'].includes(rsEtat().q)) return;
+  if (!s || s.submitting || (s.type === 'formule' && (!rvEnPlusPossible() || rvToutIllimite())) || !rsEtat().faits.combien || !['activites', 'mesure'].includes(rsEtat().q)) return;
   if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('reservations.create')) return;
   const cle = rsClePrixTuiles();
   if (rsPrixServeur.has(cle)) return;
@@ -46609,7 +46753,7 @@ function rsBlocsAffiches() {
   if (b.q === 'ligne') return rvModifiable() && rvActivites().includes(b.ligne) ? [b.ligne] : [];
   if (b.q !== 'activites') return [];
   // (une formule telle quelle : le bowling et le laser en plus, replies compris ; pas ceux que l acces joue)
-  if (rvEnPlusPossible()) return getQuickBookActivityChoices().map((c) => c.id).filter((id) => RV_ANCRABLES.includes(id) && !rvDansLAcces(id));
+  if (rvEnPlusPossible()) return getQuickBookActivityChoices().map((c) => c.id).filter((id) => RV_ANCRABLES.includes(id) && !rvDansLAcces(id) && !rvComprisEnIllimite(id));
   const blocs = getQuickBookActivityChoices().map((c) => c.id).filter((id) => RV_ANCRABLES.includes(id));
   // (l heure d arrivee ouverte sous sa ligne se relit comme celles d un bloc : rsHeuresActiviteHtml)
   return b.heureAct && rsModeHeureAct(b.heureAct) === 'arrivee' ? [...blocs, b.heureAct] : blocs;
@@ -47978,6 +48122,9 @@ function rsLigneFormuleHtml() {
   const cases = rsCasesDuContenu(carte);
   const aHeure = cases.some((c) => c.id);
   rangs.push(`<div class="rs-rang is-contenu${aHeure ? ' is-cases' : ''}"><span class="rs-lbl">Contenu</span><ul class="rs-contenu${aHeure ? ' is-heures' : ''}" style="--rs-n:${Math.min(4, cases.length)}">${cases.map(rsCaseDuContenuHtml).join('')}</ul></div>`);
+  // (le Kids Fun Day : ce qu il comprend, une case par activite du centre, rien a y regler)
+  const comprises = rvToutIllimite() ? activitesToutIllimite() : [];
+  if (comprises.length) rangs.push(`<div class="rs-rang is-contenu" id="rsToutIllimite"><span class="rs-lbl">En illimité</span><ul class="rs-contenu" style="--rs-n:4">${comprises.map((activite) => `<li>${escapeHtml(rvNomActivite(activite.id))}</li>`).join('')}</ul></div><p class="rs-texte">Rien à réserver : ils jouent quand une piste ou un départ est libre.</p>`);
   // (la case touchee ouvre ses demi-heures juste dessous, sur place)
   const ouverte = cases.find((c) => c.id && c.id === rsEtat().heureAct);
   if (ouverte) rangs.push(`<div class="rs-rang is-heures"><span class="rs-lbl">${escapeHtml(rsNomCourt(ouverte.id))}</span>${rsHeuresActiviteHtml(ouverte.id)}</div>`);
@@ -47987,7 +48134,7 @@ function rsLigneFormuleHtml() {
     rangs.push(rsRang('Au choix', variantes.map((c) => rsPetite(c.label, courant === c.id, 'rsFormuleChoix(this.dataset.choix)', `data-choix="${escapeHtml(c.id)}"`)).join(''), variantes.length));
   }
   const gestes = [];
-  if (rsNiveau('formule') === 'oui') {
+  if (rsNiveau('formule') === 'oui' && !rvToutIllimite()) {
     gestes.push(s.adaptee
       ? rsPetite(`Revenir à ${nom}`, false, 'rsFixer(() => rvAdapterFormule(false))', 'id="rsRevenir"', 'telle qu’au catalogue')
       : rsPetite('Adapter à ce groupe', false, 'rsFixer(() => rvAdapterFormule(true))', 'id="rvAdapter"', 'retirer ou ajouter une activité, un ajout se paie à son prix'));
@@ -48559,7 +48706,7 @@ function rsLignesHtml() {
   return `<p class="rs-tk-l">${escapeHtml(`${qui}, ${quand}`)}</p>
     <div class="rs-tk-sep"></div>
     ${rsLignesActivites()}${rsLignesExtras()}
-    ${rsNiveau('surmesure') === 'non' ? '' : `<button type="button" class="rs-ajout-ligne" id="rsTkMesure" onclick="rsOuvrir('mesure')">${plus}<span>Ajouter une activité ou une boisson</span></button>`}
+    ${rsNiveau('surmesure') === 'non' ? '' : `<button type="button" class="rs-ajout-ligne" id="rsTkMesure" onclick="rsOuvrir('mesure')">${plus}<span>${rvToutIllimite() ? 'Ajouter une boisson ou un repas' : 'Ajouter une activité ou une boisson'}</span></button>`}
     <div class="rs-tk-sep"></div>`;
 }
 
@@ -49247,7 +49394,8 @@ function rsMesureHtml() {
   // UNE FORMULE AU TICKET (2026-11-22) : « Ajouter une activité ou une boisson » ouvre aussi les activites du
   // centre, en premier. Chacune s ajoute EN PLUS de la formule, a son prix (rsTuile, rsToucherEnPlus) ; son
   // heure se regle sur la page des activites, ou sa ligne du ticket mene.
-  const activites = rvEnPlusPossible() ? getQuickBookActivityChoices().map((c) => c.id) : [];
+  // (une formule qui comprend tout n a aucune activite a ajouter : la nourriture et les boissons seulement)
+  const activites = rvEnPlusPossible() ? getQuickBookActivityChoices().map((c) => c.id).filter((id) => !rvComprisEnIllimite(id)) : [];
   if (activites.length) onglets.unshift(['activites', 'Activités']);
   const courante = onglets.some(([id]) => id === b.mesure.categorie) ? b.mesure.categorie : (onglets[0] || [''])[0];
   const lignes = quickExtrasLignes();

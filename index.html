@@ -21,8 +21,8 @@
 <link rel="preload" href="/assets/fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/assets/fonts/geist-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/assets/pinlane.css?v=20261120vague2">
-<link rel="stylesheet" href="/assets/pinlane-staff.css?v=20261123b">
-<link rel="stylesheet" href="/assets/pinlane-planning-global.css?v=20261123b">
+<link rel="stylesheet" href="/assets/pinlane-staff.css?v=20261124a">
+<link rel="stylesheet" href="/assets/pinlane-planning-global.css?v=20261124a">
 <link rel="stylesheet" href="/assets/pinlane-charts.css?v=20261120vague2">
 <link rel="stylesheet" href="/assets/pinlane-daterange.css?v=20260721a">
 <link rel="stylesheet" href="/assets/pinlane-analytics-board.css?v=20261119mouvement">
@@ -32,7 +32,7 @@
 <script defer src="/assets/staff-auth-session.js?v=20261107acces"></script>
 <script defer src="/assets/api-client.js?v=20260912a"></script>
 <script defer src="/assets/pinlane-monnaie.js?v=20261118centres"></script>
-<script defer src="/assets/booking-core.js?v=20261123b"></script>
+<script defer src="/assets/booking-core.js?v=20261124a"></script>
 <!-- La regle qui choisit les pistes quand Pinlane choisit, la meme que le
      serveur (lib/ops-engine.js, lib/database.js) : charge avant app-main. -->
 <script defer src="/assets/pinlane-pistes.js?v=20261121a"></script>
@@ -70,9 +70,9 @@
 <!-- Le planning global (la feuille du jour) : le module qui pose
      renderGlobalPlanning, que la console appelle a chaque rendu de l onglet.
      Charge avant app-main, le premier rendu le trouve deja la. -->
-<script defer src="/assets/pinlane-planning-global.js?v=20261123b"></script>
+<script defer src="/assets/pinlane-planning-global.js?v=20261124a"></script>
 <script defer src="/assets/pinlane-mouvement.js?v=20261121a"></script>
-<script defer src="/assets/app-main.js?v=20261123b"></script>
+<script defer src="/assets/app-main.js?v=20261124a"></script>
 <!-- OPS-07 : declarations inertes, chargees dans cet ordre par le loader C14.
      Les src restent lisibles par le detecteur de mise a jour. -->
 <script type="text/plain" data-staff-console src="/assets/ops-progress.js?v=20260925f"></script>
@@ -764,11 +764,14 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
         <div class="pb-privatisations" id="planningPrivatisations" role="status" aria-label="Privatisations du jour" hidden></div>
       </section>
 
+      <!-- (pl-volonte : les groupes Kids Fun Day du jour, renderBandeauVolonte, 2026-11-24) -->
       <div class="planning-box" id="planningBox">
+        <div class="pl-volonte" id="planningVolonte" role="group" aria-label="À volonté, bowling" hidden></div>
         <div class="planning-grid-wrap" id="planningGridWrap"></div>
       </div>
 
       <div class="planning-box laser-planning-box" id="laserPlanningBox">
+        <div class="pl-volonte" id="laserVolonte" role="group" aria-label="À volonté, laser" hidden></div>
         <div class="planning-grid-wrap laser-grid-wrap" id="laserPlanningGridWrap"></div>
       </div>
 

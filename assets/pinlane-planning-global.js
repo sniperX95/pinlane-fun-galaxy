@@ -242,6 +242,8 @@
   // sert (boissons, credits) ne prend pas de temps.
   function gpLibres(g) {
     var r = g.r;
+    // (un Kids Fun Day n a rien de « probable » : chaque activite du centre, toute la visite, gpModele les pose)
+    if (typeof dossierToutIllimite === 'function' && dossierToutIllimite(r)) return { places: [], servis: [] };
     var items = r.program && Array.isArray(r.program.items) ? r.program.items : [];
     var lignes = [], avant = [];
     items.forEach(function (it) {
@@ -485,7 +487,7 @@
         if (GP_SANS_COLONNE[id]) return;
         var c = colonneDe(id);
         e.activityId = id;
-        if (!g.cases.has(c.cle)) { g.cases.set(c.cle, []); c.groupes += 1; }
+        if (!g.cases.has(c.cle)) { g.cases.set(c.cle, []); c.groupes += 1; if (e.sansPlace) c.illimites = (c.illimites || 0) + 1; }
         g.cases.get(c.cle).push(e);
       };
       // (le sous-groupe d un grand groupe, lib/grand-groupe.js : la case dit lequel joue a cette heure)
@@ -554,6 +556,14 @@
         var deja = (g.cases.get(colonneDe(e.activityId).cle) || []).find(function (x) { return x.activityId === e.activityId && (e.start == null ? x.start == null : x.start != null && Math.abs(x.start - e.start) < 0.02); });
         if (deja) { deja.enPlus = true; return; }
         poser(e.activityId, e.start == null ? { start: null, end: null, libre: true, enPlus: true, nom: e.nom } : { start: e.start, end: Math.max(e.end, e.start + 0.25), enPlus: true });
+      });
+      // LE KIDS FUN DAY : « ILLIMITÉ » DANS CHAQUE COLONNE DE SES ACTIVITES (2026-11-24, Ansar : « kids fun day
+      // c'est toutes les activités en illimité »), celles que le centre propose. Sans heure ni place : l etat du
+      // centre, le prochain depart laser et la tete des colonnes ne le comptent pas. Posees en dernier : une
+      // activite achetee en plus garde sa case et son heure a cote.
+      g.prog.forEach(function (e) {
+        if (!e.illimite || !e.activityId) return;
+        poser(e.activityId, { start: null, end: null, libre: true, illimite: true, sansPlace: true, nom: e.nom });
       });
       g.extras = gpExtras(r);
       g.formule = gpFormule(r);
@@ -644,7 +654,8 @@
     if (m.passe || g.parti) return 'clos';
     if (e.credit) return 'avenir';
     // (une formule illimitee se joue toute la visite, pas a l heure de sa premiere partie)
-    var entiere = e.journee || g.illimite || e.illimite;
+    // (une activite achetee en plus d elle se joue a son heure)
+    var entiere = e.journee || (g.illimite && !e.enPlus) || e.illimite;
     var debut = entiere ? g.span.start : e.start;
     if (m.maintenant == null || debut == null) return 'avenir';
     var present = gfPresent(g);
@@ -798,7 +809,7 @@
     var r = g.r;
     var etat = gfEtat(g, e, m);
     var t = '', d = '', d2 = '', d3 = '', bulle = '', panne = false, montant = false;
-    if ((g.illimite || e.illimite) && !e.credit) {
+    if (((g.illimite && !e.enPlus) || e.illimite) && !e.credit) {
       t = e.volonte ? GF_VOLONTE : GF_ILLIMITE;
       bulle = gpTitreActivite(e.activityId) + (e.volonte ? ' : à volonté pendant la visite, sans heure fixe' : ' : illimité pendant la visite, sans heure fixe');
     } else if (e.aPlacer) {
@@ -879,7 +890,7 @@
   // acces illimite, une plaine ou des credits n en ont pas)
   function gfActDe(g, e, m, t, panne) {
     var droits = m.droitsHeure;
-    if (!droits || !droits.deplacer || panne || g.retenue || g.illimite || !/^\d{1,2}:\d{2}$/.test(t)) return '';
+    if (!droits || !droits.deplacer || panne || g.retenue || (g.illimite && !e.enPlus) || !/^\d{1,2}:\d{2}$/.test(t)) return '';
     if (e.libre || e.aPlacer || e.credit || e.journee || e.aVolonte || e.illimite || e.volonte) return '';
     var id = e.activityId;
     if (!id || GF_SANS_HEURE[id] || /^service_/.test(id) || (id === 'bowling' && !droits.bowling) || (id === 'laser_game' && !droits.laser)) return '';
@@ -948,6 +959,9 @@
   function gfCase(g, col, m) {
     var liste = g.cases.get(col.cle) || [];
     if (!liste.length) return '<td class="gf-a is-vide"></td>';
+    // (une activite achetee en plus d une formule illimitee garde son heure, a cote d « Illimité »)
+    var enPlus = g.illimite ? liste.filter(function (e) { return e.enPlus; }) : [];
+    if (enPlus.length) liste = liste.filter(function (e) { return !e.enPlus; });
     // (« Illimité » se dit une fois, pas une fois par partie de laser)
     if (g.illimite) liste = liste.filter(function (e) { return !e.credit; }).slice(0, 1).concat(liste.filter(function (e) { return e.credit; }));
     // (le laser garde a chaque depart d un acces illimite se dit une fois : son premier depart,
@@ -956,6 +970,7 @@
       var dernier = liste[liste.length - 1];
       liste = [Object.assign({}, liste[0], { departs: liste.length, dernier: dernier.start, end: Math.max(liste[0].end, dernier.end) })];
     }
+    if (enPlus.length) liste = liste.concat(enPlus);
     return '<td class="gf-a' + (liste.length > 1 ? ' is-plusieurs' : '') + (liste.length > 2 ? ' is-trois' : '') + '" data-gf-titre="' + gpEsc(col.titre) + '">' + liste.map(function (e) { return gfActivite(g, e, col, m); }).join('') + '</td>';
   }
 
@@ -1186,10 +1201,13 @@
     if (g.rt && g.rt.etat === 'arrive') {
       tete += '<span class="gf-h__retard is-arrive" data-gf-rt-arrive="' + gpEsc(g.id) + '">' + gpEsc(texteDuRetard(g.rt, m.maintenant)) + '</span>';
     } else if ((g.retard || g.rt) && m.maintenant != null) {
-      var dit = '<span data-gf-retard="' + gpEsc(g.id) + '"></span>' + (g.rt && Number.isFinite(g.rt.prevu) ? '<small class="gf-h__prevu">prévu ' + gpEsc(gpHeure(g.rt.prevu)) + '</small>' : '');
-      tete += gfPeut('retard') && g.retard
+      // (l heure prevue a cote de la pastille, pas dedans : la cible de la pastille deborde sa ligne, et a l etroit
+      // l heure passee dessous mordait le nom, vu a 1024 px avec toutes les colonnes, 2026-11-24)
+      var dit = '<span data-gf-retard="' + gpEsc(g.id) + '"></span>';
+      var prevu = g.rt && Number.isFinite(g.rt.prevu) ? '<small class="gf-h__prevu">prévu ' + gpEsc(gpHeure(g.rt.prevu)) + '</small>' : '';
+      tete += '<span class="gf-h__rt">' + (gfPeut('retard') && g.retard
         ? '<button type="button" class="gf-h__retard" data-gf-retarder="' + gpEsc(g.id) + '">' + dit + '</button>'
-        : '<span class="gf-h__retard is-lecture">' + dit + '</span>';
+        : '<span class="gf-h__retard is-lecture">' + dit + '</span>') + prevu + '</span>';
     }
     if (typeof isReservationAwaitingReview === 'function' && isReservationAwaitingReview(r)) tete += '<span class="gf-nom__valide">À valider</span>';
     if (g.etat === 'closing') tete += gfPresent(g) ? '<span class="gf-nom__caisse">À encaisser</span>' : '<span class="gf-nom__caisse is-retard">En retard<span class="gf-nom__suite"> · jamais pointé</span></span>';
@@ -1405,7 +1423,7 @@
       var liste = g.cases.get(c.cle) || [];
       if (!liste.length) return;
       parts.push(c.titre + ' ' + liste.map(function (e) {
-        if ((g.illimite || e.illimite) && !e.credit) return e.volonte ? 'à volonté' : 'illimité';
+        if (((g.illimite && !e.enPlus) || e.illimite) && !e.credit) return e.volonte ? 'à volonté' : 'illimité';
         if (e.aPlacer) return 'à placer';
         if (e.credit) return e.credits && e.credits.euros != null ? gpMontant(e.credits.euros) + (e.credits.detail ? ' ' + e.credits.detail : '') : (e.credits ? e.credits.total : 0) + ' crédits';
         if (e.libre && !e.journee) return 'sans heure fixe ' + GF_ETATS[gfEtat(g, e, m)];
@@ -1491,7 +1509,9 @@
     var html = '<th class="gf-th gf-th--h" scope="col" colspan="2" title="L’heure de la réservation">Heure</th><th class="gf-th gf-th--nom" scope="col">Groupe</th><th class="gf-th gf-th--n" scope="col">Joueurs</th><th class="gf-th gf-th--f" scope="col">Formule</th>';
     m.colonnes.forEach(function (c) {
       var et = m.etat && m.etat[c.cle];
-      html += '<th class="gf-th gf-th--a' + (c.titre.length > 14 ? ' is-long' : '') + '" scope="col" data-gf-cle="' + gpEsc(c.cle) + '" title="' + gpEsc(c.titre + ' : ' + c.groupes + (c.groupes > 1 ? ' groupes' : ' groupe') + (et ? ' · ' + et.bulle : '')) + '">' + gpEsc(c.titre) + '</th>';
+      // (un groupe en illimité n y a pas de place : il ne se compte pas avec les autres)
+      var n = c.groupes - (c.illimites || 0);
+      html += '<th class="gf-th gf-th--a' + (c.titre.length > 14 ? ' is-long' : '') + '" scope="col" data-gf-cle="' + gpEsc(c.cle) + '" title="' + gpEsc(c.titre + ' : ' + (n || !c.illimites ? n + (n > 1 ? ' groupes' : ' groupe') : '') + (c.illimites ? (n ? ', ' : '') + c.illimites + ' en illimité' : '') + (et ? ' · ' + et.bulle : '')) + '">' + gpEsc(c.titre) + '</th>';
     });
     return html + '<th class="gf-th gf-th--reste" scope="col" title="Ce qui reste à payer, ou ce qui est payé">Reste</th><th class="gf-th gf-th--etat" scope="col">À faire</th>';
   }

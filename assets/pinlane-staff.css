@@ -2034,6 +2034,31 @@ button.staff-date-label:focus-visible,
 :is(#planningPrivatisations, .prv-liste) :is(.pb-prive__b, .pb-prive__x, .pb-prive__dossier):hover { background: var(--subtle); }
 :is(#planningPrivatisations, .prv-liste) :is(.pb-prive__b, .pb-prive__x, .pb-prive__dossier):active { transform: scale(0.97); }
 :is(#planningPrivatisations, .prv-liste) :is(.pb-prive__b, .pb-prive__x, .pb-prive__dossier):focus-visible { outline: 2px solid var(--console-focus); outline-offset: 1px; }
+/* LE BANDEAU « À VOLONTÉ » DES PLANNINGS BOWLING ET LASER (2026-11-24, renderBandeauVolonte) : les groupes Kids Fun Day
+   du jour, en tete de la boite, au-dessus de la grille. Une ligne quand ils tiennent ; chaque groupe se touche. */
+.pl-volonte { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; min-width: 0; padding: 7px 10px; border-bottom: 1px solid var(--line); background: var(--surface); color: var(--text); font-family: var(--font-ui); font-size: 14px; line-height: 1.35; font-variant-numeric: tabular-nums; }
+.pl-volonte[hidden] { display: none; }
+.pl-volonte__t { display: flex; flex-wrap: wrap; align-items: baseline; gap: 1px 8px; min-width: 0; margin: 0; color: var(--muted); }
+.pl-volonte__t b { font-weight: 650; color: var(--text); }
+.pl-volonte__f { padding: 1px 8px; border-radius: 6px; background: var(--subtle); color: var(--text); font-size: 13px; font-weight: 600; }
+.pl-volonte__l { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.pl-volonte__g { --pl-volonte-c: var(--accent); box-sizing: border-box; display: inline-flex; flex-wrap: wrap; align-items: center; gap: 1px 8px; max-width: 100%; min-width: 0; min-height: 32px; padding: 3px 10px; border: 0; border-radius: 10px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-strong); color: var(--muted); font: inherit; font-size: 13px; text-align: left; cursor: pointer; transition: background-color 140ms ease; }
+.pl-volonte__g i { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--pl-volonte-c); }
+.pl-volonte__g b { min-width: 0; font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
+.pl-volonte__e { font-weight: 600; color: var(--text); }
+.pl-volonte__g.is-la { --pl-volonte-c: var(--success); }
+.pl-volonte__g.is-la .pl-volonte__e { color: var(--success); }
+.pl-volonte__g.is-retard { --pl-volonte-c: var(--danger); }
+.pl-volonte__g.is-retard .pl-volonte__e { color: var(--danger); }
+.pl-volonte__g.is-parti { --pl-volonte-c: var(--faint); }
+.pl-volonte__g:is(.is-parti, .is-grise) { opacity: 0.6; }
+.pl-volonte__g:hover { background: var(--subtle); }
+.pl-volonte__g:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 1px; }
+@media (pointer: coarse) { .pl-volonte__g { min-height: 44px; } }
+@media (max-width: 768px) {
+  .pl-volonte__l, .pl-volonte__g { width: 100%; }
+  .pl-volonte__g b { flex: 1 1 calc(100% - 24px); }
+}
 .planning-blocked-banner {
   margin: 0 0 8px;
   padding: 10px 12px;
@@ -20406,6 +20431,18 @@ body:is(.staff-mode, .admin-mode) .fx-modal .fm-acces-btn:hover { background: va
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-programme.is-replan .fm-replan { display: block; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-programme.is-replan .fm-heure:not(.is-vide) { color: var(--faint); text-decoration: line-through; text-decoration-thickness: 1px; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-acts { display: grid; gap: 8px; }
+/* LE KIDS FUN DAY DANS MODIFIER (2026-11-24) : ce qu il comprend, une ligne par activite, « Illimité ». Rien ne s y
+   regle : ni champ, ni bouton. Une activite deja en plus au dossier garde sa rangee dessous, avec ses pistes. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-illimite { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 8px; margin: 0; padding: 0; list-style: none; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-illimite li { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 7px 12px 7px 8px; border-radius: 8px; background: var(--fz-fond); font-size: 14px; line-height: 1.35; color: var(--text); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-illimite .fz-photo { flex: none; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-illimite li > span:not(.fz-photo) { flex: 1 1 auto; min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-illimite strong { flex: none; font-size: 13px; font-weight: 600; color: var(--accent-strong); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm .fm-illimite-dit { margin: 0; font-size: 13px; line-height: 1.45; color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-lecture .fm-illimite { margin: 10px 0 8px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-act-pistes { font-size: 13px; line-height: 1.4; color: var(--text); font-variant-numeric: tabular-nums; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fm-act-pistes:empty { display: none; }
+@media (max-width: 640px) { body:is(.staff-mode, .admin-mode) .fx-modal .fm-illimite { grid-template-columns: minmax(0, 1fr); } }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-act.dossier-activity { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 12px; margin: 0; padding: 10px 12px; border: 0; border-radius: 8px; background: var(--fz-fond); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-act-heure { display: grid; align-content: start; gap: 3px; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fm-act-heure .fz-photo { margin-top: 5px; }

@@ -134,7 +134,7 @@ const MUTATIONS = [
   { nom: 'armes-en-chiffres', lettre: 'L', cible: '[L2] 25 joueurs a 18:30 : le refus dit en clair qu il reste 5 armes, et la prochaine partie libre', fichier: BASE, serveur: true, de: '      if (!equipe) throw new Error(`Laser Game complet sur ce créneau (', vers: '      if (true) throw new Error(`Laser Game complet sur ce créneau (' },
   { nom: 'pour-eux-seuls-tu', lettre: 'L', cible: '[L3] « Pour vous seuls » a 19:30 : le refus le dit, avec la prochaine partie libre', fichier: BASE, serveur: true, de: '    seuls: bloc.arene === \'seuls\',\n', vers: '    seuls: false,\n' },
   { nom: 'partie-calee-pas-tenue', lettre: 'L', cible: '[L1] « Enregistrer » dit « Joue avec Boucquiaux à 17:30. » et referme la fiche, jamais « Pas enregistré »', fichier: APP, de: "    return d.point.activityId === 'laser_game' && partieCaleeEdition(dossier, d, apres);", vers: '    return false;' },
-  { nom: 'assistant-a-la-minute', lettre: 'S', cible: '[S3] le client et l assistant gardent la grille (15:15 refuse, glisser sans la minute refuse)', fichier: MOUVEMENT, serveur: true, de: 'toutLeJeu = false, aLaMinute = false } = {}) {', vers: 'toutLeJeu = false, aLaMinute = true } = {}) {' },
+  { nom: 'assistant-a-la-minute', lettre: 'S', cible: '[S3] le client et l assistant gardent la grille (15:15 refuse, glisser sans la minute refuse)', fichier: MOUVEMENT, serveur: true, de: 'toutLeJeu = false, aLaMinute = false, ensemble = [] } = {}) {', vers: 'toutLeJeu = false, aLaMinute = true, ensemble = [] } = {}) {' },
 ];
 const LES_MUTATIONS = new Map(MUTATIONS.map((m) => [m.nom, m]));
 

@@ -39,8 +39,9 @@
 //       pistes et son ordre, tout decale du meme ecart, le decalage inverse remet tout ; deux parties de laser et
 //       des heures posees au comptoir aussi. La vague du groupe 3 se deplace seule, se retire et revient avec ses
 //       15 joueurs et son groupe ; une vague qui n est pas au dossier reste refusee. Les pistes prises a la nouvelle
-//       heure : chaque groupe en prend d autres, sans en partager. Le laser en groupes de 10 et 14, et 40 joueurs
-//       en 2 vagues de 20, sans grand groupe, se decalent pareil.
+//       heure : chaque groupe en prend d autres, sans en partager. Le minigolf du groupe entier reste libre, ou
+//       suit son heure posee. Le laser en groupes de 10 et 14, et 40 joueurs en 2 vagues de 20, sans grand groupe,
+//       se decalent pareil.
 //
 // CONTRE-PREUVES : `--contre-preuves` rejoue le gate sur du code casse expres, une mutation a la fois, en
 // memoire (le crochet de compilation du banc : le disque n est jamais touche), et exige que chacune
@@ -123,6 +124,8 @@ const MUTATIONS = [
   { nom: 'retrait-sans-le-groupe', lettre: 'J', fichier: MOUVEMENT, de: 'pax: vague.pax, ...identiteDeLaVague(vague.modele) }));', vers: 'pax: vague.pax }));' },
   // [J] les vagues du plan (a placer comprises) recomptees sur les armes : la vague retiree du groupe 3 disparait.
   { nom: 'unites-sur-les-armes', lettre: 'J', fichier: MOUVEMENT, de: '      return vaguesDeLaPartie(old, countIndex, players, Number(center.resources?.laser?.weaponCount || 30)).map(vague => ({ countIndex, groupWaveIndex: vague.wave, groupWaveCount: vague.count, unitKey: `${countIndex}.${vague.wave}`, pax: vague.pax, ...identiteDeLaVague(vague.modele) }));', vers: '      const waves = Math.ceil(players / Number(center.resources?.laser?.weaponCount || 30));\n      return Array.from({ length: waves }, (_, index) => ({ countIndex, groupWaveIndex: index + 1, groupWaveCount: waves, unitKey: `${countIndex}.${index + 1}`, pax: Math.floor(players / waves) + (index < players % waves ? 1 : 0) }));' },
+  // [J] la frise ne suit plus le decalage : le minigolf a son heure et les etapes du bowling restent ou elles etaient.
+  { nom: 'frise-du-grand-groupe-figee', lettre: 'J', fichier: 'lib/decaler-le-groupe.js', de: '  if (Array.isArray(plan.timeline)) sortie.timeline = plan.timeline.map((b) => decalerUnBloc(b, ecart));\n', vers: '' },
   // [J] le bowling deplace donne toutes les pistes du dossier a chaque groupe.
   { nom: 'pistes-de-tout-le-groupe', lettre: 'J', fichier: MOUVEMENT, de: 'lanes: (block.lanes || []).map(lane => mapping.get(lane)), requiredLanes: (block.lanes || []).length,', vers: 'lanes: [...mapping.values()], requiredLanes: mapping.size,' },
 ];
@@ -693,6 +696,33 @@ async function principal() {
           '[J] le calcul a blanc le disait, avec les pistes que le bowling prendrait', { blanc: blanc.essais || blanc.refus, ecrit: pistesApres });
         const annuler = await decaler(dp.id, -30, pistesAvant);
         ok(annuler.statut === 200 && empreinte(ligne(dp.id)) === origine, '[J] « Annuler » (-30 min, les pistes d avant) : chaque groupe retrouve ses pistes et ses heures', { statut: dire(annuler), lu: empreinte(ligne(dp.id)), attendu: origine });
+      }
+
+      // Les autres activites du dossier : le minigolf du groupe entier. « Libre », il reste libre quand le groupe se
+      // decale ; une heure posee apres la rotation, il suit du meme ecart, comme chaque groupe.
+      vider();
+      const base = corps(60, { impose: true, nombre: 4 });
+      const cm = await creer({ ...base, program: [...base.program, { activityId: 'minigolf_blacklight', pax: 60, participants: 60 }], preference: { ...base.preference, activityOrder: [...base.preference.activityOrder, 'minigolf_blacklight'] } });
+      const dm = cm.json.reservation && ligne(cm.json.reservation.id);
+      const autresDe = (r, ecart = 0) => (((r.ops_plan || {}).timeline) || []).filter((s) => s && s.type === 'activity' && !['bowling', 'laser_game'].includes(s.activityId))
+        .map((s) => `${s.activityId}@${s.flexible ? 'libre' : `${plus(s.startTime, ecart)}-${plus(s.endTime, ecart)}${s.heurePosee ? ' posee' : ''}`}`).sort().join(' | ');
+      if (vrai(cm.statut < 300 && Boolean(dm) && (dm.program.items || []).some((i) => i.activityId === 'minigolf_blacklight') && !/minigolf_blacklight@\d/.test(autresDe(dm)),
+        '[J] MONTAGE : 4 groupes au bowling et au laser, et le minigolf du groupe entier, libre', dm ? { autres: autresDe(dm), blocs: empreinte(dm) } : dire(cm))) {
+        const id = dm.id;
+        const libre = { blocs: empreinte(dm, 30), autres: autresDe(dm) };
+        const x = await decaler(id, 30);
+        ok(x.statut === 200 && empreinte(ligne(id)) === libre.blocs && autresDe(ligne(id)) === libre.autres,
+          '[J] le minigolf libre : « Tout le groupe » +30 min passe, chaque groupe 30 min plus tard, le minigolf reste libre', { statut: dire(x), blocs: empreinte(ligne(id)), autres: autresDe(ligne(id)) });
+        const cible = hhmm(Math.ceil(Math.max(...blocsDe(ligne(id)).map((b) => enMin(b.endTime))) / 30) * 30);
+        const heure = await glisser(id, { activityId: 'minigolf_blacklight', startTime: cible });
+        const pose = ligne(id);
+        if (vrai(heure.statut === 200 && new RegExp(`minigolf_blacklight@${cible}-\\d\\d:\\d\\d posee`).test(autresDe(pose)), `[J] MONTAGE : le minigolf recoit son heure, ${cible}, apres la rotation`, { statut: dire(heure), autres: autresDe(pose) })) {
+          const attendu = { blocs: empreinte(pose, 30), autres: autresDe(pose, 30) };
+          const blanc = await aBlanc(id, [30]);
+          const y = await decaler(id, 30);
+          ok(blanc.essais && blanc.essais[0] && blanc.essais[0].passe === true && y.statut === 200 && empreinte(ligne(id)) === attendu.blocs && autresDe(ligne(id)) === attendu.autres,
+            '[J] le minigolf a son heure : « Tout le groupe » +30 min passe (a blanc aussi), le minigolf et chaque groupe 30 min plus tard', { blanc: blanc.essais || blanc.refus, statut: dire(y), autres: autresDe(ligne(id)), attendues: attendu.autres });
+        }
       }
     }
   } catch (error) {

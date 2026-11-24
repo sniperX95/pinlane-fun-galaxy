@@ -1580,23 +1580,64 @@ function getReservationLaserPlayersForGame(reservation, countIndex = 1) {
 }
 
 // Liste canonique de TOUTES les vagues d'une réservation (indépendante du placement) :
-// pour chaque jeu (countIndex 1..N), les vagues issues du découpage capacité armes.
+// pour chaque jeu (countIndex 1..N), les vagues que le dossier porte.
+// LE DOSSIER FAIT FOI, PAS LES ARMES (2026-11-24, miroir de lib/reservation-activity-move.js
+// vaguesDeLaPartie). Les armes seules coupent 60 joueurs en 2 vagues de 30. Un grand groupe qui
+// tourne (lib/grand-groupe.js) joue une vague par groupe : 4 groupes de 15 font 4 vagues ; les
+// groupes d une partie (10 et 14 joueurs) en font 2 sous 30 armes. Recompter sur les armes perdait
+// la vague du groupe 3 retiree du planning : « Parties à placer » ne la montrait pas, et la console
+// ne connaissait ni la 3e ni la 4e vague. Les blocs de la partie et ses vagues a placer (retirees du
+// planning, avec leurs joueurs et leur groupe) disent les vagues. Les armes comptent encore (un plan
+// qui ne dit rien) : jamais moins de vagues qu elles, et une vague que rien ne decrit a les joueurs
+// que les autres ne tiennent pas ; sans eux, elle n existe pas.
 function getLaserUnitsForReservation(reservation) {
   const games = Math.max(1, getLaserGameCountForReservation(reservation));
+  const plan = reservation?.opsPlan || {};
+  const blocs = (Array.isArray(plan.resourceBlocks) ? plan.resourceBlocks : []).filter(block => block && block.resourceType === 'laser_arena');
+  const enAttente = Array.isArray(plan.laserPassPlan?.pendingUnits) ? plan.laserPassPlan.pendingUnits : [];
+  const vague = unit => Number(unit.groupWaveIndex || 1);
   const units = [];
   for (let game = 1; game <= games; game += 1) {
-    const waveSizes = getBalancedLaserWaveSizes(getReservationLaserPlayersForGame(reservation, game));
-    waveSizes.forEach((players, waveIdx) => {
+    const joueurs = Math.max(1, Number(getReservationLaserPlayersForGame(reservation, game)) || 1);
+    const deLaPartie = unit => Boolean(unit) && Number(unit.countIndex || 1) === game;
+    const posees = blocs.filter(deLaPartie);
+    const aPlacer = enAttente.filter(deLaPartie);
+    const dites = [...posees, ...aPlacer].flatMap(unit => [Number(unit.groupWaveCount), vague(unit)]).filter(n => Number.isInteger(n) && n >= 1);
+    const count = Math.max(getLaserWaveCount(joueurs), ...dites);
+    const vagues = Array.from({ length: count }, (_, index) => {
+      const posee = posees.find(block => vague(block) === index + 1);
+      const attente = posee ? null : aPlacer.find(unit => vague(unit) === index + 1);
+      // (une vague a placer notee sur un autre decoupage ne dit pas ses joueurs)
+      const pax = posee ? Number(posee.joueursReels ?? posee.players) : attente && Number(attente.groupWaveCount) === count ? Number(attente.pax) : NaN;
+      return { wave: index + 1, modele: posee || attente || null, posee: Boolean(posee), players: Number.isInteger(pax) && pax >= 1 ? pax : NaN };
+    });
+    const inconnues = vagues.filter(unit => Number.isNaN(unit.players));
+    const reste = Math.max(0, joueurs - vagues.reduce((sum, unit) => sum + (Number.isNaN(unit.players) ? 0 : unit.players), 0));
+    inconnues.forEach((unit, rang) => { unit.players = Math.floor(reste / inconnues.length) + (rang < reste % inconnues.length ? 1 : 0); });
+    // (une vague posee au planning reste au dossier, meme quand son bloc ne dit pas ses joueurs)
+    const tenues = vagues.filter(unit => unit.posee || unit.players >= 1);
+    const nombre = tenues.length ? Math.max(...tenues.map(unit => unit.wave)) : 0;
+    tenues.forEach(unit => {
+      const modele = unit.modele || {};
       units.push({
         countIndex: game,
-        waveIndex: waveIdx + 1,
-        waveCount: waveSizes.length,
-        players,
-        unitKey: laserUnitKey(game, waveIdx + 1),
+        waveIndex: unit.wave,
+        waveCount: nombre,
+        players: unit.players,
+        unitKey: laserUnitKey(game, unit.wave),
+        ...laserSousGroupe(modele),
       });
     });
   }
   return units;
+}
+
+// Le groupe d un grand groupe qui joue cette vague (lib/grand-groupe.js) : « groupe 3/4 ».
+function laserSousGroupe(unit) {
+  const n = Number(unit && unit.sousGroupe);
+  if (!(n > 0)) return {};
+  const sur = Number(unit.sousGroupes);
+  return { sousGroupe: n, ...(sur > 0 ? { sousGroupes: sur } : {}) };
 }
 
 // Clés des vagues ACTUELLEMENT placées (présentes en blocs opsPlan).
@@ -1616,6 +1657,7 @@ function laserUnitInfo(reservation, unitRef) {
       waveCount: Number(placed.groupWaveCount || 1),
       players: Math.max(1, Number(placed.players || getReservationLaserPlayersForGame(reservation, placed.countIndex) || 1)),
       unitKey: key,
+      ...laserSousGroupe(placed),
     };
   }
   const canon = getLaserUnitsForReservation(reservation).find(unit => unit.unitKey === key);
@@ -1675,6 +1717,7 @@ function getPendingLaserPassesForReservation(reservation) {
       unitKey: unit.unitKey,
       totalGames,
       players: Number(unit.players || getReservationActivityPlayers(reservation, 'laser_game') || 0),
+      ...laserSousGroupe(unit),
     }));
 }
 
@@ -1847,8 +1890,9 @@ async function scheduleLaserPass(reservationId, unitRef, targetStart, targetEnd 
     if (typeof markReservationMutation === 'function') markReservationMutation(requestKey, payload.reservation, ['opsPlan']);
     save();
     renderStaffData();
-    const unitLabel = unit.waveCount > 1 ? `Vague ${unit.waveIndex}/${unit.waveCount}` : `Partie ${unit.countIndex}`;
-    toast(`${unitLabel} placée à ${formatClockDisplay(targetStart)}`);
+    const unitLabel = Number(unit.sousGroupe) > 0 ? `Laser du groupe ${unit.sousGroupe}/${unit.sousGroupes || unit.waveCount} placé`
+      : unit.waveCount > 1 ? `Vague ${unit.waveIndex}/${unit.waveCount} placée` : `Partie ${unit.countIndex} placée`;
+    toast(`${unitLabel} à ${formatClockDisplay(targetStart)}`);
     return true;
   } catch (error) {
     if (!isLatestRequest() || !currentContext()) return false;

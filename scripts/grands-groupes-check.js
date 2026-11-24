@@ -62,6 +62,13 @@
 //       numero de chaque groupe au bowling : le laser du groupe 4 a 17:00 s ecrit, le reste ne bouge pas, au meme
 //       prix, et le planning suit ; une heure a 08:00 rend la case du groupe 1 rouge avec sa raison, avant
 //       « Enregistrer ».
+//   [J] LES VAGUES QUE LE DOSSIER PORTE, PAS CELLES DES ARMES (2026-11-24 : la vague du groupe 3 retiree du
+//       planning laser n apparaissait pas dans « Parties à placer », la console recomptait 60 joueurs en 2 vagues
+//       de 30). Au planning laser, en vrais gestes (M, « Retirer du planning », toucher le jeton puis son depart) :
+//       le laser du groupe 3 d un grand groupe en 4 groupes de 15 se retire, la file le montre avec ses 15 joueurs
+//       et « groupe 3/4 », il se replace a 17:00 et quitte la file ; pareil pour la vague 2 (14 joueurs) d un laser
+//       en groupes de 10 et 14. Modifier dit les vagues du dossier (« 4 vagues de 15 armes », « 2 vagues de 10 et
+//       14 armes », « 2 sessions »), et la bulle du compte celles que le serveur ecrirait a 58 et a 62 joueurs.
 //   [*] Zero erreur JavaScript.
 //
 // CONTRE-PREUVES : `--contre-preuves` rejoue le gate sur du code casse expres, une mutation a la fois, en
@@ -96,6 +103,7 @@ const joue = (lettre) => !SEUL || SEUL === lettre;
 const lf = (t) => String(t).split('\r\n').join('\n');
 
 const APP = 'assets/app-main.js';
+const CORE = 'assets/booking-core.js';
 const CSS = 'assets/pinlane-staff.css';
 const PLANNING = 'assets/pinlane-planning-global.js';
 const PLANNING_CSS = 'assets/pinlane-planning-global.css';
@@ -167,6 +175,20 @@ const MUTATIONS = [
   { nom: 'prix-annonce-malgre-refus', lettre: 'I', fichier: APP, de: '  if (!groupesRefuses && prix != null && Math.round(prix * 100)', vers: '  if (prix != null && Math.round(prix * 100)' },
   { nom: 'pastilles-qui-debordent', lettre: 'I', fichier: PLANNING_CSS, de: 'line-height: 17px; white-space: normal; overflow-wrap: anywhere; }', vers: 'line-height: 17px; white-space: nowrap; }' },
   { nom: 'programme-groupes-ordinaux', lettre: 'I', fichier: APP, de: "${Number(etape.sousGroupe) > 0 ? `Groupe ${Number(etape.sousGroupe)}` : `${index ? `${index + 1}e` : '1er'} groupe`} à", vers: "${index ? `${index + 1}e` : '1er'} groupe à" },
+  // [J] la console recompte les vagues sur les armes (la file perd le groupe 3) ; la vague a placer, la vague prise ou la
+  // carte perdent leur groupe ; le toast redit « vague » ; Modifier et la bulle du compte recomptent sur les armes, oublient
+  // le nombre de groupes choisi ou la part de chaque groupe au laser.
+  { nom: 'vagues-sur-les-armes', lettre: 'J', fichier: CORE, de: '    const count = Math.max(getLaserWaveCount(joueurs), ...dites);', vers: '    const count = getLaserWaveCount(joueurs);' },
+  { nom: 'a-placer-sans-groupe', lettre: 'J', fichier: CORE, de: "      players: Number(unit.players || getReservationActivityPlayers(reservation, 'laser_game') || 0),\n      ...laserSousGroupe(unit),\n", vers: "      players: Number(unit.players || getReservationActivityPlayers(reservation, 'laser_game') || 0),\n" },
+  { nom: 'vague-prise-sans-groupe', lettre: 'J', fichier: CORE, de: '      unitKey: key,\n      ...laserSousGroupe(placed),\n', vers: '      unitKey: key,\n' },
+  { nom: 'jeton-sans-groupe', lettre: 'J', fichier: APP, de: 'waveCount: p.waveCount, sousGroupe: p.sousGroupe, sousGroupes: p.sousGroupes })', vers: 'waveCount: p.waveCount })' },
+  { nom: 'groupe-dit-vague', lettre: 'J', fichier: APP, de: '  if (Number(c.sousGroupe) > 0) parts.push(`groupe ${Number(c.sousGroupe)}/${Number(c.sousGroupes) || vagues}`);\n  else if (vagues > 1)', vers: '  if (vagues > 1)' },
+  { nom: 'carte-en-vague', lettre: 'J', fichier: APP, de: '${Number(w.sousGroupe) > 0 ? ` · G${Number(w.sousGroupe)}/${Number(w.sousGroupes) || vagues}` : vagues > 1 ?', vers: '${vagues > 1 ?' },
+  { nom: 'toast-en-vague', lettre: 'J', fichier: CORE, de: "    const unitLabel = Number(unit.sousGroupe) > 0 ? `Laser du groupe ${unit.sousGroupe}/${unit.sousGroupes || unit.waveCount} placé`\n      : ", vers: '    const unitLabel = ' },
+  { nom: 'modifier-sur-les-armes', lettre: 'J', fichier: APP, de: '  if (!partenaires.length) return vaguesLaserEnMots(joueurs, r, e && e.pax);', vers: '  if (!partenaires.length) return vaguesLaserEnMots(joueurs);' },
+  { nom: 'bulle-sur-les-armes', lettre: 'J', fichier: APP, de: 'vaguesLaserEnMots(joueursLaser, r, n) };', vers: 'vaguesLaserEnMots(joueursLaser) };' },
+  { nom: 'nombre-de-groupes-oublie', lettre: 'J', fichier: APP, de: '  const nombre = Math.min(12, groupe, voulu >= 2 ? Math.max(voulu, coupe) : coupe);', vers: '  const nombre = Math.min(12, groupe, coupe);' },
+  { nom: 'part-du-laser-oubliee', lettre: 'J', fichier: APP, de: '  if (n >= groupe) return tailles;', vers: '  return tailles;' },
 ];
 
 // ---------------------------------------------------------------------------
@@ -416,7 +438,7 @@ async function principal() {
     return { col: col ? col.scrollHeight - col.clientHeight : 99, dehors: r.top < 0 || r.bottom > window.innerHeight ? 1 : 0 };
   });
 
-  const navigateur = ['A', 'B', 'C', 'E', 'F', 'H', 'I'].some(joue);
+  const navigateur = ['A', 'B', 'C', 'E', 'F', 'H', 'I', 'J'].some(joue);
   if (navigateur) {
     const { chromium } = require('playwright-core');
     browser = await chromium.launch({ executablePath: BROWSER_PATH, headless: true });
@@ -1090,6 +1112,145 @@ async function principal() {
           await page.evaluate(() => { if (typeof closePos === 'function') closePos(); });
         }
         ok(erreurs.length === 0, '[*] zero erreur JavaScript (I)', erreurs.slice(0, 3).join(' | '));
+      } finally { await ctx.close(); }
+    }
+
+    // =======================================================================
+    if (joue('J')) {
+      section('[J] LES VAGUES QUE LE DOSSIER PORTE : LE GROUPE 3 RETIRE DU PLANNING LASER SE PLACE ET SE REPLACE');
+      const { ctx, page, erreurs } = await ouvrir('vide');
+      try {
+        const jour = FX.lireFixture('vide').staffState.date;
+        const grand = await serveur.appeler('POST', '/api/staff-reservations', {
+          name: 'Groupe Posé 4', phone: '0470111222', email: '', notes: '', occasion: '', date: jour, startTime: '15:30', duration: 1, totalDuration: 3, lanes: [], pax: 60, status: 'pending', type: 'visite', formuleId: '',
+          program: [{ activityId: 'bowling', pax: 60, participants: 60, duration: 1 }, { activityId: 'laser_game', pax: 60, participants: 60, games: 1 }],
+          laserGames: 0, extras: [], channel: 'staff', requiresLanes: true, centerId: 'libramont',
+          preference: { activityOrder: ['bowling', 'laser_game'], preferredTimes: { bowling: '15:30', laser_game: '15:30' }, grandGroupe: { nombre: 4, tailles: [15, 15, 15, 15], impose: true,
+            heures: [{ bowling: '16:30', laser_game: '15:30' }, { bowling: '16:30', laser_game: '15:30' }, { bowling: '15:30', laser_game: '16:30' }, { bowling: '15:30', laser_game: '16:30' }] } },
+        });
+        const parties = await serveur.appeler('POST', '/api/staff-reservations', {
+          name: 'Laser Groupes', phone: '0470999888', email: '', notes: '', occasion: '', date: jour, startTime: '17:30', duration: 1, totalDuration: 1, lanes: [], pax: 24, status: 'pending', type: 'visite', formuleId: '',
+          program: [{ activityId: 'laser_game', pax: 24, participants: 24, games: 1, groupes: [10, 14] }], laserGames: 0, extras: [], channel: 'staff', requiresLanes: false, centerId: 'libramont',
+          preference: { activityOrder: ['laser_game'], preferredTimes: { laser_game: '17:30' }, laserGameTimes: ['17:30'], laserPlacement: 'scheduled' },
+        });
+        const g = grand.json && grand.json.reservation;
+        const l = parties.json && parties.json.reservation;
+        const lasersDe = (id) => blocsDe(B.base.reservations.get(Number(id))).filter((b) => b.resourceType === 'laser_arena')
+          .map((b) => `${b.countIndex}.${b.groupWaveIndex}@${String(b.startTime).slice(0, 5)}x${b.players}${b.sousGroupe ? `g${b.sousGroupe}` : ''}`).sort().join(' ');
+        const aPlacerDe = (id) => ((((B.base.reservations.get(Number(id)) || {}).ops_plan || {}).laserPassPlan || {}).pendingUnits || [])
+          .map((u) => `${u.unitKey}x${u.pax}${u.sousGroupe ? `g${u.sousGroupe}` : ''}`).join(' ');
+        const monte = grand.statut === 201 && Boolean(g) && lasersDe(g.id) === '1.1@15:30x15g1 1.2@15:30x15g2 1.3@16:30x15g3 1.4@16:30x15g4'
+          && parties.statut === 201 && Boolean(l) && lasersDe(l.id) === '1.1@17:30x10 1.2@18:00x14';
+        ok(monte, 'MONTAGE le grand groupe en 4 groupes de 15 (groupes 1 et 2 au laser a 15:30, 3 et 4 a 16:30) et le laser en groupes de 10 et 14 (17:30, 18:00)',
+          { grand: grand.statut, g: g && lasersDe(g.id), parties: parties.statut, message: parties.json && parties.json.message, l: l && lasersDe(l.id) });
+        if (monte) {
+          await page.evaluate((dossiers) => {
+            const liste = window.__FIXTURE__.jours[window.__FIXTURE__.jour];
+            dossiers.forEach((d) => { liste.push({ ...d }); state.reservations.push({ ...d }); });
+            openStaffPlanningResource('laser');
+          }, [g, l]);
+          await page.waitForSelector('#laserPlanningGridWrap .lp-dep', { timeout: 15000 });
+          const file = () => page.evaluate(() => Array.from(document.querySelectorAll('#laserPlanningGridWrap .lp-jeton'))
+            .map((j) => `${j.dataset.laserResId}:${j.dataset.laserUnit} ${j.textContent.replace(/\s+/g, ' ').trim()}`));
+          const bandeau = () => page.evaluate(() => ((document.querySelector('#laserPlanningGridWrap .lp-placer__t') || {}).textContent || '').replace(/\s+/g, ' ').trim());
+          const attendreBase = async (cond) => { for (let i = 0; i < 100 && !cond(); i += 1) await page.waitForTimeout(100); return cond(); };
+          // Retirer au planning laser : le groupe se prend au clavier (M), « Retirer du planning » le rend a la file.
+          const retirer = async (id, unite, t) => {
+            const sel = `#laserPlanningGridWrap .lp-dep[data-lp-t="${t}"] .lp-g[data-laser-res-id="${id}"][data-laser-unit="${unite}"]`;
+            await page.waitForSelector(sel, { timeout: 10000 });
+            await page.focus(sel);
+            await page.keyboard.press('m');
+            await page.waitForSelector('#laserPlanningGridWrap .lp-placer', { timeout: 8000 });
+            const dit = await bandeau();
+            await page.locator('#laserPlanningGridWrap .lp-placer .lp-btn', { hasText: 'Retirer du planning' }).click();
+            return dit;
+          };
+          // Replacer : toucher le jeton de la file, puis son depart.
+          const replacer = async (id, unite, t) => {
+            await page.locator(`#laserPlanningGridWrap .lp-jeton[data-laser-res-id="${id}"][data-laser-unit="${unite}"]`).click();
+            await page.waitForSelector('#laserPlanningGridWrap .lp-placer', { timeout: 8000 });
+            const dit = await bandeau();
+            await page.locator(`#laserPlanningGridWrap .lp-dep[data-lp-t="${t}"] .lp-dep__jauge`).click();
+            return dit;
+          };
+
+          // LE GRAND GROUPE : le laser du groupe 3 (16:30) se retire.
+          const cartes = await page.evaluate(() => Array.from(document.querySelectorAll('#laserPlanningGridWrap .lp-dep .lp-g[data-laser-res-id]'))
+            .map((e) => `${e.closest('[data-lp-t]').dataset.lpT}:${e.dataset.laserUnit} ${e.querySelector('.lp-card-info') ? e.querySelector('.lp-card-info').textContent.trim() : ''}`));
+          ok((await file()).length === 0 && cartes.includes('16.5:1.3 15 j · P1/1 · G3/4 · fin 16:55') && cartes.includes('18:1.2 14 j · P1/1 · V2/2 · fin 18:25'),
+            '[J] au depart, rien a placer ; au planning, le groupe 3 se dit « G3/4 » (le groupe du grand groupe), la vague 2 du laser en groupes « V2/2 »', { file: await file(), cartes });
+          const prisG = await retirer(g.id, '1.3', 16.5);
+          ok(/Groupe Posé 4 \(15\) · groupe 3\/4, à 16:30/.test(prisG), '[J] pris au planning (M), le bandeau dit « Groupe Posé 4 (15) · groupe 3/4, à 16:30 »', prisG);
+          await attendreBase(() => aPlacerDe(g.id) === '1.3x15g3');
+          await page.waitForFunction((id) => Boolean(document.querySelector(`#laserPlanningGridWrap .lp-jeton[data-laser-res-id="${id}"]`)), g.id, { timeout: 10000 }).catch(() => {});
+          const fileG = await file();
+          ok(aPlacerDe(g.id) === '1.3x15g3' && lasersDe(g.id) === '1.1@15:30x15g1 1.2@15:30x15g2 1.4@16:30x15g4'
+            && fileG.length === 1 && /^\d+:1\.3 15 Groupe Posé 4.* groupe 3\/4$/.test(fileG[0]),
+          '[J] « Retirer du planning » : en base le laser du groupe 3 attend (15 joueurs, groupe 3), « Parties à placer » le montre avec ses 15 joueurs et « groupe 3/4 »', { base: aPlacerDe(g.id), lasers: lasersDe(g.id), file: fileG });
+          await capture(page, 'j-groupe-3-a-placer');
+          const poseG = await replacer(g.id, '1.3', 17);
+          ok(/^Où placer Groupe Posé 4 \(15\) · groupe 3\/4 \?/.test(poseG), '[J] le jeton touche, le bandeau dit « Où placer Groupe Posé 4 (15) · groupe 3/4 ? »', poseG);
+          await attendreBase(() => aPlacerDe(g.id) === '' && /1\.3@17:00/.test(lasersDe(g.id)));
+          await page.waitForFunction(() => !document.querySelector('#laserPlanningGridWrap .lp-jeton'), null, { timeout: 10000 }).catch(() => {});
+          const toastG = await page.evaluate(() => ((document.getElementById('toast') || {}).textContent || '').replace(/\s+/g, ' ').trim());
+          ok(aPlacerDe(g.id) === '' && lasersDe(g.id) === '1.1@15:30x15g1 1.2@15:30x15g2 1.3@17:00x15g3 1.4@16:30x15g4' && (await file()).length === 0 && /Laser du groupe 3\/4 placé à 17:00/.test(toastG),
+            '[J] touche a 17:00 : le groupe 3 y joue, ses 15 joueurs et son groupe gardes, il quitte la file, le toast le dit', { lasers: lasersDe(g.id), aPlacer: aPlacerDe(g.id), file: await file(), toast: toastG });
+
+          // LE LASER EN GROUPES DE 10 ET 14 : la vague 2 (18:00) se retire et se replace.
+          const prisL = await retirer(l.id, '1.2', 18);
+          ok(/Laser Groupes \(14\) · vague 2\/2, à 18:00/.test(prisL), '[J] le laser en groupes de 10 et 14 : la vague 2 prise, « Laser Groupes (14) · vague 2/2, à 18:00 »', prisL);
+          await attendreBase(() => aPlacerDe(l.id) === '1.2x14');
+          await page.waitForFunction((id) => Boolean(document.querySelector(`#laserPlanningGridWrap .lp-jeton[data-laser-res-id="${id}"]`)), l.id, { timeout: 10000 }).catch(() => {});
+          const fileL = await file();
+          ok(aPlacerDe(l.id) === '1.2x14' && fileL.length === 1 && /^\d+:1\.2 14 Laser Groupes.* vague 2\/2$/.test(fileL[0]),
+            '[J] la vague 2 attend en base (14 joueurs), la file la montre avec ses 14 joueurs et « vague 2/2 »', { base: aPlacerDe(l.id), file: fileL });
+          await replacer(l.id, '1.2', 18.5);
+          await attendreBase(() => aPlacerDe(l.id) === '' && /1\.2@18:30/.test(lasersDe(l.id)));
+          await page.waitForFunction(() => !document.querySelector('#laserPlanningGridWrap .lp-jeton'), null, { timeout: 10000 }).catch(() => {});
+          ok(aPlacerDe(l.id) === '' && lasersDe(l.id) === '1.1@17:30x10 1.2@18:30x14' && (await file()).length === 0,
+            '[J] touchee a 18:30, la vague 2 y joue avec ses 14 joueurs et quitte la file', { lasers: lasersDe(l.id), file: await file() });
+
+          // MODIFIER ET LA BULLE DU COMPTE : les vagues du dossier.
+          const lireModifier = async (id) => {
+            await page.evaluate((i) => { if (typeof closePos === 'function') closePos(); openPos(i); setTab('modifier'); }, id);
+            await page.waitForSelector('#posOverlay .fm', { timeout: 12000 });
+            await page.waitForTimeout(300);
+            return page.evaluate(() => ({
+              vagues: ((document.querySelector('#posOverlay .fm [data-laser-vagues]') || {}).textContent || '').trim(),
+              sessions: Array.from(document.querySelectorAll('#posOverlay .fm .fm-pistes .field-hint')).map((p) => p.textContent.replace(/\s+/g, ' ').trim()).join(' | '),
+            }));
+          };
+          const mg = await lireModifier(g.id);
+          ok(mg.vagues === '4 vagues de 15 armes', '[J] Modifier du grand groupe : « 4 vagues de 15 armes » (les armes seules disaient 2 vagues de 30)', mg);
+          const ml = await lireModifier(l.id);
+          ok(ml.vagues === '2 vagues de 10 et 14 armes', '[J] Modifier du laser en groupes de 10 et 14 : « 2 vagues de 10 et 14 armes » (les armes seules disaient 1 vague de 24)', ml);
+          // (« Sessions » de Modifier, la ligne d un dossier laser dont le programme ne s adapte pas, lit les memes
+          // vagues : 2 pour ces 24 joueurs ; sans dossier, les armes decident)
+          const sessions = await page.evaluate((id) => { const r = state.reservations.find((x) => Number(x.id) === Number(id)); return [(taillesDesVaguesLaser(r, 24) || []).length, taillesDesVaguesLaser(null, 24)]; }, l.id);
+          ok(sessions[0] === 2 && sessions[1] === null, '[J] les sessions du laser en groupes de 10 et 14 : 2 ; sans dossier, les armes seules', sessions);
+          await page.evaluate(() => { if (typeof closePos === 'function') closePos(); });
+          // La bulle du compte a 58 et 55 joueurs, et 50 joueurs au laser sur 60, disent les vagues que le serveur
+          // ecrirait (son calcul a blanc de la meme modification).
+          const vaguesDuServeur = async (pax, laser) => {
+            const enBase = B.base.reservations.get(Number(g.id));
+            const program = (enBase.program.items || []).map((i) => ({ ...i, pax, participants: i.activityId === 'laser_game' ? laser : pax }));
+            const blanc = await serveur.appeler('POST', '/api/staff-reservations', { dryRun: true, centerId: 'libramont', modification: {
+              id: g.id, centerId: 'libramont', baseUpdatedAt: new Date(enBase.updated_at).toISOString(), pax, program, date: enBase.date, startTime: String(enBase.start_time).slice(0, 5), lanes: enBase.lanes, requiresLanes: true } });
+            const tailles = ((blanc.json && blanc.json.reservation && blanc.json.reservation.opsPlan && blanc.json.reservation.opsPlan.resourceBlocks) || [])
+              .filter((b) => b.resourceType === 'laser_arena').sort((a, b) => Number(a.sousGroupe || 0) - Number(b.sousGroupe || 0)).map((b) => b.players);
+            const uniques = [...new Set(tailles)];
+            return { statut: blanc.statut, refus: blanc.json && blanc.json.refus, tailles, mots: tailles.length > 1 ? `${tailles.length} vagues de ${uniques.length === 1 ? uniques[0] : tailles.join(', ').replace(/, (\d+)$/, ' et $1')} armes` : '' };
+          };
+          for (const n of [58, 55]) {
+            const bulle = await page.evaluate(([id, k]) => { const r = state.reservations.find((x) => Number(x.id) === Number(id)); return r ? preparerCompte(r, k).vagues : ''; }, [g.id, n]);
+            const s = await vaguesDuServeur(n, n);
+            ok(s.statut === 200 && s.tailles.length === 4 && bulle === s.mots, `[J] la bulle du compte a ${n} joueurs dit les vagues du serveur : « ${s.mots} »`, { bulle, ...s });
+          }
+          const auLaser = await page.evaluate((id) => { const r = state.reservations.find((x) => Number(x.id) === Number(id)); return r ? vaguesLaserEnMots(50, r, 60) : ''; }, g.id);
+          const s50 = await vaguesDuServeur(60, 50);
+          ok(s50.statut === 200 && s50.tailles.length === 4 && auLaser === s50.mots, `[J] 50 joueurs au laser sur 60 : la part de chaque groupe, comme le serveur, « ${s50.mots} »`, { auLaser, ...s50 });
+        }
+        ok(erreurs.length === 0, '[*] zero erreur JavaScript (J)', erreurs.slice(0, 3).join(' | '));
       } finally { await ctx.close(); }
     }
   } catch (error) {

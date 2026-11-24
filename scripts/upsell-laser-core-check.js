@@ -16,7 +16,9 @@ c.other={id:801,type:'laser',status:'confirmed',pax:28,date:c.res.date,opsPlan:{
 eq(run("checkManualLaserPassPlacement(res,'3.1',16).ok"),true,'two extra players fit 28 of30');eq(run("checkManualLaserPassPlacement(res,'2.1',16).ok"),false,'four base players do not fit 28 of30');
 eq(run('getFormulaLaserFallbackWindows({...res,opsPlan:null}).map(w=>w.countIndex)'),[1,2],'fallback never invents extra hour');eq(run('getFormulaLaserFallbackWindows({...res,opsPlan:{resourceBlocks:[],laserPassPlan:{scheduledPasses:[{countIndex:1}]}}}).map(w=>w.countIndex)'),[1],'explicit pending base game not fabricated');
 c.large={...c.res,pax:50,program:{items:[{...c.res.program.items[0],participants:50,extraLaser:{...c.res.program.items[0].extraLaser,participants:2}}]}};
-eq(run('getLaserUnitsForReservation(large).map(u=>[u.countIndex,u.waveCount,u.players])'),[[1,2,25],[1,2,25],[2,2,25],[2,2,25],[3,1,2]],'extra subgroup does not inherit base waves');
+// (la 1re partie garde le bloc d avant, ses 4 joueurs : le dossier fait foi, comme au serveur,
+// lib/reservation-activity-move.js vaguesDeLaPartie ; la 2e vague que les armes comptent a les 46 autres)
+eq(run('getLaserUnitsForReservation(large).map(u=>[u.countIndex,u.waveCount,u.players])'),[[1,2,4],[1,2,46],[2,2,25],[2,2,25],[3,1,2]],'extra subgroup does not inherit base waves');
 eq(run('updateLaserPassPlan(res.opsPlan,res).laserPassPlan.pendingPasses.map(p=>[p.countIndex,p.pax])'),[[2,4],[3,2]],'pending metadata retained');
 const payloads=[];c.apiRequest=async(_url,init)=>{const body=JSON.parse(init.body);payloads.push(body);const current=c.state.reservations.find(r=>Number(r.id)===Number(body.id));const saved=require('../lib/reservation-activity-move').buildActivityMove(current,body.activityMove);return {reservation:saved,activityMove:{...body.activityMove,unchangedActivities:true}}};
 (async()=>{

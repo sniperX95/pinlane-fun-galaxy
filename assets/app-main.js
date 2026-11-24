@@ -1768,14 +1768,48 @@ function pistesDeDepartEdition(requis, debut, duree) {
 
 // « 2 vagues de 12 armes », « 1 vague de 14 armes », « 2 vagues de 13 et 12
 // armes » : les vagues d un groupe au laser, la ligne de sa rangee dans Modifier
-// et celle de la bulle du compte. Toujours des armes.
-function vaguesLaserEnMots(joueurs) {
+// et celle de la bulle du compte. Toujours des armes. `r` et `personnes` : le
+// dossier et son groupe, dont les vagues passent avant celles des armes
+// (taillesDesVaguesLaser).
+function vaguesLaserEnMots(joueurs, r = null, personnes = joueurs) {
   const n = Math.max(1, Math.trunc(Number(joueurs) || 1));
-  const vagues = getLaserWaveCount(n);
-  const tailles = getBalancedLaserWaveSizes(n);
-  if (vagues < 2 || tailles.length < 2) return `1 vague de ${n} arme${n > 1 ? 's' : ''}`;
+  const tailles = taillesDesVaguesLaser(r, n, personnes) || getBalancedLaserWaveSizes(n);
+  if (tailles.length < 2) return `1 vague de ${n} arme${n > 1 ? 's' : ''}`;
   const dites = [...new Set(tailles)].length === 1 ? String(tailles[0]) : enEnumeration(tailles.map(String));
-  return `${vagues} vagues de ${dites} armes`;
+  return `${tailles.length} vagues de ${dites} armes`;
+}
+
+// LES VAGUES DU DOSSIER, PAS CELLES DES ARMES (2026-11-24). Un grand groupe en 4 groupes de 15 joue 4
+// vagues de 15 armes, un laser en groupes de 10 et 14 en joue 2 : les armes seules disaient « 2 vagues
+// de 30 armes » et « 1 vague de 24 armes ». Les memes joueurs au laser : les vagues de sa 1re partie
+// (getLaserUnitsForReservation). Un grand groupe dont le nombre change se recoupe comme le serveur le
+// replanifie (lib/grand-groupe.js sousGroupes, `souple`) : le nombre de groupes que le comptoir a choisi,
+// jamais moins que ce que le bowling et les armes demandent, ses tailles s il les fait encore, sinon des
+// parts egales ; le laser en prend sa part au prorata. Rend les tailles, ou null : les armes decident.
+function taillesDesVaguesLaser(r, joueurs, personnes = joueurs) {
+  if (!r || typeof getLaserUnitsForReservation !== 'function') return null;
+  const n = Math.max(1, Math.trunc(Number(joueurs) || 1));
+  const siennes = getLaserUnitsForReservation(r).filter(unit => Number(unit.countIndex) === 1);
+  if (siennes.length > 1 && siennes.reduce((somme, unit) => somme + (Number(unit.players) || 0), 0) === n) return siennes.map(unit => Number(unit.players) || 0);
+  const garde = r.opsPlan && r.opsPlan.grandGroupe;
+  if (!garde || typeof garde !== 'object' || !siennes.some(unit => Number(unit.sousGroupe) > 0)) return null;
+  const groupe = Math.max(1, Math.trunc(Number(personnes) || n));
+  const voulu = garde.nombreChoisi === true ? Math.trunc(Number(garde.nombre)) || 0 : 0;
+  // (le bowling du groupe entier : un grand groupe joue tout ensemble)
+  const aDuBowling = ((r.program && r.program.items) || []).some(item => item && item.activityId === 'bowling');
+  const coupe = Math.max(1, getLaserWaveCount(n), aDuBowling ? splitGroupIntoBowlingServices(groupe).length : 1);
+  const nombre = Math.min(12, groupe, voulu >= 2 ? Math.max(voulu, coupe) : coupe);
+  const egales = (total, k) => Array.from({ length: k }, (_, i) => Math.floor(total / k) + (i < total % k ? 1 : 0));
+  const posees = Array.isArray(garde.tailles) ? garde.tailles.map(t => Math.trunc(Number(t)) || 0) : [];
+  const tailles = posees.length === nombre && posees.every(t => t >= 1) && posees.reduce((s, t) => s + t, 0) === groupe ? posees : egales(groupe, nombre);
+  if (n >= groupe) return tailles;
+  // (lib/grand-groupe.js partsAuProrata : les plus grandes fractions prennent le reste, a egalite le premier)
+  const exactes = tailles.map(t => (n * t) / groupe);
+  const parts = exactes.map(Math.floor);
+  let reste = n - parts.reduce((s, p) => s + p, 0);
+  exactes.map((v, index) => ({ index, fraction: v - Math.floor(v) })).sort((a, b) => (b.fraction - a.fraction) || (a.index - b.index))
+    .forEach(({ index }) => { if (reste > 0 && parts[index] < tailles[index]) { parts[index] += 1; reste -= 1; } });
+  return parts;
 }
 
 // Les joueurs du laser d un etat d edition : ceux de sa rangee dans le
@@ -28124,6 +28158,8 @@ function lpChoisiValide(modele) {
     countIndex: unite.countIndex,
     waveIndex: unite.waveIndex,
     waveCount: unite.waveCount,
+    sousGroupe: unite.sousGroupe,
+    sousGroupes: unite.sousGroupes,
     arene: placee ? lpArene(placee) : prive ? modele.capacite : Math.max(1, Number(unite.players) || 1),
     groupe: placee ? lpGroupe(placee) : Math.max(1, Number(enAttente?.players || unite.players) || 1),
     prive,
@@ -28133,7 +28169,10 @@ function lpChoisiValide(modele) {
 function lpNomUnite(c) {
   const parts = [];
   if (Number(c.countIndex || 1) > 1) parts.push(`${lpRang(c.countIndex)} partie`);
-  if (Number(c.waveCount || c.groupWaveCount || 1) > 1) parts.push(`vague ${Number(c.waveIndex || c.groupWaveIndex || 1)}/${Number(c.waveCount || c.groupWaveCount || 1)}`);
+  const vagues = Number(c.waveCount || c.groupWaveCount || 1);
+  // (la vague d un grand groupe est l un de ses groupes, lib/grand-groupe.js : « groupe 3/4 »)
+  if (Number(c.sousGroupe) > 0) parts.push(`groupe ${Number(c.sousGroupe)}/${Number(c.sousGroupes) || vagues}`);
+  else if (vagues > 1) parts.push(`vague ${Number(c.waveIndex || c.groupWaveIndex || 1)}/${vagues}`);
   return parts.join(' · ');
 }
 
@@ -28268,7 +28307,7 @@ function lpLegende(modele, d, choisi) {
     const volonteLaser = w.aVolonte && window.PinlaneAVolonte ? window.PinlaneAVolonte.phraseDuBloc(r.opsPlan, w) : '';
     const infos = volonteLaser
       ? `${lpGroupe(w)} j · à volonté · fin ${lpHeure(w.end)}`
-      : `${lpGroupe(w)} j · P${partie}/${totalParties}${vagues > 1 ? ` · V${vague}/${vagues}` : ''} · fin ${lpHeure(w.end)}${w.arene === 'seuls' ? ' · privée' : ''}${Math.abs(w.start - d.t) > 0.001 ? ` · à ${lpHeure(w.start)}` : ''}`;
+      : `${lpGroupe(w)} j · P${partie}/${totalParties}${Number(w.sousGroupe) > 0 ? ` · G${Number(w.sousGroupe)}/${Number(w.sousGroupes) || vagues}` : vagues > 1 ? ` · V${vague}/${vagues}` : ''} · fin ${lpHeure(w.end)}${w.arene === 'seuls' ? ' · privée' : ''}${Math.abs(w.start - d.t) > 0.001 ? ` · à ${lpHeure(w.start)}` : ''}`;
     // Dans une rangee serree, les pictos cedent et un coin replie dit la note : il rougit
     // avec une allergie, et l infobulle de la carte dit la note en entier.
     const noteLaser = texteNoteDeCarte(essentielDuDossier(r));
@@ -28450,8 +28489,8 @@ function lpFileHtml(modele, choisi) {
     const r = p.reservation;
     const id = Number(r.id);
     const k = lpTeinte(r);
-    const sous = p.countIndex > 1 || p.waveCount > 1
-      ? lpNomUnite({ countIndex: p.countIndex, waveIndex: p.waveIndex, waveCount: p.waveCount })
+    const sous = p.countIndex > 1 || p.waveCount > 1 || Number(p.sousGroupe) > 0
+      ? lpNomUnite({ countIndex: p.countIndex, waveIndex: p.waveIndex, waveCount: p.waveCount, sousGroupe: p.sousGroupe, sousGroupes: p.sousGroupes })
       : `arrive vers ${escapeHtml(String(r.startTime || '').slice(0, 5))}`;
     const choisiIci = choisi && choisi.id === id && choisi.unitKey === p.unitKey ? ' is-choisi' : '';
     const grise = modele.trouve(r) ? '' : ' is-grise';
@@ -36265,7 +36304,7 @@ function vaguesLaserEditionEnMots(e, r) {
   if (joueurs === null) return '';
   const premiere = r ? getStaffResourceWindows(r, 'all').filter(f => f.resourceType === 'laser_arena' && !f.aVolonte).sort((a, b) => a.start - b.start)[0] : null;
   const partenaires = premiere && Math.max(1, Number(premiere.groupWaveCount) || 1) === 1 ? partenairesLaser(r, premiere, joueurs) : [];
-  if (!partenaires.length) return vaguesLaserEnMots(joueurs);
+  if (!partenaires.length) return vaguesLaserEnMots(joueurs, r, e && e.pax);
   return `${vaguesLaserEnMots(joueurs + partenaires.reduce((total, p) => total + p.joueurs, 0))}, ${partenairesEnMots(partenaires)}`;
 }
 
@@ -37094,7 +37133,7 @@ function renderDossierLaserEditor(r) {
   const rows = units.map(unit => {
     const placed = windows.find(window => laserBlockUnitKey(window) === unit.unitKey);
     const players = placed?.players || unit.players;
-    const label = `Partie ${unit.countIndex}${unit.waveCount > 1 ? ` · vague ${unit.waveIndex}/${unit.waveCount}` : ''}`;
+    const label = `Partie ${unit.countIndex}${Number(unit.sousGroupe) > 0 ? ` · groupe ${unit.sousGroupe}/${unit.sousGroupes || unit.waveCount}` : unit.waveCount > 1 ? ` · vague ${unit.waveIndex}/${unit.waveCount}` : ''}`;
     const field = `dossierLaserTime-${unit.unitKey.replace('.', '-')}`;
     return `<div class="dossier-laser-unit" data-laser-unit="${unit.unitKey}">
       <div class="dossier-laser-unit-title"><strong>${label}</strong><span class="muted">${players} joueur${players > 1 ? 's' : ''} · ${placed ? `${escapeHtml(formatClockDisplay(placed.start))}-${escapeHtml(formatClockDisplay(placed.end))}` : 'À placer'}</span></div>
@@ -37186,6 +37225,8 @@ function renderPosEdit(r) {
   // d aujourd hui.
   const autreJour = Boolean(e.date) && e.date !== r.date;
   const jourLong = e.date ? jourLongEdition(e.date) : '';
+  // (les sessions du dossier quand ses joueurs n ont pas change : un laser en groupes de 10 et 14 en a 2)
+  const sessionsLaser = isLaserRes ? (taillesDesVaguesLaser(r, Number(e.pax) || 1) || getBalancedLaserWaveSizes(Number(e.pax) || 1)).length : 0;
   const pistesBloc = autreJour ? (editNeedsLanes ? `
           <div class="fm-pistes">
             <span class="lbl">Pistes</span>
@@ -37194,7 +37235,7 @@ function renderPosEdit(r) {
           <div class="fm-pistes">
             <span class="lbl">${isLaserRes ? 'Sessions' : 'Ressources'}</span>
             <p class="field-hint">${isLaserRes
-              ? `${Number(e.pax) || 0} joueur${(Number(e.pax) || 0) > 1 ? 's' : ''} : ${getLaserWaveCount(Number(e.pax) || 1)} session${getLaserWaveCount(Number(e.pax) || 1) > 1 ? 's' : ''} de laser. Aucune piste de bowling n’est réservée.`
+              ? `${Number(e.pax) || 0} joueur${(Number(e.pax) || 0) > 1 ? 's' : ''} : ${sessionsLaser} session${sessionsLaser > 1 ? 's' : ''} de laser. Aucune piste de bowling n’est réservée.`
               : 'Cette réservation ne prend aucune piste de bowling.'}</p>
           </div>`) : `
           <div class="fm-pistes">
@@ -38218,7 +38259,7 @@ function preparerCompte(r, n, main = null) {
     const occupees = {};
     if (pistes) for (let piste = 1; piste <= getAvailabilityLaneCount(); piste += 1) { const qui = occupantPisteEdition(piste); if (qui) occupees[piste] = qui; }
     const joueursLaser = joueursLaserEdition(e, r);
-    return { ...envoi, estime, prix: getEditPriceValue(), pistes, occupees, vagues: joueursLaser === null ? '' : vaguesLaserEnMots(joueursLaser) };
+    return { ...envoi, estime, prix: getEditPriceValue(), pistes, occupees, vagues: joueursLaser === null ? '' : vaguesLaserEnMots(joueursLaser, r, n) };
   } finally {
     state.selectedRes = avant.selectedRes;
     state.editState = avant.editState;

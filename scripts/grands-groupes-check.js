@@ -164,7 +164,7 @@ const MUTATIONS = [
   { nom: 'fenetre-refuse-d-avance', lettre: 'F', fichier: APP, de: '  return grand && grand.tourne ? Math.min(visite, rvDureeDUnGroupe()) : visite;', vers: '  return visite;' },
   // [G] une heure deplacee (la pop-up du planning complet, son glisser, Modifier) ne regarde plus le
   // sous-groupe : le compte des joueurs du groupe tient, le groupe 1 joue au bowling pendant son laser.
-  { nom: 'sous-groupe-deplace-a-deux-endroits', lettre: 'G', serveur: true, fichier: MOUVEMENT, de: '    const groupe = Number(movedBlock && movedBlock.sousGroupe) || 0;', vers: '    const groupe = 0;' },
+  { nom: 'sous-groupe-deplace-a-deux-endroits', lettre: 'G', serveur: true, fichier: MOUVEMENT, de: '    if (!groupe) continue;', vers: '    continue;' },
   // [H] un grand groupe a la minute : la rotation refuse la minute, se cale sur la grille du centre, ou
   // ses heures posees se rejouent par-dessus les groupes.
   { nom: 'rotation-refuse-la-minute', lettre: 'H', serveur: true, fichier: MOTEUR, de: "  if (!heuresVoulues && !aLaMinute && debut % PROGRAM_GRID_MINUTES !== 0) return { ok: false, code: 'off_grid'", vers: "  if (!heuresVoulues && debut % PROGRAM_GRID_MINUTES !== 0) return { ok: false, code: 'off_grid'" },

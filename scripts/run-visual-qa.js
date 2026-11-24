@@ -2190,7 +2190,7 @@ async function main() {
     // 43 : le meme bouton « Par mail » sur la page Formules (meme demande du 2026-11-23). Un controle de plus,
     // le seul : 42 avant la fusion du bouton (41d863a), 43 apres, la meme liste plus « Par mail ». Son plafond
     // passe de 42 a 43, sans marge ajoutee.
-    const PLAFOND_FORMULE = 43;
+    const PLAFOND_FORMULE = 44; // (« Facturé », 2026-11-24)
     // Une condition qui tient : au delai, relue une fois (un gel de la machine
     // pendant l attente ne vaut pas un echec).
     const tient = (condition, delai = 5000) => page.waitForFunction(condition, null, { timeout: delai })

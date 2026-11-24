@@ -1066,7 +1066,8 @@
     var notePrix = null;
     var equipe = [];
     (typeof getReservationNotesEquipe === 'function' ? getReservationNotesEquipe(r) : []).forEach(function (n) {
-      if (!n || !n.t || n.compte) return;
+      // (la facturation se lit dans la colonne du montant et dans la fiche, pas parmi les notes, 2026-11-24)
+      if (!n || !n.t || n.compte || n.type === 'facture') return;
       // Toute note de prix quitte la rubrique Équipe ; la derniere du serveur decrit le
       // prix du moment, l historique du dossier garde les autres.
       var p = gfPrixDeNote(n);
@@ -1351,6 +1352,10 @@
     if (r.status === 'paid') {
       var regle = typeof prixDossierConnu === 'function' && prixDossierConnu(r) ? formatMoneyCentimes(r.amountPaid != null ? r.amountPaid : r.price) : '';
       h = (regle ? gfDu(regle) : '') + '<span class="gf-du__paye">payé</span>';
+    } else if (typeof dossierAFacturer === 'function' && dossierAFacturer(r)) {
+      // « FACTURÉ » (2026-11-24) : rien ne s encaisse au comptoir, le montant dit qu il part en facture.
+      var facture = gfMontantDu(r);
+      h = (facture ? gfDu(facture) : '') + '<span class="gf-du__paye gf-du__facture">à facturer</span>';
     } else {
       var du = gfMontantDu(r);
       if (!du) h = g.etat === 'closing' ? '<span class="gf-du is-sans">Prix à voir</span>' : '';
@@ -1945,7 +1950,9 @@
   }
   function gfBulleEncaisser(bouton, e) {
     var id = Number(bouton.getAttribute('data-gf-encaisser'));
-    var choix = GROUPE_MOYENS.map(function (moyen) { return '<button type="button" data-gf-choix="' + gpEsc(moyen.valeur) + '">' + gpEsc(moyen.mot) + '</button>'; }).join('');
+    var choix = GROUPE_MOYENS.map(function (moyen) { return '<button type="button" data-gf-choix="' + gpEsc(moyen.valeur) + '">' + gpEsc(moyen.mot) + '</button>'; }).join('')
+      // (« Facturé » passe par encaisserReservation, qui ouvre la fenetre de facturation : rien ne s encaisse)
+      + (typeof MOYEN_FACTURE !== 'undefined' ? '<button type="button" data-gf-choix="' + gpEsc(MOYEN_FACTURE) + '" aria-haspopup="dialog">' + gpEsc(MOYEN_FACTURE) + '</button>' : '');
     gfBulle(bouton, e, '<div class="staff-action-popover-title">' + gpEsc(bouton.textContent) + ' à encaisser</div>' + choix, function (valeur, ev) { encaisserReservation(id, valeur, ev); gfApresEncaisser(); });
   }
   // Tous les statuts d un toucher : celui du dossier coche, chacun selon le droit du role
@@ -1962,17 +1969,24 @@
     var option = function (valeur, mot, actuel) {
       choix.push('<button type="button" data-gf-choix="' + gpEsc(valeur) + '"' + (actuel ? ' class="is-actuel" aria-current="true"' : '') + '>' + gpEsc(mot) + '</button>');
     };
-    if (peut('reservations.status')) {
-      option('pending', 'Confirmé', !absent && r.status !== 'arrived' && r.status !== 'paid');
-      option('arrived', 'Arrivé', !absent && r.status === 'arrived');
+    // LA MEME LISTE QUE LA FICHE (2026-11-24, choixDuStatut, assets/app-main.js) : Confirmé, Arrivé, Payé
+    // carte ou espèces, Facturé, Pas venu, chacun selon le droit du role. Hors console, la liste d avant.
+    if (typeof choixDuStatut === 'function') {
+      choixDuStatut(r).forEach(function (c) { if (!c.lecture) option(c.valeur, c.mot, c.actuel); });
+    } else {
+      if (peut('reservations.status')) {
+        option('pending', 'Confirmé', !absent && r.status !== 'arrived' && r.status !== 'paid');
+        option('arrived', 'Arrivé', !absent && r.status === 'arrived');
+      }
+      if (gfPeutEncaisser()) GROUPE_MOYENS.forEach(function (moyen) { option('paid:' + moyen.valeur, 'Payé ' + moyen.mot.toLowerCase(), r.status === 'paid' && r.paymentMethod === moyen.valeur); });
+      if (absent) option('present', 'Annuler « Pas venu »', false);
+      else if (typeof renderGroupePasVenu === 'function' && renderGroupePasVenu(r)) option('absent', 'Pas venu', false);
     }
-    if (gfPeutEncaisser()) GROUPE_MOYENS.forEach(function (moyen) { option('paid:' + moyen.valeur, 'Payé ' + moyen.mot.toLowerCase(), r.status === 'paid' && r.paymentMethod === moyen.valeur); });
-    if (absent) option('present', 'Annuler « Pas venu »', false);
-    else if (typeof renderGroupePasVenu === 'function' && renderGroupePasVenu(r)) option('absent', 'Pas venu', false);
     option('fiche', 'Ouvrir la fiche', false);
     gfBulle(bouton, e, '<div class="staff-action-popover-title">' + gpEsc(r.name || 'Le groupe') + '</div>' + choix.join(''), function (valeur, ev) {
       var n = Number(id);
       if (valeur === 'fiche') { openPos(n); return; }
+      if (typeof appliquerChoixDuStatut === 'function') { appliquerChoixDuStatut(n, valeur, ev); if (valeur.indexOf('paid:') === 0) gfApresEncaisser(); return; }
       if (valeur === 'absent' || valeur === 'present') { basculerAbsence(n, valeur === 'absent', ev); return; }
       if (valeur.indexOf('paid:') === 0) { encaisserReservation(n, valeur.slice(5), ev); gfApresEncaisser(); return; }
       setReservationStatusDirect(n, valeur, ev);

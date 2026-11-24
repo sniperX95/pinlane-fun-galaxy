@@ -12550,7 +12550,7 @@ function renderStaffDashboardReservationRows(rows = [], emptyText = 'Aucune donn
              pastille s ajoute seulement en cas d ecart, en forme « mot »
              puisque le chiffre est deja la juste au-dessus. */''}
         ${renderReservationPriceMark(reservation, { forme: 'mot' })}
-        <span>${escapeHtml(reservation.paymentMethod || (reservation.status === 'paid' ? 'Comptoir' : 'Sur place'))}</span>
+        <span>${escapeHtml(reservation.paymentMethod || (reservation.status === 'paid' ? 'Comptoir' : dossierAFacturer(reservation) ? 'À facturer' : 'Sur place'))}</span>
       </div>
       <div class="dashboard-detail-row-actions">
         ${renderDashboardRowActions(reservation, kind)}
@@ -13581,7 +13581,8 @@ function getStaffTerrainPhase(reservation, span, context) {
   // attendu, plus sur place, plus a cloturer.
   if (reservation.absentAt && status !== 'paid') return 'absent';
   if (context.when === 'future') return 'upcoming';
-  if (context.when === 'past' || span.end <= context.now || groupeToutFait(reservation)) return status === 'paid' ? 'done' : 'closing';
+  // (un groupe venu et « Facturé » n a rien a encaisser : sa visite finie, il est termine, 2026-11-24)
+  if (context.when === 'past' || span.end <= context.now || groupeToutFait(reservation)) return status === 'paid' || (status === 'arrived' && dossierAFacturer(reservation)) ? 'done' : 'closing';
   // PAYE = ARRIVE (2026-10-02, Movsar : « s ils ont paye c est qu ils sont
   // arrives aussi, le paiement est que sur place ») : un groupe paye n est
   // jamais « À venir ».
@@ -13777,7 +13778,7 @@ function renderStaffTerrainCard(item, phase, board) {
   if ((phase === 'upcoming' || phase === 'late') && status !== 'paid' && peutGeste('etat')) {
     actions.push(renderStaffUtilityAction('Arrivé', `setReservationStatusDirect(${id}, 'arrived', event)`, 'primary'));
   }
-  if ((phase === 'onsite' || phase === 'closing') && status !== 'paid' && peutGeste('encaisser')) {
+  if ((phase === 'onsite' || phase === 'closing') && status !== 'paid' && peutGeste('encaisser') && !dossierAFacturer(reservation)) {
     GROUPE_MOYENS.forEach(m => actions.push(renderStaffUtilityAction(`Payé · ${m.mot}`, `encaisserReservation(${id}, '${m.valeur}', event)`, 'primary')));
   }
   const foot = call || (timing ? `<span class="terrain-when">${escapeHtml(timing)}</span>` : '');
@@ -23208,6 +23209,8 @@ function staffRequestToBooking(id, options = {}) {
     // D ou vient cette reservation : sert UNIQUEMENT a classer la demande
     // en « Traitee » une fois la creation reussie, reservation liee.
     sourceRequestId: item.id,
+    // (la societe et la TVA de la demande preremplissent la fenetre « Facturé », rvFacturer)
+    ...((d && (d.organisation || d.vatNumber)) || item.company ? { facturation: { societe: (d && d.organisation) || item.company || '', tva: (d && d.vatNumber) || '' } } : {}),
   });
   if (programme.length) applyStaffRequestActivitiesToQuickBook({ participants: paxRetenu, activities: programme });
   else if (!forme && !libre && !formuleRetenue && d) applyStaffRequestActivitiesToQuickBook(d);
@@ -26050,7 +26053,8 @@ function getReservationNoteParts(reservation = {}) {
 // (pgNotesEquipe) ; sans le planning, les traces structurees sont ecartees ici.
 function notesEquipeEcrites(reservation) {
   if (typeof window.pgNotesEquipe === 'function') return window.pgNotesEquipe(reservation);
-  return getReservationNotesEquipe(reservation).filter(n => !n.compte && n.type !== 'prix');
+  // (la facturation se lit dans la caisse de la fiche, pas parmi les notes, 2026-11-24)
+  return getReservationNotesEquipe(reservation).filter(n => !n.compte && n.type !== 'prix').filter(n => n.type !== 'facture');
 }
 
 // « Avec note » : le mot du client OU une note de l equipe.
@@ -30066,6 +30070,411 @@ function getMoyenPaiementLabel(valeur) {
   return '';
 }
 
+// « FACTURÉ », LE TROISIEME MOYEN (2026-11-24, Ansar : « comme moyen de paiement ça serait bien de mettre
+// facturé et ça ouvre une pop up vraiment pro pour compléter toutes les infos »). Une societe qui paie sur
+// facture : rien ne s encaisse au comptoir, le dossier ne passe donc jamais « payé » (ni chiffre de caisse,
+// ni date de paiement) ; il dit « À facturer » et garde ce que la facture demande. La regle et la ligne de
+// note qui la porte vivent dans assets/pinlane-facturation.js, la meme que le serveur.
+const MOYEN_FACTURE = 'Facturé';
+function factureDuDossier(r) {
+  return window.PinlaneFacturation && r ? window.PinlaneFacturation.factureDesNotes(r.notes) : null;
+}
+function dossierAFacturer(r) {
+  return Boolean(window.PinlaneFacturation && window.PinlaneFacturation.dossierAFacturer(r));
+}
+// Le moyen tel que l ecran le dit : celui du paiement, sinon « Facturé » tant que la facture attend.
+function moyenDuDossier(r) {
+  if (r && r.status === 'paid') return getMoyenPaiementLabel(r.paymentMethod);
+  return dossierAFacturer(r) ? MOYEN_FACTURE : '';
+}
+
+// LE STATUT D UN DOSSIER, D UN TOUCHER (2026-11-24, le gerant devant la fiche : « quand on est ici on
+// sait pas mettre confirmé, arrivé ou payé, genre confirmé on sait pas »). UNE liste, celle du menu des
+// lignes du planning (pinlane-planning-global.js gfBulleStatut) et de la fiche : chaque choix suit le
+// droit du role, le serveur juge de toute facon. Une demande a valider se confirme par « Confirmé ».
+function choixDuStatut(r) {
+  if (!r || r.status === 'cancelled') return [];
+  const peut = (p) => typeof canUseStaffPermission !== 'function' || canUseStaffPermission(p);
+  const absent = Boolean(r.absentAt);
+  const aValider = isReservationAwaitingReview(r);
+  const paye = r.status === 'paid';
+  const choix = [];
+  if (aValider) choix.push({ valeur: '', mot: 'À valider', actuel: true, lecture: true });
+  if (aValider && peutGeste('valider', r.date)) choix.push({ valeur: 'valider', mot: 'Confirmé', actuel: false, dit: 'Confirmer la demande' });
+  else if (peut('reservations.status')) choix.push({ valeur: 'pending', mot: 'Confirmé', actuel: !aValider && !absent && !paye && r.status !== 'arrived' });
+  if (peut('reservations.status')) choix.push({ valeur: 'arrived', mot: 'Arrivé', actuel: !absent && r.status === 'arrived' });
+  if (peutGeste('encaisser')) {
+    GROUPE_MOYENS.forEach((m) => choix.push({ valeur: `paid:${m.valeur}`, mot: `Payé ${m.mot.toLowerCase()}`, actuel: paye && r.paymentMethod === m.valeur }));
+    choix.push({ valeur: 'facture', mot: MOYEN_FACTURE, actuel: dossierAFacturer(r), fenetre: true });
+  }
+  if (absent) choix.push({ valeur: 'present', mot: 'Annuler « Pas venu »', actuel: false });
+  else if (typeof renderGroupePasVenu === 'function' && renderGroupePasVenu(r)) choix.push({ valeur: 'absent', mot: 'Pas venu', actuel: false });
+  return choix;
+}
+function appliquerChoixDuStatut(id, valeur, ev) {
+  const n = Number(id);
+  if (!valeur) return;
+  if (valeur === 'valider') { validateReservationDirect(n, ev); return; }
+  if (valeur === 'facture') { ouvrirFacturationDuDossier(n, ev); return; }
+  if (valeur === 'absent' || valeur === 'present') { basculerAbsence(n, valeur === 'absent', ev); return; }
+  if (valeur.indexOf('paid:') === 0) { encaisserReservation(n, valeur.slice(5), ev); return; }
+  setReservationStatusDirect(n, valeur, ev);
+}
+window.choixDuStatut = choixDuStatut;
+window.appliquerChoixDuStatut = appliquerChoixDuStatut;
+
+// LE STATUT DANS LA FICHE : il se lit d un coup d oeil (« Arrivé · Facturé », « À valider »), et son bouton ouvre
+// la liste du menu des lignes du planning, la meme (choixDuStatut, appliquerChoixDuStatut). Un seul bouton : la
+// fiche du 15/11 a retire la rangee des boutons d etat et garde son plafond de boutons visibles.
+function motDuStatut(r) {
+  const actuels = choixDuStatut(r).filter((c) => c.actuel).map((c) => c.mot);
+  if (actuels.length) return actuels.join(' · ');
+  return r && r.absentAt ? 'Pas venu' : 'Confirmé';
+}
+function ficheStatut(r) {
+  if (!choixDuStatut(r).some((c) => !c.lecture)) return '';
+  const id = Number(r.id);
+  const mot = motDuStatut(r);
+  return `<section class="fz-statut" aria-label="Statut du dossier"><span class="fz-statut-t" aria-hidden="true">Statut</span><button type="button" class="fz-statut-b" id="ficheStatut${id}" data-pl-focus="fiche.statut.${id}" aria-haspopup="menu" aria-label="${escapeHtml(`Statut du dossier : ${mot}. Changer le statut`)}" onclick="ouvrirStatutFiche(${id}, event)"><span class="fz-statut-mot">${escapeHtml(mot)}</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button><span class="fz-statut-aide">Confirmé, arrivé, payé ou facturé : touchez pour changer.</span></section>`;
+}
+function ouvrirStatutFiche(id, ev) {
+  const n = Number(id);
+  const r = findStaffReservationById(n) || (state.selectedRes && Number(state.selectedRes.id) === n ? state.selectedRes : null);
+  if (!r) return;
+  const choix = choixDuStatut(r).filter((c) => !c.lecture);
+  const html = `<div class="staff-action-popover-title">${escapeHtml(r.name || 'Le groupe')}</div>${choix.map((c) => `<button type="button" data-statut-choix="${escapeHtml(c.valeur)}"${c.actuel ? ' class="is-actuel" aria-current="true"' : ''}${c.fenetre ? ' aria-haspopup="dialog"' : ''}>${escapeHtml(c.mot)}</button>`).join('')}`;
+  const ancre = ev && ev.currentTarget ? ev.currentTarget : document.getElementById(`ficheStatut${n}`);
+  showStaffFloatingMenu({ currentTarget: ancre, preventDefault() {}, stopPropagation() { if (ev && ev.stopPropagation) ev.stopPropagation(); } }, html);
+  const menu = document.querySelector('.staff-action-popover');
+  if (!menu) return;
+  // (dans la fiche : le menu vit dans sa fenetre, sinon le piege du focus le lui reprendrait, et Echap ne ferme
+  // que lui, pas la fiche)
+  const hote = ancre && ancre.closest ? ancre.closest('#posOverlay') : null;
+  if (hote) hote.appendChild(menu);
+  const echap = (e) => {
+    if (!menu.isConnected) { window.removeEventListener('keydown', echap, true); return; }
+    if (e.key !== 'Escape') return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    window.removeEventListener('keydown', echap, true);
+    closeStaffFloatingMenus();
+    if (ancre && ancre.isConnected) ancre.focus({ preventScroll: true });
+  };
+  window.addEventListener('keydown', echap, true);
+  menu.addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-statut-choix]');
+    if (!b) return;
+    window.removeEventListener('keydown', echap, true);
+    closeStaffFloatingMenus();
+    appliquerChoixDuStatut(n, b.getAttribute('data-statut-choix'), { currentTarget: ancre, target: ancre, stopPropagation() {} });
+  });
+  const premier = menu.querySelector('button[aria-current="true"]') || menu.querySelector('button');
+  if (premier) premier.focus({ preventScroll: true });
+}
+window.ouvrirStatutFiche = ouvrirStatutFiche;
+
+// ---------------------------------------------------------------------------
+// LA FENETRE DE FACTURATION. Les champs groupes comme sur une facture (la societe, son adresse, qui la
+// recoit), chacun dit ce qui manque des qu on le quitte, en mots simples ; Tab passe au suivant, Entree
+// enregistre, Echap ferme sans rien garder. Elle s ouvre sur le premier champ vide, deja remplie de ce
+// que l ecran sait (le nom, l e-mail, la societe et la TVA d une demande de groupe). Au telephone, elle
+// monte du bas, ses boutons pleine largeur. Le modele : la fenetre du retard (rt-*), les boutons de la
+// console, le second encadre, le principal bleu plein.
+// ---------------------------------------------------------------------------
+const FA_GROUPES = [
+  { titre: 'Société', champs: [
+    { cle: 'societe', mot: 'Raison sociale', auto: 'organization', large: true, aide: 'Le nom exact, tel qu’il doit figurer sur la facture.' },
+    { cle: 'tva', mot: 'Numéro de TVA', auto: 'off', facultatif: true, large: true, aide: 'Par exemple BE 0123.456.749, ou le numéro d’un autre pays de l’Union européenne. Vide pour une école ou une association sans TVA.' },
+  ] },
+  { titre: 'Adresse de facturation', champs: [
+    { cle: 'rue', mot: 'Rue et numéro', auto: 'address-line1', large: true },
+    { cle: 'codePostal', mot: 'Code postal', auto: 'postal-code', etroit: true },
+    { cle: 'ville', mot: 'Ville', auto: 'address-level2' },
+    { cle: 'pays', mot: 'Pays', auto: 'country', liste: true, large: true },
+  ] },
+  { titre: 'Contact', deux: true, champs: [
+    { cle: 'contact', mot: 'Personne de contact', auto: 'name', facultatif: true },
+    { cle: 'email', mot: 'E-mail de facturation', auto: 'email', type: 'email', mode: 'email', aide: 'La facture part à cette adresse.' },
+  ] },
+  { titre: 'Référence', champs: [
+    { cle: 'reference', mot: 'Référence ou bon de commande', auto: 'off', facultatif: true, large: true, aide: 'Si la société en donne une, elle figure sur la facture.' },
+  ] },
+];
+let fenetreFacture = null;
+let fenetreFactureRelache = null;
+
+function ouvrirFenetreFacturation(options = {}) {
+  const F = window.PinlaneFacturation;
+  if (!F) { toast('La facturation se charge encore : réessayez dans un instant.'); return; }
+  if (fenetreFacture) fermerFenetreFacture();
+  const initial = options.initial || {};
+  const valeurs = {};
+  F.CHAMPS.forEach((cle) => { valeurs[cle] = String(initial[cle] == null ? '' : initial[cle]); });
+  if (!F.paysDe(valeurs.pays)) valeurs.pays = 'BE';
+  if (valeurs.tva) valeurs.tva = F.afficherTva(valeurs.tva);
+  fenetreFacture = { ...options, valeurs, touches: new Set(), envoi: false, erreur: '', erreurs: {} };
+  rendreFenetreFacture();
+}
+
+function champFactureHtml(c, etat) {
+  const id = `faChamp-${c.cle}`;
+  const valeur = etat.valeurs[c.cle] || '';
+  const erreur = etat.touches.has(c.cle) ? (etat.erreurs[c.cle] || '') : '';
+  const decrit = [c.aide || c.cle === 'tva' ? `faAide-${c.cle}` : '', `faErr-${c.cle}`].filter(Boolean).join(' ');
+  const F = window.PinlaneFacturation;
+  const entree = c.liste
+    ? `<select id="${id}" name="${c.cle}" autocomplete="${c.auto}" aria-describedby="${decrit}" onchange="saisieFacture('${c.cle}', this.value)">${F.PAYS.map((p) => `<option value="${p.code}"${p.code === valeur ? ' selected' : ''}>${escapeHtml(p.nom)}</option>`).join('')}</select>`
+    : `<input id="${id}" name="${c.cle}" type="${c.type || 'text'}" inputmode="${c.mode || 'text'}" autocomplete="${c.auto}" maxlength="${F.LONGUEURS[c.cle] || 160}" value="${escapeHtml(valeur)}" spellcheck="false" aria-describedby="${decrit}"${c.facultatif ? '' : ' aria-required="true"'}${erreur ? ' aria-invalid="true"' : ''} oninput="saisieFacture('${c.cle}', this.value)" onblur="quitterChampFacture('${c.cle}')">`;
+  return `<div class="fa-champ${c.large ? ' is-large' : ''}${c.etroit ? ' is-etroit' : ''}${erreur ? ' is-ko' : ''}" data-fa="${c.cle}">
+      <label for="${id}">${escapeHtml(c.mot)}${c.facultatif ? ' <span class="fa-facultatif">facultatif</span>' : ''}</label>
+      ${entree}
+      ${c.aide || c.cle === 'tva' ? `<p class="fa-aide" id="faAide-${c.cle}">${escapeHtml(aideFacture(c, etat))}</p>` : ''}
+      <p class="fa-msg" id="faErr-${c.cle}"${erreur ? '' : ' hidden'}>${escapeHtml(erreur)}</p>
+    </div>`;
+}
+
+// Le numero de TVA dit tout de suite qu il est bon, ecrit comme sur la facture.
+function aideFacture(c, etat) {
+  if (c.cle !== 'tva') return c.aide || '';
+  const lu = window.PinlaneFacturation.lireTva(etat.valeurs.tva);
+  return lu.ok && !lu.vide ? `Numéro valide : ${lu.affichage}` : c.aide;
+}
+
+function rendreFenetreFacture() {
+  const etat = fenetreFacture;
+  let hote = document.getElementById('factureFenetre');
+  if (!etat) { if (hote) hote.remove(); return; }
+  if (!hote) {
+    hote = document.createElement('div');
+    hote.id = 'factureFenetre';
+    hote.className = 'fa-fond';
+    hote.addEventListener('mousedown', (e) => { if (e.target === hote && !fenetreFacture?.envoi) fermerFenetreFacture(); });
+    document.body.appendChild(hote);
+  }
+  etat.erreurs = window.PinlaneFacturation.lireFacturation(etat.valeurs).erreurs;
+  const groupes = FA_GROUPES.map((g) => `<fieldset class="fa-groupe${g.deux ? ' is-deux' : ''}"><legend class="fa-legende">${escapeHtml(g.titre)}</legend><div class="fa-grille">${g.champs.map((c) => champFactureHtml(c, etat)).join('')}</div></fieldset>`).join('');
+  hote.innerHTML = `<form class="fa-fenetre" role="dialog" aria-modal="true" aria-labelledby="faTitre" aria-describedby="faSous faNote" tabindex="-1" novalidate onsubmit="validerFenetreFacture(event)">
+      <div class="fa-tete">
+        <div class="fa-tete-t"><h3 class="fa-titre" id="faTitre">${escapeHtml(etat.titre || 'Facturer à une société')}</h3>
+          ${etat.sous ? `<p class="fa-sous" id="faSous">${escapeHtml(etat.sous)}</p>` : '<p class="fa-sous" id="faSous" hidden></p>'}</div>
+        <button type="button" class="close-btn fa-fermer" aria-label="Fermer sans rien enregistrer" onclick="fermerFenetreFacture()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+      ${etat.montant ? `<p class="fa-montant" id="faMontant">${etat.montant}</p>` : ''}
+      <p class="fa-note" id="faNote">Rien n’est encaissé : le dossier reste « À facturer » jusqu’au paiement.</p>
+      <div class="fa-corps">${groupes}</div>
+      <p class="fa-erreur" id="faErreur" role="alert"${etat.erreur ? '' : ' hidden'}>${escapeHtml(etat.erreur)}</p>
+      <div class="fa-pied">${piedFactureHtml(etat)}</div>
+    </form>`;
+  if (!fenetreFactureRelache) {
+    const premier = window.PinlaneFacturation.CHAMPS.find((cle) => cle !== 'pays' && !String(etat.valeurs[cle] || '').trim() && !(FA_GROUPES.flatMap((g) => g.champs).find((c) => c.cle === cle) || {}).facultatif) || 'societe';
+    fenetreFactureRelache = containStaffDialog(hote, '.fa-fenetre', `#faChamp-${premier}`, () => { if (!fenetreFacture?.envoi) fermerFenetreFacture(); });
+    if (window.PlMouvement && typeof window.PlMouvement.ouvrirFenetre === 'function') window.PlMouvement.ouvrirFenetre(hote, hote.querySelector('.fa-fenetre'), etat.ouvreur || null);
+  }
+}
+
+function piedFactureHtml(etat) {
+  const occupe = etat.envoi ? ' disabled aria-busy="true"' : '';
+  const retirer = etat.retirerFacture ? `<button type="button" class="rt-bouton fa-retirer" id="faRetirer"${occupe} onclick="retirerFenetreFacture()">Ne plus facturer</button>` : '';
+  return `${retirer}<span class="fa-pied-droite"><button type="button" class="rt-bouton" id="faAnnuler"${etat.envoi ? ' disabled' : ''} onclick="fermerFenetreFacture()">Annuler</button><button type="submit" class="rt-bouton est-plein" id="faValider"${occupe}>${escapeHtml(etat.envoi ? 'Enregistrement…' : (etat.principal || 'Enregistrer'))}</button></span>`;
+}
+
+// Un champ se rejuge a la frappe, sur place (le champ garde son focus) ; son message ne parait qu une fois
+// le champ quitte ou l envoi tente.
+function saisieFacture(cle, valeur) {
+  const etat = fenetreFacture;
+  if (!etat) return;
+  etat.valeurs[cle] = String(valeur == null ? '' : valeur);
+  if (cle === 'pays') etat.touches.add('codePostal');
+  peindreChampsFacture();
+}
+function quitterChampFacture(cle) {
+  const etat = fenetreFacture;
+  if (!etat) return;
+  if (String(etat.valeurs[cle] || '').trim()) etat.touches.add(cle);
+  peindreChampsFacture();
+}
+function peindreChampsFacture() {
+  const etat = fenetreFacture;
+  const hote = document.getElementById('factureFenetre');
+  if (!etat || !hote) return;
+  etat.erreurs = window.PinlaneFacturation.lireFacturation(etat.valeurs).erreurs;
+  FA_GROUPES.flatMap((g) => g.champs).forEach((c) => {
+    const bloc = hote.querySelector(`[data-fa="${c.cle}"]`);
+    if (!bloc) return;
+    const erreur = etat.touches.has(c.cle) ? (etat.erreurs[c.cle] || '') : '';
+    const msg = bloc.querySelector('.fa-msg');
+    const champ = bloc.querySelector('input, select');
+    bloc.classList.toggle('is-ko', Boolean(erreur));
+    if (msg) { msg.textContent = erreur; msg.hidden = !erreur; }
+    if (champ) { if (erreur) champ.setAttribute('aria-invalid', 'true'); else champ.removeAttribute('aria-invalid'); }
+    const aide = bloc.querySelector('.fa-aide');
+    if (aide && c.cle === 'tva') {
+      const texte = aideFacture(c, etat);
+      if (aide.textContent !== texte) aide.textContent = texte;
+      aide.classList.toggle('is-ok', /^Numéro valide/.test(texte));
+    }
+  });
+}
+
+async function validerFenetreFacture(ev) {
+  if (ev) ev.preventDefault();
+  const etat = fenetreFacture;
+  if (!etat || etat.envoi) return;
+  const hote = document.getElementById('factureFenetre');
+  // (ce qui est dans les champs a l instant, une saisie automatique comprise)
+  if (hote) hote.querySelectorAll('input, select').forEach((champ) => { etat.valeurs[champ.name] = champ.value; });
+  const lu = window.PinlaneFacturation.lireFacturation(etat.valeurs);
+  window.PinlaneFacturation.CHAMPS.forEach((cle) => etat.touches.add(cle));
+  etat.erreur = '';
+  peindreChampsFacture();
+  const bandeau = document.getElementById('faErreur');
+  if (!lu.ok) {
+    const nombre = Object.keys(lu.erreurs).length;
+    if (bandeau) { bandeau.textContent = nombre > 1 ? `${nombre} champs sont à compléter.` : 'Un champ est à compléter.'; bandeau.hidden = false; }
+    const champ = document.getElementById(`faChamp-${lu.premier}`);
+    if (champ) champ.focus();
+    return;
+  }
+  if (bandeau) bandeau.hidden = true;
+  etat.envoi = true;
+  peindrePiedFacture();
+  const retour = typeof etat.valider === 'function' ? await etat.valider(lu.facturation) : null;
+  if (fenetreFacture !== etat) return;
+  etat.envoi = false;
+  if (retour && retour.erreur) {
+    etat.erreur = retour.erreur;
+    if (retour.champ && Object.prototype.hasOwnProperty.call(etat.valeurs, retour.champ)) etat.erreurs[retour.champ] = retour.erreur;
+    peindrePiedFacture();
+    if (bandeau) { bandeau.textContent = retour.erreur; bandeau.hidden = false; }
+    return;
+  }
+  fermerFenetreFacture();
+  // (apres la fermeture : la fenetre d en dessous a rendu son focus et n est plus inerte)
+  if (typeof etat.apres === 'function') etat.apres(lu.facturation);
+}
+async function retirerFenetreFacture() {
+  const etat = fenetreFacture;
+  if (!etat || etat.envoi || typeof etat.retirerFacture !== 'function') return;
+  etat.envoi = true;
+  peindrePiedFacture();
+  const retour = await etat.retirerFacture();
+  if (fenetreFacture !== etat) return;
+  etat.envoi = false;
+  if (retour && retour.erreur) {
+    peindrePiedFacture();
+    const bandeau = document.getElementById('faErreur');
+    if (bandeau) { bandeau.textContent = retour.erreur; bandeau.hidden = false; }
+    return;
+  }
+  fermerFenetreFacture();
+}
+function peindrePiedFacture() {
+  const pied = document.querySelector('#factureFenetre .fa-pied');
+  if (pied && fenetreFacture) pied.innerHTML = piedFactureHtml(fenetreFacture);
+}
+function fermerFenetreFacture() {
+  fenetreFacture = null;
+  const relache = fenetreFactureRelache;
+  fenetreFactureRelache = null;
+  const hote = document.getElementById('factureFenetre');
+  if (hote) hote.remove();
+  if (relache) relache();
+}
+window.saisieFacture = saisieFacture;
+window.quitterChampFacture = quitterChampFacture;
+window.validerFenetreFacture = validerFenetreFacture;
+window.retirerFenetreFacture = retirerFenetreFacture;
+window.fermerFenetreFacture = fermerFenetreFacture;
+
+// Le montant que la facture portera, dit comme Modifier le dit : TVA comprise, et le hors TVA quand les
+// taux du centre se lisent.
+function montantDeFactureHtml(tvac, parts) {
+  if (!(Number(tvac) > 0) || montantsMasques()) return '';
+  const tva = tvaDuPrix(parts || [], Number(tvac), tauxTvaDuCentre());
+  return `<b>${escapeHtml(formatMoneyCentimes(tvac))}</b> TVA comprise${tva ? `, soit <b>${escapeHtml(formatMoneyCentimes(tva.htva))}</b> hors TVA` : ''}`;
+}
+
+// La demande de groupe d ou vient le dossier, si la console l a lue : sa societe et sa TVA.
+function demandeDuDossier(r) {
+  if (!r || typeof getStaffCustomRequestItems !== 'function') return null;
+  try {
+    const item = getStaffCustomRequestItems().find((x) => x && x.suivi && Number(x.suivi.reservationId) === Number(r.id));
+    const d = item ? crDemande(item) : null;
+    return item ? { organisation: (d && d.organisation) || item.company || '', tva: (d && d.vatNumber) || '' } : null;
+  } catch (e) { return null; }
+}
+
+// « Facturé » SUR UN DOSSIER (la fiche, le menu des lignes du planning) : la fenetre, puis le serveur.
+function ouvrirFacturationDuDossier(id, ev) {
+  if (ev && typeof ev.stopPropagation === 'function') ev.stopPropagation();
+  const n = Number(id);
+  const r = findStaffReservationById(n) || (state.selectedRes && Number(state.selectedRes.id) === n ? state.selectedRes : null);
+  if (!r) { toast('Réservation introuvable.'); return; }
+  if (!peutGeste('encaisser')) { toast('Votre rôle ne permet pas de choisir le moyen de paiement.'); return; }
+  const deja = factureDuDossier(r);
+  const demande = demandeDuDossier(r);
+  const quand = r.date ? new Date(`${r.date}T12:00:00`).toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' }) : '';
+  ouvrirFenetreFacturation({
+    titre: deja ? 'Facturation du dossier' : 'Facturer à une société',
+    sous: [r.name || 'Groupe', quand, r.startTime ? `à ${r.startTime}` : ''].filter(Boolean).join(' · '),
+    montant: prixDossierConnu(r) ? montantDeFactureHtml(r.price, partsTvaDuDossier(r)) : '',
+    initial: deja || { societe: demande ? demande.organisation : '', tva: demande ? demande.tva : '', contact: r.name || '', email: r.email || '', pays: 'BE' },
+    principal: deja ? 'Enregistrer' : 'Enregistrer, à facturer',
+    ouvreur: ev && ev.currentTarget ? ev.currentTarget : document.activeElement,
+    valider: (f) => ecrireFacturation(n, f),
+    ...(deja ? { retirerFacture: () => ecrireFacturation(n, null) } : {}),
+  });
+}
+async function ecrireFacturation(id, facturation) {
+  const r = findStaffReservationById(Number(id)) || state.selectedRes;
+  if (!r) return { erreur: 'Réservation introuvable.' };
+  try {
+    const payload = await apiRequest(API_ENDPOINTS.staffReservations, { method: 'PATCH', body: JSON.stringify({ id: r.id, centerId: r.centerId || r.center_id || getCurrentStaffCenterId(), baseUpdatedAt: r.updatedAt, facturation }) });
+    if (!payload || !payload.ok || !payload.reservation) throw new Error('Le serveur n’a pas confirmé. Actualisez le dossier.');
+    applyOptimisticReservation(payload.reservation, { preserveEditState: true });
+    toast(facturation ? `${r.name || 'Le groupe'} : à facturer, ${facturation.societe}` : `${r.name || 'Le groupe'} : n’est plus à facturer`);
+    return null;
+  } catch (error) {
+    const frais = error && error.payload && error.payload.reservation;
+    if (frais) applyOptimisticReservation(frais, { preserveEditState: true });
+    const message = error && error.status === 409 ? 'Le dossier a changé sur un autre poste : il est à jour, enregistrez à nouveau.' : (error && error.message) || 'La facturation n’a pas été enregistrée.';
+    return { erreur: message, champ: error && error.payload ? error.payload.champ : '' };
+  }
+}
+window.ouvrirFacturationDuDossier = ouvrirFacturationDuDossier;
+
+// Les parts du prix d un dossier enregistre, chacune avec sa sorte (pour le hors TVA de la fenetre) :
+// son programme a la carte et ses extras, comme le detail de la fiche. Sans detail, tout le prix prend le
+// taux des activites, comme dans Modifier (tvaDuPrix).
+function partsTvaDuDossier(r) {
+  const items = r && r.program && Array.isArray(r.program.items) ? r.program.items : [];
+  const parts = [];
+  if (!r || r.formuleId || !items.length) return parts;
+  items.forEach((item) => { if (item && item.priceKnown && Number(item.price) > 0) parts.push({ nom: String(item.activityId || ''), sorte: sorteTvaActivite(item.activityId), montant: Number(item.price) }); });
+  (Array.isArray(r.extras) ? r.extras : []).forEach((x) => { if (x && Number(x.price) > 0) parts.push({ ...sorteTvaExtra(x), nom: x.name || 'Extra', montant: Number(x.price) }); });
+  return parts;
+}
+
+// LE BLOC DE LA FACTURE, DANS LA CAISSE : a qui, a quelle adresse, ou elle part, et « Modifier ».
+function ficheFacture(r, droits) {
+  const f = factureDuDossier(r);
+  if (!f || r.status === 'cancelled') return '';
+  const P = window.PinlaneFacturation;
+  const id = Number(r.id);
+  const modifier = droits.encaisser ? `<button type="button" class="fz-bouton fz-facture-modifier" data-pl-focus="fiche.facture.${id}" aria-haspopup="dialog" onclick="ouvrirFacturationDuDossier(${id}, event)">Modifier</button>` : '';
+  const lignes = [
+    ['Société', P.nomEtTva(f)],
+    ['Adresse', P.adresseEnLigne(f)],
+    ['E-mail', f.email],
+    ['Contact', f.contact],
+    ['Référence', f.reference],
+  ].filter(([, v]) => v);
+  return `<div class="fz-facture" id="ficheFacture${id}">
+      <div class="fz-facture-tete"><b>${r.status === 'paid' ? 'Facture au nom de' : 'À facturer'}</b>${modifier}</div>
+      <dl class="fz-facture-l">${lignes.map(([k, v]) => `<div><dt>${escapeHtml(k)}</dt><dd>${escapeHtml(v)}</dd></div>`).join('')}</dl>
+    </div>`;
+}
+
 function prixDossierConnu(r) {
   // Masque, le prix n est pas inconnu : l ecran dit « ··· », pas « Prix sur place ».
   if (r && montantsMasques()) return true;
@@ -30084,6 +30493,7 @@ function renderGroupePrix(r, moment) {
   const moyen = getMoyenPaiementLabel(r.paymentMethod);
   const etat = paye
     ? `<small class="is-paid">Payé${moyen ? ` · ${moyen}` : ''}</small>`
+    : dossierAFacturer(r) ? '<small class="is-facture">À facturer</small>'
     : moment && moment.etat === 'closing'
       ? '<small class="is-due">À encaisser</small>'
       : '';
@@ -30112,8 +30522,9 @@ function renderGroupeActions(r, moment) {
     if (peutGeste('etat')) {
       boutons.push(`<button type="button" class="gc-btn ${aValider ? '' : 'is-primary'}" onclick="setReservationStatusDirect(${r.id}, 'arrived', event)">Arrivé</button>`);
     }
-  } else if (peutGeste('encaisser')) {
-    // Le groupe est la, ou il a fini : la carte attend l encaissement.
+  } else if (peutGeste('encaisser') && !dossierAFacturer(r)) {
+    // Le groupe est la, ou il a fini : la carte attend l encaissement (sauf un dossier « Facturé » :
+    // rien ne s encaisse au comptoir, son prix le dit).
     const montant = prixDossierConnu(r) ? ` ${formatMoneyCentimes(r.price)}` : '';
     boutons.push(`<span class="gc-pay" role="group" aria-label="Encaisser${escapeHtml(montant)}">
       <span class="gc-pay-label">Encaisser${escapeHtml(montant)}</span>
@@ -30280,6 +30691,8 @@ async function basculerAbsence(id, absent, ev) {
 }
 
 function encaisserReservation(id, moyen, ev) {
+  // (« Facturé » ne paie rien : il ouvre la fenetre de facturation, 2026-11-24)
+  if (moyen === MOYEN_FACTURE) { ouvrirFacturationDuDossier(id, ev); return; }
   setReservationStatusDirect(id, 'paid', ev, { paymentMethod: moyen });
 }
 
@@ -31673,6 +32086,8 @@ function ficheParcours(r, moment, droits) {
 function ficheCaisse(r, moment, droits) {
   const annule = r.status === 'cancelled';
   const paid = r.status === 'paid';
+  // (« Facturé », 2026-11-24 : rien a encaisser au comptoir, la caisse le dit, dossierAFacturer)
+  const aFacturer = dossierAFacturer(r);
   const moyen = getMoyenPaiementLabel(r.paymentMethod);
   const connu = prixDossierConnu(r);
   const addition = additionDuGroupe(r);
@@ -31684,25 +32099,32 @@ function ficheCaisse(r, moment, droits) {
     ? (connu
       ? `${mot('Encaissé')} ${montant(formatMoneyCentimes(r.amountPaid != null ? r.amountPaid : r.price))}${remise || moyenEcrit ? ` <span class="fz-caisse-suite">${remise ? `sur ${escapeHtml(formatMoneyCentimes(r.price))}${r.discountReason ? `, ${escapeHtml(r.discountReason)}` : ''}` : ''}${moyenEcrit}</span>` : ''}`
       : `${montant('Payé', true)}${moyenEcrit ? ` <span class="fz-caisse-suite">${moyenEcrit}</span>` : ''}`)
-    : (connu ? `${mot('À encaisser')} ${montant(formatMoneyCentimes(r.price))}` : montant('Prix au comptoir', true));
+    : aFacturer ? `${mot('À facturer')} ${montant(connu ? formatMoneyCentimes(r.price) : 'Prix à voir', !connu)}`
+      : (connu ? `${mot('À encaisser')} ${montant(formatMoneyCentimes(r.price))}` : montant('Prix au comptoir', true));
   // CE QUI SE REGLE EN PLUS (2026-11-21) : une ligne « à payer » n a pas de prix, le montant ne la
   // compte pas. Elle se dit juste sous lui, avant les boutons : personne n encaisse sans la voir.
   const aPayer = annule || paid ? [] : (Array.isArray(r.extras) ? r.extras : []).filter(e => e && e.aPayer === true);
   const enPlus = aPayer.length
     ? `<p class="fz-caisse-apayer" id="ficheAPayer${Number(r.id)}">+ ${escapeHtml(aPayer.map(e => e.name || 'Extra').join(', '))} <b class="pl-a-payer">À payer</b></p>`
     : '';
-  const suivant = ficheGesteSuivant(r, moment) === 'payer';
+  const suivant = ficheGesteSuivant(r, moment) === 'payer' && !aFacturer;
   const boutons = droits.encaisser && !annule
     ? GROUPE_MOYENS.map(m => {
       const actif = paid && moyen === m.mot;
       return `<button type="button" class="res-status-btn paid${suivant ? ' is-suivant' : ''} ${actif ? 'active paid' : ''}" aria-pressed="${actif}" onclick="encaisserReservation(${r.id}, '${m.valeur}', event)">Payé · ${m.mot}</button>`;
     }).join('')
     : '';
-  return `<section class="info-block gc-bill fz-carte fz-caisse${paid ? ' is-paye' : ''}" aria-label="Caisse">
+  // (le troisieme moyen ouvre la fenetre de facturation : il ne paie rien, ouvrirFacturationDuDossier)
+  const facturer = droits.encaisser && !annule && !paid
+    ? `<div class="fz-facturer-r"><button type="button" class="fz-facturer" aria-pressed="${aFacturer}" aria-haspopup="dialog" data-pl-focus="fiche.facturer.${Number(r.id)}" onclick="ouvrirFacturationDuDossier(${r.id}, event)">${MOYEN_FACTURE}</button></div>`
+    : '';
+  return `<section class="info-block gc-bill fz-carte fz-caisse${paid ? ' is-paye' : ''}${aFacturer ? ' is-facture' : ''}" aria-label="Caisse">
       ${argent ? `<p class="pos-act-money ${paid ? 'is-paid' : ''}">${argent}</p>` : '<h4 class="fx-titre">Prix</h4>'}
       ${enPlus}
       ${addition.unite && !annule ? `<p class="gc-bill-unit">${addition.unite}</p>` : ''}
       ${boutons ? `<div class="res-status-row gc-sheet-states fz-payer">${boutons}</div>` : ''}
+      ${facturer}
+      ${ficheFacture(r, droits)}
       ${paid ? `<div class="fz-caisse-apres">${droits.statut ? `<button type="button" class="fz-bouton fz-desencaisser" data-pl-focus="fiche.desencaisser.${Number(r.id)}" onclick="setReservationStatusDirect(${r.id}, 'arrived', event)">Annuler l’encaissement</button>` : ''}${renderGroupeEncaisseAbsence(r)}</div>` : ''}
       ${addition.lignes.length || addition.etat.ajuste ? `<dl class="gc-bill-lines">${addition.lignes.map(l => `<div${l.aPayer ? ' class="is-a-payer"' : ''}><dt>${escapeHtml(l.nom)}${l.detail ? ` <small>${escapeHtml(l.detail)}</small>` : ''}</dt><dd${l.aPayer ? ' class="pl-a-payer"' : ''}>${escapeHtml(l.montant || '')}</dd></div>`).join('')}
         ${addition.etat.ajuste ? `<div class="is-adjust"><dt>Prix ajusté <small>tarif ${escapeHtml(formatMoneyCentimes(addition.etat.reference))}</small></dt><dd>${addition.etat.ecart < 0 ? '−' : '+'}${escapeHtml(formatMoneyCentimes(Math.abs(addition.etat.ecart)))}</dd></div>` : ''}
@@ -31884,6 +32306,7 @@ function renderPosDetails(r) {
   return `<div class="${posSheetClass()} gc-sheet fx">
     ${ficheRetardOuvert(r, droits)}
     ${bandeauBloquant || ficheBandeauRetard(r, moment)}
+    ${ficheStatut(r)}
     <div class="fx-colonnes">
       <div class="fx-principal">
         ${renderGroupeNotes(r)}
@@ -35237,7 +35660,12 @@ function composantsDeLaFormuleEdition() {
   const formule = applyReservationFormulaChoice(carte, r);
   const comprises = activitesDeLaFormuleEdition(formule);
   const items = getEditProgramItems().filter((item) => comprises.has(String(item.activityId || '')));
-  const aLaCarte = items.length ? estimerPrixProgramme(items, e.pax, e.date || r.date, e.startTime || r.startTime) : { lignes: [] };
+  return composantsDeFormule(formule, items, e.pax, e.date || r.date, e.startTime || r.startTime);
+}
+
+// (la meme repartition pour Reserver, rvPartsTva : la formule, ses activites a la carte pour ce groupe, ses boissons)
+function composantsDeFormule(formule, items, pax, date, heure) {
+  const aLaCarte = items.length ? estimerPrixProgramme(items, pax, date, heure) : { lignes: [] };
   const composants = aLaCarte.lignes.map((l) => ({ nom: l.nom, sorte: l.sorte || 'activities', prix: l.montant == null ? null : Number(l.montant) }));
   const { centre, articles } = typeof catalogueSurMesureConsole !== 'undefined' ? catalogueSurMesureConsole : {};
   const boissons = centre === getCurrentStaffCenterId() && Array.isArray(articles) ? articles.filter((a) => a && a.categorie === 'boissons' && a.actif !== false) : [];
@@ -38797,6 +39225,13 @@ function createQuickBookState(prefill = {}) {
     // (rvCreerEtEncaisser). Le champ dormait depuis le premier commit, ecrit
     // ici et lu nulle part : la fenetre n a jamais su encaisser.
     payNow: false,
+    // « Facturé » (2026-11-24, rvFacturer) : la societe et la TVA qu une demande de groupe a donnees, la
+    // facturation tapee dans la fenetre, et celle qui part avec la creation. `prixVu` : TVAC ou HTVA choisi
+    // au ticket ; vide, le reglage du centre decide (rvPrixHorsTva).
+    factureConnue: prefill.facturation && typeof prefill.facturation === 'object' ? { ...prefill.facturation } : null,
+    facturationSaisie: null,
+    factureAEnvoyer: null,
+    prixVu: null,
     // L HEURE QUI TIENT (rvProposerHeure) : l heure vient de la fenetre, pas
     // d un choix. heureVoulue : celle que le tableau a demandee.
     heureProposee: false,
@@ -39497,14 +39932,17 @@ function majQuickPrixAffiche() {
   const amt = document.getElementById('rvTotalPied');
   const custom = getQuickBookCustomPrice();
   const total = custom != null ? custom : rvTotalReference();
-  if (amt) amt.textContent = formatMontant(rvResas.length > 1 ? rvTotalDuLot() : total);
+  // (en HTVA, ce qui se lit est hors TVA, rvMontantVu ; le prix garde reste TVA comprise)
+  const lot = rvResas.length > 1;
+  const vu = !lot && rvPrixHorsTva() ? rvMontantVu(total) : total;
+  if (amt) amt.textContent = formatMontant(lot ? rvTotalDuLot() : vu);
   const joueurs = Math.max(1, Number(quickBookState.pax) || 1);
   const parPersonne = document.getElementById('rvPrixParPersonne');
-  if (parPersonne) parPersonne.textContent = formatMoneyCentimes(Math.round((total / joueurs) * 100) / 100);
+  if (parPersonne) parPersonne.textContent = formatMoneyCentimes(Math.round((vu / joueurs) * 100) / 100);
   const champTotal = document.getElementById('qbCustomPrice');
   const champPersonne = document.getElementById('qbCustomPricePerPerson');
-  if (champTotal && document.activeElement !== champTotal && custom != null) champTotal.value = String(custom);
-  if (champPersonne && document.activeElement !== champPersonne) champPersonne.value = String(Math.round((total / joueurs) * 100) / 100);
+  if (champTotal && document.activeElement !== champTotal && custom != null) champTotal.value = String(vu === total ? custom : rvMontantVu(custom));
+  if (champPersonne && document.activeElement !== champPersonne) champPersonne.value = String(Math.round((vu / joueurs) * 100) / 100);
   const gros = document.getElementById('rvPrixGros');
   if (gros) {
     const reference = rvTotalReference();
@@ -42376,11 +42814,17 @@ function rvPiedHtml() {
   const occupe = s.submitting ? ' aria-disabled="true" aria-busy="true"' : '';
   const payable = rvPeutEncaisserEnCreant() && !refuse && !chevauche && !attente && !prixBloque;
   const payer = GROUPE_MOYENS.map((m, i) => `<button type="button" class="rs-payer rv-creer-paye" id="rvCreerPaye${i}" data-moyen="${escapeHtml(m.valeur)}" aria-label="Créer et encaisser, ${escapeHtml(m.mot)}"${occupe}${payable ? '' : ' disabled'} onclick="rvCreerEtEncaisser(this.dataset.moyen)">Payé ${escapeHtml(rvMinuscule(m.mot))}</button>`).join('');
+  // (le troisieme moyen, 2026-11-24 : il ouvre la fenetre de facturation, puis cree le dossier « À facturer »)
+  const facturable = rvPeutFacturerEnCreant() && !refuse && !chevauche && !attente && !prixBloque;
+  const facturer = `<button type="button" class="rs-facturer" id="rvFacturer" aria-haspopup="dialog" aria-label="Créer à facturer à une société"${occupe}${facturable ? '' : ' disabled'} onclick="rvFacturer()">${MOYEN_FACTURE}</button>`;
   const { total, complet } = lot ? { total: rvTotalDuLot(), complet: true } : rsTotalTicket();
   const joueurs = Math.max(1, Number(s.pax) || 1);
   const sansPrix = !attente && !Number(total) && !complet;
-  const montant = attente ? '' : sansPrix ? 'sur place' : rsEuros(total);
-  const suite = attente ? '' : !complet && !sansPrix ? 'le reste sur place' : !lot && Number(total) > 0 ? `${formatMoneyCentimes(Math.round((total / joueurs) * 100) / 100)} par joueur${rsPrixInegal() ? ' en moyenne' : ''}` : '';
+  // (en HTVA, le total et le prix par joueur se lisent hors TVA, rvMontantVu ; le prix enregistre reste TVA comprise)
+  const horsTva = !lot && !attente && !sansPrix && rvPrixHorsTva();
+  const vu = horsTva ? rvMontantVu(total) : total;
+  const montant = attente ? '' : sansPrix ? 'sur place' : rsEuros(vu);
+  const suite = attente ? '' : !complet && !sansPrix ? 'le reste sur place' : !lot && Number(total) > 0 ? `${formatMoneyCentimes(Math.round((vu / joueurs) * 100) / 100)} par joueur${horsTva ? ' HTVA' : ''}${rsPrixInegal() ? ' en moyenne' : ''}${horsTva ? `, ${formatMoneyCentimes(total)} TVAC` : ''}` : '';
   // (une ligne « à payer » n est pas dans ce total : il le dit, jamais un « 0 € » muet)
   const enPlus = !attente && !lot && rsFmPrix() == null && quickExtrasLignes().some((l) => l.aPayer) ? '<small class="pl-a-payer" id="rsTotalAPayer">+ à payer</small>' : '';
   // Pris quand meme : le lien dit l heure qu il reprend (« Prendre 22:00 à la place »), et la
@@ -42395,9 +42839,10 @@ function rvPiedHtml() {
   const jour = rsJourMot(s.date);
   const resume = `${b.faits.combien ? rvPluriel(joueurs, 'joueur') : 'Joueurs à choisir'}, ${jour.charAt(0).toLowerCase()}${jour.slice(1)}`;
   const ditRefus = chevauche || (refuse && !s.forcer && !lot ? rsPhrase((rvRefusDuPlan() || {}).court || '') : '');
-  return `<button type="button" class="rs-resume" id="rsResume" aria-expanded="${Boolean(b.ticket)}" aria-label="${escapeHtml(`${b.ticket ? 'Réduire' : 'Ouvrir'} le ticket, ${ditRefus || resume}, ${montant}`)}" onclick="rsBasculerTicket()"><span${ditRefus ? ' class="is-ko"' : ''}>${escapeHtml(ditRefus || resume)}</span><b>${escapeHtml(montant || 'Ticket')}</b></button>
-    <button type="button" class="rs-tk-tot${rsLigneIci() === 'total' ? ' is-ici' : ''}${sansPrix ? ' is-inconnu' : ''}" id="rsL-total" onclick="rsOuvrir('total')"><span>${lot ? 'Total du lot' : 'Total'}${suite ? `<small>${escapeHtml(suite)}</small>` : ''}${enPlus}</span><b id="rvTotalPied">${escapeHtml(montant)}</b></button>
-    <div class="rs-tk-pay">${payer}</div>
+  return `<button type="button" class="rs-resume" id="rsResume" aria-expanded="${Boolean(b.ticket)}" aria-label="${escapeHtml(`${b.ticket ? 'Réduire' : 'Ouvrir'} le ticket, ${ditRefus || resume}, ${montant}`)}" onclick="rsBasculerTicket()"><span${ditRefus ? ' class="is-ko"' : ''}>${escapeHtml(ditRefus || resume)}</span><b>${escapeHtml(montant ? `${montant}${horsTva ? ' HTVA' : ''}` : 'Ticket')}</b></button>
+    ${lot || attente || !tauxTvaDuCentre() ? '' : `<div class="rs-tk-tva"><span class="rs-tk-tva-l" aria-hidden="true">Prix</span>${rvChoixTvaHtml()}</div>`}
+    <button type="button" class="rs-tk-tot${rsLigneIci() === 'total' ? ' is-ici' : ''}${sansPrix ? ' is-inconnu' : ''}" id="rsL-total" onclick="rsOuvrir('total')"><span>${lot ? 'Total du lot' : horsTva ? 'Total HTVA' : 'Total'}${suite ? `<small>${escapeHtml(suite)}</small>` : ''}${enPlus}</span><b id="rvTotalPied">${escapeHtml(montant)}</b></button>
+    <div class="rs-tk-pay">${payer}${facturer}</div>
     <button type="button" class="rs-tk-creer${bloque || attente ? ' is-bloque' : ''}" id="rvCreer" data-pret="${pret ? '1' : '0'}"${proche ? ` data-proche="${proche}"` : ''}${occupe} onclick="rsCreer()">${escapeHtml(libelle)}${entree ? '<kbd>Entrée</kbd>' : ''}</button>
     <div class="rs-tk-liens">${(plan && plan.fermeture) || chevauche ? '' : forcer}<button type="button" class="rs-lien" id="rvEncore" onclick="rsAutreResa()">+ Une autre réservation</button></div>`;
 }
@@ -42440,6 +42885,133 @@ function rvCreerEtEncaisser(moyen) {
   s.payNow = moyen;
   return saveQuickBook();
 }
+
+// LE PRIX DE RESERVER SE LIT TVAC OU HTVA (2026-11-24, Ansar : « pour le tva htva y a pas quand on fait une
+// resa »). Le code de Modifier : les taux du centre (tauxTvaDuCentre), la TVA par sorte (tvaDuPrix), le reglage
+// « Prix hors TVA à l’ouverture » (reglageHtvaDuCentre). Le prix enregistre reste TVA comprise ; en HTVA, le
+// total et le prix par joueur se lisent et se tapent hors TVA, et ce qui se tape repart TVA comprise, au
+// melange de taux du ticket. Un groupe, pour le reglage : un team building, un grand groupe, et une societe
+// qui paie sur facture.
+function rvHtvaDuReglage(s = quickBookState) {
+  if (!s) return false;
+  const reglage = reglageHtvaDuCentre();
+  if (reglage === 'toutes') return true;
+  if (reglage !== 'groupes') return false;
+  if (dossierDeGroupePourLaTva({ occasion: s.occasion })) return true;
+  const garde = quickBookState;
+  try { quickBookState = s; if (typeof rvGrandGroupe === 'function' && rvGrandGroupe()) return true; } catch (e) { /* pas encore de plan */ } finally { quickBookState = garde; }
+  return Boolean(s.facturationSaisie || (s.factureConnue && s.factureConnue.societe));
+}
+function rvPrixHorsTva(s = quickBookState) {
+  if (!s || !tauxTvaDuCentre()) return false;
+  return s.prixVu ? s.prixVu === 'htva' : rvHtvaDuReglage(s);
+}
+function rvBasculerTva(mode) {
+  const s = quickBookState;
+  if (!s) return;
+  s.prixVu = mode === 'htva' && tauxTvaDuCentre() ? 'htva' : 'tvac';
+  rsGeste(() => {});
+}
+
+// Les parts du ticket, chacune a sa sorte, comme le detail de Modifier (partsTvaEdition) : la formule eclatee
+// en ses composants a la carte (composantsDeFormule), ce qu on lui ajoute, chaque activite a son prix, chaque
+// extra a la sorte de sa categorie.
+function rvPartsTva() {
+  const s = quickBookState;
+  if (!s) return [];
+  const parts = [];
+  const f = rvFormule();
+  const joueurs = Math.max(1, Number(s.pax) || 1);
+  const extras = quickExtrasLignes();
+  const sommeExtras = extras.reduce((t, x) => t + (Number(x.price) || 0), 0);
+  if (f) {
+    const ajouts = rvAjoutsALaFormule();
+    const enPlus = rvEnPlus();
+    const montantEnPlus = enPlus.length ? rvMontantDesEnPlus().montant : 0;
+    const prixFormule = ajouts ? ajouts.prixFormule : rvTotalReference() - sommeExtras - montantEnPlus;
+    const items = rvActivites().map((id) => ligneProgrammeQuick(id));
+    parts.push(...repartirFormule(rvNomFormule(f), prixFormule, composantsDeFormule(f, items, joueurs, s.date, s.startTime)));
+    (ajouts ? ajouts.ajoutees : []).forEach(({ id, montant }) => { if (montant != null) parts.push({ nom: rvNomActivite(id), sorte: sorteTvaActivite(id), montant: Number(montant) || 0 }); });
+    enPlus.forEach((x) => { const montant = rvPrixEnPlus(x); if (montant != null) parts.push({ nom: rvNomEnPlus(x), sorte: sorteTvaActivite(x.id || x.activityId), montant: Number(montant) || 0 }); });
+  } else {
+    const plan = rvPlanCourant();
+    rvActivites().forEach((id) => {
+      const ligne = plan && Array.isArray(plan.lignesPrix) ? plan.lignesPrix.find((l) => l && l.activite === id) : null;
+      const montant = ligne ? ligne.prix : rsMontantLigne(id);
+      if (montant != null) parts.push({ nom: rvNomActivite(id), sorte: sorteTvaActivite(id), montant: Number(montant) || 0 });
+    });
+  }
+  extras.forEach((x) => parts.push({ ...sorteTvaExtra(x), nom: x.name || 'Extra', aPayer: Boolean(x.aPayer), montant: x.aPayer ? 0 : Number(x.price) || 0 }));
+  return parts;
+}
+function rvTvaDuTicket(total) {
+  return tvaDuPrix(rvPartsTva(), Number(total) || 0, tauxTvaDuCentre());
+}
+// Le montant du ticket tel qu il se lit : hors TVA en HTVA, sinon tel quel.
+function rvMontantVu(total) {
+  if (!rvPrixHorsTva()) return Number(total) || 0;
+  const tva = rvTvaDuTicket(total);
+  return tva ? tva.htva : Number(total) || 0;
+}
+// Un montant tape hors TVA, ramene au TVA compris : c est lui qui s enregistre (tvacDuHorsTva, Modifier).
+function rvTvacDuTape(valeur) {
+  const brut = String(valeur ?? '').trim().replace(',', '.');
+  if (brut === '' || !rvPrixHorsTva()) return String(valeur ?? '');
+  const n = Number(brut);
+  const tva = rvTvaDuTicket(rvTotalReference() || 1);
+  if (!Number.isFinite(n) || n < 0 || !tva) return String(valeur ?? '');
+  return String(Math.round(n * tva.facteur * 100) / 100);
+}
+// Les memes boutons et les memes mots que Modifier (choixTvaEditionHtml).
+function rvChoixTvaHtml() {
+  const lus = Boolean(tauxTvaDuCentre());
+  const vu = rvPrixHorsTva() ? 'htva' : 'tvac';
+  return `<div class="rs-seg rs-tva" role="group" aria-label="Prix TVA comprise ou hors TVA">${[['tvac', 'TVAC', 'TVA comprise'], ['htva', 'HTVA', 'hors TVA']].map(([mode, mot, dit]) => `<button type="button" class="${vu === mode ? 'is-on' : ''}" id="rvTva-${mode}" data-tva="${mode}" aria-pressed="${vu === mode}" aria-label="Prix ${dit}"${mode === 'htva' && !lus ? ' disabled title="Les taux de TVA du centre ne sont pas encore lus."' : ''} onclick="rvBasculerTva('${mode}')">${mot}</button>`).join('')}</div>`;
+}
+// « 138,14 € HTVA = 156 € TVAC », sous les champs du total, en HTVA.
+function rvLigneTvaHtml(total) {
+  if (!rvPrixHorsTva()) return '';
+  const tva = rvTvaDuTicket(total);
+  return tva ? `<p class="rs-prix-tva" id="rsPrixTva">${escapeHtml(ligneTvaEditionTexte(tva))}</p>` : '';
+}
+
+// « FACTURÉ » A LA CREATION (2026-11-24) : le meme geste que « Payé carte », une fenetre de plus. Il ne
+// demande pas que le groupe vienne aujourd hui (une societe reserve souvent a l avance) ; le reste suit la
+// regle de « Payé » : un seul dossier, un plan qui tient, un prix connu, le droit d encaisser.
+function rvPeutFacturerEnCreant() {
+  const s = quickBookState;
+  if (!s || rvResas.length > 1 || s.forcer || rvTicketVide()) return false;
+  if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('payments.markPaid')) return false;
+  const plan = rvPlanCourant();
+  if (!plan || !plan.disponible) return false;
+  if (getQuickBookCustomPrice() != null) return true;
+  if (Array.isArray(plan.lignesPrix) && plan.lignesPrix.some((ligne) => ligne && ligne.prix == null)) return false;
+  return Number(rvTotalReference()) > 0;
+}
+function rvFacturer() {
+  const s = quickBookState;
+  if (!s || s.submitting || !rvPeutFacturerEnCreant()) return;
+  if (!rvContactPret(s)) { rsVersLeTelephone(); return; }
+  const { total } = rsTotalTicket();
+  const connue = s.factureConnue || {};
+  const quand = rsJourMot(s.date);
+  ouvrirFenetreFacturation({
+    titre: 'Facturer à une société',
+    sous: [String(s.name || '').trim() || 'Nouvelle réservation', `${quand.charAt(0).toLowerCase()}${quand.slice(1)}`, s.startTime ? `à ${s.startTime}` : ''].filter(Boolean).join(' · '),
+    montant: montantDeFactureHtml(total, rvPartsTva()),
+    initial: s.facturationSaisie || { societe: connue.societe || '', tva: connue.tva || '', contact: String(s.name || '').trim(), email: rvEmailNettoye(s.email || ''), pays: 'BE' },
+    principal: 'Créer, à facturer',
+    ouvreur: document.getElementById('rvFacturer'),
+    valider: (f) => { s.facturationSaisie = f; return null; },
+    apres: (f) => {
+      if (quickBookState !== s) return;
+      s.factureAEnvoyer = f;
+      saveQuickBook();
+    },
+  });
+}
+window.rvFacturer = rvFacturer;
+window.rvBasculerTva = rvBasculerTva;
 
 function rvTotalDuLot() {
   const garde = quickBookState;
@@ -48473,15 +49045,21 @@ function rsTotalHtml() {
   const custom = getQuickBookCustomPrice();
   const joueurs = Math.max(1, Number(s.pax) || 1);
   const { total } = rsTotalTicket();
-  const parPersonne = Math.round((total / joueurs) * 100) / 100;
+  // (TVAC ou HTVA, 2026-11-24 : en HTVA, les champs disent et prennent le hors TVA, rvTvacDuTape)
+  const horsTva = rvPrixHorsTva();
+  const vu = horsTva ? rvMontantVu(total) : total;
+  const parPersonne = Math.round((vu / joueurs) * 100) / 100;
+  const saisi = rsFmActive() ? rsFmPrix() : (String(s.customPrice ?? '').trim() === '' ? null : getQuickBookCustomPrice());
+  const valeurTotal = horsTva ? (saisi == null ? '' : String(rvMontantVu(saisi))) : String(rsFmActive() ? (rsFmPrix() ?? '') : (s.customPrice ?? ''));
   // Le niveau prix decide seul, comme jugerPrixDeCreation au serveur : un role qui
   // cree sans modifier peut recevoir un niveau de remise.
   const peut = rsNiveau('prix') !== 'non';
   const prix = peut ? `<div class="rs-prix">
       <div class="rs-qui is-deux">
-        <label class="rs-champ"><span>Total</span><input id="qbCustomPrice" type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(String(rsFmActive() ? (rsFmPrix() ?? '') : (s.customPrice ?? '')))}" placeholder="${escapeHtml(String(reference))}" aria-label="Prix arrangé en ${nomsMonnaie()}" oninput="onQuickCustomPriceInput(this.value); rsMajTicket()"></label>
-        <label class="rs-champ"><span>Par joueur</span><input id="qbCustomPricePerPerson" type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(String(parPersonne))}" aria-label="Prix par joueur en ${nomsMonnaie()}" oninput="onQuickCustomPricePerPersonInput(this.value); rsMajTicket()"></label>
+        <label class="rs-champ"><span>Total${horsTva ? ' HTVA' : ''}</span><input id="qbCustomPrice" type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(valeurTotal)}" placeholder="${escapeHtml(String(horsTva ? rvMontantVu(reference) : reference))}" aria-label="Prix arrangé en ${nomsMonnaie()}${horsTva ? ', hors TVA' : ''}" oninput="onQuickCustomPriceInput(rvTvacDuTape(this.value)); rsMajTicket()"></label>
+        <label class="rs-champ"><span>Par joueur${horsTva ? ' HTVA' : ''}</span><input id="qbCustomPricePerPerson" type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(String(parPersonne))}" aria-label="Prix par joueur en ${nomsMonnaie()}${horsTva ? ', hors TVA' : ''}" oninput="onQuickCustomPricePerPersonInput(rvTvacDuTape(this.value)); rsMajTicket()"></label>
       </div>
+      ${rvLigneTvaHtml(total)}
       ${rsPlafondHtml()}
     </div>
     <div class="rs-rang is-raison"><span class="rs-lbl">Raison</span><div class="rs-raisons" role="group" aria-label="Raison du prix">${rvRaisonsPrix().map((r, i) => rsPetite(r, s.prixRaison === r, 'rsRaison(this.dataset.raison)', `id="rsRaison-${i}" data-raison="${escapeHtml(r)}"`)).join('')}</div></div>
@@ -48489,7 +49067,7 @@ function rsTotalHtml() {
   const droite = custom != null ? '<button type="button" class="rs-discret" id="rsPrixCatalogue" onclick="rsPrixCatalogue()">Prix catalogue</button>' : '';
   return `${rsRetourHtml(droite)}
     <section class="rs-seance is-page is-total" aria-labelledby="rsQ">
-      <div class="rs-s-t"><div class="rs-s-n"><h2 class="rs-q" id="rsQ" tabindex="-1">Total</h2><small>${escapeHtml(`${formatMoneyCentimes(parPersonne)} par joueur${rsPrixInegal() ? ' en moyenne' : ''}`)}</small></div><b class="rs-total-g">${escapeHtml(rsEuros(total))}</b></div>
+      <div class="rs-s-t"><div class="rs-s-n"><h2 class="rs-q" id="rsQ" tabindex="-1">Total${horsTva ? ' HTVA' : ''}</h2><small>${escapeHtml(`${formatMoneyCentimes(parPersonne)} par joueur${horsTva ? ' HTVA' : ''}${rsPrixInegal() ? ' en moyenne' : ''}`)}</small></div>${tauxTvaDuCentre() ? rvChoixTvaHtml() : ''}<b class="rs-total-g">${escapeHtml(rsEuros(vu))}</b></div>
       ${rsRecuHtml()}
       ${prix}
     </section>`;
@@ -50119,6 +50697,9 @@ async function saveQuickBook() {
   // « Créer » tout court n encaisse rien.
   const moyen = etat.payNow || '';
   etat.payNow = false;
+  // (« Facturé » : la facturation de la fenetre part avec CET envoi seulement, rvFacturer)
+  const facturation = etat.factureAEnvoyer || null;
+  etat.factureAEnvoyer = null;
   // Le lot affiche au moment du clic : la reponse ne touche la fenetre que si
   // elle le montre encore (openQuickBook et closeQuickBook en posent un autre).
   const lotSauve = rvResas;
@@ -50188,11 +50769,11 @@ async function saveQuickBook() {
       ? await rvCreerLeLot()
       : await apiRequest(API_ENDPOINTS.staffReservations, {
         method: 'POST',
-        body: JSON.stringify(buildReservationApiPayload(construit.reservation, {
+        body: JSON.stringify({ ...buildReservationApiPayload(construit.reservation, {
           channel: 'staff',
           laneCount: construit.requiredCount,
           requiresLanes: construit.needsLanes
-        }))
+        }), ...(facturation ? { facturation } : {}) })
       });
     // Un lot rend chaque dossier cree avec son rang et son sort ({ index,
     // reservation, aPlacer, conflits }) ; une creation seule, le dossier.
@@ -50234,7 +50815,8 @@ async function saveQuickBook() {
     const message = creees.length > 1
       ? `${creees.length} réservations créées${aPlacer ? `, dont ${aPlacer} à placer` : ''}`
       : aPlacer ? 'Réservation créée à placer : le conflit est écrit dans sa note'
-        : creees[0] && creees[0].status === 'arrived' ? 'Réservation créée · Arrivé' : 'Réservation créée';
+        : creees[0] && creees[0].status === 'arrived' ? 'Réservation créée · Arrivé'
+          : facturation ? `Réservation créée · à facturer, ${facturation.societe}` : 'Réservation créée';
     // « Créer · Carte » : le dossier existe, l encaissement suit le chemin de la
     // fiche (encaisserReservation) : son droit, son journal et son toast « Annuler ».
     // S il echoue, il le dit, et le groupe reste cree et arrive. Paye veut dire

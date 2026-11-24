@@ -24266,3 +24266,97 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
   #staffEmailsPage .em-shell .em-ap .em-galerie-vignette.em-ap-style-vignette { width: 96px; height: 72px; }
   #staffEmailsPage .em-shell .em-ap .em-ap-style-vignette .em-galerie-cadre { transform: scale(0.15); }
 }
+
+/* « FACTURÉ » ET LE PRIX TVAC OU HTVA A RESERVER (2026-11-24). Le ticket : Payé carte, Payé espèces et
+   Facturé sur une rangee de trois, au-dessus de « Créer » ; « Prix TVAC | HTVA » juste au-dessus du total. */
+.qb-modal.rv.rs .rs-tk-pay:has(.rs-facturer) { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.qb-modal.rv.rs .rs-tk-pay:has(.rs-facturer) .rs-payer, .qb-modal.rv.rs .rs-facturer { padding: 0 6px; font-size: 13.5px; }
+.qb-modal.rv.rs .rs-facturer { min-width: 0; height: 44px; border: 1px solid var(--rs-ligne-forte); border-radius: 10px; background: var(--surface); font-weight: 550; line-height: 1; color: var(--text); white-space: nowrap; transition: transform var(--rs-duree) var(--rs-sortie); }
+.qb-modal.rv.rs .rs-facturer:disabled { background: transparent; color: var(--faint); cursor: default; }
+.qb-modal.rv.rs .rs-facturer:active:not(:disabled) { transform: scale(.97); }
+@media (hover: hover) and (pointer: fine) { .qb-modal.rv.rs .rs-facturer:hover:not(:disabled) { background: var(--rs-touche); } }
+.qb-modal.rv.rs .rs-tk-tva { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 2px; }
+.qb-modal.rv.rs .rs-tk-tva-l { font-size: 13px; color: var(--muted); }
+.qb-modal.rv.rs .rs-seg.rs-tva button { height: 28px; padding: 0 10px; font-size: 13px; }
+.qb-modal.rv.rs .rs-seg.rs-tva button:disabled { opacity: .5; cursor: default; }
+.qb-modal.rv.rs .rs-s-t > .rs-seg.rs-tva { margin-left: auto; }
+.qb-modal.rv.rs .rs-prix-tva { margin: 6px 0 0; font-size: 13px; font-variant-numeric: tabular-nums; color: var(--muted); }
+@media (pointer: coarse) { .qb-modal.rv.rs .rs-seg.rs-tva button { height: 40px; } }
+@media (max-width: 900px) {
+  .qb-modal.rv.rs .rs-tk-tva { display: none; }
+  .qb-modal.rv.rs.is-ticket .rs-tk-tva { display: flex; }
+  .qb-modal.rv.rs .rs-s-t > .rs-seg.rs-tva { flex: none; display: inline-flex; margin-left: 0; }
+}
+
+/* LA FICHE : le statut du dossier en une rangee (le statut enfonce, bleu plein), « Facturé » dans la caisse,
+   et le bloc de la facture. */
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-statut { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 8px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-statut-t { font-size: 13px; font-weight: 650; color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-statut-b { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 12px; border: 1px solid var(--console-selected); border-radius: 8px; background: var(--console-selected); color: var(--console-selected-text, #fff); font: 650 14px/1 var(--font-ui); white-space: nowrap; cursor: pointer; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-statut-b:hover { filter: brightness(0.93); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-statut-b:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 2px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-statut-aide { font-size: 13px; color: var(--muted); }
+@media (pointer: coarse) { body:is(.staff-mode, .admin-mode) .fx-modal .fz-statut-b { min-height: 44px; } }
+#posOverlay .staff-action-popover button.is-actuel { font-weight: 700; color: var(--console-selected); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-facturer-r { display: grid; margin: 0; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-facturer { display: inline-flex; align-items: center; justify-content: center; min-width: 0; min-height: 40px; padding: 0 10px; border: 1px solid var(--control-border); border-radius: 8px; background: var(--surface); color: var(--text); font: 600 14px/1 var(--font-ui); white-space: nowrap; cursor: pointer; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-facturer:hover { background: var(--subtle); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-facturer[aria-pressed="true"] { border-color: var(--console-selected); color: var(--console-selected); box-shadow: inset 0 0 0 1px var(--console-selected); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-facturer:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 2px; }
+@media (pointer: coarse) { body:is(.staff-mode, .admin-mode) .fx-modal .fz-facturer { min-height: 44px; } }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-caisse.is-facture .fz-caisse-mot { color: var(--console-selected); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-facture { display: grid; gap: 6px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--subtle); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-facture-tete { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 14px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-facture-l { display: grid; gap: 3px; margin: 0; font-size: 13px; line-height: 18px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-facture-l > div { display: grid; grid-template-columns: 78px minmax(0, 1fr); gap: 8px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-facture-l dt { color: var(--muted); }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-facture-l dd { margin: 0; overflow-wrap: anywhere; }
+.gc-price .is-facture { color: var(--console-selected); }
+
+/* LA FENETRE DE FACTURATION (ouvrirFenetreFacturation) : le modele de la fenetre du retard, plus large, les
+   champs groupes comme sur une facture ; au telephone, une colonne, montee du bas. */
+.fa-fond { position: fixed; inset: 0; z-index: 950; display: grid; place-items: center; padding: 16px; background: color-mix(in srgb, #000 45%, transparent); }
+.fa-fenetre { box-sizing: border-box; display: flex; flex-direction: column; width: min(620px, 100%); max-height: calc(100dvh - 32px); overflow: hidden; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); color: var(--text); font-family: var(--font-ui); box-shadow: 0 18px 48px rgb(0 0 0 / 0.28); }
+.fa-fenetre:focus { outline: none; }
+.fa-tete { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 18px 20px 0; }
+.fa-titre { margin: 0; font-size: 18px; font-weight: 700; line-height: 24px; }
+.fa-sous { margin: 4px 0 0; color: var(--muted); font-size: 14px; line-height: 20px; }
+.fa-fermer { flex: none; }
+.fa-montant { margin: 10px 20px 0; font-size: 14px; line-height: 20px; font-variant-numeric: tabular-nums; }
+.fa-note { margin: 4px 20px 0; color: var(--muted); font-size: 13px; line-height: 18px; }
+.fa-corps { flex: 1 1 auto; overflow: auto; display: grid; gap: 14px; padding: 14px 20px 4px; }
+.fa-groupe { min-width: 0; margin: 0; padding: 0; border: 0; }
+.fa-legende { margin: 0 0 8px; padding: 0; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.fa-grille { display: grid; grid-template-columns: 132px minmax(0, 1fr) minmax(0, 1fr); gap: 10px 12px; }
+.fa-champ { display: grid; align-content: start; gap: 4px; min-width: 0; grid-column: 1 / -1; }
+.fa-champ.is-etroit { grid-column: 1; }
+.fa-champ.is-etroit + .fa-champ { grid-column: 2 / -1; }
+.fa-groupe.is-deux .fa-champ:first-child { grid-column: 1 / 3; }
+.fa-groupe.is-deux .fa-champ:last-child { grid-column: 3 / -1; }
+.fa-champ label { font-size: 13px; font-weight: 600; line-height: 18px; color: var(--text); }
+.fa-facultatif { margin-left: 4px; font-weight: 500; color: var(--muted); }
+.fa-champ input, .fa-champ select { box-sizing: border-box; width: 100%; min-height: 40px; padding: 0 10px; border: 1px solid var(--control-border); border-radius: var(--radius-md); background: var(--surface); color: var(--text); font: 500 15px/1.2 var(--font-ui); }
+.fa-champ input:focus-visible, .fa-champ select:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 1px; }
+.fa-champ.is-ko input, .fa-champ.is-ko select { border-color: var(--danger); box-shadow: 0 0 0 1px var(--danger); }
+.fa-aide { margin: 0; color: var(--muted); font-size: 12.5px; line-height: 17px; }
+.fa-aide.is-ok { color: var(--success); font-weight: 600; }
+.fa-msg { margin: 0; color: var(--danger); font-size: 13px; font-weight: 600; line-height: 18px; }
+.fa-erreur { margin: 8px 20px 0; padding: 8px 12px; border-radius: 8px; background: color-mix(in srgb, var(--danger) 10%, transparent); color: var(--danger); font-size: 13.5px; font-weight: 600; line-height: 18px; }
+.fa-pied { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-top: 14px; padding: 14px 20px; border-top: 1px solid var(--line); background: var(--subtle); }
+.fa-pied-droite { display: flex; flex-wrap: wrap; gap: 10px; margin-left: auto; }
+.fa-retirer { color: var(--danger); }
+@media (max-width: 560px) {
+  .fa-fond { place-items: end center; padding: 0; }
+  .fa-fenetre { width: 100%; max-height: 94dvh; border-radius: 14px 14px 0 0; }
+  .fa-tete { padding: 16px 16px 0; }
+  .fa-montant, .fa-note, .fa-erreur { margin-inline: 16px; }
+  .fa-corps { padding: 12px 16px 4px; }
+  .fa-grille { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .fa-champ, .fa-groupe.is-deux .fa-champ:first-child, .fa-groupe.is-deux .fa-champ:last-child { grid-column: 1 / -1; }
+  .fa-champ.is-etroit { grid-column: 1; }
+  .fa-champ.is-etroit + .fa-champ { grid-column: 2; }
+  .fa-champ input, .fa-champ select { min-height: 44px; font-size: 16px; }
+  .fa-pied { flex-direction: column-reverse; align-items: stretch; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); }
+  .fa-pied-droite { flex-direction: column-reverse; margin-left: 0; }
+  .fa-pied .rt-bouton { width: 100%; min-height: 44px; }
+}

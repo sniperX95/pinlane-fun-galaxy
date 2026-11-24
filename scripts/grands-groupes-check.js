@@ -66,9 +66,16 @@
 //       planning laser n apparaissait pas dans « Parties à placer », la console recomptait 60 joueurs en 2 vagues
 //       de 30). Au planning laser, en vrais gestes (M, « Retirer du planning », toucher le jeton puis son depart) :
 //       le laser du groupe 3 d un grand groupe en 4 groupes de 15 se retire, la file le montre avec ses 15 joueurs
-//       et « groupe 3/4 », il se replace a 17:00 et quitte la file ; pareil pour la vague 2 (14 joueurs) d un laser
-//       en groupes de 10 et 14. Modifier dit les vagues du dossier (« 4 vagues de 15 armes », « 2 vagues de 10 et
-//       14 armes », « 2 sessions »), et la bulle du compte celles que le serveur ecrirait a 58 et a 62 joueurs.
+//       et « groupe 3/4 », il se replace a 17:00 et quitte la file, puis rejoint le depart du groupe 4 (16:30, 15 + 15
+//       armes, comme a Reserver) ; pareil pour la vague 2 (14 joueurs) d un laser en groupes de 10 et 14. Modifier
+//       dit les vagues du dossier (« 4 vagues de 15 armes », « 2 vagues de 10 et 14 armes », « 2 sessions »), et la
+//       bulle du compte celles que le serveur ecrirait a 58 et a 55 joueurs, et pour 50 joueurs au laser sur 60.
+//   [K] MODIFIER APRES LE RETRAIT D UNE VAGUE (2026-11-24 : un grand groupe dont le laser du groupe 3 attend d etre
+//       replace refusait toute modification, jusqu au nom). Un grand groupe en 4 groupes de 15 (le laser du groupe 3
+//       retire, puis celui du groupe 4 deplace a 17:00) et un laser de 40 joueurs (sa vague 2 retiree), cote a cote,
+//       en vrais gestes dans Modifier : le nom change s enregistre et rien ne bouge ; l arrivee 30 min plus tard
+//       s enregistre, chaque passage pose suit de 30 min, et la vague retiree reste a placer avec ses joueurs (et son
+//       groupe). Les deux dossiers pareils.
 //   [*] Zero erreur JavaScript.
 //
 // CONTRE-PREUVES : `--contre-preuves` rejoue le gate sur du code casse expres, une mutation a la fois, en
@@ -192,6 +199,13 @@ const MUTATIONS = [
   { nom: 'bulle-sur-les-armes', lettre: 'J', fichier: APP, de: 'vaguesLaserEnMots(joueursLaser, r, n) };', vers: 'vaguesLaserEnMots(joueursLaser) };' },
   { nom: 'nombre-de-groupes-oublie', lettre: 'J', fichier: APP, de: '  const nombre = Math.min(12, groupe, voulu >= 2 ? Math.max(voulu, coupe) : coupe);', vers: '  const nombre = Math.min(12, groupe, coupe);' },
   { nom: 'part-du-laser-oubliee', lettre: 'J', fichier: APP, de: '  if (n >= groupe) return tailles;', vers: '  return tailles;' },
+  // [K] Modifier d un grand groupe : les pistes d un seul service contre celles du dossier (tout refuse, jusqu au nom) ;
+  // la partie a placer sans sa derniere heure (« Groupe 3 : donnez l’heure du laser. ») ; la partie reposee a cette heure
+  // au lieu de rester a placer ; le retrait qui oublie la derniere heure du groupe.
+  { nom: 'pistes-d-un-service-seul', lettre: 'K', serveur: true, fichier: 'lib/database.js', de: '    && (Math.max(...serviceBlocks.map((block) => Number(block.requiredLanes))) === requiredCount || (enSousGroupes && pistesEnMemeTemps === requiredCount))', vers: '    && (Math.max(...serviceBlocks.map((block) => Number(block.requiredLanes))) === requiredCount)' },
+  { nom: 'partie-a-placer-sans-heure', lettre: 'K', serveur: true, fichier: OPS, de: '  const heures = lues && enAttente.size ? lues.map((siennes, rang) => (enAttente.has(rang + 1) && !siennes.laser_game ? { ...siennes, ...derniere(rang) } : siennes)) : lues;', vers: '  const heures = lues;' },
+  { nom: 'partie-a-placer-reposee', lettre: 'K', serveur: true, fichier: OPS, de: '    if (!enAttente.length) return plan;', vers: '    if (enAttente.length) return plan;' },
+  { nom: 'derniere-heure-oubliee', lettre: 'K', serveur: true, fichier: MOUVEMENT, de: 'heures: heures.map((siennes, rang) => ({ ...(avant[rang] || {}), ...siennes })), auxHeures: true };', vers: 'heures, auxHeures: true };' },
 ];
 
 // ---------------------------------------------------------------------------
@@ -441,7 +455,7 @@ async function principal() {
     return { col: col ? col.scrollHeight - col.clientHeight : 99, dehors: r.top < 0 || r.bottom > window.innerHeight ? 1 : 0 };
   });
 
-  const navigateur = ['A', 'B', 'C', 'E', 'F', 'H', 'I', 'J'].some(joue);
+  const navigateur = ['A', 'B', 'C', 'E', 'F', 'H', 'I', 'J', 'K'].some(joue);
   if (navigateur) {
     const { chromium } = require('playwright-core');
     browser = await chromium.launch({ executablePath: BROWSER_PATH, headless: true });
@@ -1269,6 +1283,80 @@ async function principal() {
       } finally { await ctx.close(); }
     }
 
+    // =======================================================================
+    if (joue('K')) {
+      section('[K] MODIFIER APRES LE RETRAIT D UNE VAGUE : LE GRAND GROUPE COMME UN DOSSIER ORDINAIRE');
+      const { ctx, page, erreurs } = await ouvrir('vide');
+      page.on('dialog', (d) => d.accept().catch(() => {}));
+      try {
+        const jour = FX.lireFixture('vide').staffState.date;
+        const grand = await serveur.appeler('POST', '/api/staff-reservations', {
+          name: 'Groupe Posé 4', phone: '0470111222', email: '', notes: '', occasion: '', date: jour, startTime: '15:30', duration: 1, totalDuration: 3, lanes: [], pax: 60, status: 'pending', type: 'visite', formuleId: '',
+          program: [{ activityId: 'bowling', pax: 60, participants: 60, duration: 1 }, { activityId: 'laser_game', pax: 60, participants: 60, games: 1 }],
+          laserGames: 0, extras: [], channel: 'staff', requiresLanes: true, centerId: 'libramont',
+          preference: { activityOrder: ['bowling', 'laser_game'], preferredTimes: { bowling: '15:30', laser_game: '15:30' }, grandGroupe: { nombre: 4, tailles: [15, 15, 15, 15], impose: true,
+            heures: [{ bowling: '16:30', laser_game: '15:30' }, { bowling: '16:30', laser_game: '15:30' }, { bowling: '15:30', laser_game: '16:30' }, { bowling: '15:30', laser_game: '16:30' }] } },
+        });
+        const ordinaire = await serveur.appeler('POST', '/api/staff-reservations', {
+          name: 'Laser Quarante', phone: '0470999888', email: '', notes: '', occasion: '', date: jour, startTime: '18:00', duration: 1, totalDuration: 1, lanes: [], pax: 40, status: 'pending', type: 'visite', formuleId: '',
+          program: [{ activityId: 'laser_game', pax: 40, participants: 40, games: 1 }], laserGames: 0, extras: [], channel: 'staff', requiresLanes: false, centerId: 'libramont',
+          preference: { activityOrder: ['laser_game'], preferredTimes: { laser_game: '18:00' }, laserGameTimes: ['18:00'], laserPlacement: 'scheduled' },
+        });
+        const version = (id) => new Date(B.base.reservations.get(Number(id)).updated_at).toISOString();
+        const passages = (id) => blocsDe(B.base.reservations.get(Number(id)))
+          .map((b) => `${b.resourceType === 'bowling_lane' ? 'B' : 'L'}${b.sousGroupe || 0}#${b.countIndex || 1}.${b.groupWaveIndex || 1}@${String(b.startTime).slice(0, 5)}x${b.players}`).sort().join(' ');
+        const aPlacerDe = (id) => ((((B.base.reservations.get(Number(id)) || {}).ops_plan || {}).laserPassPlan || {}).pendingUnits || [])
+          .map((u) => `${u.unitKey}x${u.pax}${u.sousGroupe ? `g${u.sousGroupe}` : ''}`).join(' ');
+        const plus = (texte, ecart) => texte.replace(/@(\d\d):(\d\d)/g, (_, h, m) => { const t = Number(h) * 60 + Number(m) + ecart; return `@${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`; });
+        const g = grand.json && grand.json.reservation;
+        const o = ordinaire.json && ordinaire.json.reservation;
+        const retraits = g && o ? [
+          await serveur.appeler('PATCH', '/api/staff-reservations', { id: g.id, centerId: 'libramont', baseUpdatedAt: version(g.id), activityMove: { activityId: 'laser_game', unitKey: '1.3', unplace: true } }),
+          await serveur.appeler('PATCH', '/api/staff-reservations', { id: o.id, centerId: 'libramont', baseUpdatedAt: version(o.id), activityMove: { activityId: 'laser_game', unitKey: '1.2', unplace: true } }),
+        ] : [];
+        // (puis le laser du groupe 4 deplace a 17:00, le groupe 3 toujours a placer : le dossier garde l heure du groupe 3,
+        // que Modifier reprend le temps du calcul)
+        const deplace = retraits.length ? await serveur.appeler('PATCH', '/api/staff-reservations', { id: g.id, centerId: 'libramont', baseUpdatedAt: version(g.id), activityMove: { activityId: 'laser_game', unitKey: '1.4', startTime: '17:00' } }) : null;
+        const monte = grand.statut === 201 && ordinaire.statut === 201 && retraits.length === 2 && retraits.every((r) => r.statut === 200) && deplace && deplace.statut === 200
+          && aPlacerDe(g.id) === '1.3x15g3' && /L4#1\.4@17:00x15/.test(passages(g.id)) && aPlacerDe(o.id) === '1.2x20';
+        ok(monte, 'MONTAGE le grand groupe (le laser du groupe 3 retire, a placer, puis celui du groupe 4 deplace a 17:00) et un laser de 40 joueurs (sa vague 2 retiree, a placer)',
+          { grand: grand.statut, ordinaire: ordinaire.statut, retraits: retraits.map((r) => `${r.statut} ${r.json.message || ''}`), deplace: deplace && `${deplace.statut} ${deplace.json.message || ''}`, g: g && `${aPlacerDe(g.id)} | ${passages(g.id)}`, o: o && aPlacerDe(o.id) });
+        if (monte) {
+          await page.evaluate((dossiers) => {
+            const liste = window.__FIXTURE__.jours[window.__FIXTURE__.jour];
+            dossiers.forEach((d) => { liste.push({ ...d }); state.reservations.push({ ...d }); });
+            renderStaff();
+          }, [deplace.json.reservation, retraits[1].json.reservation]);
+          // Modifier, en vrais gestes : le champ change, « Enregistrer » ; le serveur ecrit ou refuse.
+          const modifier = async (id, champ, valeur) => {
+            await page.evaluate((i) => { if (typeof closePos === 'function') closePos(); openPos(i); setTab('modifier'); }, id);
+            await page.waitForSelector('#posOverlay .fm', { timeout: 12000 });
+            await page.fill(champ, valeur);
+            await page.waitForTimeout(900);
+            const verdict = await texte(page, '#editVerdict');
+            const avant = version(id);
+            await page.locator('#posOverlay .es-save').click();
+            for (let i = 0; i < 80 && version(id) === avant && !(await page.evaluate(() => state.editError || '')); i += 1) await page.waitForTimeout(100);
+            await page.waitForTimeout(300);
+            const erreur = await page.evaluate(() => state.editError || '');
+            await page.evaluate(() => { if (typeof closePos === 'function') closePos(); });
+            return { ecrit: version(id) !== avant, verdict, erreur };
+          };
+          for (const [nom, id, arrivee] of [['le laser de 40 joueurs', o.id, '18:30'], ['le grand groupe', g.id, '16:00']]) {
+            const avantNom = { passages: passages(id), aPlacer: aPlacerDe(id) };
+            const m1 = await modifier(id, '#editNameInput', `${nom} renomme`);
+            ok(m1.ecrit && !m1.erreur && passages(id) === avantNom.passages && aPlacerDe(id) === avantNom.aPlacer,
+              `[K] ${nom} : Modifier le nom s enregistre, rien ne bouge, la vague retiree reste a placer`, { ...m1, passages: passages(id), aPlacer: aPlacerDe(id) });
+            const avantHeure = { passages: passages(id), aPlacer: aPlacerDe(id) };
+            const m2 = await modifier(id, '#editStartInput', arrivee);
+            ok(m2.ecrit && !m2.erreur && passages(id) === plus(avantHeure.passages, 30) && aPlacerDe(id) === avantHeure.aPlacer,
+              `[K] ${nom} : l arrivee 30 min plus tard s enregistre, chaque passage pose suit de 30 min, la vague retiree reste a placer avec ses joueurs${id === g.id ? ' et son groupe' : ''}`,
+              { ...m2, avant: avantHeure.passages, apres: passages(id), aPlacer: aPlacerDe(id) });
+          }
+        }
+        ok(erreurs.length === 0, '[*] zero erreur JavaScript (K)', erreurs.slice(0, 3).join(' | '));
+      } finally { await ctx.close(); }
+    }
   } catch (error) {
     ok(false, `exception : ${error.message}`, String(error.stack || '').split('\n').slice(0, 4).join(' | '));
   } finally {

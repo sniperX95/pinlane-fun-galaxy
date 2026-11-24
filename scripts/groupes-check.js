@@ -48,8 +48,9 @@
 //       seule sur la partie d autres groupes du dossier se refuse, a blanc comme a l ecriture, et la phrase nomme la
 //       vague qui gene et dit quoi faire ; partir avec eux se refuse quand les armes ne suffisent pas (45 sur 30) et
 //       passe quand elles suffisent (15 + 15) ; deux groupes d un depart commun deplaces ensemble a la minute passent,
-//       a blanc et a l ecriture ; un autre dossier dans la partie compte ses armes avec celles des groupes qui y
-//       partent ensemble (15 + 10 + 15 sur 30 : refuse).
+//       a blanc et a l ecriture, et dans le calcul a blanc de Modifier qui joue ces deplacements avant le reste ; un
+//       autre dossier dans la partie compte ses armes avec celles des groupes qui y partent ensemble (15 + 10 + 15
+//       sur 30 : refuse).
 //
 // CONTRE-PREUVES : `--contre-preuves` rejoue le gate sur du code casse expres, une mutation a la fois, en
 // memoire (le crochet de compilation du banc : le disque n est jamais touche), et exige que chacune
@@ -105,17 +106,17 @@ const MUTATIONS = [
   { nom: 'arrivee-apres-un-groupe', lettre: 'D', fichier: OPS, de: '    ...(avanceeParUnGroupe ? { startTime: minutesToTime(premierGroupe) } : {}),\n', vers: '' },
   // [D] la modification refait la rotation par-dessus les heures posees, oublie le nombre choisi, ou ecrit
   // des groupes qui ne tiennent pas.
-  { nom: 'modif-sans-heures', lettre: 'D', fichier: OPS, de: "  const heures = garde.auxHeures === true || request.opsPlan.laserManual === true ? require('./grand-groupe').heuresDesBlocs(request.opsPlan, ecart) : null;", vers: "  const heures = request.opsPlan.laserManual === true ? require('./grand-groupe').heuresDesBlocs(request.opsPlan, ecart) : null;" },
+  { nom: 'modif-sans-heures', lettre: 'D', fichier: OPS, de: "  const lues = garde.auxHeures === true || request.opsPlan.laserManual === true ? require('./grand-groupe').heuresDesBlocs(request.opsPlan, ecart) : null;", vers: "  const lues = request.opsPlan.laserManual === true ? require('./grand-groupe').heuresDesBlocs(request.opsPlan, ecart) : null;" },
   { nom: 'modif-sans-nombre', lettre: 'D', fichier: OPS, de: '      ...(garde.nombreChoisi === true && Number(garde.nombre) >= 2 ? { nombre: Number(garde.nombre) } : {}),\n', vers: '' },
   { nom: 'modif-ecrit-quand-meme', lettre: 'D', fichier: API, de: "    throw Object.assign(createHttpError(`Ces groupes ne tiennent pas au planning : ${motif}`, 422), { coincent: Array.isArray(ops.groupesQuiCoincent) ? ops.groupesQuiCoincent : [] });\n", vers: '' },
   // [E] un laser deplace au planning avant ce lot retombe sur la rotation ; les pistes de tout le dossier
   // redeviennent le souhait de chaque groupe (un groupe serre sur 3 pistes quand le groupe grandit).
-  { nom: 'ancien-laser-deplace-perdu', lettre: 'E', fichier: OPS, de: "  const heures = garde.auxHeures === true || request.opsPlan.laserManual === true ? require('./grand-groupe').heuresDesBlocs(request.opsPlan, ecart) : null;", vers: "  const heures = garde.auxHeures === true ? require('./grand-groupe').heuresDesBlocs(request.opsPlan, ecart) : null;" },
+  { nom: 'ancien-laser-deplace-perdu', lettre: 'E', fichier: OPS, de: "  const lues = garde.auxHeures === true || request.opsPlan.laserManual === true ? require('./grand-groupe').heuresDesBlocs(request.opsPlan, ecart) : null;", vers: "  const lues = garde.auxHeures === true ? require('./grand-groupe').heuresDesBlocs(request.opsPlan, ecart) : null;" },
   { nom: 'pistes-de-tout-le-dossier', lettre: 'E', fichier: MOTEUR, de: '    ...(preferredLanes.length && (nombre <= 1 || aLaMain || preferredLanes.length === pose.pistes) ? { preferredLanes: [...preferredLanes] } : {}),', vers: '    ...(preferredLanes.length ? { preferredLanes: [...preferredLanes] } : {}),' },
   // [H] la base ne voit plus les autres groupes du dossier sur les pistes : elle refuse ce que le moteur a juge.
   { nom: 'base-sans-les-freres', lettre: 'H', fichier: 'lib/database.js', de: '      const freres = Number(block.sousGroupe) > 0\n        ? serviceBlocks.filter(', vers: '      const freres = false\n        ? serviceBlocks.filter(' },
   // [F] le glisser du planning ne marque plus les heures du groupe.
-  { nom: 'glisser-sans-marque', lettre: 'F', fichier: MOUVEMENT, de: '    if (heures) plan.grandGroupe = { ...old.grandGroupe, heures, auxHeures: true };\n', vers: '' },
+  { nom: 'glisser-sans-marque', lettre: 'F', fichier: MOUVEMENT, de: '    if (heures) plan.grandGroupe = { ...old.grandGroupe, heures: heures.map((siennes, rang) => ({ ...(avant[rang] || {}), ...siennes })), auxHeures: true };\n', vers: '' },
   // [G] le canal public lit la demande.
   { nom: 'public-lit-les-groupes', lettre: 'G', fichier: MOTEUR, de: "  const demandeGrandGroupe = input.channel === 'staff' ? lireGrandGroupe(preference.grandGroupe) : null;", vers: '  const demandeGrandGroupe = lireGrandGroupe(preference.grandGroupe);' },
   // [I] « Créer » sur des groupes qui ne tiennent pas repart a la base (« Ce créneau vient de changer »), ou la
@@ -149,6 +150,7 @@ const MUTATIONS = [
   { nom: 'depart-commun-refuse-au-serveur', lettre: 'K', fichier: MOUVEMENT, de: '      if (parties <= lancements && prises + joueurs <= armes) continue;', vers: '      if (parties < lancements && prises + joueurs <= armes) continue;' },
   { nom: 'patch-sans-ensemble', lettre: 'K', fichier: API, de: '            const suivant = buildActivityMove(candidate, deplacement, { aLaMinute: true, ensemble: deplacements });', vers: '            const suivant = buildActivityMove(candidate, deplacement, { aLaMinute: true });' },
   { nom: 'blanc-sans-ensemble', lettre: 'K', fichier: API, de: '        candidat = essayer(candidat, deplacement, deplacements);', vers: '        candidat = essayer(candidat, deplacement);' },
+  { nom: 'modifier-sans-ensemble', lettre: 'K', fichier: API, de: '    const suivant = buildActivityMove(dossier, d, { aLaMinute: true, ensemble: deplacements });', vers: '    const suivant = buildActivityMove(dossier, d, { aLaMinute: true });' },
   { nom: 'essais-sans-ensemble', lettre: 'K', fichier: API, de: '() => essayer(base, move, essai));', vers: '() => essayer(base, move));' },
   { nom: 'ecriture-sans-ensemble', lettre: 'K', fichier: 'lib/database.js', de: 'deplacements[0], input, deplacements.length > 1 ? 0 : null, deplacements);', vers: 'deplacements[0], input, deplacements.length > 1 ? 0 : null);' },
   { nom: 'armes-des-freres-ignorees', lettre: 'K', fichier: 'lib/database.js', de: '    const autresEtFreres = freres.length ? [...reservations, { ...payload, opsPlan: { resourceBlocks: freres } }] : reservations;', vers: '    const autresEtFreres = reservations;' },
@@ -815,11 +817,13 @@ async function principal() {
         const w = await enBloc(id, [laser(3, '18:40'), laser(4, '18:40')]);
         ok(blancBloc.essais && blancBloc.essais[0] && blancBloc.essais[0].passe === true && w.statut === 200 && lasersK(id) === 'L1@16:00 L2@16:00 L3@18:40 L4@18:40',
           '[K] les groupes 3 et 4 ensemble a 18:40 (un geste, deux vagues) : a blanc et a l ecriture, ils passent et partent ensemble', { blanc: blancBloc.essais || blancBloc.refus, statut: dire(w), lu: lasersK(id) });
-        // (les memes deux heures changees dans Modifier : le calcul a blanc des deplacements ; rien ne s ecrit)
+        // (les memes deux heures changees dans Modifier : le calcul a blanc des deplacements, puis celui de la modification
+        // qui les joue avant le reste ; rien ne s ecrit)
         const lasersDu = (r) => ((r && r.opsPlan && r.opsPlan.resourceBlocks) || []).filter((b) => b.resourceType === 'laser_arena').map((b) => `L${b.sousGroupe}@${String(b.startTime).slice(0, 5)}`).sort().join(' ');
         const blancDeplacements = (await serveur.appeler('POST', '/api/staff-reservations', { dryRun: true, centerId: 'libramont', deplacement: { id, centerId: 'libramont', baseUpdatedAt: version(ligne(id)), activityMoves: [laser(3, '18:50'), laser(4, '18:50')] } })).json;
-        ok(!blancDeplacements.refus && lasersDu(blancDeplacements.reservation) === 'L1@16:00 L2@16:00 L3@18:50 L4@18:50' && lasersK(id) === 'L1@16:00 L2@16:00 L3@18:40 L4@18:40',
-          '[K] Modifier, les groupes 3 et 4 a 18:50 : le calcul a blanc des deplacements les fait partir ensemble, rien ne s ecrit', { deplacements: blancDeplacements.refus || lasersDu(blancDeplacements.reservation), lu: lasersK(id) });
+        const blancModifier = (await serveur.appeler('POST', '/api/staff-reservations', { dryRun: true, centerId: 'libramont', modification: { id, centerId: 'libramont', baseUpdatedAt: version(ligne(id)), lanes: ligne(id).lanes, deplacements: [laser(3, '18:50'), laser(4, '18:50')] } })).json;
+        ok(!blancDeplacements.refus && lasersDu(blancDeplacements.reservation) === 'L1@16:00 L2@16:00 L3@18:50 L4@18:50' && !blancModifier.refus && lasersDu(blancModifier.reservation) === 'L1@16:00 L2@16:00 L3@18:50 L4@18:50' && lasersK(id) === 'L1@16:00 L2@16:00 L3@18:40 L4@18:40',
+          '[K] Modifier, les groupes 3 et 4 a 18:50 : le calcul a blanc des deplacements et celui de la modification les font partir ensemble, rien ne s ecrit', { deplacements: blancDeplacements.refus || lasersDu(blancDeplacements.reservation), modification: blancModifier.refus || lasersDu(blancModifier.reservation), lu: lasersK(id) });
         // Un autre dossier dans la partie du groupe 3 (10 joueurs, arrive a 18:30, son laser a 18:40) : le groupe 4 qui la
         // rejoint ferait 40 armes sur 30.
         const s1 = await glisser(id, laser(4, '19:30'));

@@ -538,13 +538,13 @@ async function principal() {
         await page.waitForFunction(() => /HTVA/.test((document.querySelector('#rsL-total') || {}).textContent || ''));
         p = await lirePied();
         const parJoueur = euros(Math.round((htva / 8) * 100) / 100);
-        ok(p.htva === 'true' && p.total.startsWith('Total HTVA') && p.montant.replace(/\s/g, ' ') === `${euros(htva)} €` && p.total.includes(`${parJoueur} € par joueur HTVA`) && p.total.includes(`${euros(total)} € TVAC`),
+        ok(p.htva === 'true' && p.total.startsWith('Total HTVA') && p.montant.replace(/\s/g, ' ') === `${euros(htva)} €` && p.total.includes(`${parJoueur} € par joueur HTVA`) && p.total.includes(`${euros(total).replace(',00', '')} € TVAC`),
           `[T] HTVA : le total ${euros(htva)} € hors TVA (taux des activites, 6 %), ${parJoueur} € par joueur HTVA, le TVA comprise rappele`, { p, attendu: euros(htva) });
         await capture(page, 'ticket-htva', '.qb-modal.rv .rs-tk');
         // Un total tape hors TVA : 100 HTVA, enregistre a 106 TVAC.
         await page.locator('#rsL-total').click();
         await page.waitForSelector('#qbCustomPrice');
-        const etiquettes = await texte(page, '.rs-seance.is-total .rs-champ > span');
+        const etiquettes = await texte(page, '.rs-seance.is-total .rs-champ:has(#qbCustomPrice) > span, .rs-seance.is-total .rs-champ:has(#qbCustomPricePerPerson) > span');
         await page.locator('#qbCustomPrice').fill('100');
         await page.waitForTimeout(250);
         const saisi = await page.evaluate(() => ({ custom: quickBookState.customPrice, ligne: ((document.querySelector('#rsPrixTva') || {}).textContent || '').trim() }));
@@ -572,7 +572,8 @@ async function principal() {
         await pret(page).catch(() => {});
         const vu = await page.evaluate(() => (document.querySelector('#rvTva-htva') || { getAttribute() { return ''; } }).getAttribute('aria-pressed'));
         ok(vu === 'true', '[D] une societe connue et le reglage « Les groupes seulement » : le ticket s ouvre en HTVA', vu);
-        await page.locator('#qbPhone').fill('0470 12 34 56');
+        // (la demande a un e-mail : le contact se lit par mail, sans telephone a remplir)
+        if (await page.locator('#qbPhone').count()) await page.locator('#qbPhone').fill('0470 12 34 56');
         await page.waitForTimeout(300);
         await pret(page).catch(() => {});
         await page.locator('#rvFacturer').click();

@@ -24302,7 +24302,7 @@ button.ast-cite:hover { color: var(--surface); background: var(--accent); }
 /* « FACTURÉ » ET LE PRIX TVAC OU HTVA A RESERVER (2026-11-24). Le ticket : Payé carte, Payé espèces et
    Facturé sur une rangee de trois, au-dessus de « Créer » ; « Prix TVAC | HTVA » juste au-dessus du total. */
 .qb-modal.rv.rs .rs-tk-pay:has(.rs-facturer) { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
-.qb-modal.rv.rs .rs-tk-pay:has(.rs-facturer) .rs-payer, .qb-modal.rv.rs .rs-facturer { padding: 0 6px; font-size: 13.5px; }
+.qb-modal.rv.rs .rs-tk-pay:has(.rs-facturer) .rs-payer, .qb-modal.rv.rs .rs-facturer { padding: 0 2px; font-size: 13px; letter-spacing: -0.01em; }
 .qb-modal.rv.rs .rs-facturer { min-width: 0; height: 44px; border: 1px solid var(--rs-ligne-forte); border-radius: 10px; background: var(--surface); font-weight: 550; line-height: 1; color: var(--text); white-space: nowrap; transition: transform var(--rs-duree) var(--rs-sortie); }
 .qb-modal.rv.rs .rs-facturer:disabled { background: transparent; color: var(--faint); cursor: default; }
 .qb-modal.rv.rs .rs-facturer:active:not(:disabled) { transform: scale(.97); }

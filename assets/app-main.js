@@ -30250,7 +30250,7 @@ const FA_GROUPES = [
   ] },
   { titre: 'Contact', deux: true, champs: [
     { cle: 'contact', mot: 'Personne de contact', auto: 'name', facultatif: true },
-    { cle: 'email', mot: 'E-mail de facturation', auto: 'email', type: 'email', mode: 'email', aide: 'La facture part à cette adresse.' },
+    { cle: 'email', mot: 'E-mail de facturation', auto: 'email', type: 'email', mode: 'email', aide: 'Pour envoyer la facture.' },
   ] },
   { titre: 'Référence', champs: [
     { cle: 'reference', mot: 'Référence ou bon de commande', auto: 'off', facultatif: true, large: true, aide: 'Si la société en donne une, elle figure sur la facture.' },
@@ -30354,6 +30354,14 @@ function peindreChampsFacture() {
   const hote = document.getElementById('factureFenetre');
   if (!etat || !hote) return;
   etat.erreurs = window.PinlaneFacturation.lireFacturation(etat.valeurs).erreurs;
+  // (le compte des champs a completer suit la frappe, et s en va quand tout y est)
+  const compte = document.getElementById('faErreur');
+  if (compte && etat.compteAffiche) {
+    const reste = Object.keys(etat.erreurs).length;
+    compte.textContent = reste > 1 ? `${reste} champs sont à compléter.` : reste ? 'Un champ est à compléter.' : '';
+    compte.hidden = !reste;
+    if (!reste) etat.compteAffiche = false;
+  }
   FA_GROUPES.flatMap((g) => g.champs).forEach((c) => {
     const bloc = hote.querySelector(`[data-fa="${c.cle}"]`);
     if (!bloc) return;
@@ -30380,12 +30388,14 @@ async function validerFenetreFacture(ev) {
   // (ce qui est dans les champs a l instant, une saisie automatique comprise)
   if (hote) hote.querySelectorAll('input, select').forEach((champ) => { etat.valeurs[champ.name] = champ.value; });
   const lu = window.PinlaneFacturation.lireFacturation(etat.valeurs);
+  etat.compteAffiche = false;
   window.PinlaneFacturation.CHAMPS.forEach((cle) => etat.touches.add(cle));
   etat.erreur = '';
   peindreChampsFacture();
   const bandeau = document.getElementById('faErreur');
   if (!lu.ok) {
     const nombre = Object.keys(lu.erreurs).length;
+    etat.compteAffiche = true;
     if (bandeau) { bandeau.textContent = nombre > 1 ? `${nombre} champs sont à compléter.` : 'Un champ est à compléter.'; bandeau.hidden = false; }
     const champ = document.getElementById(`faChamp-${lu.premier}`);
     if (champ) champ.focus();
@@ -44568,7 +44578,10 @@ function rvRaisonDuMinimum(grand) {
 function rvPhraseDesGroupes(grand, groupes, plan) {
   const fin = plan && plan.disponible && plan.fin ? ` Fin vers ${plan.fin}.` : '';
   if (rvHeuresPosees(grand)) return `Les heures sont celles que vous avez posées.${fin}`;
-  if (grand.nombre === 1) return `Tout le groupe joue ensemble${grand.ids.length > 1 ? ', une activité après l’autre' : ''}.${fin}`;
+  if (grand.nombre === 1) {
+    const enPassages = (plan && Array.isArray(plan.blocs) ? plan.blocs : []).some((b) => b.activite === 'laser_game' && Number(b.vagues) > 1);
+    return `${enPassages ? `${grand.ids.length > 1 ? 'Tout le groupe au bowling, puis au laser' : 'Tout le groupe'} en plusieurs passages` : `Tout le groupe joue ensemble${grand.ids.length > 1 ? ', une activité après l’autre' : ''}`}.${fin}`;
+  }
   if (grand.laserSeul) return `Les groupes jouent l’un après l’autre${rvParPartie(grand) ? ', partie par partie' : ''} : ${rvArmesDites(grand.joueurs)}.${fin}`;
   if (!grand.tourne) return `Les groupes jouent l’un après l’autre.${fin}`;
   const premiers = groupes.map((g) => g.passages[0]).filter(Boolean);
@@ -44664,7 +44677,7 @@ function rsPlacesDuGroupeHtml(grand, n, joueurs, plan) {
     const moins = valeur > 1 ? `rsFixer(() => rsPlacesDuGroupe(${n}, '${quoi}', ${valeur - 1}))` : '';
     const plus = valeur < plafond ? `rsFixer(() => rsPlacesDuGroupe(${n}, '${quoi}', ${valeur + 1}))` : '';
     const passages = quoi === 'armes' ? Math.ceil(ici / valeur) : 1;
-    const dit = passages > 1 ? `en ${passages} passages` : pose && pose !== conseil ? `conseillé : ${conseil}` : '';
+    const dit = passages > 1 ? `en ${passages} passages (${rvListe(rvPartsEgales(ici, passages))})` : pose && pose !== conseil ? `conseillé : ${conseil}` : '';
     return `<span class="rs-gg-place" data-places="${quoi}">${rsPasHtml(moins, plus, valeur, `${quoi === 'pistes' ? 'Pistes' : 'Armes'} du groupe ${n}`, `data-groupe="${n}" data-quoi="${quoi}"`)}<span class="rs-gg-u">${valeur > 1 ? quoi : quoi.slice(0, -1)}${dit ? `<small>${escapeHtml(dit)}</small>` : ''}</span></span>`;
   };
   const html = morceau('pistes', 'bowling', getAvailabilityLaneCount() || getTotalLanes()) + morceau('armes', 'laser_game', getLaserArenaCapacity());

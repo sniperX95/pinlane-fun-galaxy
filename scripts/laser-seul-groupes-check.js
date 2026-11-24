@@ -386,7 +386,7 @@ async function principal() {
         await pret(page).catch(() => {});
         let p = await pageDesGroupes(page);
         const place = await texte(page, '.rs-gg-places');
-        ok(p.titre === '35 joueurs, un seul groupe' && /Tout le groupe joue ensemble\./.test(p.phrase) && /en 2 passages/.test(place) && /le centre en conseille 2/.test(p.nombre), '[U] un seul groupe de 35 : la page le dit, le laser en 2 passages', { p, place });
+        ok(p.titre === '35 joueurs, un seul groupe' && /Tout le groupe en plusieurs passages\./.test(p.phrase) && /en 2 passages \(18 et 17\)/.test(place) && /le centre en conseille 2/.test(p.nombre), '[U] un seul groupe de 35 : la page le dit, le laser en 2 passages', { p, place });
         if (argument('captures')) { fs.mkdirSync(CAPTURES, { recursive: true }); await page.screenshot({ path: path.join(CAPTURES, 'un-seul-groupe.png') }); }
         // 12 armes au lieu de 30 : 3 passages.
         for (let k = 0; k < 18; k += 1) await page.locator('button[aria-label="Armes du groupe 1, un de moins"]').click();

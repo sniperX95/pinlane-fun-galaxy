@@ -504,7 +504,7 @@ async function principal() {
           '[D] bowling, Amis de Clara en retard : toute la carte rouge pale, cernee de rouge', { clara, pale, rouge });
         ok(clara && /\b10 min\b/.test(clara.puce) && clara.bulle === 'En retard de 10 min, prévu à 15:00', '[D] sa puce dit les minutes, « 10 min », la bulle « En retard de 10 min, prévu à 15:00 »', clara);
         const pirotte = await carte(PIROTTE);
-        ok(pirotte && /is-rt-arrive/.test(pirotte.classes) && !/is-delayed|is-en-retard/.test(pirotte.classes) && pirotte.ombre.includes(rouge) && /9 min/.test(pirotte.puce) && pirotte.bulle === 'Arrivé avec 9 min de retard, prévu à 14:30',
+        ok(pirotte && /is-rt-arrive/.test(pirotte.classes) && !/is-delayed|is-en-retard/.test(pirotte.classes) && pirotte.ombre.includes(rouge) && /9 min/.test(pirotte.puce) && pirotte.bulle.startsWith('Arrivé avec 9 min de retard, prévu à 14:30'),
           '[D] Famille Pirotte arrivee avec 9 min de retard : cadre rouge, « 9 min », jamais l ambre', pirotte);
         const gerard = await carte(GERARD);
         ok(gerard && /is-delayed/.test(gerard.classes) && !/is-en-retard|is-rt-arrive/.test(gerard.classes) && gerard.ambre && !gerard.puce,

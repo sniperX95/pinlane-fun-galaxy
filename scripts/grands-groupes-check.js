@@ -88,6 +88,15 @@
 //       grandit sans perdre ses groupes, une partie retiree du planning reste a placer. Un dossier d avant (des vagues,
 //       sans programme ni groupes) reste tel quel tant qu on ne touche pas ses groupes ; regles dans Modifier, ils
 //       s ecrivent sans changer son prix, son type, son libelle ni son programme.
+//   [M] LES GROUPES ECHANGENT SUR CE QUE LA JOURNEE LAISSE LIBRE, LE SERVEUR (2026-11-24, le gerant a Libramont, 35
+//       joueurs au bowling et au laser : « ça met ça alors que c'est faux, genre illogique »). Le groupe 2 sortait du
+//       laser a 20:55 et la rotation le mettait au bowling a 21:00 sur des pistes qu un autre dossier tenait, puis
+//       refusait son propre plan (« Le groupe 1 joue déjà à cette heure »). La rotation comptait les pistes du centre,
+//       jamais celles que la journee a deja prises. 35 joueurs a 15:30, pistes 1, 2 et 7 prises : le groupe 2 va au
+//       bowling quand le groupe 1 le libere (16:30), et le plan tient ; pistes 1 et 2 seulement : il y va a 16:00, a
+//       cote du groupe 1, sur des pistes libres ; le depart demande ne glisse jamais en douce (pistes prises a 15:30 :
+//       refuse a 15:30). Le soir du gerant (20:30, pistes 1, 2 et 7 prises jusqu a 22:00) : aucune rotation ne tient,
+//       le plan le dit sur la case du groupe 2 (son bowling a 21:30 finirait a 22:30) et garde ses groupes a l ecran.
 //   [*] Zero erreur JavaScript.
 //
 // CONTRE-PREUVES : `--contre-preuves` rejoue le gate sur du code casse expres, une mutation a la fois, en
@@ -197,10 +206,13 @@ const MUTATIONS = [
   // telephone, elle se recolle au texte d avant.
   { nom: 'pastille-sans-marge', lettre: 'I', fichier: PLANNING_CSS, de: '@container feuille (min-width: 640px) and (max-width: 1059px) { .gf-x__h { margin-left: -4px; padding: 0 1px; font-weight: 600; }', vers: '@container feuille (min-width: 640px) and (max-width: 1059px) { .gf-x__h { margin-left: -4px; padding: 0 2px; }' },
   { nom: 'pastille-collee-au-telephone', lettre: 'I', fichier: PLANNING_CSS, de: '  .gf-x__h, .gf-x__hors { margin-left: 0; }\n', vers: '' },
-  // [I] a 1 100 et 1 024 de large, le fond gris de la pastille revient sur le trait de la colonne voisine ; la colonne
-  // de l activite revient a 54 px, ou « groupes » n a plus que 1 px de place.
-  { nom: 'pastille-sur-le-trait', lettre: 'I', fichier: PLANNING_CSS, de: '{ .gf-x__h, .gf-x__hors { margin-right: 3px; } }', vers: '{ .gf-x__h, .gf-x__hors { margin-right: 0; } }' },
-  { nom: 'colonne-d-activite-a-54', lettre: 'I', fichier: PLANNING_CSS, de: '--c-f: 50px; --c-a: 58px; --c-reste: 58px;', vers: '--c-f: 50px; --c-a: 54px; --c-reste: 58px;' },
+  // [I] a 1 100 et 1 024 de large, le fond gris de la pastille revient sur le trait de la colonne voisine ; ses lettres
+  // ne se resserrent plus, et « groupes » n a plus que 2 px de place.
+  { nom: 'pastille-sur-le-trait', lettre: 'I', fichier: PLANNING_CSS, de: '{ .gf-x__h, .gf-x__hors { margin-right: 2px; } .gf-x__h { letter-spacing: -0.02em; } }', vers: '{ .gf-x__h { letter-spacing: -0.02em; } }' },
+  // [M] la rotation ne lit plus les pistes que la journee a deja prises (le groupe 2 au bowling a 16:00, sur rien).
+  { nom: 'groupe-hors-horaires-sans-son-plan', lettre: 'M', serveur: true, fichier: 'lib/ops-engine.js', de: '        scenario: horsHoraires ? decorer() : null,', vers: '        scenario: null,' },
+  { nom: 'rotation-sans-la-journee', lettre: 'M', serveur: true, fichier: 'lib/grand-groupe.js', de: "      const tenues = (debutPasse) => (ouvre || typeof pistesLibres !== 'function' ? pistes : Math.min(pistes, entier(pistesLibres(debutPasse, debutPasse + bowling.minutes))));", vers: '      const tenues = () => pistes;' },
+  { nom: 'pastille-sans-ses-lettres-resserrees', lettre: 'I', fichier: PLANNING_CSS, de: '{ .gf-x__h, .gf-x__hors { margin-right: 2px; } .gf-x__h { letter-spacing: -0.02em; } }', vers: '{ .gf-x__h, .gf-x__hors { margin-right: 2px; } }' },
   { nom: 'programme-groupes-ordinaux', lettre: 'I', fichier: APP, de: "${Number(etape.sousGroupe) > 0 ? `Groupe ${Number(etape.sousGroupe)}` : `${index ? `${index + 1}e` : '1er'} groupe`} à", vers: "${index ? `${index + 1}e` : '1er'} groupe à" },
   // [J] la console recompte les vagues sur les armes (la file perd le groupe 3) ; la vague a placer, la vague prise ou la
   // carte perdent leur groupe ; le toast redit « vague » ; Modifier et la bulle du compte recomptent sur les armes, oublient
@@ -1069,7 +1081,7 @@ async function principal() {
         // [I] LA PASTILLE GRISE RESTE DANS SA COLONNE A 1 100 ET 1 024 (2026-11-24, le gerant : « groupes 1 et 2 »
         // depasse de quelques pixels a 1 100 de large). Le fond gris de chaque pastille finissait pile sur le trait de
         // la colonne voisine (0 px), le texte de « groupe 3 » a 1 px du trait. Mesure a l ecran, getBoundingClientRect
-        // contre la colonne : chaque pastille (et chaque rangee de pastilles) commence dans sa colonne et finit 2,5 px
+        // contre la colonne : chaque pastille (et chaque rangee de pastilles) commence dans sa colonne et finit 2 px
         // au moins avant son bord droit, son texte 3 px au moins avant, a 1366, 1280, 1100 et 1024 de large.
         const largeurInitiale = page.viewportSize();
         const sortiesPlanning = {};
@@ -1081,9 +1093,14 @@ async function principal() {
           boitesPastilles[largeur] = r ? await page.evaluate((id) => Array.from(document.querySelectorAll(`.gf-r[data-gf-id="${id}"] .gf-x__h, .gf-r[data-gf-id="${id}"] .gf-x__hors`)).map((h) => {
             const col = (h.closest('.gf-a') || h).getBoundingClientRect();
             const b = h.getBoundingClientRect();
-            const plage = document.createRange();
-            plage.selectNodeContents(h);
-            const textes = Array.from(plage.getClientRects()).filter((x) => x.width > 0);
+            // (le texte seul, ses noeuds de texte : une rangee de pastilles n a pour texte que celui de ses pastilles)
+            const textes = [];
+            const parcours = document.createTreeWalker(h, NodeFilter.SHOW_TEXT);
+            for (let n = parcours.nextNode(); n; n = parcours.nextNode()) {
+              const plage = document.createRange();
+              plage.selectNodeContents(n);
+              textes.push(...Array.from(plage.getClientRects()).filter((x) => x.width > 0));
+            }
             const dixieme = (v) => Math.round(v * 10) / 10;
             return { texte: h.textContent.trim(), colonne: dixieme(col.width), gauche: dixieme(b.left - col.left), droite: dixieme(col.right - b.right), texteDroite: textes.length ? dixieme(col.right - Math.max(...textes.map((x) => x.right))) : null };
           }), r.id) : [];
@@ -1106,8 +1123,8 @@ async function principal() {
         ok(Object.values(sortiesPlanning).every((l) => l.length === 0), '[I] le planning complet tient dans ses colonnes a 1366, 1280, 1100 et 1024 de large : « 15 joueurs » et « groupes 1 et 2 » ne debordent pas', sortiesPlanning);
         const boites = Object.values(boitesPastilles).flat();
         ok(Object.values(boitesPastilles).every((l) => l.some((p) => /^groupes 1 et 2$/.test(p.texte)))
-          && boites.every((p) => p.gauche >= 0 && p.droite >= 2.5 && p.texteDroite !== null && p.texteDroite >= 3),
-        '[I] chaque pastille grise reste dans sa colonne a 1366, 1280, 1100 et 1024 de large : son fond finit 2,5 px au moins avant le trait de la colonne voisine, son texte 3 px au moins', boitesPastilles);
+          && boites.every((p) => p.gauche >= 0 && p.droite >= 1.95 && p.texteDroite !== null && p.texteDroite >= 3),
+        '[I] chaque pastille grise reste dans sa colonne a 1366, 1280, 1100 et 1024 de large : son fond finit 2 px au moins avant le trait de la colonne voisine, son texte 3 px au moins', boitesPastilles);
         // [I] LA PASTILLE GRISE A UNE VRAIE MARGE (2026-11-24) : a 1024 de large, « groupes » tenait dans sa colonne de 54 px
         // avec 0,7 px de reste ; un navigateur qui dessine le mot un rien plus large l aurait coupe sans que rien rougisse.
         // Chaque mot de chaque pastille grise (« 15 joueurs », « groupes 1 et 2 ») garde au moins 3 px de place sur sa
@@ -1656,6 +1673,62 @@ async function principal() {
       }
     }
 
+
+    // =======================================================================
+    if (joue('M')) {
+      section('[M] LES GROUPES ECHANGENT SUR CE QUE LA JOURNEE LAISSE LIBRE (LE SERVEUR)');
+      const fx = semer('vide');
+      const jour = fx.staffState.date;
+      // Un autre dossier tient des pistes de 15:00 a 17:30 ; puis 35 joueurs au bowling 1 h et au laser 1 partie, a
+      // 15:30, en groupes qui tournent (« Faire tourner », ou d office quand le plan d avant ne tient pas).
+      const autre = async (pistes, de = '15:00', duree = 2.5) => {
+        semer('vide');
+        return serveur.appeler('POST', '/api/staff-reservations', { name: 'Autre Groupe', phone: '0470999888', email: '', notes: '', occasion: '', date: jour, startTime: de, duration: duree, totalDuration: duree, lanes: pistes, pax: pistes.length * 4, status: 'pending', type: 'bowling', formuleId: '', label: 'Bowling Classique', laserGames: 0, extras: [], channel: 'staff', requiresLanes: true, centerId: 'libramont' });
+      };
+      const tourner = async (heure = '15:30') => (await serveur.appeler('POST', '/api/staff-reservations', {
+        name: '', phone: '', email: '', notes: '', occasion: '', date: jour, startTime: heure, duration: 1, totalDuration: 2, lanes: [], pax: 35, status: 'pending', type: 'visite',
+        program: [{ activityId: 'bowling', pax: 35, participants: 35, duration: 1 }, { activityId: 'laser_game', pax: 35, participants: 35, games: 1 }],
+        laserGames: 0, extras: [], channel: 'staff', requiresLanes: true, centerId: 'libramont',
+        preference: { activityOrder: ['bowling', 'laser_game'], preferredTimes: { bowling: heure, laser_game: heure }, grandGroupe: { impose: true } },
+        dryRun: true,
+      })).json.plan || {};
+      const lu = (plan) => ({
+        dispo: plan.disponible, fin: plan.fin, refus: plan.refus || '',
+        blocs: (plan.blocs || []).filter((b) => b.sousGroupe).map((b) => `${b.activite === 'bowling' ? 'B' : 'L'}${b.sousGroupe}@${b.debut}-${b.fin}${b.activite === 'bowling' ? `[${(b.pistes || []).join(',')}]` : ''}`).sort().join(' '),
+        heures: plan.grandGroupe ? plan.grandGroupe.heures : null,
+      });
+      const pistesDe = (plan, groupe) => ((plan.blocs || []).find((b) => b.activite === 'bowling' && Number(b.sousGroupe) === groupe) || {}).pistes || [];
+      // Pistes 1, 2 et 7 prises : a 16:00, il reste 6 et 8 a cote du groupe 1 ; le groupe 2 attend que le groupe 1 libere les siennes.
+      const pris = await autre([1, 2, 7]);
+      const attend = await tourner();
+      const a = lu(attend);
+      ok(pris.statut === 201 && a.dispo === true && a.fin === '17:30' && /^B1@15:30-16:30\[\S+\] B2@16:30-17:30\[\S+\] L1@16:30-16:55 L2@15:30-15:55$/.test(a.blocs)
+        && JSON.stringify(a.heures) === JSON.stringify([{ bowling: '15:30', laser_game: '16:30' }, { bowling: '16:30', laser_game: '15:30' }])
+        && ![1, 2, 7].some((p) => pistesDe(attend, 2).includes(p)),
+      '[M] pistes 1, 2 et 7 prises : le groupe 2 va au bowling quand le groupe 1 le libere (16:30), le groupe 1 au laser a 16:30, le plan tient, fin 17:30', { autre: pris.statut, ...a });
+      // Pistes 1 et 2 seulement : a 16:00, trois pistes libres a cote du groupe 1 ; le groupe 2 y va des sa sortie du laser.
+      await autre([1, 2]);
+      const cote = await tourner();
+      const c = lu(cote);
+      ok(c.dispo === true && /^B1@15:30-16:30\[\S+\] B2@16:00-17:00\[\S+\] L1@16:30-16:55 L2@15:30-15:55$/.test(c.blocs)
+        && ![1, 2].some((p) => pistesDe(cote, 2).includes(p)) && !pistesDe(cote, 1).some((p) => pistesDe(cote, 2).includes(p)),
+      '[M] pistes 1 et 2 prises : le groupe 2 va au bowling a 16:00, sur d autres pistes libres, a cote du groupe 1', c);
+      // Le depart demande ne glisse pas : six pistes prises a 15:30, le groupe 1 n y tient pas, le plan le dit a 15:30.
+      await autre([3, 4, 5, 6, 7, 8], '15:00', 1);
+      const plein = lu(await tourner());
+      ok(plein.dispo === false && /15:30/.test(plein.refus) && /^B1@15:30-16:30/.test(plein.blocs),
+        '[M] les pistes prises a 15:30 : le groupe 1 n est pas decale en douce, le plan refuse a 15:30 et dit pourquoi', plein);
+      // Le soir du gerant : 20:30, pistes 1, 2 et 7 prises jusqu a 22:00 (fermeture). Le groupe 2 ne peut aller au bowling
+      // qu a 21:30, quand le groupe 1 le libere : il finirait a 22:30. Le refus le dit sur sa case, et le plan garde ses groupes.
+      await autre([1, 2, 7], '20:00', 2);
+      const soirPlan = await tourner('20:30');
+      const soir = lu(soirPlan);
+      const caseRouge = (soirPlan.coincent || []).map((x) => `${x.groupe}:${x.activite}`).join(' ');
+      ok(soir.dispo === false && soir.refus === 'Groupe 2 : le bowling finit à 22:30, après la fermeture (22:00).'
+        && /^B1@20:30-21:30\[\S+\] B2@21:30-22:30\[\S+\] L1@21:30-21:55 L2@20:30-20:55$/.test(soir.blocs) && caseRouge === '2:bowling'
+        && JSON.stringify(soir.heures) === JSON.stringify([{ bowling: '20:30', laser_game: '21:30' }, { bowling: '21:30', laser_game: '20:30' }]),
+      '[M] le soir du gerant, 20:30 : le groupe 2 va au bowling a 21:30 (quand le groupe 1 le libere), le refus le dit sur sa case (fin 22:30, apres la fermeture), le plan garde ses groupes', { ...soir, caseRouge });
+    }
   } catch (error) {
     ok(false, `exception : ${error.message}`, String(error.stack || '').split('\n').slice(0, 4).join(' | '));
   } finally {

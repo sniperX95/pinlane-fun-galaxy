@@ -1080,7 +1080,13 @@ const MUTATIONS = [
   { nom: 'posee-perdue-au-recalcul', lettre: 'W8', scenarios: GEMBLOUX, editions: [{ fichier: 'lib/reservation-ops.js', serveur: true, de: '      ...(tenue.heurePosee === true ? { heurePosee: true } : {}),\n', vers: '' }] },
   { nom: 'programme-sans-plan', lettre: 'W4', scenarios: GEMBLOUX, editions: [{ fichier: API, serveur: true, de: '  if (shouldReplan && ops.planAvailable === false && patch.program && (heuresAPoser.length || !memesActivites(current, proposedItems))) {\n', vers: '  if (false) {\n' }] },
   { nom: 'verdict-sans-reste', lettre: 'W4', scenarios: GEMBLOUX, editions: [{ fichier: JS, de: '      const reste = !envoi.erreur && resumeModifsEdition().length > modifsHeuresEdition().length ? preparerModificationEdition({ aBlanc: true }) : null;', vers: '      const reste = null;' }] },
-  { nom: 'barre-perimee', lettre: 'W6', scenarios: GEMBLOUX, editions: [{ fichier: JS, de: "      if (barre) { barre.innerHTML = resumeModifsEditionHtml(); barre.classList.toggle('is-vide', !resumeModifsEdition().length); }\n", vers: '' }] },
+  // (apres un enregistrement a moitie, la barre du bas se repeint deux fois : dans le refus, puis avec le verdict que
+  // noterHeuresEdition repeint dans chaque branche du refus, peindreVerdictEdition, depuis f3882db du 23/11. Retirer le
+  // seul repeint du refus ne changeait plus rien a l ecran : la barre perimee retire les deux)
+  { nom: 'barre-perimee', lettre: 'W6', scenarios: GEMBLOUX, editions: [
+    { fichier: JS, de: "      if (barre) { barre.innerHTML = resumeModifsEditionHtml(); barre.classList.toggle('is-vide', !resumeModifsEdition().length); }\n", vers: '' },
+    { fichier: JS, de: "  if (barreModifs && state.editState) { barreModifs.innerHTML = resumeModifsEditionHtml(); barreModifs.classList.toggle('is-vide', !resumeModifsEdition().length); }\n", vers: '' },
+  ] },
   { nom: 'partiel-muet', lettre: 'W6', scenarios: GEMBLOUX, editions: [{ fichier: JS, de: "    const enregistres = [dit(faits.filter(d => d !== reprise)), resteFait ? resteEnMots : ''].filter(Boolean).join(', ');", vers: "    const enregistres = '';" }] },
   { nom: 'bowling-du-programme-sans-champ', lettre: 'W7', scenarios: GEMBLOUX, editions: [{ fichier: JS, de: "  if (id === 'bowling' && items.some((item) => item && item.activityId === id)) return !((r.opsPlan", vers: '  if (false) return !((r.opsPlan' }] },
   { nom: 'heure-du-programme-pas-envoyee', lettre: 'W7', scenarios: GEMBLOUX, editions: [{ fichier: JS, de: '  const heuresPoseesNouvelles = heuresNouvellesEnvoyees();', vers: '  const heuresPoseesNouvelles = programme ? heuresNouvellesEnvoyees() : null;' }] },

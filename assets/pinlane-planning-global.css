@@ -484,9 +484,10 @@ button.gf-bloc__in:focus-visible { outline: 2px solid var(--console-focus); outl
    [V1] mesurent la marge) */
 @container feuille (min-width: 640px) and (max-width: 1059px) { .gf-x__h { margin-left: -4px; padding: 0 1px; font-weight: 600; } .gf-x__hors { margin-left: -4px; } }
 /* (24/11, le gerant a 1 100 de large : « groupes 1 et 2 depasse ». Le fond gris finissait pile sur le trait de la colonne
-   voisine, le texte de « groupe 3 » a 1 px du trait : la pastille garde 3 px avant le bord droit de sa colonne, et la
-   colonne passe de 54 a 58 px pour que « groupes » y garde ses 4 px ; grands-groupes [I] le mesure a 1 100 et 1 024) */
-@container feuille (min-width: 640px) and (max-width: 1059px) { .gf-x__h, .gf-x__hors { margin-right: 3px; } }
+   voisine, le texte de « groupe 3 » a 1 px du trait. La colonne reste a 54 px (elargie, le planning defilait de cote sur
+   un petit PC) : la pastille garde 2 px avant le bord droit, ses lettres se resserrent d un rien (-0,02 em) pour que
+   « groupe 3 » tienne encore sur une ligne et que « groupes » garde ses 3 px ; grands-groupes [I] le mesure a 1 100 et 1 024) */
+@container feuille (min-width: 640px) and (max-width: 1059px) { .gf-x__h, .gf-x__hors { margin-right: 2px; } .gf-x__h { letter-spacing: -0.02em; } }
 .gf-x:is(.is-fini, .is-clos) .gf-x__h, .gf-r.is-parti .gf-x__h { background: transparent; box-shadow: inset 0 0 0 1px var(--line); color: var(--muted); font-weight: 600; }
 /* « Illimité » prend la couleur de la formule : c est elle qui le donne. */
 .gf-x__t.is-illimite { background: var(--gf-formule-fond); color: var(--gf-formule-encre); }
@@ -702,7 +703,7 @@ button.gf-bloc__in:focus-visible { outline: 2px solid var(--console-focus); outl
   .gf-gb--payer { padding: 0; font-size: 12.5px; }
 }
 @container feuille (max-width: 1059px) {
-  .gf-t, .gf-t.is-dense, .gf-t.is-serre { --c-bloc: 64px; --c-nom: 166px; --c-n: 48px; --c-f: 50px; --c-a: 58px; --c-reste: 58px; --c-etat: 108px; }
+  .gf-t, .gf-t.is-dense, .gf-t.is-serre { --c-bloc: 64px; --c-nom: 166px; --c-n: 48px; --c-f: 50px; --c-a: 54px; --c-reste: 58px; --c-etat: 108px; }
   .gf-x__t { margin-left: -4px; padding: 0 4px; }
   .gf-th { padding-left: 4px; padding-right: 0; }
   .gf-th--n { padding: 0; }

@@ -10260,6 +10260,10 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv.rs .rs-gg-j { flex: none; display: inline-flex; align-items: center; gap: 8px; }
 .qb-modal.rv.rs .rs-gg-u { font-size: 13px; line-height: 1.2; color: var(--muted); }
 .qb-modal.rv.rs .rs-gg-prog { flex: 1 1 300px; display: flex; align-items: stretch; gap: 6px; min-width: 0; }
+.qb-modal.rv.rs .rs-gg-places { flex: 1 0 100%; display: flex; flex-wrap: wrap; gap: 8px 24px; padding-left: 86px; }
+.qb-modal.rv.rs .rs-gg-place { display: inline-flex; align-items: center; gap: 8px; }
+.qb-modal.rv.rs .rs-gg-place .rs-gg-u small { display: block; font-size: 13px; }
+.qb-modal.rv.rs .rs-gg-seul { min-width: 44px; text-align: center; font-size: 17px; font-weight: 600; color: var(--text); }
 .qb-modal.rv.rs .rs-gg-fl { flex: none; align-self: center; font-size: 15px; line-height: 1; color: var(--faint); }
 .qb-modal.rv.rs .rs-gg-c { display: flex; flex-direction: column; justify-content: center; gap: 1px; min-width: 0; min-height: 52px; padding: 6px 10px; border-radius: 10px; background: var(--rs-touche); }
 .qb-modal.rv.rs .rs-gg-l .rs-gg-c { position: relative; flex: 1 1 0; flex-direction: row; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 6px 6px 12px; }
@@ -10294,6 +10298,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 @media (hover: hover) { .qb-modal.rv.rs .rs-gg-h:hover, .qb-modal.rv.rs .rs-gg-inv:hover { background: var(--rs-survol); } }
 @media (max-width: 700px) {
   .qb-modal.rv.rs .rs-gg-q { flex-basis: auto; }
+  .qb-modal.rv.rs .rs-gg-places { padding-left: 0; }
   .qb-modal.rv.rs .rs-gg-premier { grid-template-columns: minmax(0, 1fr); }
 }
 .qb-modal.rv.rs .rs-rangs { flex: 1 1 auto; display: flex; flex-direction: column; gap: 10px; }

@@ -43569,7 +43569,7 @@ function rvGrandGroupe(s = quickBookState) {
   if (minimum < 2) return null;
   const pax = laserSeul ? getQuickVisitParticipants('laser_game') : Math.max(1, Number(s.pax) || 1);
   const voulu = Math.trunc(Number(s.grandGroupe && s.grandGroupe.nombre)) || 0;
-  const choisi = voulu >= minimum && voulu <= Math.min(RV_GROUPES_MAX, pax) ? voulu : 0;
+  const choisi = voulu >= 1 && voulu <= Math.min(RV_GROUPES_MAX, pax) ? voulu : 0;
   const laser = laserSeul ? { laserSeul: true, joueurs: pax, cles: Array.from({ length: rvPartiesLaser() }, (_, rang) => rvCleDeLaPartie(rang + 1)) } : {};
   return { ids, nombre: choisi || minimum, minimum, choisi: Boolean(choisi), tourne: ids.length > 1, ...laser };
 }
@@ -43628,7 +43628,7 @@ function rvArmesDites(joueurs) {
 // `ou` : le bloc de la seance, ou la page de la ligne (deux id distincts).
 function rsGroupesDuLaserHtml(grand, ou = '') {
   const tailles = rvTaillesAffichees(grand);
-  const phrase = `${getLaserArenaCapacity()} armes à la fois : ${grand.nombre} groupes de ${rvListe(tailles)} joueurs, l’un après l’autre.`;
+  const phrase = grand.nombre === 1 ? `${getLaserArenaCapacity()} armes à la fois : un seul groupe, en plusieurs passages.` : `${getLaserArenaCapacity()} armes à la fois : ${grand.nombre} groupes de ${rvListe(tailles)} joueurs, l’un après l’autre.`;
   return `<div class="rs-gg-tourne" id="rsGgLaser${ou}"><p>${escapeHtml(phrase)}</p><button type="button" class="attr-b" id="rsGgLaser${ou}Regler" onclick="rsOuvrir('groupes')">Régler les groupes</button></div>`;
 }
 
@@ -43645,6 +43645,8 @@ function rvDemandeGrandGroupe(grand = rvGrandGroupe()) {
   const tailles = grand ? rvTaillesVoulues(grand) : null;
   const heures = grand ? rvHeuresVoulues(grand) : null;
   const premier = grand && grand.tourne && grand.ids.includes(voulu.premier) ? voulu.premier : '';
+  const pistes = rvPlacesPosees(grand, 'pistes');
+  const armes = rvPlacesPosees(grand, 'armes');
   const impose = Boolean(grand) && (!grand.tourne || voulu.tourne === true || grand.choisi || Boolean(heures));
   return {
     ...(tailles ? { tailles } : {}),
@@ -43652,8 +43654,54 @@ function rvDemandeGrandGroupe(grand = rvGrandGroupe()) {
     // (des heures valent pour leur nombre de groupes : il part avec elles)
     ...(grand && (grand.choisi || heures) ? { nombre: grand.nombre } : {}),
     ...(heures ? { heures } : {}),
+    ...(pistes ? { pistes } : {}),
+    ...(armes ? { armes } : {}),
     ...(impose ? { impose: true } : {}),
   };
+}
+
+// LES PISTES ET LES ARMES DE CHAQUE GROUPE (2026-11-24, Ansar : « la page des groupes vraiment complète : 1 seul groupe,
+// nombre d’armes, nombre de pistes »). Une valeur par groupe, 0 pour celle que le centre conseille ; elles valent pour ce
+// nombre de groupes, ces joueurs et ces activites. null : rien de pose.
+function rvClePlaces(grand) {
+  return `${rvJoueursDuGrand(grand)}/${rvClesDuGrand(grand).join(',')}`;
+}
+
+function rvPlacesPosees(grand, quoi) {
+  const voulu = (quickBookState && quickBookState.grandGroupe) || {};
+  const liste = Array.isArray(voulu[quoi]) ? voulu[quoi] : null;
+  if (!grand || !liste || liste.length !== grand.nombre || voulu.pourPlaces !== rvClePlaces(grand)) return null;
+  return liste.some((n) => Number(n) > 0) ? liste.map((n) => Math.max(0, Math.trunc(Number(n)) || 0)) : null;
+}
+
+// Les joueurs d un groupe a une activite : ceux du groupe, ou sa part quand une partie seulement la joue.
+function rvJoueursAActivite(grand, id, joueurs, n, plan) {
+  if (grand.laserSeul || getQuickVisitParticipants(id) >= rvJoueursDuGrand(grand)) return joueurs;
+  const parts = plan && plan.grandGroupe && plan.grandGroupe.joueurs && plan.grandGroupe.joueurs[id];
+  return Array.isArray(parts) && parts.length === grand.nombre ? Number(parts[n - 1]) || 0 : joueurs;
+}
+
+// Ce que le centre conseille a ce groupe : ses pistes, ou une arme par joueur jusqu a celles de l arene.
+function rvPlacesConseillees(quoi, joueurs) {
+  if (quoi === 'armes') return Math.min(Math.max(1, joueurs), getLaserArenaCapacity());
+  return rvPistesALaMain() || getBowlingCapacityPlan(Math.max(1, joueurs), getAvailabilityLaneCount() || getTotalLanes(), 60).requiredCount || 1;
+}
+
+function rsPlacesDuGroupe(n, quoi, valeur) {
+  const s = quickBookState;
+  const grand = rvGrandGroupe();
+  if (!s || !grand || n < 1 || n > grand.nombre || !['pistes', 'armes'].includes(quoi)) return;
+  const autre = quoi === 'pistes' ? 'armes' : 'pistes';
+  const gardees = rvPlacesPosees(grand, autre);
+  const liste = rvPlacesPosees(grand, quoi) || Array.from({ length: grand.nombre }, () => 0);
+  const joueurs = rvJoueursAActivite(grand, quoi === 'pistes' ? 'bowling' : 'laser_game', rvTaillesAffichees(grand)[n - 1], n, rvPlanCourant());
+  const voulu = Math.max(1, Math.trunc(Number(valeur)) || 1);
+  liste[n - 1] = voulu === rvPlacesConseillees(quoi, joueurs) ? 0 : voulu;
+  const { pistes: _pi, armes: _ar, pourPlaces: _pp, ...reste } = s.grandGroupe || {};
+  // (le nombre de groupes a l ecran part avec elles)
+  s.grandGroupe = { ...reste, nombre: grand.nombre, pourPlaces: rvClePlaces(grand), ...(gardees ? { [autre]: gardees } : {}), ...(liste.some((x) => x > 0) ? { [quoi]: liste } : {}) };
+  s.forcer = false;
+  s.error = '';
 }
 
 // LES GROUPES TOURNENT-ILS ? (2026-11-22, le coordinateur : « aucun changement de prix silencieux
@@ -43690,7 +43738,7 @@ function rvDureeDUnGroupe() {
 function rvDureeAJuger(annoncee) {
   const grand = rvGrandGroupe();
   const visite = rvDureeDuCreneau(annoncee);
-  return grand && grand.tourne ? Math.min(visite, rvDureeDUnGroupe()) : visite;
+  return grand && grand.tourne && grand.nombre > 1 ? Math.min(visite, rvDureeDUnGroupe()) : visite;
 }
 
 // Un total reparti en parts egales, les plus grandes d abord (80 en 3 : 27, 27 et 26), comme le moteur
@@ -43802,7 +43850,8 @@ function rvPistesDites(pistes) {
 // pistes. null tant que le plan du serveur ne la coupe pas.
 function rvLigneDuGrandGroupe(id) {
   const groupes = rvGroupesDuPlan();
-  if (groupes.length < 2) return null;
+  const grand = rvGrandGroupe();
+  if (groupes.length < 2 || (grand && grand.nombre === 1)) return null;
   const parGroupe = groupes.map((g) => ({ n: g.n, passages: g.passages.filter((p) => p.activite === id) })).filter((g) => g.passages.length);
   if (!parGroupe.length) return null;
   parGroupe.sort((a, b) => timeToNum(a.passages[0].debut) - timeToNum(b.passages[0].debut) || a.n - b.n);
@@ -43833,9 +43882,9 @@ function rsLigneGrandGroupeHtml() {
   const plan = rvPlanCourant();
   const tailles = rvTaillesAffichees(grand, plan);
   const heures = rvHeuresAffichees(grand, plan);
-  const nom = grand.tourne ? `${grand.nombre} groupes qui tournent` : `${grand.nombre} groupes, l’un après l’autre`;
+  const nom = grand.nombre === 1 ? 'Un seul groupe' : grand.tourne ? `${grand.nombre} groupes qui tournent` : `${grand.nombre} groupes, l’un après l’autre`;
   const detail = `${rvListe(tailles)} joueurs`;
-  const lignes = heures ? tailles.map((n, rang) => `Groupe ${rang + 1} · ${n} · ${rvProgrammeDuGroupe(grand, heures[rang])}`) : [];
+  const lignes = heures ? tailles.map((n, rang) => `${grand.nombre === 1 ? '' : `Groupe ${rang + 1} · ${n} · `}${rvProgrammeDuGroupe(grand, heures[rang])}`) : [];
   return rsLigne({ cle: 'groupes', action: "rsOuvrir('groupes')", icone: RV_I.groupes, nom, detail, lignes, aria: rsAriaLigne(nom, [detail, ...lignes].join(', '), '') });
 }
 
@@ -43861,6 +43910,7 @@ function rvRaisonDuMinimum(grand) {
 function rvPhraseDesGroupes(grand, groupes, plan) {
   const fin = plan && plan.disponible && plan.fin ? ` Fin vers ${plan.fin}.` : '';
   if (rvHeuresPosees(grand)) return `Les heures sont celles que vous avez posées.${fin}`;
+  if (grand.nombre === 1) return `Tout le groupe joue ensemble${grand.ids.length > 1 ? ', une activité après l’autre' : ''}.${fin}`;
   if (grand.laserSeul) return `Les groupes jouent l’un après l’autre${rvParPartie(grand) ? ', partie par partie' : ''} : ${rvArmesDites(grand.joueurs)}.${fin}`;
   if (!grand.tourne) return `Les groupes jouent l’un après l’autre.${fin}`;
   const premiers = groupes.map((g) => g.passages[0]).filter(Boolean);
@@ -43873,14 +43923,14 @@ function rvPhraseDesGroupes(grand, groupes, plan) {
   return `Chaque groupe joue au bowling et au laser, à tour de rôle.${fin}`;
 }
 
-// LE NOMBRE DE GROUPES : un de moins, un de plus. Jamais moins que ce que la place du centre demande
-// (« au moins 3 : 30 armes au laser »), jamais plus que 12 ni que le groupe.
+// LE NOMBRE DE GROUPES : un de moins, un de plus, des 1 (2026-11-24). Ce que la place du centre demande est un conseil
+// (« le centre en conseille 3 : 30 armes au laser »), jamais plus que 12 ni que le groupe.
 function rsNombreDeGroupesHtml(grand) {
   const pax = rvJoueursDuGrand(grand);
   const n = grand.nombre;
-  const moins = n > grand.minimum ? `rsFixer(() => rsNombreDeGroupes(${n - 1}))` : '';
+  const moins = n > 1 ? `rsFixer(() => rsNombreDeGroupes(${n - 1}))` : '';
   const plus = n < Math.min(RV_GROUPES_MAX, pax) ? `rsFixer(() => rsNombreDeGroupes(${n + 1}))` : '';
-  const dit = n <= grand.minimum ? `au moins ${grand.minimum} : ${rvRaisonDuMinimum(grand)}` : '';
+  const dit = n < grand.minimum ? `le centre en conseille ${grand.minimum} : ${rvRaisonDuMinimum(grand)}` : n === grand.minimum ? `conseillé : ${rvRaisonDuMinimum(grand)}` : '';
   return `<div class="rs-rangee rs-gg-n"><span class="rs-lbl" id="rsGgNombreT">Groupes</span><div class="rs-gg-nv">${rsPasHtml(moins, plus, n, 'Nombre de groupes', 'data-gg-nombre="1"')}${dit ? `<small class="rs-gg-dit" id="rsGgNombreDit">${escapeHtml(dit)}</small>` : ''}</div></div>`;
 }
 
@@ -43900,13 +43950,16 @@ function rsCaseDuGroupeHtml(n, p, plan, coincent, taille = 0, grand = null) {
   const nom = rvNomDeLaCase(grand, p.id);
   // (ce que le plan dit de la case, seulement a l heure qu elle montre : une heure tapee que le plan n a pas
   // encore jugee ne garde pas les pistes ni la fin de l ancienne)
-  const tous = (plan && Array.isArray(plan.blocs) ? plan.blocs : []).filter((x) => Number(x.sousGroupe) === n && rvSurLaCase(grand, p.id, x) && x.debut).sort((x, y) => timeToNum(x.debut) - timeToNum(y.debut));
+  const tous = (plan && Array.isArray(plan.blocs) ? plan.blocs : []).filter((x) => (Number(x.sousGroupe) || (grand && grand.nombre === 1 ? 1 : 0)) === n && rvSurLaCase(grand, p.id, x) && x.debut).sort((x, y) => timeToNum(x.debut) - timeToNum(y.debut));
   const blocs = tous.length && tous[0].debut === p.heure ? tous : [];
   // (un laser seul de plusieurs parties : la case de sa partie, ou toutes quand le refus n en nomme aucune)
   const raison = coincent.find((x) => x.groupe === n && rvSurLaCase(grand, p.id, x));
-  const parties = blocs.length > 1 && p.id === 'laser_game' ? `${blocs.length} parties, ` : '';
+  // (une partie en plusieurs passages : un groupe plus nombreux que ses armes)
+  const nParties = new Set(blocs.map((x) => Number(x.partie) || 1)).size;
+  const passages = nParties ? Math.round(blocs.length / nParties) : 0;
+  const parties = p.id !== 'laser_game' ? '' : `${nParties > 1 ? `${nParties} parties, ` : ''}${passages > 1 ? `${passages} passages, ` : ''}`;
   // (une activite que tout le groupe ne joue pas, 40 au laser sur 60 : la case dit combien du groupe y vont)
-  const ici = blocs.length ? Math.max(...blocs.map((x) => Number(x.joueursReels || x.joueurs) || 0)) : 0;
+  const ici = blocs.length && passages < 2 ? Math.max(...blocs.map((x) => Number(x.joueursReels || x.joueurs) || 0)) : 0;
   const combien = ici > 0 && taille > 0 && ici < taille ? `${rvPluriel(ici, 'joueur')}, ` : '';
   const detail = raison ? 'ne tient pas' : !blocs.length ? '' : p.id === 'bowling' ? `${combien}${rvPistesDites(blocs[0].pistes)}` : `${combien}${parties}jusqu’à ${blocs[blocs.length - 1].fin}`;
   const quoi = rvQuoiDeLaCase(grand, p.id);
@@ -43923,6 +43976,7 @@ function rsRangeeDuGroupeHtml(grand, n, joueurs, heures, plan, coincent, plafond
   const passages = rvPassagesDuGroupe(grand, heures);
   const cases = passages.map((p) => rsCaseDuGroupeHtml(n, p, plan, coincent, joueurs, grand)).join('<span class="rs-gg-fl" aria-hidden="true">→</span>');
   const moins = joueurs > 1 ? `rsFixer(() => rsTailleDuGroupe(${n}, ${joueurs - 1}))` : '';
+  const places = rsPlacesDuGroupeHtml(grand, n, joueurs, plan);
   const plus = joueurs + 1 <= plafond ? `rsFixer(() => rsTailleDuGroupe(${n}, ${joueurs + 1}))` : '';
   // (un laser seul de plusieurs parties : la phrase du serveur dit aussi la partie, quand elle ne la dit pas deja)
   const dire = (x) => {
@@ -43937,7 +43991,26 @@ function rsRangeeDuGroupeHtml(grand, n, joueurs, heures, plan, coincent, plafond
     ? `<button type="button" class="rs-gg-inv" id="rsGgInverser-${n}" aria-label="${escapeHtml(`Groupe ${n} : jouer d’abord au ${passages[1].id === 'laser_game' ? 'laser' : rvMinuscule(rsNomCourt(passages[1].id))}, aux mêmes heures`)}" title="Inverser l’ordre" onclick="rsFixer(() => rsInverserLeGroupe(${n}))"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h11l-3-3M17 17H6l3 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`
     : '';
   const dit = `Groupe ${n} · ${rvPluriel(joueurs, 'joueur')} · ${rvProgrammeDuGroupe(grand, heures)}`;
-  return `<div class="rs-gg-l${raisons.length ? ' is-ko' : ''}" role="listitem" data-groupe="${n}" aria-label="${escapeHtml(dit)}"><b class="rs-gg-q">Groupe ${n}</b><span class="rs-gg-j">${rsPasHtml(moins, plus, joueurs, `Joueurs du groupe ${n}`, `data-groupe="${n}"`, `g:${n}`)}<span class="rs-gg-u">${joueurs > 1 ? 'joueurs' : 'joueur'}</span></span><span class="rs-gg-prog${rvParPartie(grand) ? ' is-parties' : ''}">${cases}</span>${inverser}${raisons.length ? `<small class="rs-gg-ko" role="alert">${escapeHtml(raisons.join(' '))}</small>` : ''}</div>`;
+  return `<div class="rs-gg-l${raisons.length ? ' is-ko' : ''}" role="listitem" data-groupe="${n}" aria-label="${escapeHtml(dit)}"><b class="rs-gg-q">Groupe ${n}</b><span class="rs-gg-j">${grand.nombre === 1 ? `<b class="rs-gg-seul">${joueurs}</b>` : rsPasHtml(moins, plus, joueurs, `Joueurs du groupe ${n}`, `data-groupe="${n}"`, `g:${n}`)}<span class="rs-gg-u">${joueurs > 1 ? 'joueurs' : 'joueur'}</span></span><span class="rs-gg-prog${rvParPartie(grand) ? ' is-parties' : ''}">${cases}</span>${inverser}${places}${raisons.length ? `<small class="rs-gg-ko" role="alert">${escapeHtml(raisons.join(' '))}</small>` : ''}</div>`;
+}
+
+// LES PISTES ET LES ARMES D UN GROUPE, sous son programme : un de moins, un de plus, depuis ce que le centre conseille.
+function rsPlacesDuGroupeHtml(grand, n, joueurs, plan) {
+  const morceau = (quoi, id, max) => {
+    const ici = grand.ids.includes(id) ? rvJoueursAActivite(grand, id, joueurs, n, plan) : 0;
+    if (ici < 1) return '';
+    const conseil = rvPlacesConseillees(quoi, ici);
+    const pose = (rvPlacesPosees(grand, quoi) || [])[n - 1] || 0;
+    const plafond = quoi === 'armes' ? Math.min(max, ici) : max;
+    const valeur = Math.min(plafond, pose || conseil);
+    const moins = valeur > 1 ? `rsFixer(() => rsPlacesDuGroupe(${n}, '${quoi}', ${valeur - 1}))` : '';
+    const plus = valeur < plafond ? `rsFixer(() => rsPlacesDuGroupe(${n}, '${quoi}', ${valeur + 1}))` : '';
+    const passages = quoi === 'armes' ? Math.ceil(ici / valeur) : 1;
+    const dit = passages > 1 ? `en ${passages} passages` : pose && pose !== conseil ? `conseillé : ${conseil}` : '';
+    return `<span class="rs-gg-place" data-places="${quoi}">${rsPasHtml(moins, plus, valeur, `${quoi === 'pistes' ? 'Pistes' : 'Armes'} du groupe ${n}`, `data-groupe="${n}" data-quoi="${quoi}"`)}<span class="rs-gg-u">${valeur > 1 ? quoi : quoi.slice(0, -1)}${dit ? `<small>${escapeHtml(dit)}</small>` : ''}</span></span>`;
+  };
+  const html = morceau('pistes', 'bowling', getAvailabilityLaneCount() || getTotalLanes()) + morceau('armes', 'laser_game', getLaserArenaCapacity());
+  return html ? `<span class="rs-gg-places">${html}</span>` : '';
 }
 
 // Le pied : le total contre le groupe (« 80 joueurs sur 80 », rouge s il ne le fait pas), les parts
@@ -43960,9 +44033,9 @@ function rsNombreDeGroupes(n) {
   const grand = rvGrandGroupe();
   if (!s || !grand) return;
   const pax = rvJoueursDuGrand(grand);
-  const voulu = Math.max(grand.minimum, Math.min(RV_GROUPES_MAX, pax, Math.trunc(Number(n)) || grand.minimum));
-  const { tailles: _t, pourPax: _p, heures: _h, pourDepart: _d, pourActivites: _a, nombre: _n, ...reste } = s.grandGroupe || {};
-  s.grandGroupe = voulu > grand.minimum ? { ...reste, nombre: voulu } : reste;
+  const voulu = Math.max(1, Math.min(RV_GROUPES_MAX, pax, Math.trunc(Number(n)) || grand.minimum));
+  const { tailles: _t, pourPax: _p, heures: _h, pourDepart: _d, pourActivites: _a, nombre: _n, pistes: _pi, armes: _ar, pourPlaces: _pp, ...reste } = s.grandGroupe || {};
+  s.grandGroupe = voulu !== grand.minimum ? { ...reste, nombre: voulu } : reste;
   s.forcer = false;
   s.error = '';
 }
@@ -44124,7 +44197,7 @@ function rsGroupesHtml() {
   const rangees = tailles.map((joueurs, rang) => rsRangeeDuGroupeHtml(grand, rang + 1, joueurs, heures ? heures[rang] : null, plan, coincent, plafond)).join('');
   return `${rsRetourHtml()}
     <section class="rs-seance is-page rs-gg" aria-labelledby="rsQ">
-      <div class="rs-s-t"><div class="rs-s-n"><h2 class="rs-q" id="rsQ" tabindex="-1">${escapeHtml(`${rvJoueursDuGrand(grand)} joueurs en ${grand.nombre} groupes`)}</h2><small id="rsGgPhrase">${escapeHtml(rvPhraseDesGroupes(grand, groupes, plan))}</small></div></div>
+      <div class="rs-s-t"><div class="rs-s-n"><h2 class="rs-q" id="rsQ" tabindex="-1">${escapeHtml(grand.nombre === 1 ? `${rvJoueursDuGrand(grand)} joueurs, un seul groupe` : `${rvJoueursDuGrand(grand)} joueurs en ${grand.nombre} groupes`)}</h2><small id="rsGgPhrase">${escapeHtml(rvPhraseDesGroupes(grand, groupes, plan))}</small></div></div>
       ${rsNombreDeGroupesHtml(grand)}
       ${grand.tourne && !posees ? rsPremierDesGroupesHtml(grand, plan) : ''}
       <div class="rs-gg-liste" id="rsGgListe" role="list" aria-label="Les groupes, leurs joueurs et leurs heures">${rangees}</div>
@@ -48690,7 +48763,7 @@ function rvAutrePlanDesGroupesPossible() {
   const s = quickBookState;
   const grand = rvGrandGroupe();
   const plan = rvPlanCourant();
-  if (!s || !grand || !grand.tourne || !plan || s.forcer || rvResas.length > 1) return false;
+  if (!s || !grand || !grand.tourne || grand.nombre === 1 || !plan || s.forcer || rvResas.length > 1) return false;
   const choisie = Boolean(s.grandGroupe && s.grandGroupe.tourne === true);
   // (choisis, les groupes qui tournent se defont toujours, meme a une heure ou ils ne tiennent pas)
   if (!plan.disponible && !choisie) return false;

@@ -1272,7 +1272,7 @@ async function calculerLaModification({ body, current, session, requestedCenterI
   // autres serait un mensonge. Le refus dit le groupe et l activite qui coincent (`coincent`).
   const groupesDemandes = patch.preference && typeof patch.preference === 'object' ? patch.preference.grandGroupe : null;
   if (shouldReplan && ops.planAvailable === false && groupesDemandes && typeof groupesDemandes === 'object'
-    && (Array.isArray(groupesDemandes.heures) || Array.isArray(groupesDemandes.tailles) || Number(groupesDemandes.nombre) >= 2)) {
+    && (Array.isArray(groupesDemandes.heures) || Array.isArray(groupesDemandes.tailles) || Number(groupesDemandes.nombre) >= 1)) {
     const motif = String(ops.planRefusal || ops.planWarning || 'le moteur n’a pas donné de motif.').trim();
     throw Object.assign(createHttpError(`Ces groupes ne tiennent pas au planning : ${motif}`, 422), { coincent: Array.isArray(ops.groupesQuiCoincent) ? ops.groupesQuiCoincent : [] });
   }

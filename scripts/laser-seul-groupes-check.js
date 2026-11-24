@@ -310,8 +310,8 @@ async function principal() {
         await page.locator('#rsL-groupes').click();
         await page.waitForSelector('#rsGgListe');
         let p = await pageDesGroupes(page);
-        ok(p.titre === '35 joueurs en 2 groupes' && /l’un après l’autre, partie par partie : 30 armes à la fois/.test(p.phrase) && /au moins 2 : 30 armes à la fois/.test(p.nombre) && p.moins,
-          '[B] la page : 35 joueurs en 2 groupes, partie par partie, pas moins de 2 (30 armes a la fois)', p);
+        ok(p.titre === '35 joueurs en 2 groupes' && /l’un après l’autre, partie par partie : 30 armes à la fois/.test(p.phrase) && /conseillé : 30 armes à la fois/.test(p.nombre) && !p.moins,
+          '[B] la page : 35 joueurs en 2 groupes, partie par partie, 2 conseilles (30 armes a la fois), un de moins se peut', p);
         ok(JSON.stringify(p.rangees) === JSON.stringify(['Groupe 1 · 18 joueurs · Partie 1 14:00 → Partie 2 15:00', 'Groupe 2 · 17 joueurs · Partie 1 14:30 → Partie 2 15:30'])
           && p.cases.join(' ') === '1:laser_game@14:00 1:laser_game_2@15:00 2:laser_game@14:30 2:laser_game_2@15:30' && p.total === '35 joueurs sur 35',
         '[B] une rangee par groupe, une case par partie, chacune son heure', p);
@@ -370,6 +370,52 @@ async function principal() {
         '[B] le dossier nait a ces heures-la, chaque partie de chaque groupe, au prix annonce', r && { passages: passages(r), prix: [r.price, prix], gg });
         ok(erreurs.length === 0, '[*] zero erreur JavaScript (B)', erreurs.slice(0, 3).join(' | '));
       } finally { await ctx.close(); }
+    }
+
+    // =======================================================================
+    if (joue('U')) {
+      section('[U] UN SEUL GROUPE, SES ARMES ET SES PISTES (2026-11-24)');
+      B.semer([]);
+      const { ctx, page, erreurs, avant } = await ouvrir();
+      try {
+        await laserDemain(page);
+        await page.locator('#rsL-groupes').click();
+        await page.waitForSelector('#rsGgListe');
+        await page.locator('.rs-gg-n button[aria-label="Nombre de groupes, un de moins"]').click();
+        await page.waitForFunction(() => document.querySelectorAll('#rsGgListe .rs-gg-l').length === 1);
+        await pret(page).catch(() => {});
+        let p = await pageDesGroupes(page);
+        const place = await texte(page, '.rs-gg-places');
+        ok(p.titre === '35 joueurs, un seul groupe' && /Tout le groupe joue ensemble\./.test(p.phrase) && /en 2 passages/.test(place) && /le centre en conseille 2/.test(p.nombre), '[U] un seul groupe de 35 : la page le dit, le laser en 2 passages', { p, place });
+        if (argument('captures')) { fs.mkdirSync(CAPTURES, { recursive: true }); await page.screenshot({ path: path.join(CAPTURES, 'un-seul-groupe.png') }); }
+        // 12 armes au lieu de 30 : 3 passages.
+        for (let k = 0; k < 18; k += 1) await page.locator('button[aria-label="Armes du groupe 1, un de moins"]').click();
+        await page.waitForFunction(() => /en 3 passages/.test((document.querySelector('.rs-gg-places') || {}).textContent || ''));
+        await pret(page).catch(() => {});
+        await page.waitForTimeout(800);
+        const r = await creer(page, avant);
+        const gg = r && r.ops_plan && r.ops_plan.grandGroupe;
+        ok(r && Number(r.pax) === 35 && Number(r.price) === 350 && passages(r) === 'G0P1@14:00x12 G0P1@14:30x12 G0P1@15:00x11' && gg && gg.nombre === 1 && JSON.stringify(gg.armes) === '[12]',
+          '[U] le dossier nait en un groupe : 12, 12 et 11 armes a 14:00, 14:30 et 15:00, au meme prix', r && { passages: passages(r), gg, prix: r.price });
+        ok(erreurs.length === 0, '[*] zero erreur JavaScript (U)', erreurs.slice(0, 3).join(' | '));
+      } finally { await ctx.close(); }
+      // Le serveur : bowling et laser, 35 joueurs, un groupe puis deux, les pistes posees par groupe.
+      B.semer([]);
+      const demander = async (grandGroupe) => (await serveur.appeler('POST', '/api/staff-reservations', {
+        name: '', phone: '', email: '', notes: '', occasion: '', date: DEMAIN, startTime: '15:30', duration: 1, totalDuration: 2, lanes: [], pax: 35, status: 'pending', type: 'visite',
+        program: [{ activityId: 'bowling', pax: 35, participants: 35, duration: 1 }, { activityId: 'laser_game', pax: 35, participants: 35, games: 1 }],
+        laserGames: 0, extras: [], channel: 'staff', requiresLanes: true, centerId: 'libramont',
+        preference: { activityOrder: ['bowling', 'laser_game'], preferredTimes: { bowling: '15:30', laser_game: '16:30' }, grandGroupe }, dryRun: true,
+      })).json.plan || {};
+      const dit = (plan) => `${plan.disponible ? '' : `REFUS ${plan.refus} `}${(plan.blocs || []).filter((b) => ['bowling', 'laser_game'].includes(b.activite)).map((b) => `${b.activite[0]}${b.sousGroupe || 0}@${b.debut}x${b.joueurs}${b.activite === 'bowling' ? `/${b.pistes.length}` : ''}`).join(' ')}`;
+      const un = await demander({ nombre: 1, impose: true });
+      ok(dit(un) === 'b0@15:30x35/6 l0@16:30x18 l0@17:00x17', '[U] bowling et laser en un seul groupe : le bowling, puis le laser en deux passages', dit(un));
+      const pistes = await demander({ nombre: 2, pistes: [4, 2], impose: true });
+      ok(/b1@15:30x18\/4/.test(dit(pistes)) && /b2@\d\d:\d\dx17\/2/.test(dit(pistes)) && pistes.disponible, '[U] 4 pistes au groupe 1, 2 au groupe 2 : le plan les prend', dit(pistes));
+      const armes = await demander({ nombre: 2, armes: [0, 10], impose: true });
+      ok(armes.disponible && (armes.blocs || []).filter((b) => b.activite === 'laser_game' && b.sousGroupe === 2).length === 2, '[U] 10 armes au groupe 2 : son laser en deux passages', dit(armes));
+      const trop = await demander({ nombre: 2, pistes: [9, 0], impose: true });
+      ok(!trop.disponible && /9 pistes/.test(trop.refus), '[U] 9 pistes sur 8 : refuse et dit pourquoi', dit(trop));
     }
 
     // =======================================================================

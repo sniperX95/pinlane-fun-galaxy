@@ -31,6 +31,11 @@
 //        (booking-core) compte comme le serveur, choix compris.
 //   [D6] SUR UN TELEPHONE : la rangee du duckpin (joueurs, pistes, heure) tient dans l ecran ;
 //        sans retour a la ligne, ses pistes poussaient l heure hors de l ecran.
+//   [D7] MODIFIER D UN DOSSIER ENREGISTRE A 2 PISTES SANS CHOIX (en base et a l ecran : 2 pistes,
+//        2 tours de 1h, le prix de deux pistes) : il s ouvre tel quel, l en-tete et le compteur
+//        « Pistes » disent 2, le conseil a cote ; « − » ramene au conseil (le compteur, l en-tete,
+//        la ligne envoyee, le prix et la barre le disent), Enregistrer : la base porte 1 piste ;
+//        les joueurs du duckpin changes, ses pistes se recalculent.
 //   [*]  Zero erreur JavaScript.
 //
 // CONTRE-PREUVES : `--contre-preuves` sert le code casse expres, une mutation a la fois (en
@@ -86,15 +91,18 @@ const MUTATIONS = [
   { nom: 'ticket-sans-pistes', lettre: 'D1', cible: '[D1] « + » passe a 2 pistes : le ticket le dit', fichier: APP, de: '  return [plage, pistes, suite].filter(Boolean).join(\', \');', vers: '  return [plage, suite].filter(Boolean).join(\', \');' },
   { nom: 'serveur-sourd', lettre: 'D5', cible: '[D5] le comptoir obtient 2 pistes pour 4 joueurs', serveur: true, fichier: PROGRAMME, de: '      const plan = activityUnitPlan(activity, players, { fallbackCapacity: DUCKPIN_FALLBACK_CAPACITY, requested: choisies });', vers: '      const plan = activityUnitPlan(activity, players, { fallbackCapacity: DUCKPIN_FALLBACK_CAPACITY });' },
   { nom: 'public-lu', lettre: 'D5', cible: '[D5] le canal public ne lit pas le choix', serveur: true, fichier: PROGRAMME, de: '      const choisies = staff === true ? Math.min(50,', vers: '      const choisies = true ? Math.min(50,' },
-  { nom: 'base-oublieuse', lettre: 'D3', cible: '[D3] Modifier rouvre le dossier a 2 pistes', serveur: true, fichier: BASE, de: '    if (pistesChoisies > 0) out.pistesChoisies = Math.min(50, pistesChoisies);', vers: '' },
+  { nom: 'base-oublieuse', lettre: 'D3', cible: '[D3] la base garde le choix des 2 pistes', serveur: true, fichier: BASE, de: '    if (pistesChoisies > 0) out.pistesChoisies = Math.min(50, pistesChoisies);', vers: '' },
   { nom: 'modifier-sans-compteur', lettre: 'D3', cible: '[D3] Modifier rouvre le dossier a 2 pistes', fichier: APP, de: '      + pistesDuckpinEditionHtml(id, activite, reglages);', vers: "      + '';" },
   { nom: 'modifier-oublie-le-choix', lettre: 'D3', cible: '[D3] Modifier rouvre le dossier a 2 pistes', fichier: APP, de: '      if (Number(item.pistesChoisies) > 0) reglages.pistesChoisies = Math.trunc(Number(item.pistesChoisies));', vers: '' },
   { nom: 'prix-d-une-piste', lettre: 'D3', cible: '[D3] « + » : 2 pistes, le prix de deux pistes', fichier: APP, de: "      const plan = getActivityUnitPlan(activite, effectif, activite.resourceType === 'duckpin_lane' ? Math.trunc(Number(item.pistesChoisies) || 0) : 0);", vers: '      const plan = getActivityUnitPlan(activite, effectif);' },
   { nom: 'garde-aveugle', lettre: 'D4', cible: '[D4] le serveur refuse 2 pistes', serveur: true, fichier: GARDE, de: '  if (Number.isFinite(compte) && compte > 0) return Math.trunc(compte);', vers: '  if (Number.isFinite(compte) && compte > 0) return 1;' },
   { nom: 'planning-muet', lettre: 'D2', cible: '[D2] le planning dit « 2 pistes »', fichier: PLANNING, de: "        if (e.unites > 1) d = mots ? gfPluriel(e.unites, mots) : '×' + e.unites;", vers: "        if (false) d = mots ? gfPluriel(e.unites, mots) : '×' + e.unites;" },
   { nom: 'fiche-muette', lettre: 'D2', cible: '[D2] la fiche dit « 2 pistes · 1h »', fichier: APP, de: "  if (priceType === 'grid_bowling') return detailUnitesLigne(item, catalogue, reservation, Number(item.duration) || 1);", vers: "  if (priceType === 'grid_bowling') return formatDurationLabel(Number(item.duration) || 1);" },
-  { nom: 'ouvre-recalcule', lettre: 'D7', cible: '[D7] le duckpin enregistre a 2 pistes, 2 tours de 1h s ouvre tel quel', fichier: APP, de: '    if (inchange) { item.units = Number(enregistre.units);', vers: '    if (false) { item.units = Number(enregistre.units);' },
-  { nom: 'ne-recalcule-jamais', lettre: 'D7', cible: '[D7] l equipe change les joueurs du duckpin', fichier: APP, de: '    const inchange = Boolean(pistes && enregistre && Number(enregistre.units) > 0 && joueursEnregistres === Number(item.participants)', vers: '    const inchange = Boolean(pistes && enregistre && Number(enregistre.units) > 0' },
+  { nom: 'ouvre-recalcule', lettre: 'D7', cible: '[D7] le duckpin enregistre a 2 pistes, 2 tours de 1h s ouvre tel quel', fichier: APP, de: '  if (!inchange) return pistes;', vers: '  return pistes;' },
+  { nom: 'ne-recalcule-jamais', lettre: 'D7', cible: '[D7] l equipe change les joueurs du duckpin', fichier: APP, de: '  const inchange = Boolean(enregistre && Number(enregistre.units) > 0 && joueursEnregistres === joueurs', vers: '  const inchange = Boolean(enregistre && Number(enregistre.units) > 0' },
+  { nom: 'compteur-au-conseil', lettre: 'D7', cible: '[D7] le compteur « Pistes » dit 2 comme l en-tete', fichier: APP, de: '  const p = pistesDuckpinEdition(id, reglages, pax);', vers: '  const p = pistesDuckpin(activite, joueurs, reglages.pistesChoisies);' },
+  { nom: 'moins-sans-effet', lettre: 'D7', cible: '[D7] « − » ramene au conseil', fichier: APP, de: '    reglages.units = pistesDuckpin(activite, joueurs, reglages.pistesChoisies).n;', vers: '' },
+  { nom: 'conseil-cache-par-les-tours', lettre: 'D7', cible: '[D7] le conseil est a cote du compteur', fichier: APP, de: "  if (p.n !== p.conseillees) return `${rvPluriel(p.conseillees, 'conseillée', 'conseillées')} pour ${rvPluriel(joueurs, 'joueur')}`;", vers: "  if (p.tours > 1) return `en ${p.tours} tours, le centre en a ${p.dotation}`; if (p.n !== p.conseillees) return `${rvPluriel(p.conseillees, 'conseillée', 'conseillées')} pour ${rvPluriel(joueurs, 'joueur')}`;" },
   { nom: 'rangee-qui-deborde', lettre: 'D6', cible: '[D6] sur un telephone, la rangee du duckpin tient dans l ecran', fichier: STYLE, de: '.qb-modal.rv.rs .rs-act-l { flex: none; display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; max-width: 100%; }', vers: '.qb-modal.rv.rs .rs-act-l { flex: none; display: inline-flex; align-items: center; gap: 8px; }' },
 ];
 const LES_MUTATIONS = new Map(MUTATIONS.map((m) => [m.nom, m]));
@@ -388,6 +396,10 @@ async function scenarioD3(browser) {
   const id = poses[0].reservation && poses[0].reservation.id;
   const un = prixPistes(1);
   const deux = prixPistes(2);
+  // (le choix se lit en base : depuis 2026-11-24, Modifier rouvre a 2 un dossier qui porte 2 pistes
+  // meme sans choix, [D7] ; c est la base qui dit si le choix est garde)
+  const ligneCree = ligneDuckpin(B.base.reservations.get(Number(id)));
+  ok(Boolean(ligneCree) && ligneCree.units === 2 && ligneCree.pistesChoisies === 2, '[D3] la base garde le choix des 2 pistes du dossier', ligneCree);
   await ouvrirModifier(page, id);
   const c0 = await lireCompteur(page, MODIF);
   const p0 = await prixModifier(page);
@@ -559,22 +571,55 @@ async function scenarioD6(browser) {
 async function scenarioD7(browser) {
   console.log('\n[D7] Modifier : un duckpin enregistre a 2 pistes, 2 tours s ouvre tel quel');
   const m = await ouvrirConsole(browser, [{ nom: 'Famille Enregistree', pax: 4, heure: '17:00' }]);
-  const { page } = m;
+  const { page, journal } = m;
   const id = m.poses[0].reservation && m.poses[0].reservation.id;
-  await page.evaluate((i) => {
+  const un = prixPistes(1);
+  const deux = prixPistes(2);
+  // LE DOSSIER, EN BASE COMME A L ECRAN : 2 pistes, 2 tours de 1h, sans choix du comptoir (une regle de
+  // centre d avant), vendu au prix de deux pistes.
+  const row = B.base.reservations.get(Number(id));
+  const enBase = ligneDuckpin(row);
+  if (enBase) { Object.assign(enBase, { units: 2, sessions: 2, duration: 1, price: deux }); delete enBase.pistesChoisies; }
+  if (row) Object.assign(row, { price: deux, base_price: deux });
+  ok(Boolean(enBase) && ligneDuckpin(B.base.reservations.get(Number(id))).units === 2, 'MONTAGE le dossier en base porte 2 pistes, 2 tours, sans choix', enBase);
+  await page.evaluate(({ i, prix }) => {
     const r = state.reservations.find((x) => String(x.id) === String(i));
     const l = r.program.items.find((x) => x.activityId === 'duckpin_bowling');
-    Object.assign(l, { units: 2, sessions: 2, duration: 1 }); delete l.pistesChoisies;
-  }, id);
+    Object.assign(l, { units: 2, sessions: 2, duration: 1, price: prix }); delete l.pistesChoisies;
+    Object.assign(r, { price: prix, basePrice: prix });
+  }, { i: id, prix: deux });
   await ouvrirModifier(page, id);
   const detail = await detailModifier(page);
   const ligne = () => page.evaluate(() => { const l = getEditProgramItems().find((x) => x.activityId === 'duckpin_bowling'); return l && { units: l.units, sessions: l.sessions }; });
   const l0 = await ligne();
-  ok(/2 pistes.*2 tours de 1h/.test(detail) && l0 && l0.units === 2 && l0.sessions === 2, '[D7] le duckpin enregistre a 2 pistes, 2 tours de 1h s ouvre tel quel', { detail, l0 });
+  const p0 = await prixModifier(page);
+  ok(/2 pistes.*2 tours de 1h/.test(detail) && l0 && l0.units === 2 && l0.sessions === 2 && p0 === deux, '[D7] le duckpin enregistre a 2 pistes, 2 tours de 1h s ouvre tel quel (en-tete, ligne, prix)', { detail, l0, p0, attendu: deux });
+  // LE COMPTEUR DIT CE QUE L EN-TETE DIT (2026-11-24) : il disait 1, le conseil, sous « 2 pistes ».
+  const c0 = await lireCompteur(page, MODIF);
+  ok(Boolean(c0) && c0.n === 2 && c0.moins && !c0.plus, '[D7] le compteur « Pistes » dit 2 comme l en-tete, « − » ouvert, « + » ferme (le centre en a 2)', c0);
+  ok(Boolean(c0) && c0.texte.includes('1 conseillée pour 4 joueurs'), '[D7] le conseil est a cote du compteur : « 1 conseillée pour 4 joueurs »', c0);
   if (process.env.DUCKPIN_CAPTURE) await page.screenshot({ path: process.env.DUCKPIN_CAPTURE, clip: { x: 130, y: 10, width: 1098, height: 748 } });
+  // Les joueurs du duckpin changent : ses pistes suivent la regle ; revenus a 4, celles du dossier.
   await page.evaluate(() => { state.editState.programmeEdite.othersOptions.duckpin_bowling.participants = 2; });
   const l1 = await ligne();
-  ok(Boolean(l1) && l1.units === 1 && l1.sessions === 1, '[D7] l equipe change les joueurs du duckpin : ses pistes se recalculent', { l1 });
+  await page.evaluate(() => { state.editState.programmeEdite.othersOptions.duckpin_bowling.participants = 4; });
+  const l2 = await ligne();
+  ok(Boolean(l1) && l1.units === 1 && l1.sessions === 1 && Boolean(l2) && l2.units === 2 && l2.sessions === 2, '[D7] l equipe change les joueurs du duckpin : ses pistes se recalculent (revenus a 4, celles du dossier)', { l1, l2 });
+  // « − » : le geste de l equipe gagne, meme quand il efface un choix que le dossier n avait pas.
+  await page.evaluate(() => renderPos());
+  await page.waitForTimeout(200);
+  await toucher(page, MODIF, 0);
+  const c1 = await lireCompteur(page, MODIF);
+  const d1 = await detailModifier(page);
+  const l3 = await ligne();
+  const p1 = await prixModifier(page);
+  ok(Boolean(c1) && c1.n === 1 && !c1.moins && /^1 piste · 1h$/.test(d1) && l3 && l3.units === 1 && l3.sessions === 1 && p1 === un, '[D7] « − » ramene au conseil : 1 piste au compteur, a l en-tete et dans la ligne envoyee, le prix d une piste', { c1, d1, l3, p1, attendu: un });
+  const barre = await page.evaluate(() => ((document.getElementById('editModifs') || {}).textContent || '').replace(/\s+/g, ' ').trim());
+  ok(/À enregistrer/.test(barre) && /Réglages : Duckpin Bowling/.test(barre), '[D7] la barre dit le reglage a enregistrer', barre);
+  const envoi = await enregistrer(page, journal);
+  const rowApres = B.base.reservations.get(Number(id));
+  const ligneApres = ligneDuckpin(rowApres);
+  ok(envoi.length >= 1 && envoi[envoi.length - 1].statut === 200 && Boolean(ligneApres) && ligneApres.units === 1 && !ligneApres.pistesChoisies && Number(rowApres.price) === un, '[D7] Enregistrer : la base porte 1 piste, sans choix, au prix d une piste', { statut: envoi.map((e) => e.statut), ligneApres, prix: rowApres && rowApres.price, attendu: un });
   await m.finir('D7');
 }
 

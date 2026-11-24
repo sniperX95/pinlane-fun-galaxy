@@ -33468,17 +33468,10 @@ function getEditProgramItems() {
     const reglages = (e.programmeEdite.othersOptions || {})[id] || {};
     const item={ activityId: id, pax, ...reglages, participants: participantsLigneProgramme(reglages, pax) };
     // Le duckpin : ses pistes suivent ses joueurs et le choix de l equipe, et le detail de la rangee
-    // les dit avant l enregistrement (le serveur les recompte, lib/visit-program.js).
-    const pistes = pistesDuckpin(getCenterActivity(id), item.participants, reglages.pistesChoisies);
-    // UN DOSSIER ENREGISTRE S OUVRE TEL QUEL (2026-11-23) : ses pistes et ses tours ne se recalculent que si
-    // l equipe change les joueurs du duckpin ou son choix de pistes ; sinon « 2 pistes, 2 tours de 1h »
-    // devenait, des l ouverture, le conseil du centre pour ce groupe.
-    const enregistre = (state.selectedRes?.program?.items || []).find(line => line.activityId === id);
-    const joueursEnregistres = enregistre ? (Number(enregistre.participants) > 0 ? Number(enregistre.participants) : Number(state.selectedRes.pax)) : 0;
-    const inchange = Boolean(pistes && enregistre && Number(enregistre.units) > 0 && joueursEnregistres === Number(item.participants)
-      && Math.trunc(Number(enregistre.pistesChoisies) || 0) === Math.trunc(Number(reglages.pistesChoisies) || 0));
-    if (inchange) { item.units = Number(enregistre.units); if (Number(enregistre.sessions) > 0) item.sessions = Number(enregistre.sessions); }
-    else if (pistes) { item.units = pistes.n; item.sessions = pistes.tours; }
+    // les dit avant l enregistrement (le serveur les recompte, lib/visit-program.js). Le compteur
+    // « Pistes » de la rangee lit la meme fonction.
+    const pistes = pistesDuckpinEdition(id, reglages, pax);
+    if (pistes) { item.units = pistes.n; if (pistes.tours > 0) item.sessions = pistes.tours; }
     if (id === 'arcade_time') {
       const saved=(state.selectedRes?.program?.items || []).find(line=>line.activityId===id);
       if (editArcadeTimingChanged() || (saved && item.participants !== Number(saved.participants || state.selectedRes.pax))) delete item.arcadeOffer;
@@ -34264,12 +34257,37 @@ function reglagesAutreEditionHtml(id, reglages) {
   return '';
 }
 
+// LES PISTES DU DUCKPIN DANS MODIFIER, UNE SEULE LECTURE (2026-11-24) : le compteur « Pistes » et la ligne
+// envoyee (getEditProgramItems) lisent cette fonction. Le compteur lisait la regle seule : un dossier
+// enregistre a 2 pistes sans choix s ouvrait sous l en-tete « 2 pistes » avec un compteur a 1, le conseil.
+// UN DOSSIER ENREGISTRE S OUVRE TEL QUEL (2026-11-23) : ses pistes et ses tours restent les siens tant que
+// l equipe ne change ni les joueurs du duckpin, ni son choix de pistes, ni son compteur ; sinon la regle
+// de Reserver (pistesDuckpin). Le compteur touche ecrit son nombre dans `units` (setEditReglageActivite),
+// le compte de pistes que la ligne du dossier porte deja et que le serveur recompte : ramene au conseil,
+// le « − » effacait un choix que le dossier n avait pas et ne changeait rien ; le geste de l equipe gagne.
+// `tours` vaut 0 pour une ligne enregistree sans ses tours : rien ne les invente.
+function pistesDuckpinEdition(id, reglages, pax) {
+  const joueurs = participantsLigneProgramme(reglages, pax);
+  const pistes = pistesDuckpin(getCenterActivity(id), joueurs, reglages.pistesChoisies);
+  if (!pistes) return null;
+  const r = state.selectedRes;
+  const enregistre = ((r && r.program && r.program.items) || []).find(line => line.activityId === id);
+  const joueursEnregistres = enregistre ? (Number(enregistre.participants) > 0 ? Number(enregistre.participants) : Number(r.pax)) : 0;
+  const inchange = Boolean(enregistre && Number(enregistre.units) > 0 && joueursEnregistres === joueurs
+    && Math.trunc(Number(enregistre.pistesChoisies) || 0) === Math.trunc(Number(reglages.pistesChoisies) || 0)
+    && (reglages.units == null || Number(reglages.units) === Number(enregistre.units)));
+  if (!inchange) return pistes;
+  return { ...pistes, n: Number(enregistre.units), tours: Number(enregistre.sessions) > 0 ? Number(enregistre.sessions) : 0 };
+}
+
 // LES PISTES DU DUCKPIN DANS MODIFIER (2026-11-22, Ansar : « Duckpin possibilité de mettre 2 pistes ») :
 // le meme compteur que ses joueurs, la regle de Reserver (pistesDuckpin), et le conseil a cote. Le
-// serveur rejuge la place a l enregistrement (la garde des installations comptees).
+// serveur rejuge la place a l enregistrement (la garde des installations comptees). Le nombre est celui
+// que la ligne envoie (pistesDuckpinEdition) : celui du dossier tant que personne n y a touche.
 function pistesDuckpinEditionHtml(id, activite, reglages) {
-  const joueurs = participantsLigneProgramme(reglages, state.editState && state.editState.pax);
-  const p = pistesDuckpin(activite, joueurs, reglages.pistesChoisies);
+  const pax = Math.max(1, Number(state.editState && state.editState.pax) || 1);
+  const joueurs = participantsLigneProgramme(reglages, pax);
+  const p = pistesDuckpinEdition(id, reglages, pax);
   if (!p) return '';
   const nom = activite.name || id;
   const bouton = (valeur, actif, aria, trace) => `<button type="button" class="qb-step-btn staff-stepper-btn" aria-label="${escapeHtml(aria)}" ${actif ? '' : 'disabled'} data-activite="${escapeHtml(id)}" data-valeur="${valeur}" data-pistes-duckpin="1" onclick="setEditReglageActivite(this.dataset.activite, 'pistesChoisies', this.dataset.valeur)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="${trace}"/></svg></button>`;
@@ -34298,10 +34316,13 @@ function setEditReglageActivite(id, cle, valeur) {
     reglages.duration = nombre;
   } else if (cle === 'pistesChoisies' && activite.resourceType === 'duckpin_lane') {
     // (la regle de Reserver, setQuickPistesDuckpin : du conseil aux pistes du centre, effacee au conseil)
-    const p = pistesDuckpin(activite, participantsLigneProgramme(reglages, state.editState.pax));
+    const joueurs = participantsLigneProgramme(reglages, state.editState.pax);
+    const p = pistesDuckpin(activite, joueurs);
     const voulu = Math.min(p.plafond, Math.max(p.conseillees, Math.trunc(nombre) || p.conseillees));
     if (voulu > p.conseillees) reglages.pistesChoisies = voulu;
     else delete reglages.pistesChoisies;
+    // (le geste gagne sur les pistes du dossier : la ligne compte desormais celles du compteur, pistesDuckpinEdition)
+    reglages.units = pistesDuckpin(activite, joueurs, reglages.pistesChoisies).n;
   } else if (cle === 'minutes' && activite.priceType === 'grid_fun_run' && FUN_RUN_OPTIONS.some(o => Number(o.minutes) === nombre)) {
     reglages.minutes = nombre;
   } else return;
@@ -38963,11 +38984,12 @@ function pistesDuckpin(activite, joueurs, choisies = 0) {
   return { n: plan.units, conseillees: plan.needed, plafond: Math.max(plan.needed, dotation > 0 ? dotation : 50), tours: plan.tours, dotation };
 }
 
-// Ce que dit le compteur, a cote du nombre : le conseil pour ce groupe, ou ses tours.
+// Ce que dit le compteur, a cote du nombre : le conseil pour ce groupe, ou ses tours. Un nombre qui n est
+// pas le conseil le dit d abord (un choix de l equipe, ou les pistes d un dossier enregistre, Modifier).
 function pistesDuckpinNote(p, joueurs) {
   if (!p) return '';
+  if (p.n !== p.conseillees) return `${rvPluriel(p.conseillees, 'conseillée', 'conseillées')} pour ${rvPluriel(joueurs, 'joueur')}`;
   if (p.tours > 1) return `en ${p.tours} tours, le centre en a ${p.dotation}`;
-  if (p.n > p.conseillees) return `${rvPluriel(p.conseillees, 'conseillée', 'conseillées')} pour ${rvPluriel(joueurs, 'joueur')}`;
   return `${p.n > 1 ? 'conseillées' : 'conseillée'} pour ${rvPluriel(joueurs, 'joueur')}`;
 }
 

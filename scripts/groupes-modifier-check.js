@@ -53,6 +53,9 @@ const FONCTIONS = [
   'groupesEditionHtml', 'peindreGroupesEdition', 'peindreGroupesApresVerdictEdition', 'groupesSortieEdition', 'apresGesteGroupesEdition', 'groupesNombreEdition', 'groupesTailleEdition',
   'groupesTaillePasEdition', 'groupesEgalesEdition', 'groupesHeureEdition', 'groupesInverserEdition', 'groupesHeuresDuPlanEdition',
   'editionReplanifie', 'editionChangeLePrix', 'resumeModifsEdition', 'preparerModificationEdition',
+  // (le telephone et l adresse que Modifier enverra, « Par mail » compris : resumeModifsEdition et
+  // preparerModificationEdition les lisent depuis la fusion du 23/11, a953a6f)
+  'rvRessembleAUnNumero', 'rvMotParMail', 'rvSansNumero', 'rvEmailNettoye', 'telephoneEnvoyeEdition', 'emailEnvoyeEdition',
 ];
 const CONSTANTES = ['const RV_ANCRABLES = ', 'const RV_GROUPES_MAX = '];
 

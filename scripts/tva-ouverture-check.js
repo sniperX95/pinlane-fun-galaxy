@@ -284,6 +284,8 @@ const FONCTIONS = [
   'tauxTvaDuCentre', 'reglageHtvaDuCentre', 'dossierEnGrandGroupe', 'dossierDeGroupePourLaTva', 'prixVuDuReglage',
   'prixVuALOuverture', 'retenirPrixVuDeLaFiche', 'oublierPrixVuDeLaFiche', 'basculerTvaEdition', 'prixHorsTvaEdition', 'choixTvaEditionHtml',
   'etatEditionDepuis', 'pistesDeLaFormuleSeule', 'pistesALaMainDuDossier', 'departsEdition',
+  // (le contact « Par mail » que etatEditionDepuis pose a l ouverture depuis la fusion du 23/11, a953a6f)
+  'rvContactInitial', 'rvSansNumero', 'rvMotParMail', 'rvRessembleAUnNumero',
   'openPos', 'closePos', 'editRes', 'ouvrirOngletFiche', 'openStaffReservationDetail', 'hydrateSelectedReservation',
   'ebE', 'ebJs', 'ebNum', 'ebSeg', 'ebR', 'ebG', 'ebTvaHtml', 'collectEstablishmentHtvaParDefaut', 'ebDireUnChangement',
 ];

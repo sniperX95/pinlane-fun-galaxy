@@ -2180,9 +2180,17 @@ async function main() {
     // 80 : la porte « Accès illimité » toujours visible, a cote de Formules et Sur mesure, meme sans offre
     // au catalogue (demande d Ansar du 2026-11-21 : il se cree ici). Un controle de plus, le seul : le
     // laser en mesure 80 sur la meme vitrine, son plafond passe de 79 a 80, sans marge ajoutee.
-    const PLAFOND_LASER = 80;
+    // 81 : le bouton « Par mail » a cote du telephone du ticket (demande d Ansar du 2026-11-23 : « un bouton
+    // simple, rapide, efficace »). Un controle de plus, le seul : mesure du 2026-11-24 sur la meme vitrine, 80
+    // avant la fusion du bouton (41d863a), 81 apres, la meme liste plus « Par mail ». Son plafond passe de 80 a
+    // 81, sans marge ajoutee. (« Joueurs de la partie » et « Créer et encaisser » s y lisent deux fois : deux
+    // parties, deux moyens de paiement, pas un doublon.)
+    const PLAFOND_LASER = 81;
     const PLAFOND_LANCEMENT = 54;
-    const PLAFOND_FORMULE = 42;
+    // 43 : le meme bouton « Par mail » sur la page Formules (meme demande du 2026-11-23). Un controle de plus,
+    // le seul : 42 avant la fusion du bouton (41d863a), 43 apres, la meme liste plus « Par mail ». Son plafond
+    // passe de 42 a 43, sans marge ajoutee.
+    const PLAFOND_FORMULE = 43;
     // Une condition qui tient : au delai, relue une fois (un gel de la machine
     // pendant l attente ne vaut pas un echec).
     const tient = (condition, delai = 5000) => page.waitForFunction(condition, null, { timeout: delai })

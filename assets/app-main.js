@@ -43503,11 +43503,13 @@ function rvPreference(ids, heures, programme) {
   // d avant tant qu il tient, et ne fait tourner les groupes d office que quand il ne tient pas.
   // Un laser seul garde ses departs : le groupe 1 joue chaque partie au depart que le comptoir lui a choisi (son
   // espacement), les suivants de demi-heure en demi-heure (lib/grand-groupe.js poserLaRotation).
-  const grand = programme ? rvGrandGroupe() : null;
-  if (grand) {
-    const demande = rvDemandeGrandGroupe(grand);
+  // Une formule telle quelle garde le plan de sa carte tant que ses groupes ne sont pas voulus (« Faire tourner », un
+  // nombre, des heures) : rien de neuf ne part. Voulus, ils partent a l heure de son arrivee.
+  const grand = programme || s.type === 'formule' ? rvGrandGroupe() : null;
+  const demande = grand ? rvDemandeGrandGroupe(grand) : null;
+  if (grand && (programme || demande.impose)) {
     if (demande.impose && !grand.laserSeul) {
-      const depart = (heures[grand.ids[0]] && heures[grand.ids[0]].heure) || s.startTime;
+      const depart = (programme && heures[grand.ids[0]] && heures[grand.ids[0]].heure) || s.startTime;
       const preferredTimes = {};
       grand.ids.forEach((id) => { preferredTimes[id] = depart; });
       delete preference.laserGameTimes;
@@ -43529,7 +43531,7 @@ function rvPreference(ids, heures, programme) {
 // programme, le chemin du formulaire, et le moteur le coupe (lib/grand-groupe.js) : un bowling seul
 // en services l un apres l autre, le bowling et le laser en sous-groupes qui tournent (le groupe 1
 // au bowling pendant que le groupe 2 joue au laser, puis ils échangent). La fenetre ne recalcule
-// aucun plan : elle lit celui du serveur. Une formule et un laser seul gardent le leur.
+// aucun plan : elle lit celui du serveur.
 // TOUT SE CHOISIT (2026-11-23, Ansar : « faut qu'on puisse tout modifier et choisir [...] choisir
 // l'heure de passage, choisir de diviser en plus de 2 groupes, genre 3, 4, etc., pouvoir mettre
 // facilement quel groupe va où, et quand, à combien »). `minimum` : le plus petit nombre de groupes que
@@ -43541,17 +43543,28 @@ function rvPreference(ids, heures, programme) {
 // montrait ni ne reglait. Il a maintenant ses groupes, sur la meme page que le bowling : `laserSeul`, `joueurs` (ceux du
 // laser, que ses groupes se partagent) et `cles`, une case par partie quand il en a plusieurs (lib/grand-groupe.js
 // cleDeLaPartie). Des joueurs differents a chaque partie restent en vagues : le moteur ne les combine pas avec des groupes.
+// UNE FORMULE A 60 JOUEURS (2026-11-24, le gerant a Libramont, la Formule 4 : bowling, deux parties de laser, minigolf).
+// Elle ne montrait ni ne reglait ses groupes ; elle a ceux du bowling et du laser d une visite, sur la meme page. Telle que
+// sa carte la decrit, tout le groupe joue tout : ses groupes se comptent sur ses joueurs. Il lui faut le bowling ET le
+// laser (sa variante qui remplace l un des deux n en a pas). Un acces illimite (le Kids Fun Day) n a rien a reserver :
+// jamais de groupes. Le sur mesure garde son prix a lui, que le plan joue a blanc ne connait pas : il reste sans groupes.
 const RV_GROUPES_MAX = 12; // SOUS_GROUPES_MAX, lib/grand-groupe.js
 function rvGrandGroupe(s = quickBookState) {
-  if (!s || s !== quickBookState || s.type === 'formule' || s.type === 'activity' || rsFmActive(s)) return null;
-  const toutes = rvActivites();
+  if (!s || s !== quickBookState || s.type === 'activity' || rsFmActive(s)) return null;
+  const formule = s.type === 'formule' ? rvFormule() : null;
+  if (s.type === 'formule' && (!formule || formule.orderPolicy === 'open_window' || estFormuleIllimitee(formule) || (typeof formuleToutIllimite === 'function' && formuleToutIllimite(formule)))) return null;
+  const telle = Boolean(formule) && !s.adaptee;
+  const choix = telle && s.formuleChoix && Array.isArray(formule.choices) ? formule.choices.find((c) => c.id === s.formuleChoix) : null;
+  const remplacees = choix && Array.isArray(choix.replaces) ? choix.replaces : [];
+  const toutes = rvActivites().filter((id) => !remplacees.includes(id));
   const ids = toutes.filter((id) => RV_ANCRABLES.includes(id));
-  const laserSeul = toutes.length === 1 && ids[0] === 'laser_game';
-  if (!ids.includes('bowling') && !laserSeul) return null;
+  const laserSeul = !formule && toutes.length === 1 && ids[0] === 'laser_game';
+  if (formule ? !(ids.includes('bowling') && ids.includes('laser_game')) : !ids.includes('bowling') && !laserSeul) return null;
   if (laserSeul && new Set(rsJoueursDesParties()).size > 1) return null;
+  const joueurs = (id) => (telle ? Math.max(1, Number(s.pax) || 1) : getQuickVisitParticipants(id));
   const parts = ids.map((id) => (id === 'bowling'
-    ? splitGroupIntoBowlingServices(getQuickVisitParticipants('bowling')).length
-    : getLaserWaveCount(getQuickVisitParticipants('laser_game'))));
+    ? splitGroupIntoBowlingServices(joueurs('bowling')).length
+    : getLaserWaveCount(joueurs('laser_game'))));
   const minimum = Math.max(1, ...parts);
   if (minimum < 2) return null;
   const pax = laserSeul ? getQuickVisitParticipants('laser_game') : Math.max(1, Number(s.pax) || 1);
@@ -43664,7 +43677,7 @@ function rvGroupesEnJeu(grand = rvGrandGroupe()) {
 // Le temps d un groupe qui tourne : son bowling, puis ses parties de laser (une demi-heure chacune,
 // la grille du centre). Les groupes qui tournent durent au moins cela.
 function rvDureeDUnGroupe() {
-  const visit = (quickBookState && quickBookState.visit) || {};
+  const visit = rvComposition();
   const bowling = visit.bowling && visit.bowling.on ? Number(visit.bowling.duration || 1) : 0;
   const parties = visit.laser_game && visit.laser_game.on ? Math.max(1, Number(visit.laser_game.games || 1)) : 0;
   return Math.max(0.5, bowling + parties * 0.5);
@@ -44125,7 +44138,7 @@ function rsGroupesHtml() {
 // sous-groupe a chacune. Son bloc dit quel groupe y joue a quelle heure au lieu de ses propres
 // heures, et mene aux reglages des groupes.
 function rsTourneAvecHtml(id) {
-  const grand = rvGrandGroupe();
+  const grand = rvEnPlusPossible() ? null : rvGrandGroupe();
   if (!rvRotationEnJeu(grand) || id === grand.ids[0] || !grand.ids.includes(id)) return '';
   const ligne = rvLigneDuGrandGroupe(id);
   const tete = grand.ids[0] === 'laser_game' ? 'le laser' : `le ${rvMinuscule(rsNomCourt(grand.ids[0]))}`;
@@ -44151,8 +44164,9 @@ function rvConstruire({ simulation = false } = {}) {
   const formule = s.type === 'formule' ? resolveDisplayFormule(s.formuleId) : null;
   if (s.type === 'formule' && !formule) return { erreur: 'Sélectionnez une formule.' };
   const adaptee = Boolean(formule) && rvFormuleVraimentAdaptee();
-  // (un grand groupe part en programme, comme au formulaire en ligne : rvGrandGroupe)
-  const programme = s.type === 'visite' || adaptee || rsFmActive(s) || Boolean(rvGrandGroupe());
+  // (un grand groupe part en programme, comme au formulaire en ligne : rvGrandGroupe ; une formule garde sa carte,
+  // ses groupes partent dans sa preference, rvPreference)
+  const programme = s.type === 'visite' || adaptee || rsFmActive(s) || (s.type !== 'formule' && Boolean(rvGrandGroupe()));
   syncQuickBookDuration();
   const ids = rvActivites();
   const heures = rvHeuresDesLignes(ids);
@@ -48622,7 +48636,8 @@ function rsLignesActivites() {
     const apresF = rsIlRestera(resteF);
     // (l acces illimite n a pas l icone de sa premiere activite : il les comprend toutes)
     lignes.push(rsLigne({ cle: 'a-formule', action: "rsOuvrirLigne('formule')", icone: illimite ? '' : rsIcone(ids[0] || ''), nom: nomF, detail, lignes: detailsAcces, apres: apresF, ko: Boolean(ko), prix: prixF, aria: rsAriaLigne(nomF, [detail, ...detailsAcces, apresF].filter(Boolean).join(', '), prixF), retirer: 'rsSansFormule()' }));
-    if (!s.adaptee) return `${lignes.join('')}${rsLignesEnPlus()}`;
+    // (ses groupes, comme ceux d une visite : la ligne qui ouvre leur page, l option qui les fait tourner ou non)
+    if (!s.adaptee) return `${lignes.join('')}${rsLigneGrandGroupeHtml()}${rsOptionDesGroupesHtml()}${rsLignesEnPlus()}`;
   }
   // La formule du comptoir en tete : son nom, son prix. Les lignes dessous sont ce qu elle comprend.
   const prixFormule = rsFmPrix();

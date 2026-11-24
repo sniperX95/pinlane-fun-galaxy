@@ -514,7 +514,7 @@ const MUTATIONS = [
   // sur toutes les personnes, ses departs effaces, une seule case pour ses parties, une case qui ignore sa partie, ses
   // vagues sans les groupes choisis, « 35 armes », ses heures posees pour d autres cases, sa phrase sans les armes, la
   // frappe dans une partie perdue.
-  { nom: 'laser-seul-sans-groupes', lettre: 'J', de: "  if (!ids.includes('bowling') && !laserSeul) return null;", vers: "  if (!ids.includes('bowling')) return null;" },
+  { nom: 'laser-seul-sans-groupes', lettre: 'J', de: "  if (formule ? !(ids.includes('bowling') && ids.includes('laser_game')) : !ids.includes('bowling') && !laserSeul) return null;", vers: "  if (formule ? !(ids.includes('bowling') && ids.includes('laser_game')) : !ids.includes('bowling')) return null;" },
   { nom: 'laser-joueurs-par-partie-en-groupes', lettre: 'J', de: '  if (laserSeul && new Set(rsJoueursDesParties()).size > 1) return null;\n', vers: '' },
   { nom: 'laser-groupes-sur-tout-le-monde', lettre: 'J', de: "  const pax = laserSeul ? getQuickVisitParticipants('laser_game') : Math.max(1, Number(s.pax) || 1);", vers: '  const pax = Math.max(1, Number(s.pax) || 1);' },
   { nom: 'laser-departs-effaces', lettre: 'J', de: '    if (demande.impose && !grand.laserSeul) {', vers: '    if (demande.impose) {' },

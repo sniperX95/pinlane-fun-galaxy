@@ -61,10 +61,10 @@ const OPS = 'lib/reservation-ops.js';
 const MUTATIONS = [
   // [A] le laser seul sans groupes (la panne du gerant) ; « 35 armes » ; le bloc qui ne dit pas ses groupes ; les groupes
   // a l ecran mais pas dans la demande (le dossier repart en vagues).
-  { nom: 'laser-seul-sans-groupes', lettre: 'A', fichier: APP, de: "  if (!ids.includes('bowling') && !laserSeul) return null;", vers: "  if (!ids.includes('bowling')) return null;" },
+  { nom: 'laser-seul-sans-groupes', lettre: 'A', fichier: APP, de: "  if (formule ? !(ids.includes('bowling') && ids.includes('laser_game')) : !ids.includes('bowling') && !laserSeul) return null;", vers: "  if (formule ? !(ids.includes('bowling') && ids.includes('laser_game')) : !ids.includes('bowling')) return null;" },
   { nom: 'trente-cinq-armes', lettre: 'A', fichier: APP, de: "  if (id !== 'bowling') return rsEtat().faits.combien ? `${tarif}, ${rvArmesDites(getQuickVisitParticipants(id))}` : tarif;", vers: "  if (id !== 'bowling') return rsEtat().faits.combien ? `${tarif}, ${rvPluriel(getQuickVisitParticipants(id), 'arme')}` : tarif;" },
   { nom: 'bloc-sans-ses-groupes', lettre: 'A', fichier: APP, de: "  return grand && grand.laserSeul && rsAuTicket('laser_game') && rsEtat().faits.combien ? rsGroupesDuLaserHtml(grand, 'Bloc') : '';", vers: "  return '';" },
-  { nom: 'groupes-hors-de-la-demande', lettre: 'A', fichier: APP, de: "  const programme = s.type === 'visite' || adaptee || rsFmActive(s) || Boolean(rvGrandGroupe());", vers: "  const programme = s.type === 'visite' || adaptee || rsFmActive(s) || Boolean(rvGrandGroupe() && !rvGrandGroupe().laserSeul);" },
+  { nom: 'groupes-hors-de-la-demande', lettre: 'A', fichier: APP, de: "  const programme = s.type === 'visite' || adaptee || rsFmActive(s) || (s.type !== 'formule' && Boolean(rvGrandGroupe()));", vers: "  const programme = s.type === 'visite' || adaptee || rsFmActive(s) || (s.type !== 'formule' && Boolean(rvGrandGroupe() && !rvGrandGroupe().laserSeul));" },
   // [B] l espacement efface par les groupes ; une seule case pour les parties ; les heures tapees ne partent pas ; la
   // case rouge sans sa partie ; la phrase sans sa partie ; les departs qui ignorent le nombre de groupes choisi.
   { nom: 'espacement-efface', lettre: 'B', fichier: APP, de: '    if (demande.impose && !grand.laserSeul) {', vers: '    if (demande.impose) {' },

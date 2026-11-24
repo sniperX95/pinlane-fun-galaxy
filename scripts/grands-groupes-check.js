@@ -136,7 +136,7 @@ const FENETRE = 'lib/reserver-fenetre.js';
 // code passe par le crochet de compilation du banc, sinon la console le recoit du serveur de fichiers.
 const MUTATIONS = [
   // [A] le bowling seul repart en un service (la panne d Ansar) ; le planning et la fiche oublient le groupe.
-  { nom: 'bowling-en-un-service', lettre: 'A', fichier: APP, de: "  const programme = s.type === 'visite' || adaptee || rsFmActive(s) || Boolean(rvGrandGroupe());", vers: "  const programme = s.type === 'visite' || adaptee || rsFmActive(s);" },
+  { nom: 'bowling-en-un-service', lettre: 'A', fichier: APP, de: "  const programme = s.type === 'visite' || adaptee || rsFmActive(s) || (s.type !== 'formule' && Boolean(rvGrandGroupe()));", vers: "  const programme = s.type === 'visite' || adaptee || rsFmActive(s);" },
   { nom: 'planning-sans-groupe', lettre: 'A', fichier: PLANNING, de: "      var groupe = e.groupe ? 'groupe ' + e.groupe : e.groupes && e.groupes.length > 1 ? 'groupes ' + gfGroupesEnMots(e.groupes) : '';", vers: "      var groupe = '';" },
   { nom: 'fiche-sans-groupes', lettre: 'A', fichier: APP, de: "  const groupes = r.status === 'cancelled' ? null : sousGroupesDuDossier(r);", vers: '  const groupes = null;' },
   // [B] plus de rotation ; l activite du groupe 1 ne part pas ; une taille au-dela des armes ; la page deborde.
@@ -197,6 +197,10 @@ const MUTATIONS = [
   // telephone, elle se recolle au texte d avant.
   { nom: 'pastille-sans-marge', lettre: 'I', fichier: PLANNING_CSS, de: '@container feuille (min-width: 640px) and (max-width: 1059px) { .gf-x__h { margin-left: -4px; padding: 0 1px; font-weight: 600; }', vers: '@container feuille (min-width: 640px) and (max-width: 1059px) { .gf-x__h { margin-left: -4px; padding: 0 2px; }' },
   { nom: 'pastille-collee-au-telephone', lettre: 'I', fichier: PLANNING_CSS, de: '  .gf-x__h, .gf-x__hors { margin-left: 0; }\n', vers: '' },
+  // [I] a 1 100 et 1 024 de large, le fond gris de la pastille revient sur le trait de la colonne voisine ; la colonne
+  // de l activite revient a 54 px, ou « groupes » n a plus que 1 px de place.
+  { nom: 'pastille-sur-le-trait', lettre: 'I', fichier: PLANNING_CSS, de: '{ .gf-x__h, .gf-x__hors { margin-right: 3px; } }', vers: '{ .gf-x__h, .gf-x__hors { margin-right: 0; } }' },
+  { nom: 'colonne-d-activite-a-54', lettre: 'I', fichier: PLANNING_CSS, de: '--c-f: 50px; --c-a: 58px; --c-reste: 58px;', vers: '--c-f: 50px; --c-a: 54px; --c-reste: 58px;' },
   { nom: 'programme-groupes-ordinaux', lettre: 'I', fichier: APP, de: "${Number(etape.sousGroupe) > 0 ? `Groupe ${Number(etape.sousGroupe)}` : `${index ? `${index + 1}e` : '1er'} groupe`} à", vers: "${index ? `${index + 1}e` : '1er'} groupe à" },
   // [J] la console recompte les vagues sur les armes (la file perd le groupe 3) ; la vague a placer, la vague prise ou la
   // carte perdent leur groupe ; le toast redit « vague » ; Modifier et la bulle du compte recomptent sur les armes, oublient
@@ -1062,12 +1066,27 @@ async function principal() {
         // [I] LE PLANNING COMPLET TIENT A 1280 PUIS A 1024 (2026-11-23) : « 15 joueurs » et « groupes 1 et 2 » debordaient
         // de leur colonne de quelques pixels. Chaque mot d une case reste dans sa colonne (et sa case), a 1366, 1280 et
         // 1024 de large ; le texte n est jamais tronque avec des points de suspension ni a une hauteur qui l ecrase.
+        // [I] LA PASTILLE GRISE RESTE DANS SA COLONNE A 1 100 ET 1 024 (2026-11-24, le gerant : « groupes 1 et 2 »
+        // depasse de quelques pixels a 1 100 de large). Le fond gris de chaque pastille finissait pile sur le trait de
+        // la colonne voisine (0 px), le texte de « groupe 3 » a 1 px du trait. Mesure a l ecran, getBoundingClientRect
+        // contre la colonne : chaque pastille (et chaque rangee de pastilles) commence dans sa colonne et finit 2,5 px
+        // au moins avant son bord droit, son texte 3 px au moins avant, a 1366, 1280, 1100 et 1024 de large.
         const largeurInitiale = page.viewportSize();
         const sortiesPlanning = {};
-        for (const largeur of [1366, 1280, 1024]) {
+        const boitesPastilles = {};
+        for (const largeur of [1366, 1280, 1100, 1024]) {
           await page.setViewportSize({ width: largeur, height: largeurInitiale.height });
           await page.waitForTimeout(500);
           if (process.env.GG_CAPTURE_DIR) await page.screenshot({ path: require('path').join(process.env.GG_CAPTURE_DIR, `planning-${largeur}.png`) });
+          boitesPastilles[largeur] = r ? await page.evaluate((id) => Array.from(document.querySelectorAll(`.gf-r[data-gf-id="${id}"] .gf-x__h, .gf-r[data-gf-id="${id}"] .gf-x__hors`)).map((h) => {
+            const col = (h.closest('.gf-a') || h).getBoundingClientRect();
+            const b = h.getBoundingClientRect();
+            const plage = document.createRange();
+            plage.selectNodeContents(h);
+            const textes = Array.from(plage.getClientRects()).filter((x) => x.width > 0);
+            const dixieme = (v) => Math.round(v * 10) / 10;
+            return { texte: h.textContent.trim(), colonne: dixieme(col.width), gauche: dixieme(b.left - col.left), droite: dixieme(col.right - b.right), texteDroite: textes.length ? dixieme(col.right - Math.max(...textes.map((x) => x.right))) : null };
+          }), r.id) : [];
           sortiesPlanning[largeur] = r ? await page.evaluate((id) => {
             const rang = document.querySelector(`.gf-r[data-gf-id="${id}"]`);
             const sorties = [];
@@ -1084,7 +1103,11 @@ async function principal() {
             return sorties;
           }, r.id) : [];
         }
-        ok(Object.values(sortiesPlanning).every((l) => l.length === 0), '[I] le planning complet tient dans ses colonnes a 1366, 1280 et 1024 de large : « 15 joueurs » et « groupes 1 et 2 » ne debordent pas', sortiesPlanning);
+        ok(Object.values(sortiesPlanning).every((l) => l.length === 0), '[I] le planning complet tient dans ses colonnes a 1366, 1280, 1100 et 1024 de large : « 15 joueurs » et « groupes 1 et 2 » ne debordent pas', sortiesPlanning);
+        const boites = Object.values(boitesPastilles).flat();
+        ok(Object.values(boitesPastilles).every((l) => l.some((p) => /^groupes 1 et 2$/.test(p.texte)))
+          && boites.every((p) => p.gauche >= 0 && p.droite >= 2.5 && p.texteDroite !== null && p.texteDroite >= 3),
+        '[I] chaque pastille grise reste dans sa colonne a 1366, 1280, 1100 et 1024 de large : son fond finit 2,5 px au moins avant le trait de la colonne voisine, son texte 3 px au moins', boitesPastilles);
         // [I] LA PASTILLE GRISE A UNE VRAIE MARGE (2026-11-24) : a 1024 de large, « groupes » tenait dans sa colonne de 54 px
         // avec 0,7 px de reste ; un navigateur qui dessine le mot un rien plus large l aurait coupe sans que rien rougisse.
         // Chaque mot de chaque pastille grise (« 15 joueurs », « groupes 1 et 2 ») garde au moins 3 px de place sur sa
@@ -1092,7 +1115,7 @@ async function principal() {
         // comme au telephone. Au telephone, ou la case est une ligne, la pastille garde aussi 3 px au moins avec ce qui la
         // precede (elle touchait « Pistes 4-6 »).
         const margesPastilles = {};
-        for (const largeur of [1366, 1280, 1024, 768, 390]) {
+        for (const largeur of [1366, 1280, 1100, 1024, 768, 390]) {
           await page.setViewportSize({ width: largeur, height: largeurInitiale.height });
           await page.waitForTimeout(400);
           margesPastilles[largeur] = r ? await page.evaluate((id) => Array.from(document.querySelectorAll(`.gf-r[data-gf-id="${id}"] .gf-x__h`)).map((h) => {
@@ -1128,7 +1151,7 @@ async function principal() {
         ok(pastilles.length > 0 && Object.values(margesPastilles).every((l) => l.some((p) => /groupes/.test(p.texte)))
           && pastilles.every((p) => p.taille >= 12 && p.marge >= 3 && !p.coupe.length && (p.ecart === null || p.ecart >= 3))
           && margesPastilles[390].every((p) => p.ecart !== null),
-        '[I] chaque mot des pastilles grises garde au moins 3 px de place a 1366, 1280, 1024 et 768 de large et au telephone, en 12 px, aucun mot coupe ; au telephone, 3 px au moins avec ce qui la precede', margesPastilles);
+        '[I] chaque mot des pastilles grises garde au moins 3 px de place a 1366, 1280, 1100, 1024 et 768 de large et au telephone, en 12 px, aucun mot coupe ; au telephone, 3 px au moins avec ce qui la precede', margesPastilles);
         await page.setViewportSize(largeurInitiale);
         await page.waitForTimeout(300);
         await capture(page, '60-en-4-groupes-planning');

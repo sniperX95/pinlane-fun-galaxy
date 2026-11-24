@@ -338,6 +338,7 @@
     "test:groupes": "node scripts/groupes-check.js && node scripts/groupes-check.js --contre-preuves",
     "test:groupes-reserver": "node scripts/groupes-reserver-check.js && node scripts/groupes-reserver-check.js --contre-preuves",
     "test:laser-seul-groupes": "node scripts/laser-seul-groupes-check.js && node scripts/laser-seul-groupes-check.js --contre-preuves",
+    "test:formule-groupes": "node scripts/formule-groupes-check.js && node scripts/formule-groupes-check.js --contre-preuves",
     "test:groupes-modifier": "node scripts/groupes-modifier-check.js && node scripts/groupes-modifier-check.js --contre-preuves",
     "test:tour-controle": "node scripts/tour-controle-check.js",
     "test:migrations-attendues": "node scripts/migrations-attendues-check.js && node scripts/migrations-attendues-check.js --contre-preuves",

@@ -244,6 +244,7 @@
     "test:grands-groupes",
     "test:groupes",
     "test:groupes-reserver",
+    "test:laser-seul-groupes",
     "test:groupes-modifier",
     "test:tour-controle",
     "test:migrations-attendues",

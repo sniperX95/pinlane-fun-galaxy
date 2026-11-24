@@ -10263,6 +10263,9 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-modal.rv.rs .rs-gg-fl { flex: none; align-self: center; font-size: 15px; line-height: 1; color: var(--faint); }
 .qb-modal.rv.rs .rs-gg-c { display: flex; flex-direction: column; justify-content: center; gap: 1px; min-width: 0; min-height: 52px; padding: 6px 10px; border-radius: 10px; background: var(--rs-touche); }
 .qb-modal.rv.rs .rs-gg-l .rs-gg-c { position: relative; flex: 1 1 0; flex-direction: row; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 6px 6px 12px; }
+/* Un laser seul de plusieurs parties : une case par partie, qui passent a la ligne plutot que de se serrer (2026-11-24). */
+.qb-modal.rv.rs .rs-gg-prog.is-parties { flex-wrap: wrap; row-gap: 6px; }
+.qb-modal.rv.rs .rs-gg-l .rs-gg-prog.is-parties .rs-gg-c { flex: 1 1 150px; }
 .qb-modal.rv.rs .rs-gg-c.is-bowling { box-shadow: inset 3px 0 0 var(--act-bowling, var(--console-selected)); }
 .qb-modal.rv.rs .rs-gg-c.is-laser { box-shadow: inset 3px 0 0 var(--act-laser, var(--console-selected)); }
 .qb-modal.rv.rs .rs-gg-c.is-ko { background: var(--rv-rouge-clair); box-shadow: inset 3px 0 0 var(--danger), inset 0 0 0 1px var(--danger); }

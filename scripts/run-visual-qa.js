@@ -2185,7 +2185,7 @@ async function main() {
     // avant la fusion du bouton (41d863a), 81 apres, la meme liste plus « Par mail ». Son plafond passe de 80 a
     // 81, sans marge ajoutee. (« Joueurs de la partie » et « Créer et encaisser » s y lisent deux fois : deux
     // parties, deux moyens de paiement, pas un doublon.)
-    const PLAFOND_LASER = 81;
+    const PLAFOND_LASER = 82; // (« Facturé », 2026-11-24)
     const PLAFOND_LANCEMENT = 54;
     // 43 : le meme bouton « Par mail » sur la page Formules (meme demande du 2026-11-23). Un controle de plus,
     // le seul : 42 avant la fusion du bouton (41d863a), 43 apres, la meme liste plus « Par mail ». Son plafond

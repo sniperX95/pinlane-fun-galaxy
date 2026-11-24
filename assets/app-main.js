@@ -44666,7 +44666,7 @@ function rsRangeeDuGroupeHtml(grand, n, joueurs, heures, plan, coincent, plafond
   const passages = rvPassagesDuGroupe(grand, heures);
   const cases = passages.map((p) => rsCaseDuGroupeHtml(n, p, plan, coincent, joueurs, grand)).join('<span class="rs-gg-fl" aria-hidden="true">→</span>');
   const moins = joueurs > 1 ? `rsFixer(() => rsTailleDuGroupe(${n}, ${joueurs - 1}))` : '';
-  const places = rsPlacesDuGroupeHtml(grand, n, joueurs, plan);
+  const places = rvPlacesMontrees(grand) ? rsPlacesDuGroupeHtml(grand, n, joueurs, plan) : '';
   const plus = joueurs + 1 <= plafond ? `rsFixer(() => rsTailleDuGroupe(${n}, ${joueurs + 1}))` : '';
   // (un laser seul de plusieurs parties : la phrase du serveur dit aussi la partie, quand elle ne la dit pas deja)
   const dire = (x) => {
@@ -44685,6 +44685,17 @@ function rsRangeeDuGroupeHtml(grand, n, joueurs, heures, plan, coincent, plafond
 }
 
 // LES PISTES ET LES ARMES D UN GROUPE, sous son programme : un de moins, un de plus, depuis ce que le centre conseille.
+// Un ou deux groupes : elles se voient ; a partir de trois, la page tient a l ecran et un bouton du pied les montre.
+function rvPlacesMontrees(grand) {
+  const b = rsEtat();
+  return grand.nombre <= 2 || Boolean(b && b.ggPlaces) || Boolean(rvPlacesPosees(grand, 'pistes') || rvPlacesPosees(grand, 'armes'));
+}
+
+function rsMontrerPlaces() {
+  const b = rsEtat();
+  if (b) b.ggPlaces = true;
+}
+
 function rsPlacesDuGroupeHtml(grand, n, joueurs, plan) {
   const morceau = (quoi, id, max) => {
     const ici = grand.ids.includes(id) ? rvJoueursAActivite(grand, id, joueurs, n, plan) : 0;
@@ -44711,9 +44722,10 @@ function rsPiedDesGroupesHtml(grand, tailles) {
   const total = tailles.reduce((t, n) => t + n, 0);
   const phrase = total === pax ? `${total} joueurs sur ${pax}` : total < pax ? `${total} joueurs sur ${pax} : il en manque ${pax - total}` : `${total} joueurs sur ${pax} : ${total - pax} de trop`;
   const tapees = Array.isArray(s.grandGroupe && s.grandGroupe.tailles) && s.grandGroupe.pourPax === pax;
+  const places = rvPlacesMontrees(grand) ? '' : `<button type="button" class="attr-b" id="rsGgPlaces" onclick="rsFixer(() => rsMontrerPlaces())">${grand.ids.length > 1 ? 'Pistes et armes' : grand.laserSeul ? 'Armes' : 'Pistes'} par groupe</button>`;
   const egal = tapees ? '<button type="button" class="attr-b" id="rsGgEgal" onclick="rsFixer(() => rsTaillesEgales())">Partager également</button>' : '';
   const auto = rvHeuresPosees(grand) ? '<button type="button" class="attr-b" id="rsGgAuto" onclick="rsFixer(() => rsHeuresProposees())">Proposer les heures</button>' : '';
-  return `<div class="rs-gg-pied"><p class="rs-gg-total${total === pax ? '' : ' is-ko'}" id="rsGgTotal" role="status">${escapeHtml(phrase)}</p>${egal}${auto}</div>`;
+  return `<div class="rs-gg-pied"><p class="rs-gg-total${total === pax ? '' : ' is-ko'}" id="rsGgTotal" role="status">${escapeHtml(phrase)}</p>${places}${egal}${auto}</div>`;
 }
 
 // Un autre nombre de groupes repart de parts egales et des heures du moteur. Revenu au minimum, il

@@ -841,7 +841,7 @@ const MUTATIONS = [
   // [U] « Annuler » qui laisse le retard note par le pointage (il ne se noterait plus a la vraie arrivee).
   { nom: 'annuler-garde-le-retard', lettre: 'U', scenarios: ['annuler'], editions: [{ fichier: BASE, serveur: true, de: ' : planSansRetardDuPointage(current, { status: input.status });', vers: ' : null;' }] },
   // (une activite manquee avant l arrivee du groupe en retard comptee « commencee » : plus rien a decaler)
-  { nom: 'arrivee-en-retard-gelee', lettre: 'P', scenarios: ['tout'], editions: [{ fichier: LIB, serveur: true, de: '(surPlace(current) && etape.debut <= maintenant && etape.debut >= arrivee && (etape.debut >= la || etape.fin <= maintenant));', vers: '(surPlace(current) && etape.debut <= maintenant && (etape.debut >= la || etape.fin <= maintenant));' }] },
+  { nom: 'arrivee-en-retard-gelee', lettre: 'P', scenarios: ['tout'], editions: [{ fichier: LIB, serveur: true, de: '(surPlace(current) && etape.debut <= maintenant && etape.debut >= arrivee && (etape.debut >= la || etape.fin <= maintenant));', vers: '(surPlace(current) && etape.debut <= maintenant);' }] },
   { nom: 'decale-ce-qui-ne-passe-pas', lettre: 'C', scenarios: ['arrivee'], editions: [{ fichier: LIB, serveur: true, de: '      etapes[i] = { passe: false, raison: phraseDuRefus(error.message) };', vers: "      dossier = require('./reservation-activity-move').buildActivityMove(dossier, move);\n      etapes[i] = { passe: true };" }] },
   { nom: 'retard-oublie-apres-arrivee', lettre: 'C', scenarios: ['arrivee'], editions: [{ fichier: JS, de: "  if ((r.status === 'arrived' || r.status === 'paid') && annonce) return { etat: 'arrive', annonce, prevu: prevuNote };", vers: '' }] },
   { nom: 'retard-oublie-en-base', lettre: 'B', scenarios: ['planning'], editions: [{ fichier: BASE, serveur: true, de: '    payload.opsPlan = planAvecRetard(payload.opsPlan, current, { minutes: input.minutes, de: input.de, decale: moves.length > 0, dejaNote: Boolean(note) });', vers: '' }] },
@@ -856,7 +856,8 @@ const MUTATIONS = [
   { nom: 'telephone-boutons-etroits', lettre: 'T', scenarios: ['telephone'], editions: [{ fichier: 'assets/pinlane-staff.css', de: '  .rt-bouton { width: 100%; min-height: 44px; }\n', vers: '' }] },
   // [G] un calcul qui deplace une activite commencee : la sienne, puis celle d un groupe qui joue
   // (le controle ne le compte plus, comme le calcul qui l a pousse de la piste 1 a la piste 5).
-  { nom: 'activite-commencee-deplacee', lettre: 'G', scenarios: ['gel'], editions: [{ fichier: LIB, serveur: true, de: '  const commencee = (etape) => gelees.has(etape.cle) || (surPlace(current) && etape.debut <= maintenant && etape.debut >= arrivee && (etape.debut >= la || etape.fin <= maintenant));', vers: '  const commencee = (etape) => gelees.has(etape.cle);' }] },
+  // (l activite commencee mais pas cochee se decale avec un retard pose a la main depuis le 2026-11-24 : [G] ;
+  // la coche « fait » qui gele se prouve dans retards-planning-check, [C])
   { nom: 'plan-en-cascade-sans-garde', lettre: 'G', scenarios: ['gel'], editions: [{ fichier: BASE, serveur: true, de: "    require('./retard-arrivee').refuserSiUnGroupeQuiJoueBouge(merged, safeDate);\n", vers: '' }] },
   // [D] la plaine de jeux remise a une heure : au calcul, au programme de la fiche, dans Réserver.
   { nom: 'plaine-a-heure', lettre: 'D', scenarios: ['tout'], editions: [{ fichier: LIB, serveur: true, de: '    if (LIBRES_TOUTE_LA_JOURNEE.includes(id)) return;\n', vers: '' }] },

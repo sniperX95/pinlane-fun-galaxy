@@ -435,7 +435,7 @@ const MUTATIONS = [
   { nom: 'arrivee-absente', lettre: 'P1', scenarios: ORDI, editions: [{ fichier: JS, de: '      ${ficheArrivee(r, moment, droits)}\n', vers: '' }] },
   { nom: 'case-en-icone', lettre: 'P1', scenarios: ORDI, editions: [{ fichier: JS, de: "${etape.fait ? ACTIVITY_CHECK_SVG : (enFiche ? '' :", vers: "${etape.fait ? ACTIVITY_CHECK_SVG : (false ? '' :" }] },
   { nom: 'photo-perdue', lettre: 'P1', scenarios: ORDI, editions: [{ fichier: JS, de: '      ${ficheVisuelActivite(r, etape)}\n', vers: '' }] },
-  { nom: 'payer-hors-de-la-caisse', lettre: 'P2', scenarios: ORDI, editions: [{ fichier: JS, de: '      ${boutons ? `<div class="res-status-row gc-sheet-states fz-payer${facturer ? ' a-facturer' : ''}">${boutons}${facturer}</div>` : \'\'}\n', vers: '' }] },
+  { nom: 'payer-hors-de-la-caisse', lettre: 'P2', scenarios: ORDI, editions: [{ fichier: JS, de: '      ${boutons ? `<div class="res-status-row gc-sheet-states fz-payer${facturer ? \' a-facturer\' : \'\'}">${boutons}${facturer}</div>` : \'\'}\n', vers: '' }] },
   { nom: 'gestes-absents', lettre: 'G1', scenarios: ORDI, editions: [{ fichier: JS, de: "        ${isEdit ? '' : ficheOutils(r, ficheDroits())}\n", vers: '' }] },
   { nom: 'retard-avec-minutes', lettre: 'G1', scenarios: ORDI, editions: [{ fichier: JS, de: '${FICHE_ICONE_HORLOGE}Retard</button>', vers: "${FICHE_ICONE_HORLOGE}${enRetard ? 'En retard de 15 min' : 'Retard'}</button>" }] },
   { nom: 'activite-sur-deux-lignes', lettre: 'U1', scenarios: ORDI, editions: [{ fichier: CSS, de: '.fx-modal .fx-programme .gc-step-what { flex-direction: row; flex-wrap: wrap; align-items: baseline; gap: 0 8px; }', vers: '.fx-modal .fx-programme .gc-step-what { flex-direction: column; padding: 8px 0; }' }] },

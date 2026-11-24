@@ -56,7 +56,7 @@ const FONCTIONS = [
   'rsLigneGrandGroupeHtml', 'rvPlafondDUnGroupe', 'rvRaisonDuMinimum', 'rvPhraseDesGroupes', 'rsNombreDeGroupesHtml',
   'rsPremierDesGroupesHtml', 'rsCaseDuGroupeHtml', 'rsRangeeDuGroupeHtml', 'rsPiedDesGroupesHtml', 'rsNombreDeGroupes',
   'rsTailleDuGroupe', 'rsTaillesEgales', 'rsPremierGroupe', 'rsHeureDuGroupe', 'rsInverserLeGroupe',
-  'rvPoserLesHeuresDesGroupes', 'rvClePlaces', 'rvPlacesPosees', 'rvJoueursAActivite', 'rvPlacesConseillees', 'rsPlacesDuGroupe', 'rsPlacesDuGroupeHtml', 'rsHeuresProposees', 'rvHeureTapee', 'rsGgSaisieValider', 'rsGroupesHtml',
+  'rvPoserLesHeuresDesGroupes', 'rvClePlaces', 'rvPlacesPosees', 'rvJoueursAActivite', 'rvPlacesConseillees', 'rsPlacesDuGroupe', 'rvPlacesMontrees', 'rsPlacesDuGroupeHtml', 'rsHeuresProposees', 'rvHeureTapee', 'rsGgSaisieValider', 'rsGroupesHtml',
   // (le laser seul : ses parties, leurs departs, la demande au moteur)
   'rvComposition', 'rvModifiable', 'rvPartiesLaser', 'rsJoueursDesParties', 'rvVaguesLaser', 'rvPasLaser', 'rvEspacementCourant',
   'rvEcartsLaser', 'rvDepartsLaser', 'rvPreference',

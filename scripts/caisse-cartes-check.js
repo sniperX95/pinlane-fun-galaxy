@@ -404,7 +404,7 @@ async function scenarioBlocs(browser, jour) {
     ok(/^À encaisser\s*258\s*€$/.test(fiche.argent) && /25,80\s*€ par joueur/.test(fiche.unite) && fiche.aEncaisser === 1, '[F] « À encaisser 258 € » une fois, en tete de la caisse, le prix par joueur au centime dessous', JSON.stringify({ argent: fiche.argent, unite: fiche.unite, aEncaisser: fiche.aEncaisser }));
     // (2026-11-15 : plus de bouton « Confirmé » ; l arrivee pointee se retouche
     // sur sa ligne, et le groupe arrive dit son nombre : « Ils sont 10 »)
-    ok(fiche.arrivee === 'true' && fiche.compte === 'Ils sont 10' && fiche.etats.join('|') === 'Payé · Carte|Payé · Espèces', '[F] les états : l arrivée pointée (retouchable), Ils sont 10 (le groupe arrivé dit son nombre), Payé · Carte, Payé · Espèces', JSON.stringify({ arrivee: fiche.arrivee, compte: fiche.compte, etats: fiche.etats }));
+    ok(fiche.arrivee === 'true' && fiche.compte === 'Ils sont 10' && fiche.etats.join('|') === 'Payé · Carte|Payé · Espèces|Facturé', '[F] les états : l arrivée pointée (retouchable), Ils sont 10 (le groupe arrivé dit son nombre), Payé · Carte, Payé · Espèces', JSON.stringify({ arrivee: fiche.arrivee, compte: fiche.compte, etats: fiche.etats }));
     ok(!/Plan automatique|Risque|Consigne:|Point marche/.test(fiche.corps), '[F] plus de « Plan automatique » ni de texte interne du moteur', (fiche.corps.match(/Plan automatique|Risque[^|]*|Consigne:[^|]*/) || [''])[0]);
     ok(!/Arrivé maintenant/.test(fiche.corps), '[F] un groupe déjà arrivé n a pas « Arrivé maintenant »', '');
     await page.evaluate(() => { closePos(); openPos(81008); });

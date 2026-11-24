@@ -763,6 +763,8 @@
   var GF_VOLONTE = 'à volonté';
   function gfIllimite(r) {
     var f = r.formuleId && typeof resolveDisplayFormule === 'function' ? resolveDisplayFormule(r.formuleId) : null;
+    // (un Kids Fun Day adapté à la main avec un bowling ou un laser a ses heures, comme l équipe les a posées)
+    if (f && f.toutIllimite === true && typeof dossierToutIllimite === 'function' && !dossierToutIllimite(r)) return false;
     return Boolean(f) && f.orderPolicy === 'open_window';
   }
   // « VERS 10:25 » NE VEUT RIEN DIRE (2026-11-08, Ansar : « les hures ou ça dit "vers tels

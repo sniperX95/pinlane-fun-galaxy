@@ -611,6 +611,7 @@
           "Non valable durant les vacances scolaires et jours fériés"
         ],
         "orderPolicy": "open_window",
+        "toutIllimite": true,
         "kidsOnly": {
           "ageMin": 5,
           "ageMax": 12

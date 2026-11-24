@@ -27595,8 +27595,14 @@ function renderBandeauVolonte(activityId) {
   const html = liste ? `<p class="pl-volonte__t"><b>À volonté</b> <span class="pl-volonte__f">${escapeHtml(formules.join(', '))}</span> <span>${escapeHtml(phrase)}</span></p><div class="pl-volonte__l">${liste}</div>` : '';
   if (zone.__rendu === html) return;
   zone.__rendu = html;
+  // (un groupe pointe ailleurs : la liste garde sa place et le clavier son groupe)
+  const haut = (zone.querySelector('.pl-volonte__l') || {}).scrollTop || 0;
+  const garde = zone.contains(document.activeElement) ? document.activeElement.dataset.volonte : '';
   zone.innerHTML = html;
   zone.hidden = !html;
+  if (haut && liste) zone.querySelector('.pl-volonte__l').scrollTop = haut;
+  const vise = garde ? zone.querySelector(`[data-volonte="${garde}"]`) : null;
+  if (vise) vise.focus({ preventScroll: true });
 }
 
 function renderPlanning() {

@@ -43199,6 +43199,7 @@ function rvDansLaVariante(id, partie, heure, faire) {
 }
 
 function rvVariante(id, partie, heure) {
+  const depart = quickBookState && quickBookState.startTime;
   return rvDansLaVariante(id, partie, heure, () => {
     const corps = rvCorpsDeSimulation();
     if (!corps) return null;
@@ -43207,6 +43208,15 @@ function rvVariante(id, partie, heure) {
     if (corps.heuresPosees) variante.heuresPosees = corps.heuresPosees;
     if (Array.isArray(corps.lanes)) variante.lanes = corps.lanes;
     if (corps.laneCount != null) variante.laneCount = corps.laneCount;
+    // (une minute de comptoir part en programme avec son heure posee, rvALaMinute ; une heure ronde, non : entre les
+    // deux, l essai porte sa forme a lui, sinon 15:10 se jugeait sous la forme de 15:00 et se disait « impossible »)
+    if (rvHorsGrille(heure) || rvHorsGrille(depart)) {
+      variante.type = corps.type;
+      variante.program = corps.program || null;
+      variante.laserGames = corps.laserGames || 0;
+      variante.preference = corps.preference || null;
+      variante.heuresPosees = corps.heuresPosees || null;
+    }
     return variante;
   });
 }

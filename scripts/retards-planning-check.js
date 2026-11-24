@@ -325,6 +325,10 @@ async function principal() {
         const maintenant = seances.find((x) => x.h === '15:10');
         const quinze = seances.find((x) => x.h === '15:00');
         ok(maintenant && maintenant.tag === 'maintenant' && (!quinze || quinze.tag !== 'maintenant'), '[B] la touche de 15:10 dit « maintenant », celle de 15:00 non', seances.slice(0, 4));
+        await page.waitForFunction(() => { const b = document.querySelector('#quickBookOverlay #rsZ-bowling .rs-h[data-heure="15:10"]'); return b && /reste|impossible|complet|manque/.test(b.textContent); }, null, { timeout: 8000 }).catch(() => {});
+        await page.waitForTimeout(600);
+        const touche = await texte('#quickBookOverlay #rsZ-bowling .rs-h[data-heure="15:10"]');
+        ok(/reste \d/.test(touche) && !/impossible/.test(touche), '[B] la touche de 15:10 dit ce qui reste, jamais « impossible » quand « Créer à 15:10 » passe', touche);
         const apres = seances.filter((x) => x.h > '15:10');
         ok(apres.length > 3 && apres.every((x) => /:(00|30)$/.test(x.h)), '[B] les heures d apres restent rondes (15:30, 16:00...)', apres.slice(0, 5).map((x) => x.h));
         await capturer(page, '2-maintenant', await boite(page, ['#quickBookOverlay .qb-modal'], 0));

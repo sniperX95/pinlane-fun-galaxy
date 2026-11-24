@@ -176,7 +176,7 @@ async function contrePreuve(nom, mutation, attendu) {
       { fichier: 'lib/reserver-simulation.js', de: '  if (bloquant) return refusDHeure(bloquant.message, [bloquant, ...duMoteur]);', vers: '' },
       /\[2\] 15:00 ferme par l arene/);
     await contrePreuve('la variante remplace aussi le nombre de joueurs',
-      { fichier: 'lib/reserver-simulation.js', de: "const CHAMPS_VARIANTE = ['startTime', 'preference', 'lanes', 'laneCount', 'heuresPosees', 'enPlus'];", vers: "const CHAMPS_VARIANTE = ['startTime', 'preference', 'lanes', 'laneCount', 'heuresPosees', 'enPlus', 'pax'];" },
+      { fichier: 'lib/reserver-simulation.js', de: "const CHAMPS_VARIANTE = ['startTime', 'preference', 'lanes', 'laneCount', 'heuresPosees', 'enPlus', 'type', 'program', 'laserGames'];", vers: "const CHAMPS_VARIANTE = ['startTime', 'preference', 'lanes', 'laneCount', 'heuresPosees', 'enPlus', 'pax'];" },
       /\[3\] pax, type et nom/);
     await contrePreuve('les conflits ne voyagent plus avec les heures',
       { fichier: 'lib/reserver-simulation.js', de: "      resultats.push({ heure, ...verdict, fin: verdict.statut === 'ko' || typeof finDuPlan !== 'function' ? '' : finDuPlan(dossier.opsPlan, dossier), conflits: liste, prend: verdict.statut === 'ko' ? [] : ceQuePrendLePlan(dossier.opsPlan) });", vers: "      resultats.push({ heure, ...verdict, fin: verdict.statut === 'ko' || typeof finDuPlan !== 'function' ? '' : finDuPlan(dossier.opsPlan, dossier), conflits: [], prend: verdict.statut === 'ko' ? [] : ceQuePrendLePlan(dossier.opsPlan) });" },

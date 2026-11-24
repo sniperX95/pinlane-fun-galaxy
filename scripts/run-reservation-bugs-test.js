@@ -8,6 +8,8 @@ const fs = require('fs');
 const http = require('http');
 const path = require('path');
 const { chromium } = require('playwright-core');
+// Le message d une adresse refusee : celui du serveur, mot pour mot (« Par mail », 2026-11-23).
+const { MESSAGE_EMAIL_INVALIDE } = require('../lib/email-du-client');
 
 const ROOT = path.resolve(__dirname, '..');
 const PORT = Number(process.env.PINLANE_BUGS_PORT || 4188);
@@ -384,7 +386,7 @@ async function main() {
     assert(emailFront.noEmail.posts === 1, `staff sans email : la réservation part quand même (1 POST, obtenu ${emailFront.noEmail.posts})`);
     assert(emailFront.emptyAll.posts === 0, `staff sans téléphone : rien ne part, le téléphone est obligatoire (obtenu ${emailFront.emptyAll.posts} POST)`);
     assert(emailFront.sansNom.posts === 1 && emailFront.sansNom.last && emailFront.sansNom.last.name === 'Client', `staff sans nom ni e-mail, avec téléphone : accepté avec le nom « Client » (obtenu "${emailFront.sansNom.last && emailFront.sansNom.last.name}")`);
-    assert(emailFront.badEmail.posts === 0 && /email invalide/i.test(emailFront.badEmail.error), `email mal formé saisi : refusé + message ("${emailFront.badEmail.error}")`);
+    assert(emailFront.badEmail.posts === 0 && emailFront.badEmail.error === MESSAGE_EMAIL_INVALIDE, `email mal formé saisi : rien ne part, refusé avec le message du serveur ("${emailFront.badEmail.error}")`);
     assert(emailFront.goodEmail.posts === 1, `email valide : la réservation part (1 POST, obtenu ${emailFront.goodEmail.posts})`);
     assert(!emailFront.hasReqBadge && emailFront.obligatoires.join() === 'qbPhone', `aucun ancien badge (qb-req), le seul « obligatoire » est le téléphone (${emailFront.obligatoires.join() || 'aucun'})`);
     assert(emailFront.champEmail && !emailFront.emailRequiredAttr, `le champ email staff n'a plus l'attribut HTML required (champ lu sur la page Client : ${emailFront.champEmail})`);

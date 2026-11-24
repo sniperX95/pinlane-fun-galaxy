@@ -235,7 +235,42 @@
   // Au changement d'écran, le haut du cadre revient en vue. Cette marge laisse
   // la place à un en-tête fixe du site.
   var scrollMargin = parseInt(script.getAttribute('data-scroll-margin'), 10);
-  frame.style.scrollMarginTop = (Number.isFinite(scrollMargin) && scrollMargin >= 0 ? scrollMargin : 80) + 'px';
+  var margeDite = Number.isFinite(scrollMargin) && scrollMargin >= 0;
+  frame.style.scrollMarginTop = (margeDite ? scrollMargin : 80) + 'px';
+
+  // LE BANDEAU COLLÉ DU SITE (2026-11-24). Chez Fun Galaxy, l'en-tête fixe fait 163 px sur ordinateur : avec la marge de
+  // 80 px, il cachait le fil d'étapes et le titre à chaque étape, et un cadre déjà sous lui ne remontait pas. Ce qui
+  // couvre le haut de l'écran se mesure au moment du besoin (un en-tête peut rétrécir en défilant), à trois endroits de
+  // la largeur : l'élément fixe ou collant le plus bas, s'il tient dans les deux cinquièmes du haut (une fenêtre
+  // ouverte ou un voile plein écran ne compte pas). La marge que la ligne du site dit reste celle qu'elle dit.
+  function basDuBandeau() {
+    if (margeDite) return 0;
+    var bas = 0;
+    try {
+      var ecran = window.innerHeight || document.documentElement.clientHeight || 0;
+      var places = [0.15, 0.5, 0.85];
+      for (var i = 0; i < places.length; i += 1) {
+        var x = Math.round(document.documentElement.clientWidth * places[i]);
+        var pile = typeof document.elementsFromPoint === 'function' ? document.elementsFromPoint(x, 1) : [document.elementFromPoint(x, 1)];
+        for (var k = 0; k < pile.length; k += 1) {
+          for (var el = pile[k]; el && el !== document.body && el !== document.documentElement; el = el.parentElement) {
+            if (el === frame) continue;
+            var position = getComputedStyle(el).position;
+            if (position !== 'fixed' && position !== 'sticky') continue;
+            var boite = el.getBoundingClientRect();
+            if (boite.top <= 2 && boite.bottom > bas && boite.bottom <= ecran * 0.4) bas = boite.bottom;
+          }
+        }
+      }
+    } catch (error) { return 0; }
+    return Math.ceil(bas);
+  }
+  // La marge du cadre suit le bandeau du moment ; sans bandeau collé, rien ne change (80 px).
+  function margeDuHaut() {
+    var bandeau = basDuBandeau();
+    if (!margeDite) frame.style.scrollMarginTop = Math.max(80, bandeau) + 'px';
+    return bandeau;
+  }
 
   // Le cadre prend la largeur de l'écran. Les conteneurs de contenu portent
   // souvent un rembourrage latéral prévu pour du texte, qui réduit le
@@ -627,8 +662,9 @@
     // Coupe (2026-11-14) : le cadre le lit avec son catalogue et le dit, meme quand la lecture plus haut a echoue.
     if (data.type === 'pinlane:coupe') { rendreLAncienFormulaire(); return; }
     if (data.type === 'pinlane:screen') {
+      var bandeauDuMoment = margeDuHaut();
       var top = frame.getBoundingClientRect().top;
-      if (top < 0 || top > window.innerHeight * 0.5) frame.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      if (top < bandeauDuMoment || top > window.innerHeight * 0.5) frame.scrollIntoView({ block: 'start', behavior: 'smooth' });
       return;
     }
     if (data.type === 'pinlane:booking') {
@@ -667,6 +703,7 @@
       var hautBande = Number(data.haut);
       var basBande = Number(data.bas);
       if (!Number.isFinite(hautBande) || !Number.isFinite(basBande) || basBande <= hautBande) return;
+      margeDuHaut();
       var boiteCadre = frame.getBoundingClientRect();
       var ecran = window.innerHeight || document.documentElement.clientHeight || 0;
       var margeHaut = parseFloat(frame.style.scrollMarginTop);

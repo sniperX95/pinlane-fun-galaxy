@@ -7896,7 +7896,7 @@
   // s ouvre qu une fois les deux arrives (jamais un ecran sans sa mise en
   // forme). Un fichier qui echoue se redemande au clic suivant, celui qui est
   // arrive ne se recharge pas.
-  var SM_JS = '/assets/fungalaxy-sur-mesure.js?v=20261118apercu';
+  var SM_JS = '/assets/fungalaxy-sur-mesure.js?v=20261124groupe';
   var SM_CSS = '/assets/fungalaxy-sur-mesure.css?v=20261117habillage';
   var smModule = null, smFichiers = {};
   function chargerFichier(cle, balise, attributs) {
@@ -8021,6 +8021,7 @@
       scene: function () { return sceneCourante; },
       formuleChoisie: formuleChoisie, joueursDe: joueursDe, nomActivite: nomActivite, partiesDuPlan: partiesDuPlan, parentOrigin: parentOrigin,
       miroir: MIROIR ? miroir : null,
+      departGroupe: DEPART_SUR_MESURE,
     };
     Object.defineProperty(I, 'meta', { get: function () { return meta; } });
     return I;

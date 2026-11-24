@@ -48,7 +48,7 @@ qui ne se laissent pas faire :
 | `data-fallback` | Le sélecteur relevé à l'étape 1. C'est l'ancien formulaire : il **reste dans la page**, masqué, et il sera rendu si on coupe. Le masquage résiste aux scripts du site : Gravity Forms, par exemple, réaffiche son propre formulaire quand il initialise sa logique conditionnelle, donc après nous. |
 | `data-target` | Facultatif, et seulement si le script ne peut pas être collé à l'endroit voulu. Le sélecteur du bloc **dans lequel** afficher le parcours. Sans lui, le parcours s'affiche là où le script est collé. Il vise en général le parent de ce que masque `data-fallback`, pour que le parcours prenne exactement sa place. |
 | `data-center-key` | Sur un site **multi-centres qui affiche le même bloc à tout le monde**, la clé que le site utilise déjà pour retenir le centre choisi par le visiteur (stockage local, puis cookie). Le parcours suit ce choix, et `data-center` sert de défaut quand rien n'a été choisi. Sans cet attribut, un visiteur de Gembloux se verrait proposer le planning de Libramont : mauvais horaires, mauvais tarifs, et personne ne s'en apercevrait avant une réservation impossible à honorer. **À ne pas mettre** quand le site sert déjà un bloc différent par centre : sa décision à lui fait foi. |
-| `data-scroll-margin` | Facultatif. Hauteur en pixels de l'en-tête collé du site (80 par défaut), pour que la barre du parcours ne passe pas dessous. |
+| `data-scroll-margin` | Facultatif. Hauteur en pixels de l'en-tête collé du site, pour que la barre du parcours ne passe pas dessous. Sans l'attribut, le script mesure lui-même l'en-tête collé au moment où une étape change (80 px au moins). Avec l'attribut, sa valeur fait foi. |
 | `data-design` | Facultatif. `fungalaxy` affiche le formulaire habillé aux couleurs de Fun Galaxy (fond noir, violet et sarcelle, photos du centre) : même parcours, mêmes horaires, mêmes réservations, seule l'apparence change. Sans l'attribut, le parcours standard s'affiche. |
 | `data-start` | Facultatif, avec `data-design="fungalaxy"`. `sur-mesure` ouvre le formulaire directement sur la demande de groupe (école, entreprise, association…) : c'est la ligne de la page Événements. Le visiteur peut toujours revenir à la réservation en ligne. |
 
@@ -208,6 +208,40 @@ Ce que fait la copie, et ce qu'elle ne fait pas :
 **Retour à l'ancien formulaire** : le bouton de la fiche du centre (plus bas),
 comme sans copie ; il arrête aussi la copie, puisqu'il retire le formulaire
 Pinlane. Gate : `npm run test:embed-miroir`.
+
+### 2 quater. La page Événements : la demande de groupe
+
+Relevé le 2026-11-24 : la page `/evenements/` sert le formulaire 3 à Libramont (et à qui n'a pas encore choisi son
+centre) et le formulaire 2 à Gembloux. Leur seul défaut pour les groupes : la société et le numéro de TVA y sont
+obligatoires, ce qui bloque une école, un mouvement de jeunesse ou un EVG. La demande de groupe de Pinlane prend la
+même place, avec la même section du site (`#booking .container`) : une ligne par formulaire, dans un champ HTML, sans
+`data-miroir` (ces deux formulaires n'ont pas la forme de ceux de la réservation).
+
+```html
+<!-- formulaire 3, Libramont : dans un champ HTML du formulaire 3 -->
+<script src="https://app.pinlane.be/embed.js"
+        data-center="libramont"
+        data-design="fungalaxy"
+        data-start="sur-mesure"
+        data-target="#booking .container"
+        data-fallback="#booking .heading, #booking .booking__container"
+        data-track="datalayer"></script>
+
+<!-- formulaire 2, Gembloux : dans un champ HTML du formulaire 2 -->
+<script src="https://app.pinlane.be/embed.js"
+        data-center="gembloux"
+        data-design="fungalaxy"
+        data-start="sur-mesure"
+        data-target="#booking .container"
+        data-fallback="#booking .heading, #booking .booking__container"
+        data-track="datalayer"></script>
+```
+
+La demande arrive dans la console, page « Demandes sur mesure », avec une copie par mail à la boîte de secours du centre
+(à remplir dans Établissement, « Accueil et secours ») et un accusé au client. L'interrupteur du centre vaut pour elle
+comme pour la réservation : coupé, la page rend leur formulaire 3 ou 2.
+
+`npm run site:lignes` relit aussi cette page : une ligne d'un autre centre, ou sans `data-start="sur-mesure"`, est un écart.
 
 **b. Le champ « Contenu » de la page.** Il fonctionne, mais le thème l'enveloppe
 souvent dans une section à lui : on récupère une bande vide au milieu de la page.

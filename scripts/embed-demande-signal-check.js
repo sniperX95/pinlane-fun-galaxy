@@ -34,6 +34,15 @@
 //       masque du premier ecran, et avec une adresse glissee dans le signal,
 //       ce gate ROUGIT.
 //
+//   [G] LE GROUPE DE DEPART (2026-11-24). Ouverte d entree de jeu, la demande part
+//       a 20 joueurs, pas aux 4 d une reservation ; un nombre change a la main sur
+//       le premier ecran passe ; sans l attribut, le premier ecran fait foi.
+//
+//   [H] LE BANDEAU COLLE DU SITE (2026-11-24, 163 px chez Fun Galaxy). A chaque
+//       etape, le haut du cadre se montre sous le bandeau, jamais dessous ; un
+//       bandeau qui defile avec la page, une marge dite par la ligne ou une colonne
+//       haute ne changent rien ; sans la mesure, le haut reste cache (G et H).
+//
 // LE MONTAGE EST ASSERTE : le cadre est pose par embed.js lui-meme, et la
 // demande passe par le vrai gestionnaire (api/public-booking-meta, ecriture
 // gardee en memoire par scripts/dev-tunnel-server.js, aucun accuse envoye).
@@ -105,12 +114,18 @@ function instantBruxelles(jour, heure) {
 // La page hote : la page Evenements d un site, sa ligne embed.js, ses outils
 // de mesure reduits a leur trace observable (une globale appelable).
 // ---------------------------------------------------------------------------
-const HOTE = { start: 'sur-mesure', track: '' };
+const HOTE = { start: 'sur-mesure', track: '', bandeau: 0, colonne: false, marge: '' };
 function hostHtml() {
   const start = HOTE.start ? ` data-start="${HOTE.start}"` : '';
   const track = HOTE.track ? ` data-track="${HOTE.track}"` : '';
+  const marge = HOTE.marge !== '' ? ` data-scroll-margin="${HOTE.marge}"` : '';
+  // Le bandeau colle (fixe, 163 px) et une colonne fixe de 70 % de haut, comme un panneau de discussion : il se voit, il n est pas un bandeau.
+  const tete = HOTE.bandeau ? `position:fixed;top:0;left:0;right:0;z-index:50;height:${HOTE.bandeau}px;background:#1b1b2f` : 'height:56px;background:#1b1b2f';
+  const colonne = HOTE.colonne ? '<div style="position:fixed;top:0;left:1070px;width:40px;height:70vh;background:#333;z-index:60"></div>' : '';
+  const avant = HOTE.bandeau ? '<div style="height:900px"></div>' : '';
+  const apres = HOTE.bandeau ? '<div style="height:1600px"></div>' : '';
   return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body>
-<header style="height:56px;background:#1b1b2f"></header><main><h1>Événements</h1><div class="container">
+<header style="${tete}"></header>${colonne}<main>${avant}<h1>Événements</h1><div class="container">
 <script>
 window.dataLayer = [];
 window.__messages = [];
@@ -122,8 +137,8 @@ window.gtag = function () { window.__gtag.push(Array.prototype.slice.call(argume
 addEventListener('message', function (e) { if (e.data && typeof e.data.type === 'string') window.__messages.push(e.data.type); });
 addEventListener('pinlane:demande', function (e) { window.__customs.push(e.detail); });
 </script>
-<script src="${BASE_URL}/embed.js" data-center="libramont" data-design="fungalaxy"${start}${track}></script>
-</div></main></body></html>`;
+<script src="${BASE_URL}/embed.js" data-center="libramont" data-design="fungalaxy"${start}${track}${marge}></script>
+</div>${apres}</main></body></html>`;
 }
 
 // Une contre-epreuve : { fichier, de, vers }, servie en memoire a la place du
@@ -177,9 +192,12 @@ function jourVise(mock) {
 }
 
 // Ouvre la page hote ; rend le cadre pose par embed.js et ce qui s y passe.
-async function ouvrirHote(browser, { start = 'sur-mesure', track = '', horloge = null, demonstration = false } = {}) {
+async function ouvrirHote(browser, { start = 'sur-mesure', track = '', horloge = null, demonstration = false, bandeau = 0, colonne = false, marge = '' } = {}) {
   HOTE.start = start;
   HOTE.track = track;
+  HOTE.bandeau = bandeau;
+  HOTE.colonne = colonne;
+  HOTE.marge = marge;
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   if (horloge) await ctx.clock.setFixedTime(horloge);
   // Dans le cadre seulement : tant que le depart sur la demande est en cours,
@@ -321,6 +339,106 @@ async function relais(browser, { track = '' } = {}) {
   } finally { await h.ctx.close(); }
 }
 
+// Le groupe de depart : ouverte d entree de jeu, puis rouverte par la porte sans y toucher, puis apres avoir change le
+// nombre sur le premier ecran. Et sans l attribut, par la porte.
+async function groupeDeDepart(browser) {
+  const r = {};
+  const lire = (f) => f.inputValue('#smPax').then(Number);
+  const direct = await ouvrirHote(browser, {});
+  try {
+    const { page, frame: f } = direct;
+    await attendre(f, SCENE_ACTIVE, 8000, 'sm-groupe');
+    await page.waitForTimeout(700);
+    r.direct = await lire(f);
+    await f.click('.fg-scene[data-scene="sm-groupe"] [data-back]');
+    await attendre(f, SCENE_ACTIVE, 8000, 'date');
+    await page.waitForTimeout(700);
+    await f.click('#smDoorBtn');
+    await attendre(f, SCENE_ACTIVE, 8000, 'sm-groupe');
+    await page.waitForTimeout(700);
+    r.rouverte = await lire(f);
+    await f.click('.fg-scene[data-scene="sm-groupe"] [data-back]');
+    await attendre(f, SCENE_ACTIVE, 8000, 'date');
+    await page.waitForTimeout(700);
+    for (let k = 0; k < 4; k += 1) await f.click('#paxPlus');
+    r.premierEcran = Number(await f.inputValue('#paxInput').catch(() => 'NaN'));
+    await f.click('#smDoorBtn');
+    await attendre(f, SCENE_ACTIVE, 8000, 'sm-groupe');
+    await page.waitForTimeout(700);
+    r.change = await lire(f);
+  } finally { await direct.ctx.close(); }
+  const porte = await ouvrirHote(browser, { start: '' });
+  try {
+    const { page, frame: f } = porte;
+    await page.waitForTimeout(700);
+    await f.click('#smDoorBtn');
+    await attendre(f, SCENE_ACTIVE, 8000, 'sm-groupe');
+    await page.waitForTimeout(700);
+    r.parLaPorte = await lire(f);
+  } finally { await porte.ctx.close(); }
+  return r;
+}
+
+// Le cadre pose sous un bandeau colle, son haut a 27 px du haut de l ecran, puis un changement d etape : ou il finit.
+async function sousLeBandeau(browser, options = {}) {
+  const h = await ouvrirHote(browser, { bandeau: 163, ...options });
+  const { page, frame: f } = h;
+  const haut = () => page.evaluate(() => Math.round(document.querySelector('iframe[title="Reservation en ligne"]').getBoundingClientRect().top));
+  try {
+    const r = {};
+    r.ouverte = await attendre(f, SCENE_ACTIVE, 8000, 'sm-groupe');
+    await page.waitForTimeout(700);
+    await page.evaluate(() => { const c = document.querySelector('iframe[title="Reservation en ligne"]'); window.scrollBy(0, Math.round(c.getBoundingClientRect().top) - 27); });
+    await page.waitForTimeout(300);
+    r.avant = await haut();
+    // Le geste part du cadre lui-meme : un vrai clic ferait defiler la page pour atteindre le bouton.
+    await f.evaluate(() => { document.querySelector('.fg-occasion[data-type="amis"]').click(); document.querySelector('#smGoDate').click(); });
+    r.etape = await attendre(f, SCENE_ACTIVE, 8000, 'sm-date');
+    // Le defilement est doux : il s arrete quand sa place ne bouge plus.
+    let dernier = null;
+    for (let k = 0; k < 20; k += 1) { await page.waitForTimeout(200); const t = await haut(); if (t === dernier && k > 3) break; dernier = t; }
+    r.apres = await haut();
+    return r;
+  } finally { await h.ctx.close(); }
+}
+
+// Un bandeau qui defile avec la page : le cadre sous lui ne doit pas etre remonte (top 27 px, rien ne le couvre).
+async function sousLeBandeauQuiDefile(browser) {
+  const h = await ouvrirHote(browser, { bandeau: 0, marge: '' });
+  const { page, frame: f } = h;
+  const haut = () => page.evaluate(() => Math.round(document.querySelector('iframe[title="Reservation en ligne"]').getBoundingClientRect().top));
+  try {
+    const r = {};
+    r.ouverte = await attendre(f, SCENE_ACTIVE, 8000, 'sm-groupe');
+    await page.waitForTimeout(700);
+    await page.evaluate(() => { document.body.style.minHeight = '3000px'; document.querySelector('main').style.paddingBottom = '1600px'; const c = document.querySelector('iframe[title="Reservation en ligne"]'); window.scrollBy(0, Math.round(c.getBoundingClientRect().top) - 27); });
+    await page.waitForTimeout(300);
+    r.avant = await haut();
+    await f.evaluate(() => { document.querySelector('.fg-occasion[data-type="amis"]').click(); document.querySelector('#smGoDate').click(); });
+    r.etape = await attendre(f, SCENE_ACTIVE, 8000, 'sm-date');
+    await page.waitForTimeout(1500);
+    r.apres = await haut();
+    return r;
+  } finally { await h.ctx.close(); }
+}
+
+function verifierGroupe(g) {
+  section('G. LE GROUPE DE DEPART');
+  ok(g.direct === 20, 'ouverte d entree de jeu, la demande part a 20 joueurs, pas a 4', JSON.stringify(g));
+  ok(g.rouverte === 20, 'rouverte par la porte sans y toucher, elle garde 20');
+  ok(g.change === 8 && g.premierEcran === 8, 'un nombre change sur le premier ecran passe a la demande', `${g.premierEcran} / ${g.change}`);
+  ok(g.parLaPorte === 4, 'sans l attribut, la porte garde le nombre du premier ecran', `${g.parLaPorte}`);
+}
+
+function verifierBandeau(b) {
+  section('H. LE BANDEAU COLLE DU SITE');
+  ok(b.colle.ouverte && b.colle.avant >= 20 && b.colle.avant <= 34, 'MONTAGE le haut du cadre est sous le bandeau de 163 px, a 27 px du haut', JSON.stringify(b.colle));
+  ok(b.colle.etape && Math.abs(b.colle.apres - 163) <= 2, 'a l etape suivante, le haut du cadre se montre juste sous le bandeau', JSON.stringify(b.colle));
+  ok(b.colonne.etape && Math.abs(b.colonne.apres - 163) <= 2, 'une colonne fixe de 70 % de haut n est pas un bandeau', JSON.stringify(b.colonne));
+  ok(b.dite.etape && Math.abs(b.dite.apres - b.dite.avant) <= 2, 'une marge dite par la ligne reste celle qu elle dit', JSON.stringify(b.dite));
+  ok(b.defile.etape && Math.abs(b.defile.apres - b.defile.avant) <= 2, 'un bandeau qui defile avec la page ne deplace rien', JSON.stringify(b.defile));
+}
+
 function verifierDepart(d, sans, autre, demo) {
   section('A. L OUVERTURE DIRECTE');
   ok(d.erreurs.length === 0, 'aucune erreur dans la page', d.erreurs.join(' | '));
@@ -381,6 +499,12 @@ function verifierRelais(dl) {
 
 async function contreEpreuves(browser, mock) {
   section('F. CONTRE-EPREUVES');
+  const sansGroupe = await avecMutation([{ fichier: 'assets/fungalaxy-sur-mesure.js', de: 'I.departGroupe && state.pax === paxAuDepart ? GROUPE_DEPART : ', vers: '' }],
+    () => groupeDeDepart(browser));
+  ok(sansGroupe.direct === 4, 'sans le groupe de depart, la page Evenements s ouvre a 4 joueurs : G rougirait', JSON.stringify(sansGroupe));
+  const sansMesure = await avecMutation([{ fichier: 'embed.js', de: '      var bandeauDuMoment = margeDuHaut();', vers: '      var bandeauDuMoment = 0;' }],
+    () => sousLeBandeau(browser));
+  ok(sansMesure.etape && Math.abs(sansMesure.apres - sansMesure.avant) <= 2, 'sans la mesure du bandeau, le haut du cadre reste cache dessous : H rougirait', JSON.stringify(sansMesure));
   const emission = await avecMutation([{ fichier: 'assets/fungalaxy-sur-mesure.js', de: "I.poster({ type: 'pinlane:demande', detail: {", vers: "void ({ type: 'pinlane:demande', detail: {" }],
     () => parcoursDemande(browser, mock));
   ok(emission.fin && demandesPoussees(emission.apresEnvoi).length === 0 && emission.apresEnvoi.fbq.length === 0,
@@ -417,6 +541,13 @@ async function main() {
     verifierDepart(d, sans, autre, demo);
     verifierEnvoi(await parcoursDemande(browser, mock));
     verifierRelais(await relais(browser, { track: 'datalayer' }));
+    verifierGroupe(await groupeDeDepart(browser));
+    verifierBandeau({
+      colle: await sousLeBandeau(browser),
+      colonne: await sousLeBandeau(browser, { colonne: true }),
+      dite: await sousLeBandeau(browser, { marge: 24 }),
+      defile: await sousLeBandeauQuiDefile(browser),
+    });
     await contreEpreuves(browser, mock);
   } finally {
     await browser.close();

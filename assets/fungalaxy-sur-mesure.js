@@ -321,6 +321,8 @@
       { id: 'indifferent', label: 'Peu importe', icone: 'i-any', fenetre: [0, 24] },
     ];
     var SM_DELAI = 24;
+    // Le groupe d une page qui ouvre la demande directement (Evenements) : une classe, pas les 4 joueurs d une reservation.
+    var GROUPE_DEPART = 20, paxAuDepart = state.pax;
     function momentDef(id) { return SM_MOMENTS.filter(function (m) { return m.id === id; })[0] || null; }
 
     // L HEURE DU CENTRE, pas celle de l appareil : un client a l etranger lit
@@ -1226,7 +1228,9 @@
         }
         sm.panierImporte = panierNormal;
       }
-      if (!sm.paxTouche) sm.participants = Math.max(1, state.pax);
+      // Ouverte d entree de jeu, personne n a encore dit combien ils sont : le nombre du premier ecran est le defaut d une
+      // reservation. Change a la main, sur l un ou l autre ecran, il passe comme avant.
+      if (!sm.paxTouche) sm.participants = I.departGroupe && state.pax === paxAuDepart ? GROUPE_DEPART : Math.max(1, state.pax);
       if (!sm.dateTouchee && !sm.flexible) {
         var j = jourInfo(state.date);
         sm.date = state.date && state.date >= demainCentre() && j && j.ouvert ? state.date : (sm.date && sm.date >= demainCentre() ? sm.date : '');

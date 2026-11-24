@@ -185,6 +185,7 @@
       "timeLimit": { "min": "12:00", "max": "17:00" },
       "notDuringHolidays": true,
       "orderPolicy": "open_window",
+      "toutIllimite": true,
       "humanValidation": "recommended",
       "steps": [
         { "activityId": "playground", "count": 1, "durationMinutes": 300 },

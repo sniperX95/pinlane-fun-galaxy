@@ -280,6 +280,11 @@ function enPlusDuCorpsDeModifier(patch, current, { centerId, session }) {
   const formule = String(patch.type ?? current.type ?? '') === 'formule' && String(patch.formuleId ?? patch.formulaId ?? current.formuleId ?? '').trim();
   const adaptee = !patch.program && Boolean(require('../lib/formule-adaptee').lectureDeLaFormuleAdaptee(current));
   if (voulus.length && (!formule || adaptee)) throw createHttpError('Une activité en plus s’ajoute à une formule prise telle quelle.', 422);
+  // (une formule qui comprend tout n a rien a vendre en plus ; une activite deja en plus de CETTE formule se regle
+  // encore, l equipe la retire elle-meme : lib/formule-tout-illimite.js)
+  const avant = String(current.formuleId || '') === formule ? EN_PLUS.enPlusDuDossier(current) : null;
+  const compris = require('../lib/formule-tout-illimite').enPlusDejaCompris({ formuleId: formule, centerId, lignes: voulus, deja: avant ? avant.items.map((x) => x.activityId) : [] });
+  if (compris) throw Object.assign(createHttpError(`${compris.message} Rien n’a changé.`, 422), { enPlus: compris.activite });
   return voulus;
 }
 
@@ -1299,13 +1304,16 @@ async function calculerLaModification({ body, current, session, requestedCenterI
     const delta = Number.isFinite(decalage) ? decalage : 0;
     const decalees = EN_PLUS.lignesARePoser(current, { pax: operationalRequest.pax, delta });
     const enPlace = EN_PLUS.lignesARePoser(current, { pax: current.pax, delta: 0 });
-    const lignes = enPlusVoulus
+    // (le dossier passe a une formule qui les comprend : elles n y sont plus en plus, lib/formule-tout-illimite.js)
+    const formuleVoulue = String(operationalRequest.formuleId || operationalRequest.formulaId || '');
+    const comprises = formuleVoulue !== String(current.formuleId || '') ? require('../lib/formule-tout-illimite').activitesComprises(formuleVoulue, requestedCenterId) : null;
+    const lignes = (enPlusVoulus
       ? enPlusVoulus.map((x) => {
         const avant = enPlace.find((y) => y.activityId === x.activityId);
         const suit = decalees.find((y) => y.activityId === x.activityId);
         return avant && suit && (avant.heure || '') === (x.heure || '') ? { ...x, heure: suit.heure || '' } : x;
       })
-      : decalees;
+      : decalees).filter((x) => !(comprises && comprises.includes(String(x.activityId))));
     const reprise = lignes.length ? await reposerLesEnPlus({ dossier: { ...operationalRequest, ...ops }, lignes, session, ignorer: current.id }) : null;
     if (reprise && reprise.refus) throw refusDeLEnPlus(reprise.refus);
     if (reprise) {

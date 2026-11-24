@@ -26,7 +26,7 @@ const FORMULES = [
   { id:'bts', name:'BACK TO SCHOOL/WORK', family:'Formules spéciales', desc:["1h de Bowling","1h d'Arcades"], price:20, oldPrice:59, type:'per_pax', minPax:4, validDays:[0,2,3,4], timeLimit:{min:18,max:22}, noHolidays:true, hasBowling:true, bowlingDur:1, notes:["Mardi, mercredi, jeudi et dimanche","De 18h à 22h","4 personnes minimum","Non valable durant les vacances scolaires et jours fériés"] },
   { id:'mm', name:'MATIN MALIN', family:'Formules spéciales', desc:["Arcades illimitées, hors jeux à cadeaux","Laser Game illimité"], price:25, oldPrice:90, type:'per_pax', minPax:1, timeLimit:{max:12}, estimatedTotalDuration:2, orderPolicy:'open_window', noHolidays:true, hasBowling:false, notes:["Toutes les activités de la formule doivent être terminées à 12h","Les jeux d’arcade à cadeaux ne sont pas inclus","Non valable durant les vacances scolaires et jours fériés"] },
   { id:'css', name:'CRAZY STUDENT STRIKE', family:'Formules spéciales', desc:["1h de Bowling","1 mètre de bière"], price:55, type:'per_lane', minPax:1, validDays:[2], noHolidays:false, hasBowling:true, bowlingDur:1, notes:["Disponible uniquement le mardi"] },
-  { id:'kfd', name:'KIDS FUN DAY', family:'Formules spéciales', desc:["Toutes les activités illimitées","De 12h à 17h pour les enfants de 5 à 12 ans"], price:30, type:'per_pax', minPax:1, validDays:[3], timeLimit:{min:12,max:17}, orderPolicy:'open_window', noHolidays:true, hasBowling:false, notes:["Disponible uniquement le mercredi","Non valable durant les vacances scolaires et jours fériés"] },
+  { id:'kfd', name:'KIDS FUN DAY', family:'Formules spéciales', desc:["Toutes les activités illimitées","De 12h à 17h pour les enfants de 5 à 12 ans"], price:30, type:'per_pax', minPax:1, validDays:[3], timeLimit:{min:12,max:17}, orderPolicy:'open_window', toutIllimite:true, noHolidays:true, hasBowling:false, notes:["Disponible uniquement le mercredi","Non valable durant les vacances scolaires et jours fériés"] },
   { id:'hlg', name:'HAPPY LASER AND GAME', family:'Formules spéciales', desc:["30 minutes d'arcade","1 partie de Laser Game","1 boisson"], price:20, type:'per_pax', minPax:1, validDays:[4], noHolidays:false, hasBowling:false, notes:["Disponible uniquement le jeudi"] },
   { id:'ffm', name:'FUN FRIDAY MADNESS', family:'Formules spéciales', desc:["1 heure de Bowling","1 partie de Laser Game","30 minutes d'arcade","1 boisson"], price:30, type:'per_pax', minPax:1, validDays:[5], noHolidays:false, hasBowling:true, bowlingDur:1, notes:["Disponible uniquement le vendredi"] },
 ];
@@ -787,6 +787,26 @@ function resolveDisplayFormule(formuleId) {
   }
   return FORMULES.find(x => x.id === formuleId) || null;
 }
+// TOUT EN ILLIMITE, RIEN A RESERVER : LE KIDS FUN DAY (2026-11-24, la regle du serveur,
+// lib/formule-tout-illimite.js). La formule servie le dit (toutIllimite, lu sur sa carte) : elle comprend
+// chaque activite du centre, sans piste, ni arme, ni partie a placer. Un dossier adapte a la main avec un
+// bowling ou un laser garde ce que l equipe y a pose ; adapte sans aucune place, il comprend tout.
+function formuleToutIllimite(formule) {
+  return Boolean(formule && formule.toutIllimite === true);
+}
+function dossierToutIllimite(reservation) {
+  if (!reservation || reservation.type !== 'formule') return false;
+  const id = String(reservation.formuleId || reservation.formulaId || '').trim();
+  if (!id || !formuleToutIllimite(resolveDisplayFormule(id))) return false;
+  const programme = reservation.program;
+  if (programme && !Array.isArray(programme) && programme.formuleSurMesure) return false;
+  const lignes = Array.isArray(programme) ? programme : (programme && Array.isArray(programme.items) ? programme.items : []);
+  return !(lignes.some(ligne => ligne && ['bowling', 'laser_game'].includes(String(ligne.activityId || ''))) && /\(adapt[ée]e\)/i.test(String(reservation.label || '')));
+}
+// Ce qu elle comprend : les activites que le centre propose, dans l ordre de son catalogue.
+function activitesToutIllimite() {
+  return getCenterActivities().filter(activity => activity && activity.id && activity.bookableAlone !== false);
+}
 // LE GROUPE QUI NE TIENT PAS SUR LES PISTES JOUE EN PLUSIEURS SERVICES.
 //
 // Jumeau client de splitGroupIntoBowlingServices (lib/booking-config.js), sur
@@ -1426,7 +1446,9 @@ function normalizeLaserArenaEnd(start, end) {
 }
 
 function getResourceWindowsFromReservation(reservation, resourceType) {
-  const blocks = Array.isArray(reservation.opsPlan?.resourceBlocks) ? reservation.opsPlan.resourceBlocks : [];
+  // (un Kids Fun Day ne tient rien : seule une activite achetee en plus a ses pistes ou son depart)
+  const toutIllimite = dossierToutIllimite(reservation);
+  const blocks = (Array.isArray(reservation.opsPlan?.resourceBlocks) ? reservation.opsPlan.resourceBlocks : []).filter(block => !toutIllimite || (block && block.enPlus));
   // Une partie de laser au-dela de la 1re ne se dessine que si elle est
   // REELLEMENT posee : le plan la declare (scheduledPasses, quand le client a
   // choisi son heure) ou le staff l'a placee a la main. Les autres attendent
@@ -1462,7 +1484,7 @@ function getResourceWindowsFromReservation(reservation, resourceType) {
       };
     })
     .filter(window => window.duration > 0);
-  if (planned.length) return planned;
+  if (planned.length || toutIllimite) return planned;
   // Gestion laser MANUELLE (une partie a été dé-placée vers « à placer ») : on ne
   // régénère JAMAIS de fenêtre par fallback : l'absence de bloc laser = partie non
   // placée (sinon la carte réapparaîtrait aussitôt sur le planning).
@@ -1682,6 +1704,7 @@ function getPendingLaserPasses(dateStr = state.currentDate) {
 // incomplète dans le planning, l'équipe peut oublier de placer les parties
 // restantes »). Une seule règle pour les deux.
 function getPendingLaserPassesForReservation(reservation) {
+  if (dossierToutIllimite(reservation) && !getLaserWindowsFromReservation(reservation).length) return [];
   if (!(reservation
       && reservation.status !== 'cancelled'
       // Une VISITE compte ici comme une formule : ses parties de laser au-delà
@@ -2051,6 +2074,7 @@ function getFormulaFamilyLabel(formuleId) {
 
 function reservationHasFormulaActivities(reservation) {
   if (!reservation) return false;
+  if (dossierToutIllimite(reservation)) return true;
   if (getFormulaActivitySteps(getReservationFormulaId(reservation))) return true;
   // Fallback : formule sans définition connue mais avec un plan détaillé.
   const isFormula = reservation.type === 'formule' || !!reservation.formuleId || Boolean(reservation.program && reservation.program.formuleSurMesure);
@@ -2114,6 +2138,10 @@ function getFormulaActivityChecklist(reservation) {
       by: entry && entry.by ? entry.by : '',
     };
   };
+  // LE KIDS FUN DAY (2026-11-24) : chaque activité du centre, sans heure. Le catalogue du centre pas encore lu,
+  // les étapes de sa fiche, comme avant.
+  const comprises = dossierToutIllimite(reservation) ? activitesToutIllimite() : [];
+  if (comprises.length) return comprises.map(activity => mkItem(activity.id, 1, FORMULA_ACTIVITY_LABELS[activity.id] || activity.name || activity.id));
   // Cas nominal : on connaît la formule → liste COMPLÈTE de SES activités.
   if (Array.isArray(steps)) {
     const items = [];

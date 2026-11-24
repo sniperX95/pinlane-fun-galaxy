@@ -34,6 +34,15 @@
 //   [I] « CRÉER » SUR DES GROUPES QUI GENENT UN AUTRE DOSSIER (4 pistes prises a 15:00, 20 armes au laser a 14:00)
 //       se refuse avant la base, et la phrase dit chaque groupe, son activite et son heure ; jamais « Ce créneau
 //       vient de changer ». « Créer quand même » part toujours a placer.
+//   [J] « TOUT LE GROUPE » A 2, 3, 4 ET 5 GROUPES (2026-11-24 : a 3 groupes, « Cette partie ou cette vague ne fait
+//       pas partie du dossier. »). Le calcul a blanc et l ecriture passent, chaque groupe garde ses joueurs, ses
+//       pistes et son ordre, tout decale du meme ecart, le decalage inverse remet tout ; deux parties de laser et
+//       des heures posees au comptoir aussi. La vague du groupe 3 se deplace seule, se retire et revient avec ses
+//       15 joueurs et son groupe ; une vague qui n est pas au dossier reste refusee. Les pistes prises a la nouvelle
+//       heure : chaque groupe en prend d autres, sans en partager. Le minigolf du groupe entier reste libre, ou
+//       suit son heure posee. Le laser en groupes de 10 et 14, et 40 joueurs en 2 vagues de 20, sans grand groupe,
+//       se decalent pareil. Rien de ce qui passait ne se refuse : un groupe grandi de 25 a 35 sans plan refait
+//       place la 2e vague que les armes comptent, avec les 10 joueurs qui n en ont pas.
 //
 // CONTRE-PREUVES : `--contre-preuves` rejoue le gate sur du code casse expres, une mutation a la fois, en
 // memoire (le crochet de compilation du banc : le disque n est jamais touche), et exige que chacune
@@ -106,6 +115,24 @@ const MUTATIONS = [
   // phrase ne dit plus le groupe ni l activite.
   { nom: 'creer-sans-refus-des-groupes', lettre: 'I', fichier: FENETRE, de: '  if (prepare.groupesRefuses) throw prepare.groupesRefuses;\n', vers: '' },
   { nom: 'refus-sans-groupe-ni-activite', lettre: 'I', fichier: FENETRE, de: "      phrase = `Groupe ${n}${quoi ? `, ${quoi}` : ''} : ${raison.charAt(0).toLowerCase()}${raison.slice(1)}`;\n", vers: '' },
+  // [J] les vagues d une partie recomptees sur les armes (le calcul d avant, Math.ceil(joueurs / armes)) : la 3e
+  // vague d un grand groupe ne fait plus partie du dossier.
+  { nom: 'vagues-sur-les-armes', lettre: 'J', fichier: MOUVEMENT, de: '    const unite = vaguesDeLaPartie(old, game, players, capacity).find(vague => vague.wave === wave) || null;', vers: '    const waves = Math.ceil(players / capacity);\n    const unite = wave <= waves ? { wave, count: waves, pax: Math.floor(players / waves) + (wave <= players % waves ? 1 : 0), modele: null } : null;' },
+  // [J] seules les vagues du plan comptent : une vague que les armes comptaient avant ce jour se refuse.
+  { nom: 'vagues-du-plan-seulement', lettre: 'J', fichier: MOUVEMENT, de: '  const count = Math.max(0, ...dites, Number.isInteger(parLesArmes) ? parLesArmes : 0);', vers: '  const count = dites.length ? Math.max(...dites) : parLesArmes;' },
+  // [J] une vague que rien ne decrit prend une part des armes, pas les joueurs qui manquent.
+  { nom: 'vague-inconnue-sur-les-armes', lettre: 'J', fichier: MOUVEMENT, de: '  inconnues.forEach((unit, rang) => { unit.pax = Math.floor(reste / inconnues.length) + (rang < reste % inconnues.length ? 1 : 0); });', vers: '  inconnues.forEach((unit) => { unit.pax = Math.floor(players / count) + (unit.wave <= players % count ? 1 : 0); });' },
+  // [J] une vague a placer revient avec une part des armes, pas les joueurs de son groupe.
+  { nom: 'vague-a-placer-sur-les-armes', lettre: 'J', fichier: MOUVEMENT, de: '    const joueursVague = unite.pax;', vers: '    const joueursVague = Math.floor(players / Math.ceil(players / capacity)) + (wave <= players % Math.ceil(players / capacity) ? 1 : 0);' },
+  // [J] une vague a placer revient sans son groupe ; ou le retrait ne note pas le groupe de la vague.
+  { nom: 'vague-a-placer-sans-son-groupe', lettre: 'J', fichier: MOUVEMENT, de: 'groupPlayers: players, ...identiteDeLaVague(unite.modele), start: 0,', vers: 'groupPlayers: players, start: 0,' },
+  { nom: 'retrait-sans-le-groupe', lettre: 'J', fichier: MOUVEMENT, de: 'pax: vague.pax, ...identiteDeLaVague(vague.modele) }));', vers: 'pax: vague.pax }));' },
+  // [J] les vagues du plan (a placer comprises) recomptees sur les armes : la vague retiree du groupe 3 disparait.
+  { nom: 'unites-sur-les-armes', lettre: 'J', fichier: MOUVEMENT, de: '      return vaguesDeLaPartie(old, countIndex, players, Number(center.resources?.laser?.weaponCount || 30)).map(vague => ({ countIndex, groupWaveIndex: vague.wave, groupWaveCount: vague.count, unitKey: `${countIndex}.${vague.wave}`, pax: vague.pax, ...identiteDeLaVague(vague.modele) }));', vers: '      const waves = Math.ceil(players / Number(center.resources?.laser?.weaponCount || 30));\n      return Array.from({ length: waves }, (_, index) => ({ countIndex, groupWaveIndex: index + 1, groupWaveCount: waves, unitKey: `${countIndex}.${index + 1}`, pax: Math.floor(players / waves) + (index < players % waves ? 1 : 0) }));' },
+  // [J] la frise ne suit plus le decalage : le minigolf a son heure et les etapes du bowling restent ou elles etaient.
+  { nom: 'frise-du-grand-groupe-figee', lettre: 'J', fichier: 'lib/decaler-le-groupe.js', de: '  if (Array.isArray(plan.timeline)) sortie.timeline = plan.timeline.map((b) => decalerUnBloc(b, ecart));\n', vers: '' },
+  // [J] le bowling deplace donne toutes les pistes du dossier a chaque groupe.
+  { nom: 'pistes-de-tout-le-groupe', lettre: 'J', fichier: MOUVEMENT, de: 'lanes: (block.lanes || []).map(lane => mapping.get(lane)), requiredLanes: (block.lanes || []).length,', vers: 'lanes: [...mapping.values()], requiredLanes: mapping.size,' },
 ];
 
 function lancer(args) {
@@ -522,12 +549,209 @@ async function principal() {
       ok(force.statut < 300 && Boolean(place) && place.validationStatus === 'staff_review' && !(place.lanes || []).length,
         '[I] « Créer quand même » : le dossier part a placer, sans piste', { statut: force.statut, message: force.json.message, statutDossier: place && place.validationStatus, pistes: place && place.lanes });
     }
+
+    // =======================================================================
+    if (joue('J')) {
+      section('[J] « TOUT LE GROUPE » A 2, 3, 4 ET 5 GROUPES : CHAQUE GROUPE GARDE SES JOUEURS, SES PISTES ET SON ORDRE');
+      // (ok ne rend rien : vrai rend la condition, pour sauter la suite d un montage rate)
+      const vrai = (condition, quoi, detail) => { ok(condition, quoi, detail); return Boolean(condition); };
+      const hhmm = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+      const plus = (h, ecart) => hhmm(enMin(String(h).slice(0, 5)) + ecart);
+      // Chaque passage du dossier en base, son heure decalee de `ecart` : l activite, le groupe, la partie et la vague
+      // (sur combien), la plage, les joueurs et les pistes.
+      const empreinteDe = (blocs, ecart = 0) => blocs.map((b) => `${b.resourceType === 'bowling_lane' ? 'B' : 'L'}${b.sousGroupe || 0}#${b.countIndex || 1}.${b.groupWaveIndex || 1}/${b.groupWaveCount || 1}@${plus(b.startTime, ecart)}-${plus(b.endTime, ecart)} ${b.players}j[${(b.lanes || []).join(',')}]`).sort().join(' | ');
+      const empreinte = (r, ecart = 0) => empreinteDe(blocsDe(r), ecart);
+      // Les etapes de bowling et de laser de la frise, de meme ; l ordre de chaque groupe (ses activites, de la
+      // premiere a la derniere) ; les heures de chaque groupe que le plan garde (ce que Modifier reprendra).
+      const friseDe = (r, ecart = 0) => (((r.ops_plan || {}).timeline) || []).filter((s) => s && ['bowling', 'laser_game'].includes(s.activityId)).map((s) => `${s.activityId}${s.sousGroupe || 0}#${s.countIndex || 1}.${s.groupWaveIndex || 1}@${plus(s.startTime, ecart)} ${s.players}j`).sort().join(' ');
+      const ordreDe = (r) => {
+        const parGroupe = new Map();
+        blocsDe(r).slice().sort((a, b) => enMin(a.startTime) - enMin(b.startTime)).forEach((b) => { const n = Number(b.sousGroupe) || 0; parGroupe.set(n, `${parGroupe.get(n) || ''}${b.resourceType === 'bowling_lane' ? 'B' : 'L'}`); });
+        return [...parGroupe.entries()].sort((a, b) => a[0] - b[0]).map(([n, suite]) => `${n}:${suite}`).join(' ');
+      };
+      const heuresDe = (r, ecart = 0) => (((r.ops_plan || {}).grandGroupe || {}).heures || []).map((h) => ['bowling', 'laser_game'].filter((id) => h[id]).map((id) => `${id}@${plus(h[id], ecart)}`).join(' '));
+      const decaler = (id, ecart, pistes = null) => serveur.appeler('PATCH', '/api/staff-reservations', { id, centerId: 'libramont', baseUpdatedAt: version(ligne(id)), toutLeGroupe: { ecart, ...(pistes ? { pistes } : {}) } });
+      const aBlanc = async (id, ecarts) => (await serveur.appeler('POST', '/api/staff-reservations', { dryRun: true, centerId: 'libramont', deplacement: { id, centerId: 'libramont', baseUpdatedAt: version(ligne(id)), toutLeGroupe: { ecarts } } })).json;
+      const glisser = (id, activityMove) => serveur.appeler('PATCH', '/api/staff-reservations', { id, centerId: 'libramont', baseUpdatedAt: version(ligne(id)), activityMove });
+      const dire = (x) => `${x.statut} ${x.json.message || ''}`.trim();
+      const ETRANGERE = 'Cette partie ou cette vague ne fait pas partie du dossier.';
+
+      // Le groupe entier, de 2 a 5 groupes ; deux parties de laser ; les heures de [T5]
+      // (scripts/planning-heure-glisser-check.js : les groupes 1 et 2 partent ensemble au laser a 15:30).
+      const posees = [{ bowling: '16:30', laser_game: '15:30' }, { bowling: '16:30', laser_game: '15:30' }, { bowling: '15:30', laser_game: '16:30' }, { bowling: '15:30', laser_game: '16:30' }];
+      for (const c of [
+        { pax: 60, nombre: 2 }, { pax: 60, nombre: 3 }, { pax: 60, nombre: 4 }, { pax: 75, nombre: 5 },
+        { pax: 60, nombre: 4, parties: 2 },
+        { pax: 60, nombre: 4, tailles: [15, 15, 15, 15], heures: posees, debut: '15:30' },
+      ]) {
+        vider();
+        const nom = `${c.nombre} groupes (${c.pax} joueurs${c.parties ? `, ${c.parties} parties de laser` : ''}${c.heures ? ', heures posees au comptoir' : ''})`;
+        const cree = await creer(corps(c.pax, { impose: true, nombre: c.nombre, ...(c.tailles ? { tailles: c.tailles } : {}), ...(c.heures ? { heures: c.heures } : {}) }, { parties: c.parties || 1, debut: c.debut || '14:00' }));
+        const r0 = cree.json.reservation && ligne(cree.json.reservation.id);
+        const lasers = r0 ? blocsDe(r0).filter((b) => b.resourceType === 'laser_arena') : [];
+        if (!vrai(cree.statut < 300 && Boolean(r0) && lasers.length === c.nombre * (c.parties || 1) && lasers.every((b) => b.groupWaveCount === c.nombre && Number(b.sousGroupe) >= 1),
+          `[J] MONTAGE ${nom} : une vague de laser par groupe et par partie`, r0 ? empreinte(r0) : dire(cree))) continue;
+        const id = r0.id;
+        const attendu = { empreinte: empreinte(r0, 30), frise: friseDe(r0, 30), ordre: ordreDe(r0), heures: JSON.stringify(heuresDe(r0, 30)), arrivee: plus(r0.start_time, 30), origine: empreinte(r0) };
+        const blanc = await aBlanc(id, [30, 60, -30]);
+        ok(Array.isArray(blanc.essais) && blanc.essais.length === 3 && blanc.essais.every((e) => e && e.passe === true),
+          `[J] ${nom} : le calcul a blanc de la pop-up laisse passer +30, +60 et -30 min`, blanc.essais || blanc.refus);
+        const x = await decaler(id, 30);
+        const r1 = ligne(id);
+        ok(x.statut === 200 && empreinte(r1) === attendu.empreinte && ordreDe(r1) === attendu.ordre && String(r1.start_time).slice(0, 5) === attendu.arrivee,
+          `[J] ${nom} : « Tout le groupe » +30 min passe, chaque groupe garde ses joueurs, ses pistes et son ordre, chaque passage 30 min plus tard`, { statut: dire(x), attendu: attendu.empreinte, lu: empreinte(r1), ordre: ordreDe(r1) });
+        ok(x.statut === 200 && friseDe(r1) === attendu.frise && JSON.stringify(heuresDe(r1)) === attendu.heures && r1.ops_plan.grandGroupe.auxHeures === true,
+          `[J] ${nom} : la frise et les heures de chaque groupe suivent, celles que Modifier gardera`, { frise: friseDe(r1), attendue: attendu.frise, heures: heuresDe(r1), attendues: attendu.heures });
+        const y = await decaler(id, -30);
+        ok(y.statut === 200 && empreinte(ligne(id)) === attendu.origine, `[J] ${nom} : le decalage inverse remet chaque passage a sa place`, { statut: dire(y), lu: empreinte(ligne(id)), attendu: attendu.origine });
+      }
+
+      // La vague du groupe 3, en 4 groupes de 15 : elle glisse seule, se retire, revient avec ses 15 joueurs et son
+      // groupe ; une 5e vague, que le dossier n a pas, reste refusee.
+      vider();
+      const c4 = await creer(corps(60, { impose: true, nombre: 4 }));
+      const d4 = c4.json.reservation && ligne(c4.json.reservation.id);
+      if (vrai(c4.statut < 300 && Boolean(d4) && blocsDe(d4).some((b) => b.resourceType === 'laser_arena' && b.groupWaveIndex === 3 && Number(b.sousGroupe) === 3), '[J] MONTAGE : 4 groupes de 15, la vague 3 est celle du groupe 3', d4 ? empreinte(d4) : dire(c4))) {
+        const id = d4.id;
+        const l3 = () => blocsDe(ligne(id)).filter((b) => b.resourceType === 'laser_arena' && Number(b.groupWaveIndex) === 3);
+        const sauf3 = (r) => empreinteDe(blocsDe(r).filter((b) => !(b.resourceType === 'laser_arena' && Number(b.groupWaveIndex) === 3)));
+        const autres = sauf3(d4);
+        // (une demi-heure ou le dossier ne joue plus rien : la fin de son dernier passage)
+        const cible = hhmm(Math.ceil(Math.max(...blocsDe(d4).map((b) => enMin(b.endTime))) / 30) * 30);
+        const heures3 = heuresDe(d4)[2].replace(/laser_game@\d\d:\d\d/, `laser_game@${cible}`);
+        const seule = await glisser(id, { activityId: 'laser_game', unitKey: '1.3', startTime: cible });
+        const glissee = l3();
+        ok(seule.statut === 200 && glissee.length === 1 && String(glissee[0].startTime).slice(0, 5) === cible && glissee[0].players === 15 && Number(glissee[0].sousGroupe) === 3
+          && sauf3(ligne(id)) === autres && heuresDe(ligne(id))[2] === heures3,
+        `[J] la vague du groupe 3 glisse seule a ${cible} : ses 15 joueurs, son groupe, l heure du groupe 3 suit, les autres groupes ne bougent pas`, { statut: dire(seule), l3: glissee, heures: heuresDe(ligne(id)) });
+        const retrait = await glisser(id, { activityId: 'laser_game', unitKey: '1.3', unplace: true });
+        const passe = (ligne(id).ops_plan || {}).laserPassPlan || {};
+        const enAttente = (passe.pendingUnits || []).find((u) => u.unitKey === '1.3');
+        ok(retrait.statut === 200 && l3().length === 0 && Boolean(enAttente) && enAttente.pax === 15 && Number(enAttente.sousGroupe) === 3 && enAttente.groupWaveCount === 4
+          && (passe.pendingUnits || []).length === 1 && passe.remainingGames === 1 && sauf3(ligne(id)) === autres,
+        '[J] la vague du groupe 3 se retire : elle attend a placer avec ses 15 joueurs et son groupe, seule, les autres groupes ne bougent pas', { statut: dire(retrait), l3: l3().length, enAttente, aPlacer: (passe.pendingUnits || []).length, reste: passe.remainingGames, autres: sauf3(ligne(id)) === autres ? 'inchanges' : sauf3(ligne(id)) });
+        const retour = await glisser(id, { activityId: 'laser_game', unitKey: '1.3', startTime: cible });
+        const revenue = l3();
+        const apres = (ligne(id).ops_plan || {}).laserPassPlan || {};
+        ok(retour.statut === 200 && revenue.length === 1 && revenue[0].players === 15 && Number(revenue[0].sousGroupe) === 3 && Number(revenue[0].sousGroupes) === 4 && revenue[0].groupWaveCount === 4
+          && !(apres.pendingUnits || []).length && apres.remainingGames === 0 && sauf3(ligne(id)) === autres && heuresDe(ligne(id))[2] === heures3,
+        `[J] elle revient a ${cible} avec ses 15 joueurs et son groupe (3 sur 4), plus rien a placer`, { statut: dire(retour), revenue, laserPassPlan: apres, heures: heuresDe(ligne(id)) });
+        const avantRefus = JSON.stringify(ligne(id).ops_plan);
+        const etrangere = await glisser(id, { activityId: 'laser_game', unitKey: '1.5', startTime: cible });
+        ok(etrangere.statut === 422 && etrangere.json.message === ETRANGERE && JSON.stringify(ligne(id).ops_plan) === avantRefus,
+          '[J] une 5e vague, que le dossier n a pas : refusee, rien ne s ecrit', dire(etrangere));
+      }
+
+      // Sans grand groupe : 40 joueurs en 2 vagues de 20 (les armes), et le laser en groupes de 10 et 14 (2 vagues
+      // sous 30 armes, lib/visit-program.js groupesDuLaser).
+      const laserSeul = (pax, extra = {}) => ({
+        name: 'Laser Essai', phone: '0470999888', email: '', notes: '', occasion: '', date: jour, startTime: '15:00', duration: 1, totalDuration: 1, lanes: [], pax, status: 'pending', type: 'visite', formuleId: '',
+        program: [{ activityId: 'laser_game', pax, participants: pax, games: 1, ...extra }], laserGames: 0, extras: [], channel: 'staff', requiresLanes: false, centerId: 'libramont',
+        preference: { activityOrder: ['laser_game'], preferredTimes: { laser_game: '15:00' }, laserGameTimes: ['15:00'], laserPlacement: 'scheduled' },
+      });
+      const vagues = (r) => blocsDe(r).filter((b) => b.resourceType === 'laser_arena').sort((a, b) => a.groupWaveIndex - b.groupWaveIndex).map((b) => b.players).join('/');
+      for (const [nom, c, joueurs] of [['40 joueurs en 2 vagues de 20', laserSeul(40), '20/20'], ['le laser en groupes de 10 et 14', laserSeul(24, { groupes: [10, 14] }), '10/14']]) {
+        vider();
+        const cree = await creer(c);
+        const r0 = cree.json.reservation && ligne(cree.json.reservation.id);
+        if (!vrai(cree.statut < 300 && Boolean(r0) && vagues(r0) === joueurs, `[J] MONTAGE ${nom} : deux vagues (${joueurs})`, r0 ? empreinte(r0) : dire(cree))) continue;
+        const attendu = empreinte(r0, 30);
+        const blanc = await aBlanc(r0.id, [30]);
+        const x = await decaler(r0.id, 30);
+        ok(blanc.essais && blanc.essais[0] && blanc.essais[0].passe === true && x.statut === 200 && empreinte(ligne(r0.id)) === attendu && vagues(ligne(r0.id)) === joueurs,
+          `[J] ${nom} : « Tout le groupe » +30 min passe (a blanc aussi), chaque vague garde ses joueurs`, { blanc: blanc.essais || blanc.refus, statut: dire(x), lu: empreinte(ligne(r0.id)), attendu });
+        const etrangere = await glisser(r0.id, { activityId: 'laser_game', unitKey: '1.3', startTime: '18:00' });
+        ok(etrangere.statut === 422 && etrangere.json.message === ETRANGERE, `[J] ${nom} : une 3e vague, que le dossier n a pas, reste refusee`, dire(etrangere));
+      }
+
+      // Rien de ce qui passait ne se refuse : un groupe de 25 (une vague) passe a 35 sans que son plan soit refait (une
+      // replanification ratee le garde tel quel). Les armes comptent 2 vagues, la console propose la 2e a placer ; elle
+      // se pose avec les 10 joueurs qui n ont pas de vague (avant : 17, et le groupe en comptait 42).
+      vider();
+      const c25 = await creer(laserSeul(25));
+      const d25 = c25.json.reservation && ligne(c25.json.reservation.id);
+      if (vrai(c25.statut < 300 && Boolean(d25) && vagues(d25) === '25', '[J] MONTAGE : 25 joueurs au laser, une vague', d25 ? empreinte(d25) : dire(c25))) {
+        const grandi = ligne(d25.id);
+        grandi.pax = 35;
+        grandi.program = { ...grandi.program, items: grandi.program.items.map((i) => (i.activityId === 'laser_game' ? { ...i, pax: 35, participants: 35 } : i)) };
+        const x = await glisser(d25.id, { activityId: 'laser_game', unitKey: '1.2', startTime: '16:00' });
+        const deuxieme = blocsDe(ligne(d25.id)).find((b) => b.resourceType === 'laser_arena' && Number(b.groupWaveIndex) === 2);
+        ok(x.statut === 200 && Boolean(deuxieme) && deuxieme.players === 10 && String(deuxieme.startTime).slice(0, 5) === '16:00' && vagues(ligne(d25.id)) === '25/10',
+          '[J] le groupe grandi a 35 sans plan refait : la 2e vague que les armes comptent se place, avec les 10 joueurs qui n en ont pas', { statut: dire(x), vagues: vagues(ligne(d25.id)) });
+      }
+
+      // Les pistes prises a la nouvelle heure : un autre dossier joue sur la piste 1 a 16:00. Decale de 30 min, un groupe
+      // y serait encore : le bowling prend d autres pistes, chaque groupe garde son nombre de pistes, deux groupes qui
+      // jouent en meme temps n en partagent aucune, ceux qui partageaient les leurs a d autres heures les partagent
+      // encore ; « Annuler » (les pistes d avant) remet tout.
+      vider();
+      const voisin = await creer({
+        name: 'Bowling Voisin', phone: '0470999777', email: '', notes: '', occasion: '', date: jour, startTime: '16:00', duration: 1, totalDuration: 1, lanes: [1], pax: 4, status: 'pending', type: 'bowling', formuleId: '',
+        program: [{ activityId: 'bowling', pax: 4, participants: 4, duration: 1 }], laserGames: 0, extras: [], channel: 'staff', requiresLanes: true, centerId: 'libramont',
+        preference: { activityOrder: ['bowling'], preferredTimes: { bowling: '16:00' } },
+      });
+      const cp = await creer(corps(60, { impose: true, nombre: 4 }));
+      const dp = cp.json.reservation && ligne(cp.json.reservation.id);
+      const quilles = (r) => blocsDe(r).filter((b) => b.resourceType === 'bowling_lane');
+      const pistesDuVoisin = voisin.json.reservation ? (ligne(voisin.json.reservation.id).lanes || []).map(Number).join(',') : '';
+      const jusqua16 = (r) => quilles(r).some((b) => (b.lanes || []).map(Number).includes(1) && String(b.endTime).slice(0, 5) === '16:00');
+      if (vrai(voisin.statut < 300 && pistesDuVoisin === '1' && cp.statut < 300 && Boolean(dp) && quilles(dp).length === 4 && jusqua16(dp),
+        '[J] MONTAGE : un autre dossier sur la piste 1 a 16:00, un groupe du grand groupe y joue jusqu a 16:00', { voisin: dire(voisin), pistes: pistesDuVoisin, groupe: dp ? empreinte(dp) : dire(cp) })) {
+        // Pour chaque paire de services : les memes pistes (=), une piste commune (~), aucune (.).
+        const liens = (r) => { const q = quilles(r); return q.map((a, i) => q.slice(i + 1).map((b) => ((a.lanes || []).join(',') === (b.lanes || []).join(',') ? '=' : (a.lanes || []).some((p) => (b.lanes || []).includes(p)) ? '~' : '.')).join('')).join('|'); };
+        const ensemble = (a, b) => enMin(a.startTime) < enMin(b.endTime) && enMin(b.startTime) < enMin(a.endTime);
+        const sansPistes = (texte) => texte.replace(/\[[^\]]*\]/g, '');
+        const origine = empreinte(dp);
+        const pistesAvant = (dp.lanes || []).map(Number).sort((a, b) => a - b);
+        const blanc = await aBlanc(dp.id, [30]);
+        const x = await decaler(dp.id, 30);
+        const r = ligne(dp.id);
+        const q = quilles(r);
+        const partagees = q.some((a, i) => q.some((b, j) => j > i && ensemble(a, b) && (a.lanes || []).some((p) => (b.lanes || []).includes(p))));
+        const surLeVoisin = q.some((b) => (b.lanes || []).map(Number).includes(1) && enMin(b.endTime) > 16 * 60);
+        const pistesApres = (r.lanes || []).map(Number).sort((a, b) => a - b);
+        ok(x.statut === 200 && q.every((b, i) => (b.lanes || []).length === (quilles(dp)[i].lanes || []).length) && !partagees && !surLeVoisin && liens(r) === liens(dp)
+          && sansPistes(empreinte(r)) === sansPistes(empreinte(dp, 30)) && pistesApres.join(',') !== pistesAvant.join(','),
+        '[J] la piste 1 prise a 16:00 : le bowling prend d autres pistes, chaque groupe garde son nombre de pistes, aucun ne partage les siennes avec un groupe qui joue en meme temps, tout decale de 30 min', { statut: dire(x), avant: origine, apres: empreinte(r) });
+        ok(blanc.essais && blanc.essais[0] && blanc.essais[0].passe === true && JSON.stringify(blanc.essais[0].pistes) === JSON.stringify(pistesApres),
+          '[J] le calcul a blanc le disait, avec les pistes que le bowling prendrait', { blanc: blanc.essais || blanc.refus, ecrit: pistesApres });
+        const annuler = await decaler(dp.id, -30, pistesAvant);
+        ok(annuler.statut === 200 && empreinte(ligne(dp.id)) === origine, '[J] « Annuler » (-30 min, les pistes d avant) : chaque groupe retrouve ses pistes et ses heures', { statut: dire(annuler), lu: empreinte(ligne(dp.id)), attendu: origine });
+      }
+
+      // Les autres activites du dossier : le minigolf du groupe entier. « Libre », il reste libre quand le groupe se
+      // decale ; une heure posee apres la rotation, il suit du meme ecart, comme chaque groupe.
+      vider();
+      const base = corps(60, { impose: true, nombre: 4 });
+      const cm = await creer({ ...base, program: [...base.program, { activityId: 'minigolf_blacklight', pax: 60, participants: 60 }], preference: { ...base.preference, activityOrder: [...base.preference.activityOrder, 'minigolf_blacklight'] } });
+      const dm = cm.json.reservation && ligne(cm.json.reservation.id);
+      const autresDe = (r, ecart = 0) => (((r.ops_plan || {}).timeline) || []).filter((s) => s && s.type === 'activity' && !['bowling', 'laser_game'].includes(s.activityId))
+        .map((s) => `${s.activityId}@${s.flexible ? 'libre' : `${plus(s.startTime, ecart)}-${plus(s.endTime, ecart)}${s.heurePosee ? ' posee' : ''}`}`).sort().join(' | ');
+      if (vrai(cm.statut < 300 && Boolean(dm) && (dm.program.items || []).some((i) => i.activityId === 'minigolf_blacklight') && !/minigolf_blacklight@\d/.test(autresDe(dm)),
+        '[J] MONTAGE : 4 groupes au bowling et au laser, et le minigolf du groupe entier, libre', dm ? { autres: autresDe(dm), blocs: empreinte(dm) } : dire(cm))) {
+        const id = dm.id;
+        const libre = { blocs: empreinte(dm, 30), autres: autresDe(dm) };
+        const x = await decaler(id, 30);
+        ok(x.statut === 200 && empreinte(ligne(id)) === libre.blocs && autresDe(ligne(id)) === libre.autres,
+          '[J] le minigolf libre : « Tout le groupe » +30 min passe, chaque groupe 30 min plus tard, le minigolf reste libre', { statut: dire(x), blocs: empreinte(ligne(id)), autres: autresDe(ligne(id)) });
+        const cible = hhmm(Math.ceil(Math.max(...blocsDe(ligne(id)).map((b) => enMin(b.endTime))) / 30) * 30);
+        const heure = await glisser(id, { activityId: 'minigolf_blacklight', startTime: cible });
+        const pose = ligne(id);
+        if (vrai(heure.statut === 200 && new RegExp(`minigolf_blacklight@${cible}-\\d\\d:\\d\\d posee`).test(autresDe(pose)), `[J] MONTAGE : le minigolf recoit son heure, ${cible}, apres la rotation`, { statut: dire(heure), autres: autresDe(pose) })) {
+          const attendu = { blocs: empreinte(pose, 30), autres: autresDe(pose, 30) };
+          const blanc = await aBlanc(id, [30]);
+          const y = await decaler(id, 30);
+          ok(blanc.essais && blanc.essais[0] && blanc.essais[0].passe === true && y.statut === 200 && empreinte(ligne(id)) === attendu.blocs && autresDe(ligne(id)) === attendu.autres,
+            '[J] le minigolf a son heure : « Tout le groupe » +30 min passe (a blanc aussi), le minigolf et chaque groupe 30 min plus tard', { blanc: blanc.essais || blanc.refus, statut: dire(y), autres: autresDe(ligne(id)), attendues: attendu.autres });
+        }
+      }
+    }
   } catch (error) {
     ok(false, `exception : ${error.message}`, String(error.stack || '').split('\n').slice(0, 4).join(' | '));
   }
 
   console.log(rouges
     ? `\ngroupes-check: ${rouges} ROUGE(S)`
-    : '\ngroupes-check: ALL OK - le nombre de groupes se choisit, chaque groupe joue aux heures posees au comptoir, ce qui coince se dit sur la case de son groupe, la modification garde ce qui a ete pose, les dossiers d avant restent justes et le canal public ne change pas');
+    : '\ngroupes-check: ALL OK - le nombre de groupes se choisit, chaque groupe joue aux heures posees au comptoir, ce qui coince se dit sur la case de son groupe, la modification garde ce qui a ete pose, les dossiers d avant restent justes, le canal public ne change pas et tout le groupe se decale a 2, 3, 4 et 5 groupes');
   process.exit(rouges ? 1 : 0);
 }

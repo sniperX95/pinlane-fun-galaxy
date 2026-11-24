@@ -57,8 +57,9 @@
 //        toujours de quel groupe parle une ligne : son nom reste a l ecran ;
 //   [J1] centre ferme, journee vide : le bandeau ; [V1] ni degrade, Geist et
 //        chiffres tabulaires, rien sous 12 px, la couleur du statut et jamais
-//        celle d une activite ; [A1] chaque ligne se lit et s atteint au
-//        clavier ;
+//        celle d une activite ; chaque mot d une pastille grise garde 3 px de
+//        place, jamais coupe, et au telephone la pastille garde 3 px avec ce
+//        qui la precede ; [A1] chaque ligne se lit et s atteint au clavier ;
 //   [H1] la minute qui passe ne reecrit pas la feuille (pastille et minutes
 //        de retard ecrites en place) et rend ce qu un rendu frais rendrait ;
 //   [D1] le focus survit a une reecriture.
@@ -665,6 +666,37 @@ async function structure(page, s, label) {
   ok(v.degrades.length === 0 && /geist/i.test(v.police) && !/mono/i.test(v.police) && /tabular-nums/.test(v.chiffres), `[V1] ${label} : ni degrade, Geist (pas Mono), chiffres tabulaires`, v);
   ok(v.petits.length === 0, `[V1] ${label} : aucun texte sous 12 px`, v.petits);
   ok(v.teintes.length === 0, `[V1] ${label} : la couleur est celle du statut, jamais celle d une activite`, v.teintes);
+  // [V1] LES PASTILLES GRISES (2026-11-24) : en 12 px au moins, chaque mot garde 3 px de place sur sa ligne (un mot qui
+  // tient a 0,7 px se coupe chez un navigateur qui le dessine un rien plus large), aucun mot coupe en deux ; au telephone,
+  // ou la case est une ligne, la pastille garde 3 px avec ce qui la precede (2 px apres « Pistes 1-2 », 0 px pour deux
+  // pastilles cote a cote).
+  const pastilles = await page.evaluate(() => Array.from(document.querySelectorAll('#globalPlanningGridWrap .gf-x__h')).filter((h) => h.getBoundingClientRect().width > 0).map((h) => {
+    const px = (x) => parseFloat(x) || 0;
+    const st = getComputedStyle(h);
+    const pst = getComputedStyle(h.parentElement);
+    const contenu = h.parentElement.getBoundingClientRect().width - px(pst.borderLeftWidth) - px(pst.borderRightWidth) - px(pst.paddingLeft) - px(pst.paddingRight);
+    const place = contenu - px(st.marginLeft) - px(st.marginRight) - px(st.paddingLeft) - px(st.paddingRight) - px(st.borderLeftWidth) - px(st.borderRightWidth);
+    const mots = [];
+    const marcheur = document.createTreeWalker(h, NodeFilter.SHOW_TEXT);
+    for (let n = marcheur.nextNode(); n; n = marcheur.nextNode()) {
+      const re = /\S+/g;
+      for (let m = re.exec(n.data); m; m = re.exec(n.data)) {
+        const plage = document.createRange();
+        plage.setStart(n, m.index);
+        plage.setEnd(n, m.index + m[0].length);
+        const morceaux = Array.from(plage.getClientRects()).filter((x) => x.width > 0);
+        mots.push({ mot: m[0], largeur: morceaux.reduce((s, x) => s + x.width, 0), morceaux: morceaux.length });
+      }
+    }
+    const large = mots.reduce((a, b) => (b.largeur > a.largeur ? b : a), { mot: '', largeur: 0 });
+    const bloc = h.closest('.gf-x__hors') || h;
+    const a = bloc.previousElementSibling ? bloc.previousElementSibling.getBoundingClientRect() : null;
+    const b = bloc.getBoundingClientRect();
+    const ecart = a && a.width > 0 && Math.abs(a.top - b.top) < a.height ? Math.round((b.left - a.right) * 10) / 10 : null;
+    return { texte: h.textContent.trim(), taille: px(st.fontSize), marge: Math.round((place - large.largeur) * 10) / 10, coupe: mots.filter((x) => x.morceaux > 1).map((x) => x.mot), ecart };
+  }));
+  const pastillesFausses = pastilles.filter((p) => p.taille < 12 || p.marge < 3 || p.coupe.length || (p.ecart !== null && p.ecart < 3));
+  ok(pastillesFausses.length === 0, `[V1] ${label} : chaque pastille grise en 12 px, chaque mot garde 3 px de place, aucun mot coupe, et 3 px avec ce qui la precede sur sa ligne (${pastilles.length} pastilles)`, pastillesFausses.slice(0, 4));
 
   // [A1] chaque ligne se lit et s atteint au clavier
   const aria = groupes.filter((l) => l.tabindex !== '0' || !l.aria.startsWith(`${l.h}, ${parId.get(l.id).nom}, `));
@@ -965,6 +997,11 @@ const MUTATIONS = [
   { nom: 'tableau-au-telephone', lettre: 'L3', scenarios: [S('pic', 'telephone')], editions: [{ fichier: PGC, de: '  .gf-r { display: grid;', vers: '  .gf-r { display: table-row;' }] },
   { nom: 'bandeau-cache', lettre: 'J1', scenarios: [S('ferme', 'ordinateur', { sansGroupe: true })], editions: [{ fichier: PG, de: '    bandeau.hidden = !texte;', vers: '    bandeau.hidden = true;' }] },
   { nom: 'detail-10px', lettre: 'V1', scenarios: [PIC], editions: [{ fichier: PGC, de: '.gf-x__d { font-size: 13px;', vers: '.gf-x__d { font-size: 10px;' }] },
+  // Au telephone, la pastille grise se recolle au texte d avant (« Pistes 1-2 » puis « 2h », 2 px).
+  { nom: 'pastille-collee-au-telephone', lettre: 'V1', scenarios: [S('pic', 'telephone')], editions: [{ fichier: PGC, de: '  .gf-x__h, .gf-x__hors { margin-left: 0; }\n', vers: '' }] },
+  // Les pastilles grises serrees au point qu un mot n a plus sa place (12 px de remplissage de chaque cote, a 1024 :
+  // « 1h30 » ne tient plus dans la colonne de 54 px).
+  { nom: 'pastille-sans-place', lettre: 'V1', scenarios: [S('pic', 'tablette')], editions: [{ fichier: PGC, de: '.gf-x__h { margin-left: -4px; padding: 0 1px; font-weight: 600; }', vers: '.gf-x__h { margin-left: -4px; padding: 0 12px; font-weight: 600; }' }] },
   { nom: 'degrade', lettre: 'V1', scenarios: [PIC], editions: [{ fichier: PGC, de: '.gf-x__ok { position: absolute;', vers: '.gf-x { background-image: linear-gradient(#fff0, #0001); }\n.gf-x__ok { position: absolute;' }] },
   { nom: 'couleur-par-activite', lettre: 'V1', scenarios: [PIC], editions: [{ fichier: PGC, de: '.gf-x__ok { position: absolute;', vers: '.gf-a[data-gf-titre="Minigolf"] .gf-x { background: #8a2be2; }\n.gf-a[data-gf-titre="Arcades"] .gf-x { background: #2b8a3e; }\n.gf-x__ok { position: absolute;' }] },
   { nom: 'pastille-par-activite', lettre: 'V1', scenarios: [PIC], editions: [{ fichier: PGC, de: '.gf-x__ok { position: absolute;', vers: '.gf-a[data-gf-titre="Minigolf"] .gf-x__t { background: #8a2be2; }\n.gf-x__ok { position: absolute;' }] },

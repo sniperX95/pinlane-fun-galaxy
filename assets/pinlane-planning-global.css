@@ -476,9 +476,12 @@ button.gf-bloc__in:focus-visible { outline: 2px solid var(--console-focus); outl
 @media (max-width: 1280px) { .gf-x__h { margin-left: -3px; padding: 0 3px; line-height: 16px; } }
 .gf-x__hors { display: flex; flex-wrap: wrap; gap: 3px; margin: 2px 0 0 -5px; }
 .gf-x__hors .gf-x__h { margin: 0; }
-/* (24/11 : dans la colonne de 54 px, « groupes » fait 48 px en gras a 12 px ; la pastille part du bord de la colonne, comme
-   celle de l heure au-dessus, et garde 2 px de chaque cote : le mot tient entier sur sa ligne, jamais coupe en deux) */
-@container feuille (min-width: 640px) and (max-width: 1059px) { .gf-x__h { margin-left: -4px; padding: 0 2px; } .gf-x__hors { margin-left: -4px; } }
+/* (24/11 : dans la colonne de 54 px, la pastille part du bord de la colonne, comme celle de l heure au-dessus : 53 px pour
+   elle. En gras 700 avec 2 px de chaque cote, « groupes » (48,3 px) n y gardait que 0,7 px : un navigateur qui dessine le mot
+   un rien plus large l aurait coupe en deux, sans que rien ne rougisse. En 600, le poids de la pastille d une activite finie,
+   avec 1 px de chaque cote, le mot (47,1 px) garde pres de 4 px, toujours en 12 px ; grands-groupes [I] et planning-global
+   [V1] mesurent la marge) */
+@container feuille (min-width: 640px) and (max-width: 1059px) { .gf-x__h { margin-left: -4px; padding: 0 1px; font-weight: 600; } .gf-x__hors { margin-left: -4px; } }
 .gf-x:is(.is-fini, .is-clos) .gf-x__h, .gf-r.is-parti .gf-x__h { background: transparent; box-shadow: inset 0 0 0 1px var(--line); color: var(--muted); font-weight: 600; }
 /* « Illimité » prend la couleur de la formule : c est elle qui le donne. */
 .gf-x__t.is-illimite { background: var(--gf-formule-fond); color: var(--gf-formule-encre); }
@@ -770,6 +773,10 @@ button.gf-bloc__in:focus-visible { outline: 2px solid var(--console-focus); outl
   .gf-t .gf-r > td.gf-a.is-vide { display: none; }
   .gf-x, .gf-a.is-plusieurs .gf-x, .gf-a.is-plusieurs .gf-x:first-child { display: inline-flex; flex-direction: row; align-items: baseline; flex-wrap: nowrap; gap: 5px; width: auto; height: auto; min-height: 24px; padding: 2px 6px; border-radius: 6px; font-size: 13px; line-height: 17px; white-space: nowrap; }
   .gf-x__ok { display: none; }
+  /* (au telephone, la case est une ligne : la pastille grise y suit son voisin a l ecart de la ligne, 5 px. Le retrait a
+     gauche qui l aligne sur le bord de sa colonne, au tableau, la collait au texte d avant : 0 px apres « Pistes 4-6 »
+     pour « groupe 3 · 15 joueurs », 2 px apres « Pistes 1-2 » pour « 2h », 24/11) */
+  .gf-x__h, .gf-x__hors { margin-left: 0; }
   /* (au telephone, la case vide de la coche attendue revient : la case est une pastille large) */
   .gf-x__ac { display: inline-block; }
   /* LE GESTE : en pied de carte, sur toute sa largeur. */

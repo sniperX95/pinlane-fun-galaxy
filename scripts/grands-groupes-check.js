@@ -57,7 +57,9 @@
 //       fois, 4 groupes de 15 ; chaque heure se touche et se tape (les groupes 1 et 2 au laser a 15:30 puis au
 //       bowling a 16:30, les groupes 3 et 4 l inverse) ; rien ne coince, le ticket dit les 4 groupes ; le
 //       dossier nait ainsi, au prix annonce ; le planning complet marque chaque groupe (« groupes 1 et 2 » sur
-//       la partie de laser qu ils jouent ensemble) ; la fiche aussi. Modifier montre le bloc des groupes, lisible
+//       la partie de laser qu ils jouent ensemble), chaque mot de ses pastilles grises garde 3 px de place (en 12
+//       px, jamais coupe) de 1366 a 768 de large et au telephone, ou la pastille garde aussi 3 px avec ce qui la
+//       precede ; la fiche aussi. Modifier montre le bloc des groupes, lisible
 //       (aucune case coupee, le bouton qui inverse sur la ligne de son groupe), et son programme dit le vrai
 //       numero de chaque groupe au bowling : le laser du groupe 4 a 17:00 s ecrit, le reste ne bouge pas, au meme
 //       prix, et le planning suit ; une heure a 08:00 rend la case du groupe 1 rouge avec sa raison, avant
@@ -181,6 +183,10 @@ const MUTATIONS = [
   // [I] la barre de Modifier annonce un prix que le serveur n ecrirait pas ; les pastilles du planning complet debordent de leur colonne.
   { nom: 'prix-annonce-malgre-refus', lettre: 'I', fichier: APP, de: '  if (!groupesRefuses && prix != null && Math.round(prix * 100)', vers: '  if (prix != null && Math.round(prix * 100)' },
   { nom: 'pastilles-qui-debordent', lettre: 'I', fichier: PLANNING_CSS, de: 'line-height: 17px; white-space: normal; overflow-wrap: anywhere; }', vers: 'line-height: 17px; white-space: nowrap; }' },
+  // [I] la pastille grise revient a 0,7 px de marge dans la colonne de 54 px (la regle du 24/11 avant ce lot) ; au
+  // telephone, elle se recolle au texte d avant.
+  { nom: 'pastille-sans-marge', lettre: 'I', fichier: PLANNING_CSS, de: '@container feuille (min-width: 640px) and (max-width: 1059px) { .gf-x__h { margin-left: -4px; padding: 0 1px; font-weight: 600; }', vers: '@container feuille (min-width: 640px) and (max-width: 1059px) { .gf-x__h { margin-left: -4px; padding: 0 2px; }' },
+  { nom: 'pastille-collee-au-telephone', lettre: 'I', fichier: PLANNING_CSS, de: '  .gf-x__h, .gf-x__hors { margin-left: 0; }\n', vers: '' },
   { nom: 'programme-groupes-ordinaux', lettre: 'I', fichier: APP, de: "${Number(etape.sousGroupe) > 0 ? `Groupe ${Number(etape.sousGroupe)}` : `${index ? `${index + 1}e` : '1er'} groupe`} à", vers: "${index ? `${index + 1}e` : '1er'} groupe à" },
   // [J] la console recompte les vagues sur les armes (la file perd le groupe 3) ; la vague a placer, la vague prise ou la
   // carte perdent leur groupe ; le toast redit « vague » ; Modifier et la bulle du compte recomptent sur les armes, oublient
@@ -1050,6 +1056,50 @@ async function principal() {
           }, r.id) : [];
         }
         ok(Object.values(sortiesPlanning).every((l) => l.length === 0), '[I] le planning complet tient dans ses colonnes a 1366, 1280 et 1024 de large : « 15 joueurs » et « groupes 1 et 2 » ne debordent pas', sortiesPlanning);
+        // [I] LA PASTILLE GRISE A UNE VRAIE MARGE (2026-11-24) : a 1024 de large, « groupes » tenait dans sa colonne de 54 px
+        // avec 0,7 px de reste ; un navigateur qui dessine le mot un rien plus large l aurait coupe sans que rien rougisse.
+        // Chaque mot de chaque pastille grise (« 15 joueurs », « groupes 1 et 2 ») garde au moins 3 px de place sur sa
+        // ligne, en 12 px au moins, et aucun mot ne passe a la ligne en deux morceaux, a 1366, 1280, 1024 et 768 de large
+        // comme au telephone. Au telephone, ou la case est une ligne, la pastille garde aussi 3 px au moins avec ce qui la
+        // precede (elle touchait « Pistes 4-6 »).
+        const margesPastilles = {};
+        for (const largeur of [1366, 1280, 1024, 768, 390]) {
+          await page.setViewportSize({ width: largeur, height: largeurInitiale.height });
+          await page.waitForTimeout(400);
+          margesPastilles[largeur] = r ? await page.evaluate((id) => Array.from(document.querySelectorAll(`.gf-r[data-gf-id="${id}"] .gf-x__h`)).map((h) => {
+            const st = getComputedStyle(h);
+            const px = (v) => parseFloat(v) || 0;
+            const parent = h.parentElement;
+            const pst = getComputedStyle(parent);
+            const contenu = parent.getBoundingClientRect().width - px(pst.borderLeftWidth) - px(pst.borderRightWidth) - px(pst.paddingLeft) - px(pst.paddingRight);
+            const place = contenu - px(st.marginLeft) - px(st.marginRight) - px(st.paddingLeft) - px(st.paddingRight) - px(st.borderLeftWidth) - px(st.borderRightWidth);
+            const mots = [];
+            const parcours = document.createTreeWalker(h, NodeFilter.SHOW_TEXT);
+            for (let n = parcours.nextNode(); n; n = parcours.nextNode()) {
+              const re = /\S+/g;
+              for (let m = re.exec(n.data); m; m = re.exec(n.data)) {
+                const plage = document.createRange();
+                plage.setStart(n, m.index);
+                plage.setEnd(n, m.index + m[0].length);
+                const morceaux = Array.from(plage.getClientRects()).filter((x) => x.width > 0);
+                mots.push({ mot: m[0], largeur: morceaux.reduce((s, x) => s + x.width, 0), morceaux: morceaux.length });
+              }
+            }
+            const large = mots.reduce((a, b) => (b.largeur > a.largeur ? b : a), { mot: '', largeur: 0 });
+            // (l ecart avec ce qui precede, seulement quand c est sur la meme ligne : au telephone)
+            const bloc = h.closest('.gf-x__hors') || h;
+            const avant = bloc.previousElementSibling;
+            const a = avant ? avant.getBoundingClientRect() : null;
+            const b = bloc.getBoundingClientRect();
+            const ecart = a && a.width > 0 && Math.abs(a.top - b.top) < a.height ? Math.round((b.left - a.right) * 10) / 10 : null;
+            return { texte: h.textContent.trim(), taille: px(st.fontSize), marge: Math.round((place - large.largeur) * 10) / 10, mot: large.mot, coupe: mots.filter((x) => x.morceaux > 1).map((x) => x.mot), ecart };
+          }), r.id) : [];
+        }
+        const pastilles = Object.values(margesPastilles).flat();
+        ok(pastilles.length > 0 && Object.values(margesPastilles).every((l) => l.some((p) => /groupes/.test(p.texte)))
+          && pastilles.every((p) => p.taille >= 12 && p.marge >= 3 && !p.coupe.length && (p.ecart === null || p.ecart >= 3))
+          && margesPastilles[390].every((p) => p.ecart !== null),
+        '[I] chaque mot des pastilles grises garde au moins 3 px de place a 1366, 1280, 1024 et 768 de large et au telephone, en 12 px, aucun mot coupe ; au telephone, 3 px au moins avec ce qui la precede', margesPastilles);
         await page.setViewportSize(largeurInitiale);
         await page.waitForTimeout(300);
         await capture(page, '60-en-4-groupes-planning');

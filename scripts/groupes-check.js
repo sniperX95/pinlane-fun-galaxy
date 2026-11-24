@@ -41,7 +41,8 @@
 //       15 joueurs et son groupe ; une vague qui n est pas au dossier reste refusee. Les pistes prises a la nouvelle
 //       heure : chaque groupe en prend d autres, sans en partager. Le minigolf du groupe entier reste libre, ou
 //       suit son heure posee. Le laser en groupes de 10 et 14, et 40 joueurs en 2 vagues de 20, sans grand groupe,
-//       se decalent pareil.
+//       se decalent pareil. Rien de ce qui passait ne se refuse : un groupe grandi de 25 a 35 sans plan refait
+//       place la 2e vague que les armes comptent, avec les 10 joueurs qui n en ont pas.
 //
 // CONTRE-PREUVES : `--contre-preuves` rejoue le gate sur du code casse expres, une mutation a la fois, en
 // memoire (le crochet de compilation du banc : le disque n est jamais touche), et exige que chacune
@@ -117,6 +118,10 @@ const MUTATIONS = [
   // [J] les vagues d une partie recomptees sur les armes (le calcul d avant, Math.ceil(joueurs / armes)) : la 3e
   // vague d un grand groupe ne fait plus partie du dossier.
   { nom: 'vagues-sur-les-armes', lettre: 'J', fichier: MOUVEMENT, de: '    const unite = vaguesDeLaPartie(old, game, players, capacity).find(vague => vague.wave === wave) || null;', vers: '    const waves = Math.ceil(players / capacity);\n    const unite = wave <= waves ? { wave, count: waves, pax: Math.floor(players / waves) + (wave <= players % waves ? 1 : 0), modele: null } : null;' },
+  // [J] seules les vagues du plan comptent : une vague que les armes comptaient avant ce jour se refuse.
+  { nom: 'vagues-du-plan-seulement', lettre: 'J', fichier: MOUVEMENT, de: '  const count = Math.max(0, ...dites, Number.isInteger(parLesArmes) ? parLesArmes : 0);', vers: '  const count = dites.length ? Math.max(...dites) : parLesArmes;' },
+  // [J] une vague que rien ne decrit prend une part des armes, pas les joueurs qui manquent.
+  { nom: 'vague-inconnue-sur-les-armes', lettre: 'J', fichier: MOUVEMENT, de: '  inconnues.forEach((unit, rang) => { unit.pax = Math.floor(reste / inconnues.length) + (rang < reste % inconnues.length ? 1 : 0); });', vers: '  inconnues.forEach((unit) => { unit.pax = Math.floor(players / count) + (unit.wave <= players % count ? 1 : 0); });' },
   // [J] une vague a placer revient avec une part des armes, pas les joueurs de son groupe.
   { nom: 'vague-a-placer-sur-les-armes', lettre: 'J', fichier: MOUVEMENT, de: '    const joueursVague = unite.pax;', vers: '    const joueursVague = Math.floor(players / Math.ceil(players / capacity)) + (wave <= players % Math.ceil(players / capacity) ? 1 : 0);' },
   // [J] une vague a placer revient sans son groupe ; ou le retrait ne note pas le groupe de la vague.
@@ -657,6 +662,22 @@ async function principal() {
           `[J] ${nom} : « Tout le groupe » +30 min passe (a blanc aussi), chaque vague garde ses joueurs`, { blanc: blanc.essais || blanc.refus, statut: dire(x), lu: empreinte(ligne(r0.id)), attendu });
         const etrangere = await glisser(r0.id, { activityId: 'laser_game', unitKey: '1.3', startTime: '18:00' });
         ok(etrangere.statut === 422 && etrangere.json.message === ETRANGERE, `[J] ${nom} : une 3e vague, que le dossier n a pas, reste refusee`, dire(etrangere));
+      }
+
+      // Rien de ce qui passait ne se refuse : un groupe de 25 (une vague) passe a 35 sans que son plan soit refait (une
+      // replanification ratee le garde tel quel). Les armes comptent 2 vagues, la console propose la 2e a placer ; elle
+      // se pose avec les 10 joueurs qui n ont pas de vague (avant : 17, et le groupe en comptait 42).
+      vider();
+      const c25 = await creer(laserSeul(25));
+      const d25 = c25.json.reservation && ligne(c25.json.reservation.id);
+      if (vrai(c25.statut < 300 && Boolean(d25) && vagues(d25) === '25', '[J] MONTAGE : 25 joueurs au laser, une vague', d25 ? empreinte(d25) : dire(c25))) {
+        const grandi = ligne(d25.id);
+        grandi.pax = 35;
+        grandi.program = { ...grandi.program, items: grandi.program.items.map((i) => (i.activityId === 'laser_game' ? { ...i, pax: 35, participants: 35 } : i)) };
+        const x = await glisser(d25.id, { activityId: 'laser_game', unitKey: '1.2', startTime: '16:00' });
+        const deuxieme = blocsDe(ligne(d25.id)).find((b) => b.resourceType === 'laser_arena' && Number(b.groupWaveIndex) === 2);
+        ok(x.statut === 200 && Boolean(deuxieme) && deuxieme.players === 10 && String(deuxieme.startTime).slice(0, 5) === '16:00' && vagues(ligne(d25.id)) === '25/10',
+          '[J] le groupe grandi a 35 sans plan refait : la 2e vague que les armes comptent se place, avec les 10 joueurs qui n en ont pas', { statut: dire(x), vagues: vagues(ligne(d25.id)) });
       }
 
       // Les pistes prises a la nouvelle heure : un autre dossier joue sur la piste 1 a 16:00. Decale de 30 min, un groupe

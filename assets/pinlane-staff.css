@@ -19452,6 +19452,35 @@ html[data-theme] .booking.is-passee { --bk-haut: var(--subtle); --bk-barre: var(
 html[data-theme] .booking.is-absent { z-index: 1; --bk-haut: var(--subtle); --bk-barre: var(--line-strong); --bk-encre: var(--muted); --bk-encre-2: var(--muted); --bk-pastille: var(--line); background-image: repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in srgb, var(--line-strong) 45%, transparent) 6px 7px); }
 .booking.is-absent .booking-name { text-decoration: line-through; }
 .booking .bk-absent { font-weight: 600; color: var(--muted); }
+/* LE RETARD SE VOIT SUR LE BLOC (2026-11-24, le gerant, en ligne : « quand y a un retard on voit [à peine],
+   faut mettre en rouge qu'ils sont arrivés en retard là, et plus visible, bowling et laser game »). Le
+   rouge du planning complet, le jeton --danger, sans halo ni clignotement : en retard, toute la carte
+   passe au rouge pale, cadre et barre rouges, meme passee (un groupe jamais pointe) ; arrive en retard, la
+   carte garde la teinte de son etat (arrive, paye) sous un cadre rouge. La puce dit les minutes en blanc
+   sur rouge, a toute largeur ; la phrase entiere quand la piste a la place (« En retard · 20 min »). */
+html[data-theme] .booking.is-en-retard { --bk-haut: var(--danger-soft); --bk-barre: var(--danger); --bk-cadre: color-mix(in srgb, var(--danger) 45%, var(--surface)); --bk-encre: var(--text); --bk-encre-2: color-mix(in srgb, var(--danger) 80%, var(--text)); --bk-pastille: color-mix(in srgb, var(--danger) 25%, var(--surface)); }
+html[data-theme] .booking.is-rt-arrive { --bk-barre: var(--danger); }
+.booking.is-en-retard:is(.conf, .arr, .paid), .booking.is-rt-arrive:is(.conf, .arr, .paid) { border-left-color: var(--danger); box-shadow: inset 2px 0 0 var(--danger), inset 0 0 0 2px var(--danger); }
+.booking .delay-indicator.bk-rt { gap: 3px; height: 17px; padding: 0 6px 0 4px; border: 0; border-radius: 5px; background: var(--danger); color: var(--surface); font-size: 11.5px; font-weight: 750; line-height: 17px; }
+.booking .delay-indicator.bk-rt svg { flex: none; }
+.booking .bk-rt .bk-rt__long { display: none; }
+.booking .bk-rt .bk-rt__court { display: inline; font-variant-numeric: tabular-nums; }
+@container piste (min-width: 203px) {
+  .booking:not(.dens-xs) .bk-rt.is-encours .bk-rt__long { display: inline; }
+  .booking:not(.dens-xs) .bk-rt.is-encours .bk-rt__court { display: none; }
+}
+@container piste (min-width: 300px) {
+  .booking:not(.dens-xs) .bk-rt.is-arrive .bk-rt__long { display: inline; }
+  .booking:not(.dens-xs) .bk-rt.is-arrive .bk-rt__court { display: none; }
+}
+/* LE PLANNING LASER, LE MEME ROUGE : la carte en retard sur son rouge pale, cerne et barre rouges, sa
+   ligne d etat dit « En retard · 10 min » ; arrive en retard, le cadre et « Arrivé avec 9 min de retard ».
+   Quand la carte n a plus que sa ligne de nom, la puce des minutes la rejoint. */
+.lp .lp-g.is-retard:not(.is-choisi), .lp-compact .lp-g.is-retard:not(.is-choisi) { background: var(--danger-soft); box-shadow: inset 3px 0 0 var(--danger), inset 0 0 0 2px var(--danger); }
+.lp .lp-g.is-rt-arrive:not(.is-choisi), .lp-compact .lp-g.is-rt-arrive:not(.is-choisi) { box-shadow: inset 3px 0 0 var(--danger), inset 0 0 0 2px var(--danger); }
+.lp-g:is(.is-retard, .is-rt-arrive) .lp-card-status, .lp-compact .lp-g:is(.is-retard, .is-rt-arrive) .lp-card-status { display: inline; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--danger); font-weight: 750; }
+.lp-rt { display: none; flex: none; align-items: center; gap: 3px; height: 17px; padding: 0 6px 0 4px; border-radius: 5px; background: var(--danger); color: var(--surface); font-size: 11.5px; font-weight: 750; line-height: 17px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.lp-compact.lp-cards-tight .lp-g .lp-rt, .lp-compact .lp-g.is-nom-long .lp-rt { display: inline-flex; }
 /* La nouvelle venue garde son halo : l ombre de la barre l aurait remplace,
    au repos comme sans mouvement (prefers-reduced-motion). */
 .booking.is-neuve-calme { box-shadow: inset 1px 0 0 var(--bk-barre), 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent); }
@@ -19761,9 +19790,7 @@ html[data-theme] .booking.is-absent { z-index: 1; --bk-haut: var(--subtle); --bk
 .lp-g:hover { background: var(--lp-bleu-voile); }
 .lp-g.is-choisi { background: var(--lp-bleu-clair); box-shadow: inset 0 0 0 1.5px var(--lp-bleu); }
 .lp-g.is-la b::after { content: ''; display: inline-block; width: 7px; height: 7px; margin-left: 6px; border-radius: 50%; background: var(--lp-ok); vertical-align: 2px; }
-.lp-g.is-retard { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--danger) 55%, transparent); }
 .lp-g.is-retard i { background: var(--danger); }
-.lp-g.is-retard .lp-card-status { display: inline; color: color-mix(in srgb, var(--danger) 78%, var(--text)); font-weight: 700; }
 .lp-g.is-grise { opacity: .35; }
 .lp-g.is-enligne { cursor: default; }
 .lp-g.is-enligne i { background: repeating-linear-gradient(135deg, var(--lp-line-strong) 0 2px, var(--lp-vide) 2px 4px); }

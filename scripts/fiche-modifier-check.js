@@ -622,7 +622,7 @@ const MUTATIONS = [
   { nom: 'programme-de-l-ancienne', lettre: 'F2', scenarios: FORMULES, editions: [{ fichier: JS, de: '  delete e.programmeEdite;\n  delete e.programmeEditeInitial;\n  ensureEditProgram(dossierPourFormule(r));\n', vers: '' }] },
   { nom: 'prix-de-l-ancienne', lettre: 'F2', scenarios: FORMULES, editions: [{ fichier: JS, de: '  const formule = estimerFormuleEdition(dossierPourFormule(r), e);', vers: '  const formule = estimerFormuleEdition(r, e);' }] },
   { nom: 'barre-sans-formule', lettre: 'F2', scenarios: FORMULES, editions: [{ fichier: JS, de: '  if (formuleChangee) modifs.push(`${nomFormule(origine.formuleId)} → ${nomFormule(e.formuleId)}`);\n', vers: '' }] },
-  { nom: 'duree-en-tete', lettre: 'F2', scenarios: FORMULES, editions: [{ fichier: JS, de: " && String(rf.type || '') !== 'formule') ? durationControl", vers: ') ? durationControl' }] },
+  { nom: 'duree-en-tete', lettre: 'F2', scenarios: FORMULES, editions: [{ fichier: JS, de: " && String(rf.type || '') !== 'formule')) && !toutIllimiteEdition() ? durationControl", vers: ')) && !toutIllimiteEdition() ? durationControl' }] },
   { nom: 'formule-non-envoyee', lettre: 'F3', scenarios: FORMULES, editions: [{ fichier: JS, de: '      updated.formuleId = nouvelleFormule.id;\n', vers: '' }] },
   { nom: 'plan-de-l-ancienne', lettre: 'F3', scenarios: FORMULES, editions: [{ fichier: JS, de: '      updated.opsPlan = null;\n', vers: '' }] },
   { nom: 'retour-sans-pistes', lettre: 'F4', scenarios: FORMULES, editions: [{ fichier: JS, de: "  if (retour) e.lanesStr = pistesDeLaFormuleSeule(origine).join(', ');\n  else syncEditLaneAssignment();", vers: '  syncEditLaneAssignment();' }] },

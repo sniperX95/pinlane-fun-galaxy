@@ -456,6 +456,7 @@
     "test:grand-tableau",
     "test:suivi-activites",
     "test:kids-fun-day",
+    "test:facturation",
     "test:planning-barre",
     "test:retards-places",
     "test:retards-console",

@@ -984,3 +984,6 @@ body.gf-en-glisse .pl-surbrillance { visibility: hidden; }
 @media (pointer: coarse) {
   .gc-step-heure::before { content: ''; position: absolute; left: -4px; right: -4px; top: 50%; height: 44px; margin-top: -22px; }
 }
+
+/* « à facturer » sous le montant d un dossier Facturé (2026-11-24) : rien ne s encaisse au comptoir. */
+.gf-du__facture { color: var(--console-selected, var(--accent)); }

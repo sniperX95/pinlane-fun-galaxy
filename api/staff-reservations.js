@@ -10,6 +10,7 @@ const {
   setReservationActivityProgress,
   setReservationActivityDone,
   noterReservationEquipe,
+  noterFacturation,
   notesAvecCompte,
   notesAvecPrix,
   lireVersionAttendue,
@@ -1643,7 +1644,7 @@ const traiter = async (req, res) => {
       // L encaisse et l absence (0056) sont des gestes d accueil : meme droit
       // de base que changer un statut (l encaisse redemande payments.markPaid).
       const gesteAccueil = Object.keys(body).filter((key) => !['id', 'centerId', 'center_id', 'baseUpdatedAt'].includes(key));
-      const estGesteAccueil = gesteAccueil.length === 1 && ['encaissement', 'absent'].includes(gesteAccueil[0]);
+      const estGesteAccueil = gesteAccueil.length === 1 && ['encaissement', 'absent', 'facturation'].includes(gesteAccueil[0]);
       const gesteDAccueil = patchNeedsOnlyStatus(body) || estGesteAccueil;
       const permission = patchIsActivityMoveOnly(body)
         ? ['planning.drag', 'reservations.edit']
@@ -1759,6 +1760,23 @@ const traiter = async (req, res) => {
           : { absent: Boolean(reservation.absentAt) };
         const audit = await writeAuditLog({ centerId: requestedCenterId, ...actorFromSession(session), surface: 'api/staff-reservations.js', action: gesteKeys[0] === 'encaissement' ? 'noterEncaisse' : 'noterAbsence', method: 'PATCH', entityType: 'reservation', entityId: current.id, outcome: 'success', changes: buildReservationAuditChanges(current, reservation), context: contexteRegistre(current, reservation, geste), requestId: newRequestId() });
         sendJson(res, 200, { ok: true, reservation, ...(audit.warning ? { warnings: [audit.warning] } : {}) });
+        return;
+      }
+
+      // A FACTURER (2026-11-24, assets/pinlane-facturation.js) : le moyen « Facturé », seul dans son PATCH. Le droit
+      // d encaisser, comme Carte et Espèces ; la facturation jugee champ par champ, la meme regle que la fenetre ;
+      // `null` la retire. Le statut ne bouge pas : un dossier facture n est pas paye.
+      if (gesteKeys.length === 1 && gesteKeys[0] === 'facturation') {
+        const factureSession = await requireStaffPermission(req, res, 'payments.markPaid', { centerId: requestedCenterId });
+        if (!factureSession) return;
+        const voulue = body.facturation === null ? null : require('../assets/pinlane-facturation.js').lireFacturation(body.facturation);
+        if (voulue && !voulue.ok) {
+          sendJson(res, 422, { ok: false, error: voulue.erreurs[voulue.premier], message: voulue.erreurs[voulue.premier], champ: voulue.premier, erreurs: voulue.erreurs });
+          return;
+        }
+        const reservation = await noterFacturation({ id: current.id, centerId: requestedCenterId, baseUpdatedAt: body.baseUpdatedAt, facturation: voulue ? voulue.facturation : null, par: nomDeSession(session) });
+        const auditFacture = await writeAuditLog({ centerId: requestedCenterId, ...actorFromSession(session), surface: 'api/staff-reservations.js', action: voulue ? 'noterFacturation' : 'retirerFacturation', method: 'PATCH', entityType: 'reservation', entityId: current.id, outcome: 'success', changes: buildReservationAuditChanges(current, reservation), requestId: newRequestId() });
+        sendJson(res, 200, { ok: true, reservation, automation: { communications: 0, jobs: 0, refreshed: false }, ...(auditFacture.warning ? { warnings: [auditFacture.warning] } : {}) });
         return;
       }
 

@@ -50,7 +50,8 @@
 //       passe quand elles suffisent (15 + 15) ; deux groupes d un depart commun deplaces ensemble a la minute passent,
 //       a blanc et a l ecriture, et dans le calcul a blanc de Modifier qui joue ces deplacements avant le reste ; un
 //       autre dossier dans la partie compte ses armes avec celles des groupes qui y partent ensemble (15 + 10 + 15
-//       sur 30 : refuse).
+//       sur 30 : refuse). A 2 groupes aussi (le defaut etait en ligne a 2 groupes) : le laser du groupe 2 pose pendant
+//       celui du groupe 1 se refuse, a blanc comme a l ecriture.
 //
 // CONTRE-PREUVES : `--contre-preuves` rejoue le gate sur du code casse expres, une mutation a la fois, en
 // memoire (le crochet de compilation du banc : le disque n est jamais touche), et exige que chacune
@@ -839,6 +840,22 @@ async function principal() {
           ok(s2.statut === 409 && /^Plus assez d’armes pour le laser à 18:40 : il en reste 5 sur 30, il en faut 15\./.test(s2.json.message || '') && /L4@19:30/.test(lasersK(id)),
             '[K] le groupe 4 au depart du groupe 3 et de l autre dossier : 15 + 10 + 15 armes sur 30, refuse (« il en reste 5 sur 30, il en faut 15 »), il reste a 19:30', { statut: dire(s2), lu: lasersK(id) });
         }
+      }
+      // A 2 GROUPES AUSSI (le defaut etait en ligne a 2 groupes) : 40 joueurs, le groupe 1 au laser a 16:00 puis au
+      // bowling a 16:30, le groupe 2 au bowling a 17:30 puis au laser a 18:30. A 16:10, le groupe 2 ne joue rien : seule
+      // l arene refuse, a blanc comme a l ecriture.
+      vider();
+      const cree2 = await creer(corps(40, { impose: true, nombre: 2, tailles: [20, 20], heures: [{ laser_game: '16:00', bowling: '16:30' }, { bowling: '17:30', laser_game: '18:30' }] }, { debut: '16:00' }));
+      const d2 = cree2.json.reservation && ligne(cree2.json.reservation.id);
+      if (vrai(cree2.statut < 300 && Boolean(d2) && lasersK(d2.id) === 'L1@16:00 L2@18:30',
+        '[K] MONTAGE a 2 groupes : 2 groupes de 20, le laser du groupe 1 a 16:00, celui du groupe 2 a 18:30', d2 ? lasersK(d2.id) : dire(cree2))) {
+        const avant2 = lasersK(d2.id);
+        const blanc2 = await essais(d2.id, [[laser(2, '16:10')]]);
+        const x2 = await glisser(d2.id, laser(2, '16:10'));
+        const prise2 = /^Arène laser déjà prise à 16:10 par le laser du groupe 1, de 16:00 à 16:25 : une seule partie à la fois\. Partez dès 16:25\./;
+        ok(blanc2.essais && blanc2.essais[0] && blanc2.essais[0].passe === false && prise2.test(blanc2.essais[0].raison || '') && x2.statut === 422 && prise2.test(x2.json.message || '') && lasersK(d2.id) === avant2,
+          '[K] a 2 groupes : le laser du groupe 2 a 16:10, pendant celui du groupe 1 (16:00 a 16:25), refuse a blanc et au PATCH (422), la phrase nomme le groupe 1 et dit « Partez dès 16:25 », rien ne bouge',
+          { blanc: blanc2.essais || blanc2.refus, statut: dire(x2), lu: lasersK(d2.id) });
       }
     }
   } catch (error) {

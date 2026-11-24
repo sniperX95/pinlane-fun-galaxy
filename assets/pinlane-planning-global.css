@@ -471,10 +471,14 @@ button.gf-bloc__in:focus-visible { outline: 2px solid var(--console-focus); outl
    le groupe. Une pastille grise, celle du grand groupe : aucune couleur de plus. */
 .gf-x__h { align-self: flex-start; margin: 2px 0 0 -5px; padding: 0 5px; border-radius: 6px; background: color-mix(in srgb, var(--text) 13%, var(--surface)); color: var(--text); font-size: 12px; font-weight: 700; line-height: 17px; white-space: normal; overflow-wrap: anywhere; }
 /* (23/11 : une colonne de 54 px a 1024 de large ne tient pas « 15 joueurs » ni « groupes 1 et 2 » sur une ligne : la pastille
-   passe a la ligne dans sa colonne au lieu de la deborder ; large, elle tient d un trait comme avant) */
-@media (max-width: 1280px) { .gf-x__h { margin-left: -3px; padding: 0 3px; font-size: 11px; line-height: 15px; } }
+   passe a la ligne dans sa colonne au lieu de la deborder ; large, elle tient d un trait comme avant. Toujours en 12 px,
+   la regle du produit : rien sous 12 px, 24/11) */
+@media (max-width: 1280px) { .gf-x__h { margin-left: -3px; padding: 0 3px; line-height: 16px; } }
 .gf-x__hors { display: flex; flex-wrap: wrap; gap: 3px; margin: 2px 0 0 -5px; }
 .gf-x__hors .gf-x__h { margin: 0; }
+/* (24/11 : dans la colonne de 54 px, « groupes » fait 48 px en gras a 12 px ; la pastille part du bord de la colonne, comme
+   celle de l heure au-dessus, et garde 2 px de chaque cote : le mot tient entier sur sa ligne, jamais coupe en deux) */
+@container feuille (min-width: 640px) and (max-width: 1059px) { .gf-x__h { margin-left: -4px; padding: 0 2px; } .gf-x__hors { margin-left: -4px; } }
 .gf-x:is(.is-fini, .is-clos) .gf-x__h, .gf-r.is-parti .gf-x__h { background: transparent; box-shadow: inset 0 0 0 1px var(--line); color: var(--muted); font-weight: 600; }
 /* « Illimité » prend la couleur de la formule : c est elle qui le donne. */
 .gf-x__t.is-illimite { background: var(--gf-formule-fond); color: var(--gf-formule-encre); }

@@ -11614,6 +11614,8 @@ function getStaffDashboardMetrics(dayReservations = todaysReservations()) {
   const laserWindows = activeReservations.flatMap(reservation => getLaserWindowsFromReservation(reservation).map(window => ({ ...window, reservation })));
   const revenue = activeReservations.reduce((sum, reservation) => sum + (Number(reservation.price) || 0), 0);
   const collected = activeReservations.filter(reservation => reservation.status === 'paid').reduce((sum, reservation) => sum + (Number(reservation.price) || 0), 0);
+  // (un dossier « Facturé » se paie sur facture : il ne reste pas a encaisser au comptoir, dossierAFacturer)
+  const invoiced = activeReservations.filter(dossierAFacturer).reduce((sum, reservation) => sum + (Number(reservation.price) || 0), 0);
   const players = activeReservations.reduce((sum, reservation) => sum + (Number(reservation.pax) || 0), 0);
   const laneHours = bowlingWindows.reduce((sum, window) => sum + ((Number(window.duration) || 0) * Math.max((window.lanes || []).length, 1)), 0);
   const laneCount = getAvailabilityLaneCount();
@@ -11706,6 +11708,7 @@ function getStaffDashboardMetrics(dayReservations = todaysReservations()) {
     laserWindows,
     revenue,
     collected,
+    aEncaisser: Math.max(0, revenue - collected - invoiced),
     players,
     occupancy,
     upcoming,
@@ -12093,7 +12096,7 @@ function getStaffDashboardAlertDefinitions(metrics) {
       });
     }
   } else if (state.currentDate < todayStr()) {
-    const unpaidRows = metrics.activeReservations.filter(reservation => reservation.status !== 'paid');
+    const unpaidRows = metrics.activeReservations.filter(resteAEncaisser);
     if (unpaidRows.length) {
       alerts.push({
         kind: 'payment',
@@ -12310,7 +12313,7 @@ async function dashboardDetailPayAllUnpaid(ev) {
   const metrics = getStaffDashboardMetrics(todaysReservations());
   const kind = state.dashboardDetailKind || '';
   const alert = getStaffDashboardAlertDefinitions(metrics).find(entry => entry.kind === kind);
-  const rows = (alert && alert.rows ? alert.rows : []).filter(r => r.status !== 'paid' && r.status !== 'cancelled');
+  const rows = (alert && alert.rows ? alert.rows : []).filter(r => resteAEncaisser(r) && r.status !== 'cancelled');
   if (!rows.length) { toast('Aucune réservation à encaisser.'); return; }
   if (!(await staffConfirm({ title: `Marquer ${rows.length} réservation${rows.length > 1 ? 's' : ''} comme payée${rows.length > 1 ? 's' : ''} ?`, confirmLabel: 'Encaisser' }))) return;
   // Un encaissement en lot ne se rattrape pas d un toast : le dernier
@@ -12375,10 +12378,10 @@ function openStaffDashboardDetail(type = 'alerts', kind = '') {
 }
 
 function getStaffDashboardDetailConfig(type, kind, metrics) {
-  const unpaidCount = metrics.activeReservations.filter(reservation => reservation.status !== 'paid').length;
+  const unpaidCount = metrics.activeReservations.filter(resteAEncaisser).length;
   const baseStats = [
     { label: 'Réservations', value: String(metrics.activeReservations.length), note: `${metrics.players} joueurs` },
-    { label: 'À encaisser', value: moneyForRole(metrics.revenue - metrics.collected), note: `${unpaidCount} ouvertes` },
+    { label: 'À encaisser', value: moneyForRole(metrics.aEncaisser), note: `${unpaidCount} ouvertes` },
     { label: 'Occupation', value: `${metrics.occupancy}%`, note: `${metrics.laneCount} piste${metrics.laneCount > 1 ? 's' : ''}` }
   ];
   // Un bouton du pied mene a une page : il ne se montre qu a qui l ouvre
@@ -12390,7 +12393,7 @@ function getStaffDashboardDetailConfig(type, kind, metrics) {
   if (type === 'alerts') {
     const alerts = getStaffDashboardAlertDefinitions(metrics);
     const visibleAlerts = kind ? alerts.filter(alert => alert.kind === kind) : alerts;
-    const outstanding = Math.max(0, metrics.revenue - metrics.collected);
+    const outstanding = metrics.aEncaisser;
     return {
       eyebrow: 'Pilotage terrain',
       title: kind ? (visibleAlerts[0]?.title || 'Signal dashboard') : 'Alertes et notifications',
@@ -12440,7 +12443,7 @@ function getStaffDashboardDetailConfig(type, kind, metrics) {
       stats: [
         { label: 'Total période', value: formatMoney(metrics.revenueSeries.reduce((sum, value) => sum + value, 0)), note: '7 jours' },
         { label: 'Validé ce jour', value: formatMoney(metrics.collected), note: 'marqué payé' },
-        { label: 'Reste à encaisser', value: formatMoney(Math.max(0, metrics.revenue - metrics.collected)), note: `${unpaidCount} réservation(s)` }
+        { label: 'Reste à encaisser', value: formatMoney(metrics.aEncaisser), note: `${unpaidCount} réservation(s)` }
       ],
       body: renderStaffDashboardRevenueDetail(metrics),
       actions: [
@@ -12858,7 +12861,7 @@ function copyStaffDashboardSummary() {
     `CA prévu: ${formatMoney(metrics.revenue)}`,
     `Validé: ${formatMoney(metrics.collected)}`,
     `Occupation bowling: ${metrics.occupancy}%`,
-    `À suivre: ${metrics.activeReservations.filter(reservation => reservation.status !== 'paid').length}`
+    `À suivre: ${metrics.activeReservations.filter(resteAEncaisser).length}`
   ].join('\n');
   if (navigator.clipboard?.writeText) {
     navigator.clipboard.writeText(text).then(() => toast('Résumé copié.')).catch(() => toast(text));
@@ -30079,6 +30082,11 @@ const MOYEN_FACTURE = 'Facturé';
 function factureDuDossier(r) {
   return window.PinlaneFacturation && r ? window.PinlaneFacturation.factureDesNotes(r.notes) : null;
 }
+// Ce qu il reste a encaisser au comptoir : ni payé, ni facturé.
+function resteAEncaisser(r) {
+  return Boolean(r) && r.status !== 'paid' && !dossierAFacturer(r);
+}
+
 function dossierAFacturer(r) {
   return Boolean(window.PinlaneFacturation && window.PinlaneFacturation.dossierAFacturer(r));
 }

@@ -384,12 +384,12 @@ async function scenarioB(browser) {
     await creer(page, 'Equipe Une');
     const [un] = await neufs(page, debut);
     const t1 = retenues(un);
-    ok(un && t1.heures.bowling === '15:00' && t1.pistes.length === 2 && !t1.pistes.some((p) => OCCUPEES.includes(p)), '[B] le premier groupe prend les deux pistes qui restaient', t1);
+    ok(un && ['15:00', '15:10'].includes(t1.heures.bowling) && t1.pistes.length === 2 && !t1.pistes.some((p) => OCCUPEES.includes(p)), '[B] le premier groupe prend les deux pistes qui restaient', t1);
     // Le deuxieme groupe, la meme visite a la meme heure, droit au serveur.
     const deux = await serveur.appeler('POST', '/api/staff-reservations', { ...corps, name: 'Equipe Deux', phone: TEL, centerId: CENTRE });
     const ne = deux.json.reservation && deux.json.reservation.id ? B.base.reservations.get(Number(deux.json.reservation.id)) : null;
     const t2 = ne ? retenues(ne) : null;
-    ok((deux.statut >= 400 && !ne) || (ne && t2.pistes.length >= 2 && !t2.pistes.some((p) => t1.pistes.includes(p) || (t2.heures.bowling === '15:00' && OCCUPEES.includes(p)))), '[B] un deuxieme groupe sur l heure pleine est refuse, jamais surreserve', { statut: deux.statut, message: deux.json.message || deux.json.error, retenues: t2 });
+    ok((deux.statut >= 400 && !ne) || (ne && t2.pistes.length >= 2 && !t2.pistes.some((p) => t1.pistes.includes(p) || (t2.heures.bowling === t1.heures.bowling && OCCUPEES.includes(p)))), '[B] un deuxieme groupe sur l heure pleine est refuse, jamais surreserve', { statut: deux.statut, message: deux.json.message || deux.json.error, retenues: t2 });
     const bilan = chevauchementsDeLaJournee();
     ok(bilan.dossiers >= 2 && bilan.doubles.length === 0 && bilan.arene.length === 0, '[B] sur la journee, aucune piste prise deux fois, l arene jamais au-dela de ses armes', bilan);
   } finally { await finir(m, 'B'); }

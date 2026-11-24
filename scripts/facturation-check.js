@@ -92,13 +92,13 @@ const MUTATIONS = [
   { nom: 'societe-pas-un-groupe', lettre: 'D', fichier: APP, de: '  return Boolean(s.facturationSaisie || (s.factureConnue && s.factureConnue.societe));', vers: '  return false;' },
   { nom: 'focus-sur-le-premier', lettre: 'D', fichier: APP, de: "containStaffDialog(hote, '.fa-fenetre', `#faChamp-${premier}`,", vers: "containStaffDialog(hote, '.fa-fenetre', '#faChamp-societe'," },
   // [F] la fiche sans sa rangee de statut, sans le bloc de la facture ; le planning qui veut encaisser ; le menu sans Facturé.
-  { nom: 'fiche-sans-statut', lettre: 'F', fichier: APP, de: '    ${ficheStatut(r)}\n', vers: '' },
+  { nom: 'fiche-sans-statut', lettre: 'F', fichier: APP, de: "    ${bandeauBloquant ? '' : ficheStatut(r)}\n", vers: '' },
   { nom: 'fiche-sans-facture', lettre: 'F', fichier: APP, de: '      ${ficheFacture(r, droits)}\n', vers: '' },
   { nom: 'planning-encaisse', lettre: 'F', fichier: PG, de: "    } else if (typeof dossierAFacturer === 'function' && dossierAFacturer(r)) {", vers: '    } else if (false) {' },
   { nom: 'echap-ferme-la-fiche', lettre: 'F', fichier: APP, de: "    e.stopImmediatePropagation();\n    window.removeEventListener('keydown', echap, true);", vers: "    window.removeEventListener('keydown', echap, true);" },
   { nom: 'menu-sans-facture', lettre: 'F', fichier: APP, de: "    choix.push({ valeur: 'facture', mot: MOYEN_FACTURE, actuel: dossierAFacturer(r), fenetre: true });\n", vers: '' },
   // [P] la fenetre qui garde sa largeur d ordinateur au telephone.
-  { nom: 'telephone-largeur-fixe', lettre: 'P', fichier: CSS, de: '  .fa-fenetre { width: 100%; max-height: 94dvh; border-radius: 14px 14px 0 0; }\n', vers: '' },
+  { nom: 'telephone-largeur-fixe', lettre: 'P', fichier: CSS, de: '  .fa-fenetre { width: 100%; max-height: 94dvh; border-radius: 14px 14px 0 0; }\n', vers: '  .fa-fenetre { width: 300px; }\n' },
 ];
 
 // ---------------------------------------------------------------------------
@@ -610,7 +610,7 @@ async function principal() {
           await poserDansLaConsole(page, [d]);
           await ouvrirFiche(page, id);
           let fi = await fiche(page);
-          ok(fi.statut === 'Confirmé' && fi.boutonsStatut === 1 && JSON.stringify(fi.payer) === JSON.stringify(['Payé · Carte', 'Payé · Espèces', 'Facturé']) && JSON.stringify(fi.etats) === JSON.stringify(['Payé · Carte', 'Payé · Espèces']) && /^À encaisser/.test(fi.argent),
+          ok(fi.statut === 'Confirmé' && fi.boutonsStatut === 1 && JSON.stringify(fi.payer) === JSON.stringify(['Payé · Carte', 'Payé · Espèces', 'Facturé']) && JSON.stringify(fi.etats) === JSON.stringify(['Payé · Carte', 'Payé · Espèces', 'Facturé']) && /^À encaisser/.test(fi.argent),
             '[F] la fiche dit son statut d un coup d oeil (« Confirmé », un seul bouton) ; la caisse a Payé · Carte, Payé · Espèces, puis Facturé', fi);
           await capture(page, 'fiche-avant', '#posOverlay .fx');
           await page.locator(`#ficheStatut${id}`).click();

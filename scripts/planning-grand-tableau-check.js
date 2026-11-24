@@ -910,7 +910,7 @@ async function encaisser(browser) {
     await page.locator(`button[data-gf-encaisser="${sur.id}"]`).click();
     await FX.repos(page, 200);
     const bulle = await page.evaluate(() => ({ boutons: Array.from(document.querySelectorAll('.staff-action-popover button')).map((b) => b.textContent.trim()), titre: (document.querySelector('.staff-action-popover .staff-action-popover-title') || {}).textContent || '' }));
-    ok(bulle.boutons.join() === 'Carte,Espèces' && bulle.titre.includes(sur.montant), '[S] il ouvre sa bulle : Carte, Espèces, et le montant', bulle);
+    ok(bulle.boutons.join() === 'Carte,Espèces,Facturé' && bulle.titre.includes(sur.montant), '[S] il ouvre sa bulle : Carte, Espèces, et le montant', bulle);
     await page.locator('.staff-action-popover button', { hasText: 'Carte' }).click();
     await page.waitForFunction((id) => document.querySelector(`.gf-r.t-paid[data-gf-id="${id}"]`), sur.id, { timeout: 8000 }).catch(() => null);
     await FX.repos(page, 200);

@@ -1074,8 +1074,8 @@ async function scenarioD10(browser, v) {
     await planPose(page);
     await page.waitForFunction(() => { const b = document.querySelector('#quickBookOverlay #rsZ-bowling .rs-h[data-heure="15:00"] small'); return Boolean(b && b.textContent.trim()); }, null, { timeout: 6000 }).catch(() => {});
     const seances = await page.evaluate(() => [...document.querySelectorAll('#quickBookOverlay #rsZ-bowling .rs-h[data-heure]')].map((b) => ({ h: b.dataset.heure, mot: ((b.querySelector('.rs-h-tag') || {}).textContent || '').trim() })));
-    const enCours = seances.find((x) => x.h === '15:00');
-    v('D10', Boolean(enCours) && enCours.mot === 'maintenant' && seances.every((x) => x.h >= '15:00'), 'a 15:12, la seance en cours (15:00) se dit « maintenant », jamais une arrivee deja passee', JSON.stringify(seances.slice(0, 3)));
+    const enCours = seances.find((x) => x.h === '15:12');
+    v('D10', Boolean(enCours) && enCours.mot === 'maintenant' && seances.filter((x) => x.mot === 'maintenant').length === 1 && seances.every((x) => x.h >= '15:00'), 'a 15:12, la minute qu il est se dit « maintenant », elle seule', JSON.stringify(seances.slice(0, 3)));
     // 3. Les pistes conseillees sont celles que le plan pose ; « libres » ne compte
     // pas le groupe. La page de la ligne du bowling les dit.
     await page.evaluate((jour) => { closeQuickBook(); openQuickBook({ date: jour, startTime: '18:00', type: 'bowling', pax: 5 }); }, JOUR);
@@ -1266,7 +1266,7 @@ const MUTATIONS = [
   { nom: 'accents-moteur', cote: 'serveur', vise: ['D10'], edits: [e('lib/ops-engine.js', 'message: `Pas assez de pistes libres à ${minutesToTime(start)}.`,', 'message: `Pas assez de pistes libres a ${minutesToTime(start)}.`,')] },
   { nom: 'laser-jargon', cote: 'serveur', vise: ['D10'], edits: [e('lib/ops-engine.js', '            ? `Laser à ${heureLaser} : ${places}, il en faut ${groupe}. Décalez le départ.`', '            ? `Laser charge a ${heureLaser}: ${players}/${weaponCount} joueurs et ${launchCount}/${parallelLaunches} lancement(s).`')] },
   // (le mot sous une seance, rsMotHeure : le creneau en cours, puis les pistes libres)
-  { nom: 'arrivee-passee', cote: 'front', vise: ['D10'], edits: [e(APP, "  if (!x.tag && id === 'bowling' && timeToNum(x.heure) === rvPlancherDuJour(s.date)) x.tag = 'maintenant';\n", '')] },
+  { nom: 'arrivee-passee', cote: 'front', vise: ['D10'], edits: [e(APP, "  if (!x.tag && id === 'bowling' && maintenant !== null && Math.abs(timeToNum(x.heure) - maintenant) < 1e-6) x.tag = 'maintenant';\n", '')] },
   { nom: 'pistes-libres', cote: 'front', vise: ['D10'], edits: [e(APP, "  return place && !place.manque ? `reste ${rvPluriel(place.libre, place.unite)}` : '';", "  return place && !place.manque ? `reste ${rvPluriel(place.libre + place.prend, place.unite)}` : '';")] },
   // (les touches « Pistes » de la ligne du bowling, rsLigneBowlingHtml)
   { nom: 'conseil-ou-choix', cote: 'front', vise: ['D10'], edits: [e(APP, "n === auto ? 'conseillé' : n < auto ? 'à la main' : ''", "besoin === n ? 'conseillé' : n < auto ? 'à la main' : ''")] },

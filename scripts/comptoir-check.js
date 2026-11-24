@@ -348,8 +348,9 @@ async function scenarioA(browser) {
     const ticket = await page.evaluate(() => (document.querySelector('#rsL-a-bowling .is-apres') || {}).textContent || '');
     ok(Boolean(prise.reste) && ticket === ilRestera([prise.reste.replace('reste ', '')]), '[A] le ticket redit ce qui restera a l heure prise', { ticket, prise: prise.reste });
     // « maintenant » reste, sur le bord de la touche.
-    const maintenant = (await heures(page, 'bowling')).find((x) => x.heure === '15:00');
-    ok(maintenant && maintenant.tag === 'maintenant', '[A] la seance en cours se dit encore « maintenant »', maintenant);
+    const maintenant = (await heures(page, 'bowling')).find((x) => x.tag === 'maintenant');
+    // (2026-11-24, le gerant : « maintenant » est la minute qu il est, plus la demi-heure en cours)
+    ok(maintenant && maintenant.heure === '15:10', '[A] la minute qu il est se dit « maintenant »', maintenant);
     // Une formule : chaque heure le dit aussi, pistes et armes, le bloc le plus serre decide.
     await page.locator('#rsHaut [data-pax="7"]').click();
     await C.pret(page);

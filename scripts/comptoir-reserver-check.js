@@ -95,7 +95,7 @@ const FEN = 'lib/reserver-fenetre.js';
 // la juge, `cible` le debut du libelle qui doit rougir.
 const MUTATIONS = [
   { nom: 'heure-non-proposee', lettre: 'R1', bloc: 'ouverture', cible: '[R1] et revient pour 6', fichier: APP, de: '  rvPoserHeureProposee(rvHeureLaPlusProche(rvHeuresQuiTiennent(), rvReferenceDeLHeure(s)));', vers: '' },
-  { nom: 'heure-la-premiere', lettre: 'R1', bloc: 'calme', cible: '[R1] a 15:25 sur un jour calme, c est 15:30', fichier: APP, de: '    if (e <= ecart + 1e-9) { meilleure = h; ecart = e; }', vers: "    if (!meilleure) { meilleure = h; ecart = e; }" },
+  { nom: 'heure-la-premiere', lettre: 'R1', bloc: 'calme', cible: '[R1] a 15:25 sur un jour calme, c est 15:25, la minute qu il est', fichier: APP, de: '    if (e <= ecart + 1e-9) { meilleure = h; ecart = e; }', vers: "    if (!meilleure) { meilleure = h; ecart = e; }" },
   { nom: 'choix-ignore', lettre: 'R1', bloc: 'main', cible: '[R1] une heure choisie a la main ne bouge plus', fichier: APP, de: '    // Une heure choisie a la main ne bouge plus toute seule.\n    s.heureProposee = false;', vers: '' },
   { nom: 'serveur-ignore', lettre: 'R1', bloc: 'serveur', cible: '[R1] le planning a le dernier mot', fichier: APP, de: "  if (rvSuivreLePlanning()) return;\n  rvRepeindre();\n}", vers: '  rvRepeindre();\n}' },
   { nom: 'rouge-montre', lettre: 'R1', bloc: 'serveur', cible: '[R1] sans passer par le rouge', fichier: APP, de: '  if (!plan || plan.disponible || rvHeureEnRecherche()) return null;', vers: '  if (!plan || plan.disponible) return null;' },
@@ -419,7 +419,7 @@ async function scenarioR1(browser) {
     await joueurs(page, 4).click();
     await page.waitForTimeout(350);
     await planPose(page);
-    ok(/Créer à 15:30/.test(await texte(page, '#rvCreer')), '[R1] a 15:25 sur un jour calme, c est 15:30', await texte(page, '#rvCreer'));
+    ok(/Créer à 15:25/.test(await texte(page, '#rvCreer')), '[R1] a 15:25 sur un jour calme, c est 15:25, la minute qu il est', await texte(page, '#rvCreer'));
     await page.evaluate(() => closeQuickBook());
     await m.finir('R1 calme');
   }

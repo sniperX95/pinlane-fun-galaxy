@@ -88,7 +88,7 @@ const FENETRE = 'lib/reserver-fenetre.js';
 // LES MUTATIONS : une regle retiree a la fois, `lettre` le scenario qui doit rougir.
 const MUTATIONS = [
   // [A] le nombre choisi ne compte plus : le moteur garde le plus petit que la place du centre demande.
-  { nom: 'nombre-ignore', lettre: 'A', fichier: GG, de: '  const choisi = entier(voulu) >= 2 ? (souple ? Math.max(entier(voulu), coupe) : entier(voulu)) : coupe;', vers: '  const choisi = coupe;' },
+  { nom: 'nombre-ignore', lettre: 'A', fichier: GG, de: '  const choisi = entier(voulu) >= 1 ? (agrandi ? Math.max(entier(voulu), coupe) : entier(voulu)) : coupe;', vers: '  const choisi = coupe;' },
   // [B] les heures du comptoir ne se posent plus, ou les parties retombent sur la grille du centre.
   { nom: 'heures-ignorees', lettre: 'B', fichier: MOTEUR, de: '  const auxHeures = Boolean(heuresVoulues) && heuresVoulues.length === decoupe.nombre;', vers: '  const auxHeures = false;' },
   { nom: 'parties-sur-la-grille', lettre: 'B', fichier: GG, de: '      const origine = ((t % grille) + grille) % grille;', vers: '      const origine = 0;' },
@@ -108,12 +108,12 @@ const MUTATIONS = [
   // [D] la modification refait la rotation par-dessus les heures posees, oublie le nombre choisi, ou ecrit
   // des groupes qui ne tiennent pas.
   { nom: 'modif-sans-heures', lettre: 'D', fichier: OPS, de: "  const lues = garde.auxHeures === true || request.opsPlan.laserManual === true ? require('./grand-groupe').heuresDesBlocs(request.opsPlan, ecart) : null;", vers: "  const lues = request.opsPlan.laserManual === true ? require('./grand-groupe').heuresDesBlocs(request.opsPlan, ecart) : null;" },
-  { nom: 'modif-sans-nombre', lettre: 'D', fichier: OPS, de: '      ...(garde.nombreChoisi === true && Number(garde.nombre) >= 2 ? { nombre: Number(garde.nombre) } : {}),\n', vers: '' },
+  { nom: 'modif-sans-nombre', lettre: 'D', fichier: OPS, de: '      ...(garde.nombreChoisi === true && Number(garde.nombre) >= 1 ? { nombre: Number(garde.nombre) } : {}),\n', vers: '' },
   { nom: 'modif-ecrit-quand-meme', lettre: 'D', fichier: API, de: "    throw Object.assign(createHttpError(`Ces groupes ne tiennent pas au planning : ${motif}`, 422), { coincent: Array.isArray(ops.groupesQuiCoincent) ? ops.groupesQuiCoincent : [] });\n", vers: '' },
   // [E] un laser deplace au planning avant ce lot retombe sur la rotation ; les pistes de tout le dossier
   // redeviennent le souhait de chaque groupe (un groupe serre sur 3 pistes quand le groupe grandit).
   { nom: 'ancien-laser-deplace-perdu', lettre: 'E', fichier: OPS, de: "  const lues = garde.auxHeures === true || request.opsPlan.laserManual === true ? require('./grand-groupe').heuresDesBlocs(request.opsPlan, ecart) : null;", vers: "  const lues = garde.auxHeures === true ? require('./grand-groupe').heuresDesBlocs(request.opsPlan, ecart) : null;" },
-  { nom: 'pistes-de-tout-le-dossier', lettre: 'E', fichier: MOTEUR, de: '    ...(preferredLanes.length && (nombre <= 1 || aLaMain || preferredLanes.length === pose.pistes) ? { preferredLanes: [...preferredLanes] } : {}),', vers: '    ...(preferredLanes.length ? { preferredLanes: [...preferredLanes] } : {}),' },
+  { nom: 'pistes-de-tout-le-dossier', lettre: 'E', fichier: MOTEUR, de: '    ...(preferredLanes.length && (preferredLanes.length === pose.pistes || (!pistesPosees && (nombre <= 1 || aLaMain))) ? { preferredLanes: [...preferredLanes] } : {}),', vers: '    ...(preferredLanes.length ? { preferredLanes: [...preferredLanes] } : {}),' },
   // [H] la base ne voit plus les autres groupes du dossier sur les pistes : elle refuse ce que le moteur a juge.
   { nom: 'base-sans-les-freres', lettre: 'H', fichier: 'lib/database.js', de: '      const freres = Number(block.sousGroupe) > 0\n        ? serviceBlocks.filter(', vers: '      const freres = false\n        ? serviceBlocks.filter(' },
   // [F] le glisser du planning ne marque plus les heures du groupe.
@@ -277,8 +277,11 @@ async function principal() {
       ok(quatre.disponible === true && gq.nombre === 4 && JSON.stringify(gq.tailles) === '[20,20,20,20]' && gq.nombreChoisi === true && (quatre.blocs || []).filter((b) => b.sousGroupe).length === 8 && unSeulEndroit(quatre.blocs || []),
         '[A] 4 groupes choisis : 4 groupes de 20, chacun au bowling et au laser, a un seul endroit', { dispo: quatre.disponible, gq, refus: quatre.refus, horaire: horaire(quatre) });
       const deux = await simuler(corps(80, { impose: true, nombre: 2 }));
-      ok(deux.disponible === false && /Groupe 1 : 40 joueurs au laser, 30 armes à la fois/.test(deux.refus || '') && coince(deux, 1, 'laser_game', /30 armes/),
-        '[A] 2 groupes choisis : refuse, et le refus se dit sur la case laser du groupe 1', { refus: deux.refus, coincent: deux.coincent });
+      ok(deux.disponible === true && (deux.blocs || []).filter((b) => b.activite === 'laser_game').length === 4 && (deux.blocs || []).filter((b) => b.activite === 'laser_game').every((b) => b.joueurs <= 30),
+        '[A] 2 groupes choisis (2026-11-24) : chaque groupe de 40 joue son laser en deux passages, jamais plus de 30 armes', { dispo: deux.disponible, refus: deux.refus, horaire: horaire(deux) });
+      const inegal = await simuler(corps(80, { impose: true, nombre: 3, tailles: [40, 20, 20] }));
+      ok(inegal.disponible === false && /Groupe 1 : 40 joueurs au laser, 30 armes à la fois/.test(inegal.refus || '') && coince(inegal, 1, 'laser_game', /30 armes/),
+        '[A] 40 tapes au groupe 1 sur 3 groupes : refuse, et le refus se dit sur sa case laser', { refus: inegal.refus, coincent: inegal.coincent });
       const cree = await creer(corps(80, { impose: true, nombre: 4 }));
       const r = cree.json.reservation && ligne(cree.json.reservation.id);
       ok(cree.statut < 300 && Boolean(r) && Number(r.price) === Number(quatre.prix) && horaireDe(r) === horaire(quatre) && r.ops_plan.grandGroupe.nombre === 4,

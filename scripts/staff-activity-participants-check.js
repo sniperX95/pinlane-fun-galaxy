@@ -143,6 +143,7 @@ ctx.quickBookState = {pax:18,type:'visite',date:'2026-10-06',visit:{bowling:{on:
 assert.match(run('getQuickBookSummaryActivites().detail'),/Arcades : 5 joueurs/);
 assert.match(run('getQuickBookSummaryActivites().detail'),/hors activités réglées sur place/);
 // Explicit free prices remain known; legacy totals0 carry no such promise.
+vm.runInContext('function dossierAFacturer() { return false; }', ctx);
 for(const name of ['prixDossierConnu','getMoyenPaiementLabel','renderGroupePrix','renderGroupeActions','activityPriceHint','isUpcomingReservationStatus']) {
   const from=app.indexOf('function '+name+'(');
   vm.runInContext(app.slice(from,app.indexOf('\nfunction ',from+1)),ctx);

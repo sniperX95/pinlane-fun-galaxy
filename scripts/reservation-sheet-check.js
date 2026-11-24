@@ -287,7 +287,9 @@ async function main() {
     // PLAFOND 11 DEPUIS LE 2026-11-14 (Ansar : « le retard [...] super facile
     // d acces ») : « Retard » sort de son pli en bas de colonne et devient un
     // bouton de la rangee des gestes (scripts/fiche-simple-check.js, [G1]).
-    ok(infos.boutons <= 11, `« Infos » : ${infos.boutons} boutons d action a l ecran (plafond 11 ; les cases des activites, les liens du planning, l heure des activites et l heure et les joueurs touchables a part)`);
+    // PLAFOND 13 DEPUIS LE 2026-11-24 (Ansar : le statut « réglable dans la fiche » et « Facturé » comme moyen
+    // de paiement) : le bouton du statut et celui de la caisse (scripts/facturation-check.js, [F]).
+    ok(infos.boutons <= 13, `« Infos » : ${infos.boutons} boutons d action a l ecran (plafond 13 ; les cases des activites, les liens du planning, l heure des activites et l heure et les joueurs touchables a part)`);
     ok(infos.faitsTouchables <= 2, `« Infos » : ${infos.faitsTouchables} faits de l en-tete touchables, l heure et les joueurs au plus`);
     ok(infos.heuresTouchables <= infos.pas, `« Infos » : ${infos.heuresTouchables} heures d activite touchables, au plus une par activite (${infos.pas})`);
     ok(infos.liens <= infos.pas, `« Infos » : ${infos.liens} liens vers le planning, au plus un par activite (${infos.pas})`);

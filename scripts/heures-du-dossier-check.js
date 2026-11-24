@@ -292,7 +292,7 @@ async function scenarioCompte(browser) {
       '[A] la fin de visite ne recule pas : 16:10, 155 min', { fin: b.plan.endTime, total: b.plan.totalMinutes });
     const mini = await uneCase(page, ARTHUR, 'Minigolf');
     const arcades = await uneCase(page, ARTHUR, 'Arcades');
-    ok(mini.texte === '14:35' && arcades.texte === '15:25', '[A] la feuille dit minigolf 14:35 et arcades 15:25', { mini, arcades });
+    ok(/^14:35(à lancer|à cocher)?$/.test(mini.texte) && /^15:25(à lancer|à cocher)?$/.test(arcades.texte), '[A] la feuille dit minigolf 14:35 et arcades 15:25', { mini, arcades });
     const suiviApres = await suivi();
     ok(JSON.stringify(suiviApres) === JSON.stringify(suiviAvant), '[A] le suivi des activites garde ses heures', { avant: suiviAvant, apres: suiviApres });
 

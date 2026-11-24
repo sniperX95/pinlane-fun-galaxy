@@ -27896,7 +27896,7 @@ function renderPlanning() {
       // infobulle dit lesquelles et jusqu a quand.
       const volonte = item.window.aVolonte && window.PinlaneAVolonte ? window.PinlaneAVolonte.phraseDuBloc(r.opsPlan, item.window) : '';
       const motCoche = attendue === 'lancer' ? 'à lancer, pas encore coché' : attendue ? 'pas encore coché' : '';
-      bkHtml += `<div class="booking ${cls} ${densClass} ${getReservationHighlightClasses(r)}${delayedClass}${retardClass}${arriveEnRetard}${activitiesCompleteClass(r, suivi)}${attendue ? ` is-a-cocher${attendue === 'noncoche' ? ' is-non-coche' : ''}` : ''}${casLaser}${casProgression}${/^Allergie · /.test(noteDuCoin) ? ' a-allergie' : ''}${modifCarte || (essentiel && (essentiel.notes || essentiel.mesure || essentiel.adaptee)) ? ' a-dossier' : ''}${retenues.has(String(r.id)) ? '' : ' is-grise'}${isToday && item.window.end <= curH + 1e-6 && !attendue ? ' is-passee' : ''}${peutDeplacerIci ? '' : ' is-fixe'}" data-booking-res-id="${r.id}" data-booking-lane="${i}" data-booking-start="${st}" data-range="${formatClockDisplay(st)} - ${end}" data-extra="${cls === 'paid' ? 'payé' : cls === 'arr' ? 'sur place' : 'confirmé'}" role="button" tabindex="0" aria-label="${escapeHtml(r.name || 'Client')} · ${formatClockDisplay(st)} - ${end}${volonte ? ` · ${escapeHtml(volonte)}` : ''}${motCoche ? ` · ${motCoche}` : ''}"${volonte ? ` title="${escapeHtml(volonte)}" data-a-volonte="1"` : ''} style="top:${top}px;height:${height}px;--bk-order:${i};" ${peutDeplacerIci ? `aria-keyshortcuts="M" onkeydown="planningMoveKey(event,'bowling',${r.id},${i},${st})" onmousedown="startBowlingBookingPointerDrag(event, ${r.id}, ${i}, ${st})" ${planningTouchAttrs(`startBowlingBookingTouchDrag(event, ${r.id}, ${i}, ${st})`)}` : ''} onclick="if(shouldIgnoreBowlingDragClick(event)) return; event.stopPropagation();openPos(${r.id})">
+      bkHtml += `<div class="booking ${cls} ${densClass} ${getReservationHighlightClasses(r)}${delayedClass}${retardClass}${arriveEnRetard}${retardBloc && densClass === 'dens-lg' && height >= (state.staffPlanningExpanded ? 84 : 64) + (offreHtml ? 20 : 0) ? ' a-puce-ligne' : ''}${activitiesCompleteClass(r, suivi)}${attendue ? ` is-a-cocher${attendue === 'noncoche' ? ' is-non-coche' : ''}` : ''}${casLaser}${casProgression}${/^Allergie · /.test(noteDuCoin) ? ' a-allergie' : ''}${modifCarte || (essentiel && (essentiel.notes || essentiel.mesure || essentiel.adaptee)) ? ' a-dossier' : ''}${retenues.has(String(r.id)) ? '' : ' is-grise'}${isToday && item.window.end <= curH + 1e-6 && !attendue ? ' is-passee' : ''}${peutDeplacerIci ? '' : ' is-fixe'}" data-booking-res-id="${r.id}" data-booking-lane="${i}" data-booking-start="${st}" data-range="${formatClockDisplay(st)} - ${end}" data-extra="${cls === 'paid' ? 'payé' : cls === 'arr' ? 'sur place' : 'confirmé'}" role="button" tabindex="0" aria-label="${escapeHtml(r.name || 'Client')} · ${formatClockDisplay(st)} - ${end}${volonte ? ` · ${escapeHtml(volonte)}` : ''}${motCoche ? ` · ${motCoche}` : ''}"${volonte ? ` title="${escapeHtml(volonte)}" data-a-volonte="1"` : ''} style="top:${top}px;height:${height}px;--bk-order:${i};" ${peutDeplacerIci ? `aria-keyshortcuts="M" onkeydown="planningMoveKey(event,'bowling',${r.id},${i},${st})" onmousedown="startBowlingBookingPointerDrag(event, ${r.id}, ${i}, ${st})" ${planningTouchAttrs(`startBowlingBookingTouchDrag(event, ${r.id}, ${i}, ${st})`)}` : ''} onclick="if(shouldIgnoreBowlingDragClick(event)) return; event.stopPropagation();openPos(${r.id})">
         ${noteDuCoin ? `<span class="bk-coin" title="${escapeHtml(noteDuCoin)}" aria-hidden="true"></span>` : ''}
         <div class="booking-head">
           <span class="bk-time"${attendue ? ` title="${attendue === 'lancer' ? 'À lancer, pas encore coché : la case se coche dans la fiche du groupe une fois le bowling lancé' : 'Pas encore coché : la case se coche dans la fiche du groupe'}"` : ''}>${formatClockDisplay(st)}</span>
@@ -32182,14 +32182,13 @@ function ficheCaisse(r, moment, droits) {
     : '';
   // (le troisieme moyen ouvre la fenetre de facturation : il ne paie rien, ouvrirFacturationDuDossier)
   const facturer = droits.encaisser && !annule && !paid
-    ? `<div class="fz-facturer-r"><button type="button" class="fz-facturer" aria-pressed="${aFacturer}" aria-haspopup="dialog" data-pl-focus="fiche.facturer.${Number(r.id)}" onclick="ouvrirFacturationDuDossier(${r.id}, event)">${MOYEN_FACTURE}</button></div>`
+    ? `<button type="button" class="fz-facturer" aria-pressed="${aFacturer}" aria-haspopup="dialog" data-pl-focus="fiche.facturer.${Number(r.id)}" onclick="ouvrirFacturationDuDossier(${r.id}, event)">${MOYEN_FACTURE}</button>`
     : '';
   return `<section class="info-block gc-bill fz-carte fz-caisse${paid ? ' is-paye' : ''}${aFacturer ? ' is-facture' : ''}" aria-label="Caisse">
       ${argent ? `<p class="pos-act-money ${paid ? 'is-paid' : ''}">${argent}</p>` : '<h4 class="fx-titre">Prix</h4>'}
       ${enPlus}
       ${addition.unite && !annule ? `<p class="gc-bill-unit">${addition.unite}</p>` : ''}
-      ${boutons ? `<div class="res-status-row gc-sheet-states fz-payer">${boutons}</div>` : ''}
-      ${facturer}
+      ${boutons ? `<div class="res-status-row gc-sheet-states fz-payer${facturer ? ' a-facturer' : ''}">${boutons}${facturer}</div>` : ''}
       ${ficheFacture(r, droits)}
       ${paid ? `<div class="fz-caisse-apres">${droits.statut ? `<button type="button" class="fz-bouton fz-desencaisser" data-pl-focus="fiche.desencaisser.${Number(r.id)}" onclick="setReservationStatusDirect(${r.id}, 'arrived', event)">Annuler l’encaissement</button>` : ''}${renderGroupeEncaisseAbsence(r)}</div>` : ''}
       ${addition.lignes.length || addition.etat.ajuste ? `<dl class="gc-bill-lines">${addition.lignes.map(l => `<div${l.aPayer ? ' class="is-a-payer"' : ''}><dt>${escapeHtml(l.nom)}${l.detail ? ` <small>${escapeHtml(l.detail)}</small>` : ''}</dt><dd${l.aPayer ? ' class="pl-a-payer"' : ''}>${escapeHtml(l.montant || '')}</dd></div>`).join('')}
@@ -32372,7 +32371,7 @@ function renderPosDetails(r) {
   return `<div class="${posSheetClass()} gc-sheet fx">
     ${ficheRetardOuvert(r, droits)}
     ${bandeauBloquant || ficheBandeauRetard(r, moment)}
-    ${ficheStatut(r)}
+    ${bandeauBloquant ? '' : ficheStatut(r)}
     <div class="fx-colonnes">
       <div class="fx-principal">
         ${renderGroupeNotes(r)}
@@ -40542,6 +40541,14 @@ function rvMinuteDeMaintenant(id, s = quickBookState) {
   return minute > plancher + 1e-9 ? minute : null;
 }
 
+// CE QUI N A PAS DE MINUTE REPREND SA DEMI-HEURE (2026-11-24, kids-fun-day [H]) : la fenetre ouvre sur un bowling a
+// 14:10 ; une formule choisie ensuite (le Kids Fun Day), un laser, partent aux heures pleines ou demies. La minute
+// restait, et « Créer » attendait.
+function rvQuitterLaMinute(s = quickBookState) {
+  if (!s || s.lockStartTime || !rvHorsGrille(s.startTime)) return;
+  s.startTime = numToTime(Math.floor(timeToNum(s.startTime) * 2 + 1e-9) / 2);
+}
+
 function rvHeurePassee(date, heure) {
   if (!date) return false;
   if (typeof isPastBusinessDate === 'function' && isPastBusinessDate(date)) return true;
@@ -40802,6 +40809,7 @@ function rvProposerHeure() {
   if (s.cleProposition === cle) return;
   s.cleProposition = cle;
   s.heureArretee = false;
+  if (rvMinuteDeMaintenant('bowling', s) === null) rvQuitterLaMinute(s);
   rvPoserHeureProposee(rvHeureLaPlusProche(rvHeuresQuiTiennent(), rvReferenceDeLHeure(s)));
 }
 
@@ -43945,6 +43953,7 @@ function rvChoisirFormule(id) {
   quickBookState.visit = null;
   quickBookState.heures = {};
   quickBookState.forcer = false;
+  rvQuitterLaMinute();
   setQuickFormule(id);
 }
 

@@ -164,7 +164,7 @@ const MUTATIONS = [
   // la modification perd les groupes, le canal public lit la demande.
   { nom: 'laser-sur-les-tailles', lettre: 'D', serveur: true, fichier: GG, de: '    const parts = joueurs === personnes ? choisies.slice() : partsAuProrata(joueurs, choisies);', vers: '    const parts = choisies.slice();' },
   { nom: 'tailles-ignorees', lettre: 'D', serveur: true, fichier: GG, de: '    choisies = posees;\n', vers: '' },
-  { nom: 'armes-depassees', lettre: 'D', serveur: true, fichier: GG, de: '    const trop = capacite > 0 ? parts.findIndex((part) => part > capacite) : -1;', vers: '    const trop = -1;' },
+  { nom: 'armes-depassees', lettre: 'D', serveur: true, fichier: GG, de: '    const trop = capacite > 0 ? parts.findIndex((part, rang) => part > capacite && !enPassagesIci(rang)) : -1;', vers: '    const trop = -1;' },
   { nom: 'modification-sans-groupes', lettre: 'D', serveur: true, fichier: OPS, de: '    ...(isEdit ? grandGroupeGarde(request, shiftMinutes) : {}),\n', vers: '' },
   { nom: 'public-lit-la-demande', lettre: 'D', serveur: true, fichier: MOTEUR, de: "  const demandeGrandGroupe = input.channel === 'staff' ? lireGrandGroupe(preference.grandGroupe) : null;", vers: '  const demandeGrandGroupe = lireGrandGroupe(preference.grandGroupe);' },
   { nom: 'pistes-du-groupe-partagees', lettre: 'D', serveur: true, fichier: MOTEUR, de: "      const occupees = dejaPoses.length ? [...reservations, pseudoReservationFromBlocks('grand-groupe', dejaPoses)] : reservations;", vers: '      const occupees = reservations;' },
@@ -180,7 +180,7 @@ const MUTATIONS = [
   // d aller du premier depart a la derniere fin ; la fenetre refuse d avance l heure du soir.
   { nom: 'pas-de-repli', lettre: 'F', serveur: true, fichier: MOTEUR, de: '    result = avant.ok ? avant : (enGroupes.ok || enGroupes.scenario || !avant.scenario ? enGroupes : avant);', vers: '    result = avant;' },
   { nom: 'duree-de-la-rotation-sommee', lettre: 'F', serveur: true, fichier: MOTEUR, de: '  const scheduledAnchorMinutes = rotation && anchorWindows.length\n    ? Math.max(...anchorWindows.map((window) => window.end)) - Math.min(...anchorWindows.map((window) => window.start))\n    : anchorWindows.reduce((sum, window) => sum + (window.end - window.start), 0);', vers: '  const scheduledAnchorMinutes = anchorWindows.reduce((sum, window) => sum + (window.end - window.start), 0);' },
-  { nom: 'fenetre-refuse-d-avance', lettre: 'F', fichier: APP, de: '  return grand && grand.tourne ? Math.min(visite, rvDureeDUnGroupe()) : visite;', vers: '  return visite;' },
+  { nom: 'fenetre-refuse-d-avance', lettre: 'F', fichier: APP, de: '  return grand && grand.tourne && grand.nombre > 1 ? Math.min(visite, rvDureeDUnGroupe()) : visite;', vers: '  return visite;' },
   // [G] une heure deplacee (la pop-up du planning complet, son glisser, Modifier) ne regarde plus le
   // sous-groupe : le compte des joueurs du groupe tient, le groupe 1 joue au bowling pendant son laser.
   { nom: 'sous-groupe-deplace-a-deux-endroits', lettre: 'G', serveur: true, fichier: MOUVEMENT, de: '    if (!groupe) continue;', vers: '    continue;' },

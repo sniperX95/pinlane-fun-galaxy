@@ -2291,7 +2291,7 @@ button.staff-date-label:focus-visible,
    la boite a la hauteur de l ecran, plus de cartes passent sur trois lignes : run-visual-qa
    l a vu, « Famille Lambert #9002 » sur 28 px pour 42.) */
 @container piste (min-width: 10.2em) and (max-width: 173.5px) {
-  .booking.is-delayed.dens-lg .booking-name { display: block; white-space: nowrap; max-height: none; }
+  .booking:is(.is-delayed, .is-en-retard, .is-rt-arrive).dens-lg .booking-name { display: block; white-space: nowrap; max-height: none; }
 }
 /* Pareil pour « En retard » (2026-11-08). Son mot est plus large que « +15 » : sous 202 px de
    piste il cede au nom, la puce garde son horloge rouge, la barre et le contour disent le reste. */
@@ -2850,19 +2850,19 @@ button.staff-date-label:focus-visible,
 .booking.activities-complete .bk-coin { display: none; }
 .booking.activities-complete::before { display: none; }
 @container piste (max-width: 237.1px) {
-  .planning-box.expanded .booking.is-delayed:not(.dens-xs) .bk-time { display: none; }
+  .planning-box.expanded .booking:is(.is-delayed, .is-rt-arrive:not(.a-puce-ligne)):not(.dens-xs) .bk-time { display: none; }
 }
 @container piste (max-width: 203.7px) {
-  .booking.is-delayed:not(.dens-xs):has(.booking-head .flag-birthday) .booking-head :is(.flag-laser, .flag-birthday) { display: none; }
+  .booking:is(.is-delayed, .is-rt-arrive:not(.a-puce-ligne)):not(.dens-xs):has(.booking-head .flag-birthday) .booking-head :is(.flag-laser, .flag-birthday) { display: none; }
 }
 @container piste (max-width: 194.6px) {
   .planning-box.expanded .booking:not(.dens-xs) .bk-time { display: none; }
 }
 @container piste (max-width: 186.7px) {
-  .booking.is-delayed:not(.dens-xs) .booking-head .flag-laser .bk-flag-num { display: none; }
+  .booking:is(.is-delayed, .is-rt-arrive:not(.a-puce-ligne)):not(.dens-xs) .booking-head .flag-laser .bk-flag-num { display: none; }
 }
 @container piste (max-width: 173.5px) {
-  .booking.is-delayed:not(.dens-xs) .booking-head .flag-laser { display: none; }
+  .booking:is(.is-delayed, .is-rt-arrive:not(.a-puce-ligne)):not(.dens-xs) .booking-head .flag-laser { display: none; }
 }
 @container piste (max-width: 161.2px) {
   .booking:not(.dens-xs):has(.booking-head .flag-birthday) .booking-head .flag-laser .bk-flag-num { display: none; }
@@ -2900,7 +2900,7 @@ button.staff-date-label:focus-visible,
   .booking.a-dossier:not(.dens-xs) .booking-head :is(.flag-birthday, .flag-laser) { display: none; }
 }
 @container piste (max-width: 197px) {
-  .booking.a-dossier.is-delayed:not(.dens-xs) .booking-head :is(.flag-mesure, .flag-equipe, .flag-modif) ~ :is(.flag-mesure, .flag-equipe, .flag-modif) ~ :is(.flag-mesure, .flag-equipe, .flag-modif) { display: none; }
+  .booking.a-dossier:is(.is-delayed, .is-rt-arrive:not(.a-puce-ligne)):not(.dens-xs) .booking-head :is(.flag-mesure, .flag-equipe, .flag-modif) ~ :is(.flag-mesure, .flag-equipe, .flag-modif) ~ :is(.flag-mesure, .flag-equipe, .flag-modif) { display: none; }
 }
 @container piste (max-width: 164px) {
   .booking.a-dossier:is(.arr, .paid):not(.dens-xs) .booking-head :is(.flag-mesure, .flag-equipe, .flag-modif) ~ :is(.flag-mesure, .flag-equipe, .flag-modif) ~ :is(.flag-mesure, .flag-equipe, .flag-modif) { display: none; }
@@ -2909,7 +2909,7 @@ button.staff-date-label:focus-visible,
   .booking.a-dossier:not(.dens-xs) .booking-head :is(.flag-mesure, .flag-equipe, .flag-modif) ~ :is(.flag-mesure, .flag-equipe, .flag-modif) ~ :is(.flag-mesure, .flag-equipe, .flag-modif) { display: none; }
 }
 @container piste (max-width: 180px) {
-  .booking.a-dossier.is-delayed:not(.dens-xs) .booking-head :is(.flag-mesure, .flag-equipe, .flag-modif) ~ :is(.flag-mesure, .flag-equipe, .flag-modif) { display: none; }
+  .booking.a-dossier:is(.is-delayed, .is-rt-arrive:not(.a-puce-ligne)):not(.dens-xs) .booking-head :is(.flag-mesure, .flag-equipe, .flag-modif) ~ :is(.flag-mesure, .flag-equipe, .flag-modif) { display: none; }
 }
 @container piste (max-width: 164px) {
   .booking.a-dossier.is-delayed:not(.dens-xs) .delay-indicator .delay-indicator-label { display: none; }
@@ -2918,7 +2918,7 @@ button.staff-date-label:focus-visible,
   .booking.a-dossier:is(.arr, .paid):not(.dens-xs) .booking-head :is(.flag-mesure, .flag-equipe, .flag-modif) ~ :is(.flag-mesure, .flag-equipe, .flag-modif) { display: none; }
 }
 @container piste (max-width: 144px) {
-  .booking.a-dossier.is-delayed:not(.dens-xs) .booking-head :is(.flag-mesure, .flag-equipe, .flag-modif) { display: none; }
+  .booking.a-dossier:is(.is-delayed, .is-rt-arrive:not(.a-puce-ligne)):not(.dens-xs) .booking-head :is(.flag-mesure, .flag-equipe, .flag-modif) { display: none; }
 }
 @container piste (max-width: 132px) {
   .booking.a-dossier:not(.dens-xs) .booking-head :is(.flag-mesure, .flag-equipe, .flag-modif) ~ :is(.flag-mesure, .flag-equipe, .flag-modif) { display: none; }
@@ -19470,14 +19470,25 @@ html[data-theme] .booking.is-rt-arrive { --bk-barre: var(--danger); }
 .booking .delay-indicator.bk-rt svg { flex: none; }
 .booking .bk-rt .bk-rt__long { display: none; }
 .booking .bk-rt .bk-rt__court { display: inline; font-variant-numeric: tabular-nums; }
-@container piste (min-width: 203px) {
-  .booking:not(.dens-xs) .bk-rt.is-encours .bk-rt__long { display: inline; }
-  .booking:not(.dens-xs) .bk-rt.is-encours .bk-rt__court { display: none; }
+/* (une carte haute : la puce prend sa ligne sous le nom, avec ses mots ; le nom garde toute la sienne) */
+.booking.a-puce-ligne .booking-head { flex-wrap: wrap; row-gap: 1px; }
+.booking.a-puce-ligne .booking-name { display: block; white-space: nowrap; max-height: none; }
+.booking.a-puce-ligne { padding-top: 3px; padding-bottom: 3px; }
+.booking.a-puce-ligne .delay-indicator.bk-rt { order: 9; flex: 0 0 100%; width: 100%; height: 15px; line-height: 15px; box-sizing: border-box; justify-content: flex-start; min-width: 0; overflow: hidden; }
+/* (une carte courte, dans une piste etroite : la carte est deja rouge ; la puce se reduit a son horloge) */
+@container piste (max-width: 259px) {
+  .booking:not(.a-puce-ligne) .delay-indicator.bk-rt.is-encours { padding: 0; width: 17px; justify-content: center; }
+  .booking:not(.a-puce-ligne) .bk-rt.is-encours .bk-rt__court { display: none; }
+}
+@container piste (max-width: 210px) {
+  .booking:not(.a-puce-ligne) .delay-indicator.bk-rt { padding: 0; width: 17px; justify-content: center; }
+  .booking:not(.a-puce-ligne) .bk-rt .bk-rt__court { display: none; }
 }
 @container piste (min-width: 300px) {
-  .booking:not(.dens-xs) .bk-rt.is-arrive .bk-rt__long { display: inline; }
-  .booking:not(.dens-xs) .bk-rt.is-arrive .bk-rt__court { display: none; }
+  .booking:not(.dens-xs) .bk-rt .bk-rt__long { display: inline; }
+  .booking:not(.dens-xs) .bk-rt .bk-rt__court { display: none; }
 }
+html[data-theme] .booking.is-en-retard .bk-dur, html[data-theme] .booking.is-en-retard .bk-dur.dur-special { color: var(--bk-encre); }
 /* LE PLANNING LASER, LE MEME ROUGE : la carte en retard sur son rouge pale, cerne et barre rouges, sa
    ligne d etat dit « En retard · 10 min » ; arrive en retard, le cadre et « Arrivé avec 9 min de retard ».
    Quand la carte n a plus que sa ligne de nom, la puce des minutes la rejoint. */
@@ -24329,8 +24340,10 @@ body:is(.staff-mode, .admin-mode) .fx-modal .fz-statut-b:hover { filter: brightn
 body:is(.staff-mode, .admin-mode) .fx-modal .fz-statut-b:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 2px; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fz-statut-aide { font-size: 13px; color: var(--muted); }
 @media (pointer: coarse) { body:is(.staff-mode, .admin-mode) .fx-modal .fz-statut-b { min-height: 44px; } }
+@media (pointer: coarse) { body:is(.staff-mode, .admin-mode) .fx-modal .fz-statut { padding: 0 0 0 14px; } }
 #posOverlay .staff-action-popover button.is-actuel { font-weight: 700; color: var(--console-selected); }
-body:is(.staff-mode, .admin-mode) .fx-modal .fz-facturer-r { display: grid; margin: 0; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-payer.a-facturer { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+body:is(.staff-mode, .admin-mode) .fx-modal .fz-payer.a-facturer button { padding: 0 4px; font-size: 13px; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fz-facturer { display: inline-flex; align-items: center; justify-content: center; min-width: 0; min-height: 40px; padding: 0 10px; border: 1px solid var(--control-border); border-radius: 8px; background: var(--surface); color: var(--text); font: 600 14px/1 var(--font-ui); white-space: nowrap; cursor: pointer; }
 body:is(.staff-mode, .admin-mode) .fx-modal .fz-facturer:hover { background: var(--subtle); }
 body:is(.staff-mode, .admin-mode) .fx-modal .fz-facturer[aria-pressed="true"] { border-color: var(--console-selected); color: var(--console-selected); box-shadow: inset 0 0 0 1px var(--console-selected); }

@@ -909,7 +909,7 @@ const MUTATIONS = [
   // puce de statut ; l ancre d avant ne se trouvait plus, la contre-preuve
   // plantait. Re-ancree le 2026-10-27 : le nom et ses pictos ont leur ligne.)
   { nom: 'pictos', lettre: '[P] tablette light : la rangee de son depart', fichier: 'assets/app-main.js',
-    de: '<b>${escapeHtml(r.name || \'Groupe\')}</b>${lpPictos(r)}</span><span class="lp-g__sous">',
+    de: '<b>${escapeHtml(r.name || \'Groupe\')}</b>${lpPictos(r)}${puceRetard}</span><span class="lp-g__sous">',
     vers: '<b>${escapeHtml(r.name || \'Groupe\')}</b></span><span class="lp-g__sous">' },
   // Le marqueur laser revient : il le dirait de chaque groupe du planning.
   { nom: 'laser', lettre: '[P] tablette light : la rangee de son depart', fichier: 'assets/app-main.js',

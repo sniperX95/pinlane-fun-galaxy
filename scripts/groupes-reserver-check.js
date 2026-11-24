@@ -504,8 +504,8 @@ function jouer(source) {
 
 // LES MUTATIONS : une regle retiree a la fois, `lettre` le scenario qui doit rougir.
 const MUTATIONS = [
-  { nom: 'nombre-choisi-ignore', lettre: 'A', de: '  const choisi = voulu >= minimum && voulu <= Math.min(RV_GROUPES_MAX, pax) ? voulu : 0;', vers: '  const choisi = 0;' },
-  { nom: 'nombre-sous-le-minimum', lettre: 'A', de: '  const choisi = voulu >= minimum && voulu <= Math.min(RV_GROUPES_MAX, pax) ? voulu : 0;', vers: '  const choisi = voulu >= 2 && voulu <= Math.min(RV_GROUPES_MAX, pax) ? voulu : 0;' },
+  { nom: 'nombre-choisi-ignore', lettre: 'A', de: '  const choisi = voulu >= 1 && voulu <= Math.min(RV_GROUPES_MAX, pax) ? voulu : 0;', vers: '  const choisi = 0;' },
+  { nom: 'un-seul-groupe-impossible', lettre: 'A', de: '  const choisi = voulu >= 1 && voulu <= Math.min(RV_GROUPES_MAX, pax) ? voulu : 0;', vers: '  const choisi = voulu >= 2 && voulu <= Math.min(RV_GROUPES_MAX, pax) ? voulu : 0;' },
   { nom: 'heures-non-envoyees', lettre: 'B', de: '    ...(heures ? { heures } : {}),\n', vers: '' },
   { nom: 'tailles-sans-total', lettre: 'B', de: '    && tailles.reduce((t, n) => t + n, 0) === pax ? tailles.slice() : null;', vers: '    ? tailles.slice() : null;' },
   { nom: 'premier-par-dessus-les-heures', lettre: 'B', de: '    ...(premier && !heures ? { premier } : {}),', vers: '    ...(premier ? { premier } : {}),' },
@@ -524,15 +524,15 @@ const MUTATIONS = [
   { nom: 'heure-efface-les-autres', lettre: 'D', de: '  const heures = rvHeuresAffichees(grand) || Array.from({ length: grand.nombre }, () => ({}));', vers: '  const heures = Array.from({ length: grand.nombre }, () => ({}));' },
   // (avec la ligne qui suit : Modifier a la meme, groupesInverserEdition)
   { nom: 'inverser-sans-effet', lettre: 'D', de: '  heures[n - 1] = { ...heures[n - 1], [a]: heures[n - 1][b], [b]: heures[n - 1][a] };\n  rvPoserLesHeuresDesGroupes(grand, heures);', vers: '  rvPoserLesHeuresDesGroupes(grand, heures);' },
-  { nom: 'nombre-garde-les-heures', lettre: 'D', de: '  const { tailles: _t, pourPax: _p, heures: _h, pourDepart: _d, pourActivites: _a, nombre: _n, ...reste } = s.grandGroupe || {};', vers: '  const { nombre: _n, ...reste } = s.grandGroupe || {};' },
-  { nom: 'minimum-reste-un-choix', lettre: 'D', de: '  s.grandGroupe = voulu > grand.minimum ? { ...reste, nombre: voulu } : reste;', vers: '  s.grandGroupe = { ...reste, nombre: voulu };' },
+  { nom: 'nombre-garde-les-heures', lettre: 'D', de: '  const { tailles: _t, pourPax: _p, heures: _h, pourDepart: _d, pourActivites: _a, nombre: _n, pistes: _pi, armes: _ar, pourPlaces: _pp, ...reste } = s.grandGroupe || {};', vers: '  const { nombre: _n, ...reste } = s.grandGroupe || {};' },
+  { nom: 'minimum-reste-un-choix', lettre: 'D', de: '  s.grandGroupe = voulu !== grand.minimum ? { ...reste, nombre: voulu } : reste;', vers: '  s.grandGroupe = { ...reste, nombre: voulu };' },
   { nom: 'heure-tapee-stricte', lettre: 'E', de: ' || /^(\\d{1,2})(\\d{2})$/.exec(brut)', vers: '' },
   // (avec la ligne qui precede : Modifier a la meme garde, preparerModificationEdition)
   { nom: 'creer-sans-garde', lettre: 'F', de: "  const groupesIncomplets = simulation ? '' : rvGroupesIncomplets();\n  if (groupesIncomplets) return { erreur: groupesIncomplets };\n", vers: "  const groupesIncomplets = simulation ? '' : rvGroupesIncomplets();\n" },
   { nom: 'creer-sans-heures', lettre: 'F', de: '  const rang = posees ? posees.findIndex((h) => cles.some((id) => !h[id])) : -1;', vers: '  const rang = -1;' },
   { nom: 'saisie-des-groupes-perdue', lettre: 'G', de: "  if (sorte === 'g' || sorte === 't') { rsGgSaisieValider(cle, sorte, quoi, brut, clavier); return; }\n", vers: '' },
   { nom: 'plafond-ignore-a-la-frappe', lettre: 'G', de: '    else if (Number(brut) > plafond) refus = `Groupe ${n} : ${plafond} au plus à la fois.`;\n', vers: '' },
-  { nom: 'ticket-sans-groupes', lettre: 'H', de: '  const lignes = heures ? tailles.map((n, rang) => `Groupe ${rang + 1} · ${n} · ${rvProgrammeDuGroupe(grand, heures[rang])}`) : [];', vers: '  const lignes = [];' },
+  { nom: 'ticket-sans-groupes', lettre: 'H', de: '  const lignes = heures ? tailles.map((n, rang) => `${grand.nombre === 1 ? \'\' : `Groupe ${rang + 1} · ${n} · `}${rvProgrammeDuGroupe(grand, heures[rang])}`) : [];', vers: '  const lignes = [];' },
   { nom: 'inverser-un-bowling-seul', lettre: 'I', de: '  const inverser = grand.ids.length === 2 && passages.every((p) => p.heure)', vers: '  const inverser = passages.every((p) => p.heure)' },
   // [J] le laser seul : sans groupes (la panne du gerant), en groupes malgre des joueurs differents a chaque partie, coupe
   // sur toutes les personnes, ses departs effaces, une seule case pour ses parties, une case qui ignore sa partie, ses

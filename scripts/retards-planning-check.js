@@ -85,7 +85,7 @@ const NOEL = 1637; // attendue, bowling 16:30 piste 6
 
 // LES MUTATIONS : une regle retiree a la fois. `lettre` : le scenario qui doit rougir. `serveur` : le code passe par le
 // crochet de compilation du banc, sinon la console le recoit du serveur de fichiers.
-const RETARD_FIGE = { fichier: LIB, de: '  const arrivee = Math.max(arriveeDuGroupe(current), la);', vers: '  const arrivee = arriveeDuGroupe(current);' };
+const RETARD_FIGE = { fichier: LIB, de: ' && (etape.debut >= la || etape.fin <= maintenant));', vers: ');' };
 const MUTATIONS = [
   // [A] la case sans son mot ; la bulle qui ne dit pas ou se pose la coche ; le mot cache ; la carte bowling muette.
   { nom: 'case-sans-mot', lettre: 'A', fichier: PG, de: "    var attendue = t !== '' && !montant && (etat === 'lancer' || etat === 'acocher') ? '<span class=\"gf-x__attend\">' + (etat === 'lancer' ? 'à lancer' : 'à cocher') + '</span>' : '';", vers: "    var attendue = '';" },

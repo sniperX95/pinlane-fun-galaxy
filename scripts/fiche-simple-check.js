@@ -327,7 +327,7 @@ function juger(f, label, appareil) {
     ok(f.appel === f.telephone, `[E3] ${label} : « Appeler » a cote ${f.telephone ? 'du numero' : '(aucun numero, aucun bouton)'}`, { appel: f.appel, telephone: f.telephone });
   } else ok(!f.momentTon && !f.appel, `[E3] ${label} : ni couleur d alerte ni « Appeler » hors retard`, { ton: f.momentTon, appel: f.appel });
   // [A1]
-  const mots = (f.corps.match(/À encaisser|Encaissé|Payé(?! ·)/g) || []).length;
+  const mots = (f.corps.match(/À encaisser|Encaissé|Payé(?! ·| carte| espèces)/g) || []).length; // (le bouton du statut, « Payé carte », 2026-11-24)
   ok(RX_ARGENT(f).test(f.argent) && mots === 1 && !/À encaisser|Encaissé|Payé/.test(f.addition),
     `[A1] ${label} : l argent une fois, en tete de la caisse (« ${f.argent} »), ses lignes ne le redisent pas`, { argent: f.argent, fois: mots, addition: f.addition });
   // [A2]
@@ -342,7 +342,7 @@ function juger(f, label, appareil) {
   // fixture, Direction, a le niveau « historique » ; la demande a verifier a
   // son bandeau au-dessus des colonnes)
   // (un groupe en retard : le bandeau rouge du retard, sauf quand celui de ce qui bloque le dit deja)
-  ok(JSON.stringify(f.ordre) === JSON.stringify((f.pastille === 'À vérifier' ? ['bandeau'] : f.bandeauRetard ? ['bandeau-retard'] : []).concat(['colonnes']))
+  ok(JSON.stringify(f.ordre) === JSON.stringify((f.pastille === 'À vérifier' ? ['bandeau'] : f.bandeauRetard ? ['bandeau-retard'] : []).concat(f.pastille === 'À vérifier' ? ['colonnes'] : ['fz-statut', 'colonnes']))
     && JSON.stringify(f.principal) === JSON.stringify((f.attenduNotes ? ['notes'] : []).concat(['programme'])) && JSON.stringify(f.cote) === JSON.stringify(['caisse', 'client', 'historique']),
     `[C1] ${label} : ${f.pastille === 'À vérifier' ? 'le bandeau, puis ' : f.bandeauRetard ? 'le bandeau du retard, puis ' : ''}a gauche ${f.attenduNotes ? 'les notes et ' : ''}le programme, a droite la caisse, le client, l historique`, { ordre: f.ordre, principal: f.principal, cote: f.cote });
   if (ordi && f.attenduNotes) ok(f.notesHaut !== null && f.notesHaut < f.corpsBas - 40, `[C1] ${label} : les notes se lisent sans faire defiler`, { notes: f.notesHaut, bas: f.corpsBas });
@@ -435,7 +435,7 @@ const MUTATIONS = [
   { nom: 'arrivee-absente', lettre: 'P1', scenarios: ORDI, editions: [{ fichier: JS, de: '      ${ficheArrivee(r, moment, droits)}\n', vers: '' }] },
   { nom: 'case-en-icone', lettre: 'P1', scenarios: ORDI, editions: [{ fichier: JS, de: "${etape.fait ? ACTIVITY_CHECK_SVG : (enFiche ? '' :", vers: "${etape.fait ? ACTIVITY_CHECK_SVG : (false ? '' :" }] },
   { nom: 'photo-perdue', lettre: 'P1', scenarios: ORDI, editions: [{ fichier: JS, de: '      ${ficheVisuelActivite(r, etape)}\n', vers: '' }] },
-  { nom: 'payer-hors-de-la-caisse', lettre: 'P2', scenarios: ORDI, editions: [{ fichier: JS, de: '      ${boutons ? `<div class="res-status-row gc-sheet-states fz-payer">${boutons}</div>` : \'\'}\n', vers: '' }] },
+  { nom: 'payer-hors-de-la-caisse', lettre: 'P2', scenarios: ORDI, editions: [{ fichier: JS, de: '      ${boutons ? `<div class="res-status-row gc-sheet-states fz-payer${facturer ? ' a-facturer' : ''}">${boutons}${facturer}</div>` : \'\'}\n', vers: '' }] },
   { nom: 'gestes-absents', lettre: 'G1', scenarios: ORDI, editions: [{ fichier: JS, de: "        ${isEdit ? '' : ficheOutils(r, ficheDroits())}\n", vers: '' }] },
   { nom: 'retard-avec-minutes', lettre: 'G1', scenarios: ORDI, editions: [{ fichier: JS, de: '${FICHE_ICONE_HORLOGE}Retard</button>', vers: "${FICHE_ICONE_HORLOGE}${enRetard ? 'En retard de 15 min' : 'Retard'}</button>" }] },
   { nom: 'activite-sur-deux-lignes', lettre: 'U1', scenarios: ORDI, editions: [{ fichier: CSS, de: '.fx-modal .fx-programme .gc-step-what { flex-direction: row; flex-wrap: wrap; align-items: baseline; gap: 0 8px; }', vers: '.fx-modal .fx-programme .gc-step-what { flex-direction: column; padding: 8px 0; }' }] },

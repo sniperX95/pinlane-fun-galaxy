@@ -435,8 +435,8 @@ function mesurerNomsDansLaPage() {
       piste: Math.round(c.closest('.lane-col').getBoundingClientRect().width * 10) / 10,
       texte, titre: nom.getAttribute('title') || '', lus, coupe, uneLigne, nom: Math.round(box.width * 10) / 10,
       // Le laser chiffre se lit « laser x2 » tant que son chiffre se voit.
-      marqueurs: [...c.querySelectorAll('.booking-head .bk-flag:not(.flag-note), .booking-head .delay-indicator-label, .booking-head .bk-time')].filter(vu)
-        .map((e) => (e.classList.contains('delay-indicator-label') ? 'retard' : e.classList.contains('bk-time') ? 'heure'
+      marqueurs: [...c.querySelectorAll('.booking-head .bk-flag:not(.flag-note), .booking-head .delay-indicator-label, .booking-head .bk-rt__court, .booking-head .bk-time')].filter(vu)
+        .map((e) => (e.classList.contains('delay-indicator-label') || e.classList.contains('bk-rt__court') ? 'retard' : e.classList.contains('bk-time') ? 'heure'
           : e.classList.contains('flag-birthday') ? 'gateau' : vu(e.querySelector('.bk-flag-num')) ? 'laser x2' : 'laser')),
       gateau: Boolean(c.querySelector('.booking-head .flag-birthday')),
       bulle: bulle ? { large: Math.round(bulle.getBoundingClientRect().width * 10) / 10, dit: bulle.getAttribute('aria-label') || '' } : null,
@@ -557,7 +557,7 @@ const MUTATIONS = [
     vers: '' },
   // [E] Sur une carte retardee, le laser reste a cote de la puce.
   { nom: 'retard', partie: 'E', lettre: 'un nom coupe garde 76 px', fichier: 'assets/pinlane-staff.css',
-    de: '@container piste (max-width: 173.5px) {\n  .booking.is-delayed:not(.dens-xs) .booking-head .flag-laser { display: none; }\n}',
+    de: '@container piste (max-width: 173.5px) {\n  .booking:is(.is-delayed, .is-rt-arrive:not(.a-puce-ligne)):not(.dens-xs) .booking-head .flag-laser { display: none; }\n}',
     vers: '' },
   // [E] L heure de la fenetre agrandie s ecrit sur toute piste.
   { nom: 'heure', partie: 'E', lettre: 'un nom coupe garde 76 px', fichier: 'assets/pinlane-staff.css',

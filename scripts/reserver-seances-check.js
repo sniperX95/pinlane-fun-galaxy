@@ -1288,7 +1288,8 @@ async function scenarioS10(browser) {
     // trou ; le soir n est plus derriere « Autres ».
     const bowling = await lireHeures(page, '#rsZ-bowling .rs-h[data-heure]');
     const sb = await verdictsDuServeur(page, 'bowling');
-    const hb = bowling.map((x) => x.heure);
+    // (la minute qu il est, « maintenant », s ajoute aux demi-heures depuis le 2026-11-24)
+    const hb = bowling.map((x) => x.heure).filter((h) => /:(00|30)$/.test(h));
     const fin = await page.evaluate(() => { const sch = getSchedule(quickBookState.date, state.isHolidayMode); return numToTime(Math.floor((sch.close - rvBowlingDuree()) * 2) / 2); });
     ok(hb[0] === '15:00' && hb[hb.length - 1] === fin && demiHeures(hb), '[S10] la rangee montre chaque demi-heure, sans trou, jusqu a la derniere', { bowling: hb, fin });
     // Le mot d une heure du bowling : les pistes qui restent a cette heure, celles que le
@@ -1311,7 +1312,7 @@ async function scenarioS10(browser) {
     await page.waitForSelector('.rs-heures .rs-h.is-coince', { timeout: 8000 }).catch(() => {});
     await page.waitForTimeout(300);
     const toutes = await lireHeures(page, '.rs-heures .rs-h[data-heure]');
-    const ht = toutes.map((x) => x.heure);
+    const ht = toutes.map((x) => x.heure).filter((h) => /:(00|30)$/.test(h));
     ok(ht[0] === '15:00' && ht[ht.length - 1] === fin && demiHeures(ht) && toutes.every((x) => commeLeServeur(x, sb[x.heure])), '[S10] « Autres » montre toute la journee, chaque heure comme le serveur la juge', { premiere: ht[0], derniere: ht[ht.length - 1], fin, faux: toutes.filter((x) => !commeLeServeur(x, sb[x.heure])).map((x) => ({ heure: x.heure, lu: x.mot, coince: x.coince, serveur: sb[x.heure] })) });
     await page.locator('#rsRetour').click();
     await page.waitForSelector('.is-q-activites');

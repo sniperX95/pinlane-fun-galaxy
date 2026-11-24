@@ -707,12 +707,14 @@ async function scenarioGel() {
     const sacha = f1.find((x) => x.id === SACHA_F1);
     const sim2 = await serveur2.appeler('POST', '/api/staff-reservations', { dryRun: true, centerId: 'libramont', retard: { id: SACHA_F1, baseUpdatedAt: sacha.updatedAt, minutes: 15, de: '13:15' } });
     const dit = ((sim2.json && sim2.json.etapes) || []).map((e) => `${e.cle} ${e.apres} ${e.passe}`).join(' | ');
-    ok(dit === 'arcade_time 14:30 true | laser_game:1.1 15:00 true', '[G] sur place depuis 10 min : le bowling commence n est pas decale, les arcades 14:30, le laser 15:00', sim2.json);
-    const tout2 = await serveur2.appeler('PATCH', '/api/staff-reservations', { id: SACHA_F1, centerId: 'libramont', baseUpdatedAt: sacha.updatedAt, retard: { minutes: 15, de: '13:15', choix: 'tout', cles: ['arcade_time', 'laser_game:1.1'] } });
+    // (2026-11-24, le gerant : « quand on met en retard manuellement ca decale pas » : un retard pose a la main dit que
+    // le groupe n etait pas la ; son bowling pas coche se decale aussi, retards-planning [C] garde le coche « fait »)
+    ok(dit === 'bowling 13:30 true | arcade_time 14:30 true | laser_game:1.1 15:00 true', '[G] retard pose a la main sur un groupe pointe : le bowling 13:30, les arcades 14:30, le laser 15:00', sim2.json);
+    const tout2 = await serveur2.appeler('PATCH', '/api/staff-reservations', { id: SACHA_F1, centerId: 'libramont', baseUpdatedAt: sacha.updatedAt, retard: { minutes: 15, de: '13:15', choix: 'tout', cles: ['bowling', 'arcade_time', 'laser_game:1.1'] } });
     const jeux = heuresDuPlan(SACHA_F1);
     const de = (id) => jeux.find((j) => j.id === id) || {};
-    ok(tout2.statut === 200 && de('bowling').debut === 795 && de('bowling').fin === 855 && /"lanes":\[8\]/.test(pistesDuPlan(SACHA_F1)) && de('arcade_time').debut === 870 && de('laser_game').debut === 900,
-      '[G] « Tout décaler » : le bowling en cours garde sa piste 8 et 13:15, la suite bouge', { statut: tout2.statut, json: tout2.json, jeux: jeux.map((j) => `${j.id} ${hm(j.debut)}-${hm(j.fin)}`), pistes: pistesDuPlan(SACHA_F1) });
+    ok(tout2.statut === 200 && de('bowling').debut === 810 && de('bowling').fin === 870 && /"lanes":\[8\]/.test(pistesDuPlan(SACHA_F1)) && de('arcade_time').debut === 870 && de('laser_game').debut === 900,
+      '[G] « Tout décaler » : le bowling garde sa piste 8 et part a 13:30, la suite suit', { statut: tout2.statut, json: tout2.json, jeux: jeux.map((j) => `${j.id} ${hm(j.debut)}-${hm(j.fin)}`), pistes: pistesDuPlan(SACHA_F1) });
   } catch (error) {
     if (error instanceof Mordu) throw error;
     ok(false, '[G] le serveur repond', error.message);
@@ -839,7 +841,7 @@ const MUTATIONS = [
   // [U] « Annuler » qui laisse le retard note par le pointage (il ne se noterait plus a la vraie arrivee).
   { nom: 'annuler-garde-le-retard', lettre: 'U', scenarios: ['annuler'], editions: [{ fichier: BASE, serveur: true, de: ' : planSansRetardDuPointage(current, { status: input.status });', vers: ' : null;' }] },
   // (une activite manquee avant l arrivee du groupe en retard comptee « commencee » : plus rien a decaler)
-  { nom: 'arrivee-en-retard-gelee', lettre: 'P', scenarios: ['tout'], editions: [{ fichier: LIB, serveur: true, de: '(surPlace(current) && etape.debut <= maintenant && etape.debut >= arrivee);', vers: '(surPlace(current) && etape.debut <= maintenant);' }] },
+  { nom: 'arrivee-en-retard-gelee', lettre: 'P', scenarios: ['tout'], editions: [{ fichier: LIB, serveur: true, de: '(surPlace(current) && etape.debut <= maintenant && etape.debut >= arrivee && (etape.debut >= la || etape.fin <= maintenant));', vers: '(surPlace(current) && etape.debut <= maintenant && (etape.debut >= la || etape.fin <= maintenant));' }] },
   { nom: 'decale-ce-qui-ne-passe-pas', lettre: 'C', scenarios: ['arrivee'], editions: [{ fichier: LIB, serveur: true, de: '      etapes[i] = { passe: false, raison: phraseDuRefus(error.message) };', vers: "      dossier = require('./reservation-activity-move').buildActivityMove(dossier, move);\n      etapes[i] = { passe: true };" }] },
   { nom: 'retard-oublie-apres-arrivee', lettre: 'C', scenarios: ['arrivee'], editions: [{ fichier: JS, de: "  if ((r.status === 'arrived' || r.status === 'paid') && annonce) return { etat: 'arrive', annonce, prevu: prevuNote };", vers: '' }] },
   { nom: 'retard-oublie-en-base', lettre: 'B', scenarios: ['planning'], editions: [{ fichier: BASE, serveur: true, de: '    payload.opsPlan = planAvecRetard(payload.opsPlan, current, { minutes: input.minutes, de: input.de, decale: moves.length > 0, dejaNote: Boolean(note) });', vers: '' }] },
@@ -854,7 +856,7 @@ const MUTATIONS = [
   { nom: 'telephone-boutons-etroits', lettre: 'T', scenarios: ['telephone'], editions: [{ fichier: 'assets/pinlane-staff.css', de: '  .rt-bouton { width: 100%; min-height: 44px; }\n', vers: '' }] },
   // [G] un calcul qui deplace une activite commencee : la sienne, puis celle d un groupe qui joue
   // (le controle ne le compte plus, comme le calcul qui l a pousse de la piste 1 a la piste 5).
-  { nom: 'activite-commencee-deplacee', lettre: 'G', scenarios: ['gel'], editions: [{ fichier: LIB, serveur: true, de: '  const commencee = (etape) => gelees.has(etape.cle) || (surPlace(current) && etape.debut <= maintenant && etape.debut >= arrivee);', vers: '  const commencee = (etape) => gelees.has(etape.cle);' }] },
+  { nom: 'activite-commencee-deplacee', lettre: 'G', scenarios: ['gel'], editions: [{ fichier: LIB, serveur: true, de: '  const commencee = (etape) => gelees.has(etape.cle) || (surPlace(current) && etape.debut <= maintenant && etape.debut >= arrivee && (etape.debut >= la || etape.fin <= maintenant));', vers: '  const commencee = (etape) => gelees.has(etape.cle);' }] },
   { nom: 'plan-en-cascade-sans-garde', lettre: 'G', scenarios: ['gel'], editions: [{ fichier: BASE, serveur: true, de: "    require('./retard-arrivee').refuserSiUnGroupeQuiJoueBouge(merged, safeDate);\n", vers: '' }] },
   // [D] la plaine de jeux remise a une heure : au calcul, au programme de la fiche, dans Réserver.
   { nom: 'plaine-a-heure', lettre: 'D', scenarios: ['tout'], editions: [{ fichier: LIB, serveur: true, de: '    if (LIBRES_TOUTE_LA_JOURNEE.includes(id)) return;\n', vers: '' }] },

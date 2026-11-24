@@ -2175,8 +2175,8 @@ async function main() {
     // Le 2026-11-11, le client passe au ticket (Ansar : « numéro de téléphone obligatoire, une note
     // optionnelle, tout doit être mis direct sur le côté droit ») : telephone, nom et note y sont des
     // champs, quatre controles de plus. Mesure : generique 70, case 70 ; plafonds a la mesure plus trois.
-    const PLAFOND_GENERIQUE = 73;
-    const PLAFOND_CASE = 73;
+    const PLAFOND_GENERIQUE = 74; // (« Facturé », 2026-11-24)
+    const PLAFOND_CASE = 74;
     // 80 : la porte « Accès illimité » toujours visible, a cote de Formules et Sur mesure, meme sans offre
     // au catalogue (demande d Ansar du 2026-11-21 : il se cree ici). Un controle de plus, le seul : le
     // laser en mesure 80 sur la meme vitrine, son plafond passe de 79 a 80, sans marge ajoutee.

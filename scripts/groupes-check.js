@@ -96,7 +96,7 @@ const MUTATIONS = [
   // groupe a deux endroits ne dit plus lequel ; ce qui coince ne remonte plus a la fenetre.
   { nom: 'freres-ignores', lettre: 'C', fichier: MOTEUR, de: '      const freres = Number(block.sousGroupe) > 0\n        ? scenario.resourceBlocks.filter(', vers: '      const freres = false\n        ? scenario.resourceBlocks.filter(' },
   { nom: 'conflits-sans-groupe', lettre: 'C', fichier: MOTEUR, de: '    if (Number(block.sousGroupe) > 0) {\n      for (let rang = conflitsAvant;', vers: '    if (false) {\n      for (let rang = conflitsAvant;' },
-  { nom: 'chevauchement-sans-case', lettre: 'C', fichier: MOTEUR, de: '        ...(sousGroupe ? { conflict: { sousGroupe, activityId: current.activityId, avec: previous.activityId } } : {}),\n', vers: '' },
+  { nom: 'chevauchement-sans-case', lettre: 'C', fichier: MOTEUR, de: '        ...(sousGroupe ? { conflict: { sousGroupe, activityId: current.activityId, avec: previous.activityId, ...(current.partie ? { partie: current.partie, avecPartie: previous.partie } : {}) } } : {}),\n', vers: '' },
   { nom: 'coincent-perdus', lettre: 'C', fichier: OPS, de: '    ...(noSafePlan && coincent.length ? { groupesQuiCoincent: coincent } : {}),\n', vers: '' },
   // [C] un groupe hors des horaires du centre ne se dit plus sur sa case, ou plus avec son heure.
   { nom: 'horaires-sans-case', lettre: 'C', fichier: MOTEUR, de: '        ...(horsHoraires ? { conflict: horsHoraires.conflict } : {}),\n', vers: '' },

@@ -78,6 +78,16 @@
 //       en vrais gestes dans Modifier : le nom change s enregistre et rien ne bouge ; l arrivee 30 min plus tard
 //       s enregistre, chaque passage pose suit de 30 min, et la vague retiree reste a placer avec ses joueurs (et son
 //       groupe). Les deux dossiers pareils.
+//   [L] LE LASER SEUL TROP GRAND POUR LES ARMES, LE SERVEUR (2026-11-24, Ansar sur la console, 35 joueurs, 30 armes :
+//       « faut faire 2 groupe mais on voit pas et c super incomprehensible et pas complet »). Un laser seul coupe en
+//       groupes garde les departs, la fin et le prix du laser d avant, a 1, 2 et 3 parties (les groupes passent l un
+//       apres l autre, partie par partie) ; l espacement choisi reste, le nombre de groupes se choisit, les joueurs et
+//       l heure de chaque partie se posent a la minute ; ce qui ne tient pas se dit sur la case du groupe et de sa
+//       partie, et « Créer » ne cree rien ; la partie partagee (« Arène Auto »), « Pour vous seuls », Gembloux, 28
+//       joueurs et le canal public ne changent pas ; le dossier se renomme, se decale (a la minute aussi), se regle et
+//       grandit sans perdre ses groupes, une partie retiree du planning reste a placer. Un dossier d avant (des vagues,
+//       sans programme ni groupes) reste tel quel tant qu on ne touche pas ses groupes ; regles dans Modifier, ils
+//       s ecrivent sans changer son prix, son type, son libelle ni son programme.
 //   [*] Zero erreur JavaScript.
 //
 // CONTRE-PREUVES : `--contre-preuves` rejoue le gate sur du code casse expres, une mutation a la fois, en
@@ -212,6 +222,25 @@ const MUTATIONS = [
   { nom: 'partie-a-placer-sans-heure', lettre: 'K', serveur: true, fichier: OPS, de: '  const heures = lues && enAttente.size ? lues.map((siennes, rang) => (enAttente.has(rang + 1) && !siennes.laser_game ? { ...siennes, ...derniere(rang) } : siennes)) : lues;', vers: '  const heures = lues;' },
   { nom: 'partie-a-placer-reposee', lettre: 'K', serveur: true, fichier: OPS, de: '    if (!enAttente.length) return plan;', vers: '    if (enAttente.length) return plan;' },
   { nom: 'derniere-heure-oubliee', lettre: 'K', serveur: true, fichier: MOUVEMENT, de: 'heures: heures.map((siennes, rang) => ({ ...(avant[rang] || {}), ...siennes })), auxHeures: true };', vers: 'heures, auxHeures: true };' },
+  // [L] le laser seul : les parties d un groupe a la suite, l espacement ou l heure d une partie ignores, une partie
+  // ajoutee posee sur celle d un autre groupe, la case sans sa partie, les groupes coupes dans tout le monde, une partie
+  // hors de la grille acceptee, le decalage a la minute perdu, la partie retiree qui decale les autres, le dossier d avant
+  // sans groupes ou qui recoit un programme.
+  { nom: 'parties-d-un-groupe-a-la-suite', lettre: 'L', serveur: true, fichier: GG, de: "  const partieParPartie = !activites.includes('bowling');", vers: '  const partieParPartie = false;' },
+  { nom: 'espacement-des-parties-oublie', lettre: 'L', serveur: true, fichier: GG, de: '          let depart = !rangVague && choisi >= t ? choisi : surLaGrille(t, grille, origine);', vers: '          let depart = surLaGrille(t, grille, origine);' },
+  { nom: 'heure-de-la-partie-ignoree', lettre: 'L', serveur: true, fichier: GG, de: '        if (HEURE.test(posee)) curseur = poserLaPartie(', vers: '        if (false) curseur = poserLaPartie(' },
+  { nom: 'partie-ajoutee-sur-une-autre', lettre: 'L', serveur: true, fichier: GG, de: '    while (areneDuGroupe(poses, depart, depart + laser.minutes)) depart += grille;\n    poserLaPartie(', vers: '    poserLaPartie(' },
+  { nom: 'heures-sans-les-parties', lettre: 'L', serveur: true, fichier: GG, de: "const cleDeLaPose = (pose, partieParPartie) => (pose.activite === 'laser_game' && partieParPartie ? cleDeLaPartie(pose.partie) : pose.activite);", vers: 'const cleDeLaPose = (pose) => pose.activite;' },
+  { nom: 'conflit-sans-sa-partie', lettre: 'L', serveur: true, fichier: MOTEUR, de: ", ...partieDeLaCase(scenario.resourceBlocks, block) };", vers: ' };' },
+  { nom: 'horaires-sans-la-partie', lettre: 'L', serveur: true, fichier: MOTEUR, de: 'activityId: activite, ...partieDeLaCase(blocs, bloc) } };', vers: 'activityId: activite } };' },
+  { nom: 'chevauchement-sans-les-parties', lettre: 'L', serveur: true, fichier: MOTEUR, de: ', ...(current.partie ? { partie: current.partie, avecPartie: previous.partie } : {}) } } : {}),', vers: ' } } : {}),' },
+  { nom: 'partie-perdue-en-route', lettre: 'L', serveur: true, fichier: FENETRE, de: ', ...(Number(x.partie) > 0 ? { partie: Number(x.partie) } : {}) })) }', vers: ' })) }' },
+  { nom: 'groupes-coupes-dans-tout-le-monde', lettre: 'L', serveur: true, fichier: MOTEUR, de: '  const decoupe = sousGroupes({ groupe: laserSeul ? laserPax : pax, activites,', vers: '  const decoupe = sousGroupes({ groupe: pax, activites,' },
+  { nom: 'partie-hors-de-la-grille-acceptee', lettre: 'L', serveur: true, fichier: MOTEUR, de: '  if (horsGrille >= 0) return {', vers: '  if (false) return {' },
+  { nom: 'decale-sans-la-minute', lettre: 'L', serveur: true, fichier: OPS, de: '    const groupesALaMinute = staff && isEdit && laserSeulEnGroupes(request);', vers: '    const groupesALaMinute = false;' },
+  { nom: 'partie-retiree-decale-les-autres', lettre: 'L', serveur: true, fichier: GG, de: '  (laserSeul && Array.isArray(garde.heures) ? garde.heures : []).forEach(', vers: '  [].forEach(' },
+  { nom: 'dossier-d-avant-sans-groupes', lettre: 'L', serveur: true, fichier: OPS, de: 'buildVisitFormula(staff ? avecLeProgrammeDuLaser(request) : request, operationalBowling, { staff });', vers: 'buildVisitFormula(request, operationalBowling, { staff });' },
+  { nom: 'dossier-d-avant-recoit-un-programme', lettre: 'L', serveur: true, fichier: OPS, de: "  return { ...request, program: { items: [{ activityId: 'laser_game', participants: request.pax, games: request.laserGames || 1 }] } };", vers: "  return Object.assign(request, { program: { items: [{ activityId: 'laser_game', participants: request.pax, games: request.laserGames || 1 }] } });" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -1407,6 +1436,203 @@ async function principal() {
         ok(erreurs.length === 0, '[*] zero erreur JavaScript (K)', erreurs.slice(0, 3).join(' | '));
       } finally { await ctx.close(); }
     }
+    // =======================================================================
+    if (joue('L')) {
+      section('[L] LE LASER SEUL TROP GRAND POUR LES ARMES, LE SERVEUR : SES GROUPES, SES PARTIES, SES HEURES, SA MODIFICATION');
+      const jour = semer('vide').staffState.date;
+      const matin = () => { globalThis.__comptoirMaintenant = FX.instant(jour, '09:00').getTime(); B.semer([]); };
+      // Ce que la fenetre envoie pour un laser seul ; `gg` null : le laser d avant, sans programme ni demande.
+      const demande = ({ pax = 35, laser = pax, parties = 1, heure = '14:00', departs = null, gg = { impose: true }, centre = 'libramont', extra = {} } = {}) => ({
+        name: 'Laser Seul', phone: '0470111222', email: '', notes: '', occasion: '', date: jour, startTime: heure, duration: parties / 2, totalDuration: parties, lanes: [], pax, status: 'pending', type: 'laser', formuleId: '', label: 'Laser Game',
+        laserGames: parties, extras: [], channel: 'staff', requiresLanes: false, centerId: centre,
+        ...(gg ? {
+          program: [{ activityId: 'laser_game', pax, participants: laser, games: parties }],
+          preference: { activityOrder: ['laser_game'], preferredTimes: { laser_game: heure }, laserGameTimes: departs || [heure], laserPlacement: 'scheduled', grandGroupe: gg },
+        } : {}),
+        ...extra,
+      });
+      const simuler = async (c) => (await serveur.appeler('POST', '/api/staff-reservations', { ...c, dryRun: true })).json.plan || {};
+      const creerLe = async (c) => { const x = await serveur.appeler('POST', '/api/staff-reservations', c); return { statut: x.statut, message: (x.json && x.json.message) || '', coincent: (x.json && x.json.coincent) || [], d: x.json && x.json.reservation }; };
+      const patcher = async (id, corps) => { const x = await serveur.appeler('PATCH', '/api/staff-reservations', { id, centerId: 'libramont', baseUpdatedAt: version(id), ...corps }); return { statut: x.statut, message: (x.json && x.json.message) || '' }; };
+      const aBlanc = async (id, corps) => { const x = await serveur.appeler('POST', '/api/staff-reservations', { dryRun: true, centerId: 'libramont', modification: { id, centerId: 'libramont', baseUpdatedAt: version(id), ...corps } }); return x.json || {}; };
+      const ligneDe = (id) => B.base.reservations.get(Number(id)) || B.base.reservations.get(id);
+      const version = (id) => new Date(ligneDe(id).updated_at).toISOString();
+      const lasersDe = (blocs) => (Array.isArray(blocs) ? blocs : []).filter((b) => b && (b.activite || b.activityId) === 'laser_game')
+        .map((b) => ({ g: Number(b.sousGroupe) || 0, p: Number(b.partie || b.countIndex) || 1, de: String(b.debut || b.startTime).slice(0, 5), a: String(b.fin || b.endTime).slice(0, 5), n: Number(b.joueursReels || b.joueurs || b.players) || 0 }));
+      // « G2P1@14:30x17 » : le groupe 2 joue sa partie 1 a 14:30, a 17 joueurs.
+      const passages = (blocs) => lasersDe(blocs).map((x) => `G${x.g}P${x.p}@${x.de}x${x.n}`).sort().join(' ');
+      const departsDe = (blocs) => lasersDe(blocs).map((x) => `P${x.p} ${x.de}-${x.a} x${x.n}`).sort().join(' ');
+      const enBase = (id) => passages(((ligneDe(id) || {}).ops_plan || {}).resourceBlocks);
+      const ggDe = (id) => ((ligneDe(id) || {}).ops_plan || {}).grandGroupe || null;
+      const heuresDe = (gg) => JSON.stringify((gg && gg.heures) || null);
+      const coince = (plan, groupe, partie, motif) => (plan.coincent || []).some((x) => x.groupe === groupe && x.activite === 'laser_game' && (Number(x.partie) || 0) === partie && motif.test(x.raison || ''));
+
+      // LE PLAN D AVANT, EN GROUPES : memes departs, memes joueurs, meme fin, meme prix.
+      matin();
+      for (const parties of [1, 2, 3]) {
+        const avant = await simuler(demande({ parties, gg: null }));
+        const groupes = await simuler(demande({ parties }));
+        ok(avant.disponible === true && groupes.disponible === true && departsDe(groupes.blocs) !== '' && departsDe(groupes.blocs) === departsDe(avant.blocs)
+          && groupes.fin === avant.fin && Number(groupes.prix) === Number(avant.prix) && groupes.grandGroupe && groupes.grandGroupe.nombre === 2 && groupes.grandGroupe.tourne === false
+          && JSON.stringify(groupes.grandGroupe.tailles) === '[18,17]',
+        `[L] 35 joueurs, ${parties} partie(s) : deux groupes de 18 et 17, aux departs, a la fin et au prix du laser d avant`, { avant: departsDe(avant.blocs), groupes: departsDe(groupes.blocs), fin: [avant.fin, groupes.fin], prix: [avant.prix, groupes.prix], refus: groupes.refus });
+      }
+      const un = await simuler(demande());
+      ok(passages(un.blocs) === 'G1P1@14:00x18 G2P1@14:30x17' && Number(un.prix) === 350 && heuresDe(un.grandGroupe) === '[{"laser_game":"14:00"},{"laser_game":"14:30"}]',
+        '[L] 35 joueurs a 14:00 : groupe 1 a 14:00 (18), groupe 2 a 14:30 (17), 350 €, l heure de chaque groupe au plan', { passages: passages(un.blocs), prix: un.prix, gg: un.grandGroupe });
+      const deuxParties = await simuler(demande({ parties: 2 }));
+      ok(passages(deuxParties.blocs) === 'G1P1@14:00x18 G1P2@15:00x18 G2P1@14:30x17 G2P2@15:30x17'
+        && heuresDe(deuxParties.grandGroupe) === '[{"laser_game":"14:00","laser_game_2":"15:00"},{"laser_game":"14:30","laser_game_2":"15:30"}]',
+      '[L] deux parties : les groupes jouent l un apres l autre, partie par partie, l heure de chaque partie au plan', { passages: passages(deuxParties.blocs), gg: deuxParties.grandGroupe, refus: deuxParties.refus });
+      const espacees = await simuler(demande({ parties: 2, departs: ['14:00', '16:00'] }));
+      ok(passages(espacees.blocs) === 'G1P1@14:00x18 G1P2@16:00x18 G2P1@14:30x17 G2P2@16:30x17',
+        '[L] la partie 2 espacee a 16:00 par le comptoir : groupe 1 a 16:00, groupe 2 a 16:30', { passages: passages(espacees.blocs), refus: espacees.refus });
+      const troisDeux = await simuler(demande({ parties: 2, departs: ['14:00', '15:30'], gg: { impose: true, nombre: 3 } }));
+      ok(passages(troisDeux.blocs) === 'G1P1@14:00x12 G1P2@15:30x12 G2P1@14:30x12 G2P2@16:00x12 G3P1@15:00x11 G3P2@16:30x11' && Number(troisDeux.prix) === Number(deuxParties.prix),
+        '[L] trois groupes choisis et deux parties : 12, 12 et 11, la partie 2 apres la partie 1 de tous, au meme prix', { passages: passages(troisDeux.blocs), prix: [troisDeux.prix, deuxParties.prix], refus: troisDeux.refus });
+      const trois = await simuler(demande({ gg: { impose: true, nombre: 3 } }));
+      ok(passages(trois.blocs) === 'G1P1@14:00x12 G2P1@14:30x12 G3P1@15:00x11' && Number(trois.prix) === 350 && trois.grandGroupe && trois.grandGroupe.nombreChoisi === true,
+        '[L] trois groupes choisis : 14:00, 14:30 et 15:00, 12, 12 et 11 joueurs, 350 €', { passages: passages(trois.blocs), prix: trois.prix, refus: trois.refus });
+      const horsGrille = await simuler(demande({ parties: 2, departs: ['14:00', '15:10'] }));
+      ok(horsGrille.disponible === false && /partie 2/.test(horsGrille.refus || '') && /heures pleines ou demies/.test(horsGrille.refus || ''),
+        '[L] une partie 2 a 15:10 sans heure posee : refusee, comme le laser d avant, et la phrase dit laquelle', horsGrille.refus);
+
+      // LES JOUEURS ET LES HEURES POSES AU COMPTOIR, PARTIE PAR PARTIE, A LA MINUTE.
+      const posees = await simuler(demande({ parties: 2, gg: { impose: true, nombre: 2, tailles: [20, 15], heures: [{ laser_game: '14:00', laser_game_2: '16:10' }, { laser_game: '15:10', laser_game_2: '15:40' }] } }));
+      ok(posees.disponible === true && passages(posees.blocs) === 'G1P1@14:00x20 G1P2@16:10x20 G2P1@15:10x15 G2P2@15:40x15' && posees.grandGroupe.auxHeures === true && posees.fin === '16:35',
+        '[L] 20 et 15 joueurs, chaque partie a son heure, a la minute : le plan les rend telles quelles, fin 16:35', { passages: passages(posees.blocs), fin: posees.fin, refus: posees.refus });
+      const uneSeule = await simuler(demande({ parties: 2, gg: { impose: true, nombre: 2, heures: [{ laser_game: '14:10' }, { laser_game: '15:10' }] } }));
+      ok(passages(uneSeule.blocs) === 'G1P1@14:10x18 G1P2@14:40x18 G2P1@15:10x17 G2P2@15:40x17',
+        '[L] une seule heure par groupe : la partie 2 suit de 30 min', { passages: passages(uneSeule.blocs), refus: uneSeule.refus });
+
+      // CE QUI NE TIENT PAS SE DIT SUR LA CASE DU GROUPE ET DE SA PARTIE.
+      const tot = await simuler(demande({ gg: { impose: true, nombre: 2, heures: [{ laser_game: '14:00' }, { laser_game: '08:00' }] } }));
+      ok(tot.disponible === false && coince(tot, 2, 0, /^Groupe 2 : le laser à 08:00 commence avant l’ouverture \(10:00\)\.$/) && (tot.coincent || []).length === 1,
+        '[L] le groupe 2 a 08:00 : sa case dit qu il commence avant l ouverture', tot.coincent || tot.refus);
+      const tot2 = await simuler(demande({ parties: 2, gg: { impose: true, nombre: 2, heures: [{ laser_game: '14:00', laser_game_2: '15:00' }, { laser_game: '14:30', laser_game_2: '08:00' }] } }));
+      ok(tot2.disponible === false && coince(tot2, 2, 2, /^Groupe 2 : le laser à 08:00 commence avant l’ouverture \(10:00\)\.$/) && (tot2.coincent || []).length === 1,
+        '[L] la partie 2 du groupe 2 a 08:00 : la case de cette partie le dit, elle seule', tot2.coincent || tot2.refus);
+      const memeHeure = await simuler(demande({ gg: { impose: true, nombre: 2, heures: [{ laser_game: '14:00' }, { laser_game: '14:10' }] } }));
+      ok(memeHeure.disponible === false && coince(memeHeure, 2, 0, /^Laser à 14:10 : il reste 12 places sur 30 \(le groupe 1 y joue\), il en faut 17\. Décalez le départ\.$/),
+        '[L] le groupe 2 a 14:10, pendant le groupe 1 : il reste 12 places sur 30, il en faut 17', memeHeure.coincent || memeHeure.refus);
+      const collees = await simuler(demande({ parties: 2, gg: { impose: true, nombre: 2, heures: [{ laser_game: '14:00', laser_game_2: '14:10' }, { laser_game: '15:00', laser_game_2: '15:30' }] } }));
+      ok(collees.disponible === false && coince(collees, 1, 1, /se chevauchent/) && coince(collees, 1, 2, /Groupe 1 : Laser Game \(partie 1\) \(14:00-14:25\) et Laser Game \(partie 2\) \(14:10\) se chevauchent/),
+        '[L] les deux parties du groupe 1 en meme temps : ses deux cases le disent', collees.coincent || collees.refus);
+      const croisees = await simuler(demande({ parties: 2, gg: { impose: true, nombre: 2, heures: [{ laser_game: '14:00', laser_game_2: '14:30' }, { laser_game: '14:30', laser_game_2: '15:30' }] } }));
+      ok(croisees.disponible === false && coince(croisees, 1, 2, /^Laser à 14:30 : il reste 13 places sur 30 \(le groupe 2 y joue\), il en faut 18\. Décalez le départ\.$/),
+        '[L] la partie 2 du groupe 1 au depart du groupe 2 : 18 + 17 armes sur 30, sa case le dit', croisees.coincent || croisees.refus);
+      const manque = await simuler(demande({ parties: 2, gg: { impose: true, nombre: 2, heures: [{ laser_game: '14:00', laser_game_2: '15:00' }, { laser_game_2: '15:30' }] } }));
+      ok(manque.disponible === false && coince(manque, 2, 1, /^Groupe 2 : donnez l’heure du laser, partie 1\.$/),
+        '[L] le groupe 2 sans heure pour sa partie 1 : sa case la demande', manque.coincent || manque.refus);
+      const tropGrand = await simuler(demande({ gg: { impose: true, nombre: 2, tailles: [32, 3] } }));
+      ok(tropGrand.disponible === false && coince(tropGrand, 1, 0, /^Groupe 1 : 32 joueurs au laser, 30 armes à la fois\.$/), '[L] 32 et 3 joueurs avec 30 armes : refuse sur la case du groupe 1', tropGrand.coincent || tropGrand.refus);
+      const refuse = await creerLe(demande({ gg: { impose: true, nombre: 2, heures: [{ laser_game: '14:00' }, { laser_game: '08:00' }] } }));
+      ok(refuse.statut === 409 && /^Ces groupes ne tiennent pas au planning : Groupe 2 : le laser à 08:00 commence avant l’ouverture \(10:00\)\.$/.test(refuse.message) && B.base.reservations.size === 0,
+        '[L] « Créer » avec une heure qui ne tient pas : refuse en disant le groupe, rien ne s ecrit', refuse);
+
+      // LA JOURNEE : un autre groupe dans la partie (« Arène Auto »), l arene pour eux seuls, l autre centre, le canal public.
+      matin();
+      await creerLe(demande({ pax: 12, heure: '14:30', gg: null }));
+      const partage = await simuler(demande());
+      ok(partage.disponible === true && passages(partage.blocs) === 'G1P1@14:00x18 G2P1@14:30x17' && (partage.blocs || []).some((b) => b.sousGroupe === 2 && b.partagee === true && b.joueursAvant === 12),
+        '[L] 12 joueurs d un autre dossier a 14:30 : le groupe 2 (17) joue avec eux, 29 armes sur 30', { blocs: partage.blocs, refus: partage.refus });
+      matin();
+      await creerLe(demande({ pax: 14, heure: '14:30', gg: null }));
+      const plein = await simuler(demande());
+      ok(plein.disponible === false && coince(plein, 2, 0, /^Laser à 14:30 : il reste 16 places sur 30, il en faut 17\. Décalez le départ\.$/),
+        '[L] 14 joueurs d un autre dossier a 14:30 : il reste 16 places, il en faut 17, sur la case du groupe 2', plein.coincent || plein.refus);
+      matin();
+      const seuls = await simuler({ ...demande(), preference: { ...demande().preference, arene: 'seuls' } });
+      ok(seuls.disponible === true && passages(seuls.blocs) === 'G1P1@14:00x18 G2P1@14:30x17' && (seuls.blocs || []).every((b) => b.joueurs === 30 && b.arene === 'seuls') && Number(seuls.prix) === 350,
+        '[L] « Pour vous seuls » : chaque groupe tient toute l arene, ses joueurs a lui, 350 €', { blocs: seuls.blocs, prix: seuls.prix, refus: seuls.refus });
+      const gembloux = await simuler(demande({ pax: 45, centre: 'gembloux' }));
+      ok(gembloux.disponible === true && JSON.stringify((gembloux.grandGroupe || {}).tailles) === '[15,15,15]' && lasersDe(gembloux.blocs).length === 3, '[L] Gembloux, 20 armes : 45 joueurs en 3 groupes de 15', { blocs: passages(gembloux.blocs), refus: gembloux.refus });
+      const partiel = await simuler({ ...demande({ pax: 50, laser: 35 }), type: 'visite', program: [{ activityId: 'laser_game', pax: 50, participants: 35, games: 1 }, { activityId: 'minigolf_indoor', pax: 50, participants: 50 }], preference: { ...demande().preference, activityOrder: ['laser_game', 'minigolf_indoor'] } });
+      ok(partiel.disponible === true && passages(partiel.blocs) === 'G1P1@14:00x18 G2P1@14:30x17' && JSON.stringify((partiel.grandGroupe || {}).tailles) === '[18,17]',
+        '[L] 50 personnes dont 35 au laser, avec le minigolf : les groupes sont ceux des 35 joueurs du laser', { passages: passages(partiel.blocs), gg: partiel.grandGroupe, refus: partiel.refus });
+      const petit = await simuler(demande({ pax: 28 }));
+      ok(petit.disponible === true && passages(petit.blocs) === 'G0P1@14:00x28', '[L] 28 joueurs tiennent en une partie : aucun groupe', passages(petit.blocs));
+      const { prepareReservationOps } = require(path.join(ROOT, OPS));
+      const enLigne = { ...demande({ gg: { impose: true, nombre: 3 } }) };
+      delete enLigne.channel;
+      const groupesDe = (ops) => ((ops && ops.opsPlan && ops.opsPlan.resourceBlocks) || []).filter((b) => b.sousGroupe).length;
+      ok(groupesDe(await prepareReservationOps({ ...enLigne }, 'public')) === 0 && groupesDe(await prepareReservationOps({ ...enLigne }, 'staff')) === 3, '[L] le canal public ne lit jamais la demande des groupes');
+
+      // LE DOSSIER NE, SA MODIFICATION, SA PARTIE RETIREE.
+      matin();
+      const cree = await creerLe(demande({ parties: 2 }));
+      const id = cree.d && cree.d.id;
+      const r0 = id ? ligneDe(id) : null;
+      ok(cree.statut === 201 && r0 && r0.type === 'laser' && r0.label === 'Laser Game' && Number(r0.price) === Number(deuxParties.prix) && String(r0.start_time).slice(0, 5) === '14:00' && enBase(id) === passages(deuxParties.blocs),
+        '[L] le dossier nait en deux groupes : un « Laser Game », au prix et aux heures annonces', r0 ? { type: r0.type, label: r0.label, prix: r0.price, debut: r0.start_time, passages: enBase(id) } : cree);
+      if (r0) {
+        const nom = await patcher(id, { name: 'Laser Renomme' });
+        ok(nom.statut === 200 && enBase(id) === passages(deuxParties.blocs) && Number(ligneDe(id).price) === Number(r0.price), '[L] le nom change : rien ne bouge', { ...nom, passages: enBase(id) });
+        const decale = await patcher(id, { startTime: '15:00' });
+        ok(decale.statut === 200 && enBase(id) === 'G1P1@15:00x18 G1P2@16:00x18 G2P1@15:30x17 G2P2@16:30x17', '[L] decale a 15:00 : chaque groupe et chaque partie suivent d une heure', { ...decale, passages: enBase(id) });
+        const regles = { preference: { grandGroupe: { impose: true, nombre: 2, tailles: [20, 15], heures: [{ laser_game: '15:00', laser_game_2: '16:10' }, { laser_game: '15:40', laser_game_2: '17:00' }] } } };
+        const blanc = await aBlanc(id, regles);
+        const ecrit = await patcher(id, regles);
+        ok(!blanc.refus && ecrit.statut === 200 && enBase(id) === 'G1P1@15:00x20 G1P2@16:10x20 G2P1@15:40x15 G2P2@17:00x15' && Number(ligneDe(id).price) === Number(r0.price) && blanc.reservation && Number(blanc.reservation.price) === Number(r0.price),
+          '[L] Modifier : 20 et 15 joueurs, chaque partie a son heure, ecrits tels quels au meme prix', { refus: blanc.refus, ...ecrit, passages: enBase(id), prix: ligneDe(id).price });
+        const mauvaises = { preference: { grandGroupe: { impose: true, nombre: 2, tailles: [20, 15], heures: [{ laser_game: '15:00', laser_game_2: '16:10' }, { laser_game: '15:40', laser_game_2: '08:00' }] } } };
+        const refusBlanc = (await aBlanc(id, mauvaises)).refus || {};
+        const refusEcrit = await patcher(id, mauvaises);
+        ok(/Groupe 2 : le laser à 08:00 commence avant l’ouverture/.test(refusBlanc.message || '') && (refusBlanc.coincent || []).some((x) => x.groupe === 2 && x.activite === 'laser_game' && Number(x.partie) === 2) && refusEcrit.statut === 422 && enBase(id) === 'G1P1@15:00x20 G1P2@16:10x20 G2P1@15:40x15 G2P2@17:00x15',
+          '[L] Modifier, la partie 2 du groupe 2 a 08:00 : refuse a blanc sur sa case, et « Enregistrer » n ecrit rien', { refusBlanc, refusEcrit, passages: enBase(id) });
+        const plus = await patcher(id, { pax: 36, program: [{ activityId: 'laser_game', pax: 36, participants: 36, games: 2 }] });
+        ok(plus.statut === 200 && enBase(id) === 'G1P1@15:00x18 G1P2@16:10x18 G2P1@15:40x18 G2P2@17:00x18', '[L] un joueur de plus : les heures posees restent, les groupes font 18 et 18', { ...plus, passages: enBase(id) });
+        const troisieme = await patcher(id, { pax: 36, program: [{ activityId: 'laser_game', pax: 36, participants: 36, games: 3 }] });
+        ok(troisieme.statut === 200 && enBase(id) === 'G1P1@15:00x18 G1P2@16:10x18 G1P3@17:30x18 G2P1@15:40x18 G2P2@17:00x18 G2P3@18:10x18', '[L] une partie de plus : elle prend la premiere demi-heure libre de l arene, groupe par groupe, les autres restent', { ...troisieme, passages: enBase(id) });
+      }
+      // Decale a la minute, puis devenu plus petit que les armes : les groupes suivent, puis il n y en a plus.
+      matin();
+      const minute = await creerLe(demande());
+      const idm = minute.d && minute.d.id;
+      if (idm) {
+        const dix = await patcher(idm, { startTime: '14:10' });
+        ok(dix.statut === 200 && enBase(idm) === 'G1P1@14:10x18 G2P1@14:40x17' && heuresDe(ggDe(idm)) === '[{"laser_game":"14:10"},{"laser_game":"14:40"}]' && Number(ligneDe(idm).total_duration) === 1,
+          '[L] decale a 14:10 : le groupe 1 a 14:10, le groupe 2 a 14:40, une heure de visite comme avant', { ...dix, passages: enBase(idm), gg: ggDe(idm), duree: ligneDe(idm).total_duration });
+        const moins = await patcher(idm, { pax: 28, program: [{ activityId: 'laser_game', pax: 28, participants: 28, games: 1 }] });
+        ok(moins.statut === 200 && enBase(idm) === 'G0P1@14:10x28' && Number(ligneDe(idm).price) === 280, '[L] 28 joueurs : une seule partie, plus de groupes, 280 €', { ...moins, passages: enBase(idm), prix: ligneDe(idm).price });
+      } else ok(false, '[L] le laser de 35 joueurs est cree (a la minute)', minute);
+      // La partie du groupe 1 retiree du planning, celle du groupe 2 deplacee : une modification garde l une a placer, l autre a son heure.
+      matin();
+      const seulLaser = await creerLe(demande());
+      const ids = seulLaser.d && seulLaser.d.id;
+      if (ids) {
+        const retire = await patcher(ids, { activityMove: { activityId: 'laser_game', unitKey: '1.1', unplace: true } });
+        const bouge = await patcher(ids, { activityMove: { activityId: 'laser_game', unitKey: '1.2', startTime: '16:10' } });
+        const aPlacer = () => ((((ligneDe(ids) || {}).ops_plan || {}).laserPassPlan || {}).pendingUnits || []).map((u) => `${u.unitKey}x${u.pax}g${u.sousGroupe || 0}`).join(' ');
+        ok(retire.statut === 200 && bouge.statut === 200 && enBase(ids) === 'G2P1@16:10x17' && aPlacer() === '1.1x18g1', 'MONTAGE le laser du groupe 1 retire du planning, celui du groupe 2 deplace a 16:10', { retire, bouge, passages: enBase(ids), aPlacer: aPlacer() });
+        const tel = await patcher(ids, { phone: '0470333444', startTime: '14:30' });
+        ok(tel.statut === 200 && enBase(ids) === 'G2P1@16:40x17' && aPlacer() === '1.1x18g1', '[L] decale de 30 min : le groupe 2 passe a 16:40, le groupe 1 reste a placer avec ses 18 joueurs', { ...tel, passages: enBase(ids), aPlacer: aPlacer(), gg: ggDe(ids) });
+      } else ok(false, '[L] le laser de 35 joueurs est cree', seulLaser);
+
+      // UN DOSSIER D AVANT (au laser seul, en vagues, sans groupes ni programme) : rien a migrer, il se regle quand on y touche.
+      matin();
+      const ancien = await creerLe(demande({ gg: null }));
+      const ida = ancien.d && ancien.d.id;
+      const a0 = ida ? ligneDe(ida) : null;
+      ok(ancien.statut === 201 && a0 && !a0.program && !ggDe(ida) && enBase(ida) === 'G0P1@14:00x18 G0P1@14:30x17' && Number(a0.price) === 350, 'MONTAGE un dossier d avant : 35 joueurs, deux vagues, ni programme ni groupes, 350 €', a0 ? { program: a0.program, passages: enBase(ida), prix: a0.price } : ancien);
+      if (a0) {
+        const nom = await patcher(ida, { name: 'Ancien Renomme' });
+        const plus = await patcher(ida, { pax: 36, laserGames: 1 });
+        ok(nom.statut === 200 && plus.statut === 200 && !ggDe(ida) && enBase(ida) === 'G0P1@14:00x18 G0P1@14:30x18' && !ligneDe(ida).program, '[L] un dossier d avant dont les groupes ne sont pas touches reste en vagues, sans groupes', { nom, plus, passages: enBase(ida), gg: ggDe(ida) });
+        const prix36 = Number(ligneDe(ida).price);
+        const regles = { preference: { grandGroupe: { impose: true, nombre: 3, tailles: [12, 12, 12], heures: [{ laser_game: '14:00' }, { laser_game: '14:40' }, { laser_game: '15:20' }] } } };
+        const blanc = await aBlanc(ida, regles);
+        const ecrit = await patcher(ida, regles);
+        const a1 = ligneDe(ida);
+        ok(!blanc.refus && ecrit.statut === 200 && enBase(ida) === 'G1P1@14:00x12 G2P1@14:40x12 G3P1@15:20x12' && Number(a1.price) === prix36 && !a1.program && a1.type === 'laser' && a1.label === a0.label && String(a1.start_time).slice(0, 5) === '14:00',
+          '[L] ses groupes regles dans Modifier : trois groupes a leurs heures, le prix, le type, le libelle et le programme du dossier ne bougent pas', { refus: blanc.refus, ...ecrit, passages: enBase(ida), prix: [a1.price, prix36], program: a1.program, label: a1.label });
+        const apres = await patcher(ida, { startTime: '15:00' });
+        ok(apres.statut === 200 && enBase(ida) === 'G1P1@15:00x12 G2P1@15:40x12 G3P1@16:20x12' && !ligneDe(ida).program, '[L] decale ensuite a 15:00 : ses trois groupes suivent', { ...apres, passages: enBase(ida) });
+        const refus = (await aBlanc(ida, { preference: { grandGroupe: { impose: true, nombre: 3, tailles: [12, 12, 12], heures: [{ laser_game: '15:00' }, { laser_game: '15:10' }, { laser_game: '16:20' }] } } })).refus || {};
+        ok(/par le groupe 1|le groupe 1 y joue/.test(refus.message || '') && (refus.coincent || []).some((x) => x.groupe === 2 && x.activite === 'laser_game'), '[L] un dossier d avant : une heure qui ne tient pas se dit sur la case de son groupe', refus);
+      }
+    }
+
   } catch (error) {
     ok(false, `exception : ${error.message}`, String(error.stack || '').split('\n').slice(0, 4).join(' | '));
   } finally {

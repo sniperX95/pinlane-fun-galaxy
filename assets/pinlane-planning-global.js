@@ -665,7 +665,8 @@
     var attendue = cocheAttendue({ start: debut, end: e.end, libre: e.libre }, { present: true, reparti: false, now: m.maintenant });
     return attendue === 'noncoche' ? 'acocher' : attendue || 'avenir';
   }
-  var GF_ETATS = { fini: 'fait', clos: 'pas coché', avenir: 'à venir', retard: 'groupe pas encore pointé', lancer: 'à lancer, pas encore coché', acocher: 'pas encore coché', aplacer: 'à placer' };
+  // (la case vide devant l heure : la bulle dit ce qu elle attend et ou se pose la coche, 2026-11-24)
+  var GF_ETATS = { fini: 'fait', clos: 'pas coché', avenir: 'à venir', retard: 'groupe pas encore pointé', lancer: 'à lancer, pas encore coché : la case se coche dans la fiche du groupe une fois l’activité lancée', acocher: 'pas encore coché : la case se coche dans la fiche du groupe', aplacer: 'à placer' };
   // CE QUI VIENT DANS LA DEMI-HEURE SORT DU RESTE (2026-11-02). Toutes les heures
   // de la feuille etaient du meme gras : a 15:10, rien ne disait lesquelles
   // comptent. Une heure a venir dans les 30 min reste en gras, celles d apres
@@ -884,7 +885,12 @@
     }
     if (e.enPlus) bulle += ' · en plus de la formule';
     var classes = 'gf-x is-' + etat + (etat === 'fini' && gfVientDeFinir(g, e, col, m.jour) ? ' vient-de-finir' : '') + (e.libre && !e.journee ? ' is-libre' : '') + (e.credit ? ' is-credit' : '') + (gfBientot(g, e, etat, m) ? ' is-bientot' : '') + (panne ? ' is-panne' : '') + (e.enPlus ? ' is-en-plus' : '');
-    return '<span class="' + classes + '" title="' + gpEsc(bulle + ' · ' + GF_ETATS[etat]) + '"' + (panne ? ' data-gf-voir="bowling"' : '') + '>' + (montant ? '<b class="gf-x__t is-nu gf-x__montant">' + gpEsc(t) + '</b>' : gfHeureHtml(t, etat === 'fini', etat, gfActDe(g, e, m, t, panne), e.enPlus)) + (d ? '<span class="gf-x__d">' + gfNumerosEntiers(d) + '</span>' : '') + gfHorsHtml(d2, d3) + '</span>';
+    // LA CASE VIDE DEVANT L HEURE SE DIT EN MOTS (2026-11-24, le gerant, en ligne : « c quoi le petit carré à
+    // côté »). Elle attend sa coche : l heure est la et le groupe aussi, personne n a coche. Le mot se lit
+    // sous la case, « à lancer » tant que l activite court, « à cocher » une fois son heure passee ; la bulle
+    // dit ou se pose la coche (GF_ETATS).
+    var attendue = t !== '' && !montant && (etat === 'lancer' || etat === 'acocher') ? '<span class="gf-x__attend">' + (etat === 'lancer' ? 'à lancer' : 'à cocher') + '</span>' : '';
+    return '<span class="' + classes + '" title="' + gpEsc(bulle + ' · ' + GF_ETATS[etat]) + '"' + (panne ? ' data-gf-voir="bowling"' : '') + '>' + (montant ? '<b class="gf-x__t is-nu gf-x__montant">' + gpEsc(t) + '</b>' : gfHeureHtml(t, etat === 'fini', etat, gfActDe(g, e, m, t, panne), e.enPlus)) + attendue + (d ? '<span class="gf-x__d">' + gfNumerosEntiers(d) + '</span>' : '') + gfHorsHtml(d2, d3) + '</span>';
   }
   // L HEURE SE TOUCHE (2026-11-22, gfOuvrirHeure plus bas) : une heure fixe, d une activite que ce role
   // deplace, se touche et se prend. Aucun element de plus : la pastille porte son geste. (une piste en

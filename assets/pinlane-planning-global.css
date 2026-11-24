@@ -511,6 +511,10 @@ button.gf-bloc__in:focus-visible { outline: 2px solid var(--console-focus); outl
 .gf-x.is-acocher .gf-x__t { background: transparent; color: var(--bk-encre); box-shadow: inset 0 0 0 1.5px var(--bk-barre); }
 .gf-x:is(.is-lancer, .is-acocher) .gf-x__t:not(.is-nu) { padding-left: 3px; }
 .gf-x__ac { display: inline-block; width: 10px; height: 10px; margin-right: 3px; vertical-align: -1px; }
+/* LA CASE VIDE SE DIT EN MOTS (2026-11-24, le gerant : « c quoi le petit carré à côté ») : « à lancer » ou
+   « à cocher » sous l heure, a l encre de sa pastille, sans fond ; il ne prend que sa ligne. */
+.gf-x__attend { align-self: flex-start; margin-top: 1px; font-size: 12px; font-weight: 700; line-height: 15px; color: var(--bk-encre-2); white-space: nowrap; }
+.gf-r.is-rt .gf-x__attend { color: var(--danger); }
 /* « + » EN PLUS DE LA FORMULE (2026-11-23) : en exposant sur la pastille, sans largeur ; l encre du
    texte, aucune couleur de statut. */
 .gf-x.is-en-plus .gf-x__t { position: relative; }

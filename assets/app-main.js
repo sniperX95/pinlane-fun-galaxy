@@ -26608,8 +26608,8 @@ function getReservationDelayFlag(reservation) {
 }
 
 // Petit indicateur horloge « +X min » sur la carte planning, avec tooltip
-// (« retardée de X min, 15:00→15:15 »). Cliquable pour retirer l'indicateur.
-const PUCE_EN_RETARD = '<span class="delay-indicator is-retard" title="En retard : pas encore pointé arrivé" aria-label="En retard"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg><span class="delay-indicator-label">En retard</span></span>';
+// (« retardée de X min, 15:00→15:15 »). Cliquable pour retirer l'indicateur. (Le retard du groupe
+// lui-meme a sa puce rouge, renderRetardDuBloc ; celle-ci reste au dossier decale par un autre.)
 function renderDelayIndicator(reservation) {
   const flag = getReservationDelayFlag(reservation);
   if (!flag) return '';
@@ -26701,6 +26701,45 @@ function texteDuRetard(rt, maintenant) {
 function retardDuMoment(r, moment) {
   const rt = retardDuGroupe(r, moment);
   return { prevu: rt && Number.isFinite(rt.prevu) ? rt.prevu : heurePrevueDuRetard(moment.item), minutes: minutesDuRetard(rt, maintenantDuDossier(r)) };
+}
+
+// LE RETARD SE VOIT SUR LE BLOC, AU PLANNING BOWLING ET AU PLANNING LASER (2026-11-24, le gerant, en ligne :
+// « quand y a un retard on voit [à peine], faut mettre en rouge qu'ils sont arrivés en retard là, et plus
+// visible, bowling et laser game »). Une puce de 9,5 px, ambre pour un retard note, « +9 » sans un mot :
+// elle se lisait comme un detail. La regle et les mots sont ceux du planning complet (retardDuGroupe,
+// texteDuRetard) : « En retard · 10 min » tant que le groupe n est pas la (les minutes courent, le tic de
+// la minute repeint), « Arrivé avec 9 min de retard » ensuite, et le jamais pointe d une visite finie.
+// Le bloc entier passe au rouge (feuille de style), la puce garde les minutes a toute largeur. Un
+// dossier decale par le retard d un AUTRE groupe n est pas en retard : il garde sa puce ambre.
+// Rend null, ou { etat: 'encours' | 'arrive', long, court, bulle }.
+function retardDuBloc(r, moment) {
+  const rt = retardDuGroupe(r, moment);
+  if (rt) {
+    const maintenant = maintenantDuDossier(r);
+    const n = minutesDuRetard(rt, maintenant);
+    const prevu = Number.isFinite(rt.prevu) ? `, prévu à ${formatClockDisplay(rt.prevu)}` : '';
+    const arrive = rt.etat === 'arrive';
+    return {
+      etat: arrive ? 'arrive' : 'encours',
+      long: texteDuRetard(rt, maintenant),
+      court: arrive ? `+${dureeDuRetard(n)}` : dureeDuRetard(n),
+      bulle: `${arrive ? `Arrivé avec ${dureeDuRetard(n)} de retard` : `En retard de ${dureeDuRetard(n)}`}${prevu}`,
+    };
+  }
+  if (!groupeEnRetardAuPlanning(r, moment)) return null;
+  return { etat: 'encours', long: 'En retard · jamais pointé', court: 'En retard', bulle: 'En retard : jamais pointé arrivé' };
+}
+const RETARD_ICONE = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>';
+// La puce rouge du bloc : les minutes toujours, la phrase entiere quand la piste a la place (CSS). Un
+// retard note se retire encore d un toucher pour qui a le geste (revertDelay), comme la puce d avant.
+function renderRetardDuBloc(r, rb) {
+  const dedans = `${RETARD_ICONE}<span class="delay-indicator-label bk-rt__long">${escapeHtml(rb.long)}</span><span class="bk-rt__court">${escapeHtml(rb.court)}</span>`;
+  const classes = `delay-indicator is-retard bk-rt is-${rb.etat}`;
+  if (getReservationDelayFlag(r) && !retardPousseDe(r) && peutGeste('retard')) {
+    const dit = `${rb.bulle}. Toucher pour retirer le retard et remettre à l’heure d’origine`;
+    return `<button type="button" class="${classes}" title="${escapeHtml(dit)}" aria-label="${escapeHtml(dit)}" onmousedown="event.stopPropagation()" onclick="revertDelay(event, ${Number(r.id)})">${dedans}</button>`;
+  }
+  return `<span class="${classes}" role="img" title="${escapeHtml(rb.bulle)}" aria-label="${escapeHtml(rb.bulle)}">${dedans}</span>`;
 }
 
 // LA FENETRE DU RETARD (2026-11-21, lib/retard-arrivee.js). Elle dit le retard, puis la nouvelle
@@ -27781,12 +27820,17 @@ function renderPlanning() {
       const densClass = getBookingDensityClass(height, state.staffPlanningExpanded);
       const displayName = getPlanningBookingDisplayName(r);
       const fullName = String(r.name || 'Client');
-      const delayedClass = getReservationDelayFlag(r) ? ' is-delayed' : '';
+      // LE RETARD DU GROUPE SUR SA CARTE (2026-11-24, retardDuBloc) : en retard, le bloc rouge et ses
+      // minutes ; arrive en retard, le cadre rouge et ses minutes. L ambre ne reste qu au dossier
+      // decale par le retard d un autre groupe.
+      const retardBloc = retardDuBloc(r, momentsDesCartes.get(String(r.id)));
+      const delayedClass = getReservationDelayFlag(r) && !retardBloc ? ' is-delayed' : '';
       const bowlingDuration = Number(item.window.duration) || 0;
       // EN RETARD, SUR LA CARTE (2026-11-08) : la puce du retard annonce, en rouge et a sa
       // place. Sans .is-delayed : les marques de la carte restent, c est le nom qui cede.
-      const enRetardIci = !delayedClass && groupeEnRetardAuPlanning(r, momentsDesCartes.get(String(r.id)));
+      const enRetardIci = Boolean(retardBloc) && retardBloc.etat === 'encours';
       const retardClass = enRetardIci ? ' is-en-retard' : '';
+      const arriveEnRetard = retardBloc && retardBloc.etat === 'arrive' ? ' is-rt-arrive' : '';
       const statsHtml = renderCardStats(Number(item.window.players) || getReservationActivityPlayers(r, 'bowling'), formatCardDurationLabel(bowlingDuration), { special: isSpecialBowlingDuration(bowlingDuration), durationTitle: formatDurationLabel(bowlingDuration), bowlingCapacity: item.window.bowlingCapacity });
       // L'OFFRE N'A SA PROPRE LIGNE QUE SI LA CARTE A LA HAUTEUR DE L'OFFRIR.
       // Mesure : une carte d'1h fait 46px, dont 44 utiles ; trois lignes (nom,
@@ -27852,10 +27896,10 @@ function renderPlanning() {
       // infobulle dit lesquelles et jusqu a quand.
       const volonte = item.window.aVolonte && window.PinlaneAVolonte ? window.PinlaneAVolonte.phraseDuBloc(r.opsPlan, item.window) : '';
       const motCoche = attendue === 'lancer' ? 'à lancer, pas encore coché' : attendue ? 'pas encore coché' : '';
-      bkHtml += `<div class="booking ${cls} ${densClass} ${getReservationHighlightClasses(r)}${delayedClass}${retardClass}${activitiesCompleteClass(r, suivi)}${attendue ? ` is-a-cocher${attendue === 'noncoche' ? ' is-non-coche' : ''}` : ''}${casLaser}${casProgression}${/^Allergie · /.test(noteDuCoin) ? ' a-allergie' : ''}${modifCarte || (essentiel && (essentiel.notes || essentiel.mesure || essentiel.adaptee)) ? ' a-dossier' : ''}${retenues.has(String(r.id)) ? '' : ' is-grise'}${isToday && item.window.end <= curH + 1e-6 && !attendue ? ' is-passee' : ''}${peutDeplacerIci ? '' : ' is-fixe'}" data-booking-res-id="${r.id}" data-booking-lane="${i}" data-booking-start="${st}" data-range="${formatClockDisplay(st)} - ${end}" data-extra="${cls === 'paid' ? 'payé' : cls === 'arr' ? 'sur place' : 'confirmé'}" role="button" tabindex="0" aria-label="${escapeHtml(r.name || 'Client')} · ${formatClockDisplay(st)} - ${end}${volonte ? ` · ${escapeHtml(volonte)}` : ''}${motCoche ? ` · ${motCoche}` : ''}"${volonte ? ` title="${escapeHtml(volonte)}" data-a-volonte="1"` : ''} style="top:${top}px;height:${height}px;--bk-order:${i};" ${peutDeplacerIci ? `aria-keyshortcuts="M" onkeydown="planningMoveKey(event,'bowling',${r.id},${i},${st})" onmousedown="startBowlingBookingPointerDrag(event, ${r.id}, ${i}, ${st})" ${planningTouchAttrs(`startBowlingBookingTouchDrag(event, ${r.id}, ${i}, ${st})`)}` : ''} onclick="if(shouldIgnoreBowlingDragClick(event)) return; event.stopPropagation();openPos(${r.id})">
+      bkHtml += `<div class="booking ${cls} ${densClass} ${getReservationHighlightClasses(r)}${delayedClass}${retardClass}${arriveEnRetard}${activitiesCompleteClass(r, suivi)}${attendue ? ` is-a-cocher${attendue === 'noncoche' ? ' is-non-coche' : ''}` : ''}${casLaser}${casProgression}${/^Allergie · /.test(noteDuCoin) ? ' a-allergie' : ''}${modifCarte || (essentiel && (essentiel.notes || essentiel.mesure || essentiel.adaptee)) ? ' a-dossier' : ''}${retenues.has(String(r.id)) ? '' : ' is-grise'}${isToday && item.window.end <= curH + 1e-6 && !attendue ? ' is-passee' : ''}${peutDeplacerIci ? '' : ' is-fixe'}" data-booking-res-id="${r.id}" data-booking-lane="${i}" data-booking-start="${st}" data-range="${formatClockDisplay(st)} - ${end}" data-extra="${cls === 'paid' ? 'payé' : cls === 'arr' ? 'sur place' : 'confirmé'}" role="button" tabindex="0" aria-label="${escapeHtml(r.name || 'Client')} · ${formatClockDisplay(st)} - ${end}${volonte ? ` · ${escapeHtml(volonte)}` : ''}${motCoche ? ` · ${motCoche}` : ''}"${volonte ? ` title="${escapeHtml(volonte)}" data-a-volonte="1"` : ''} style="top:${top}px;height:${height}px;--bk-order:${i};" ${peutDeplacerIci ? `aria-keyshortcuts="M" onkeydown="planningMoveKey(event,'bowling',${r.id},${i},${st})" onmousedown="startBowlingBookingPointerDrag(event, ${r.id}, ${i}, ${st})" ${planningTouchAttrs(`startBowlingBookingTouchDrag(event, ${r.id}, ${i}, ${st})`)}` : ''} onclick="if(shouldIgnoreBowlingDragClick(event)) return; event.stopPropagation();openPos(${r.id})">
         ${noteDuCoin ? `<span class="bk-coin" title="${escapeHtml(noteDuCoin)}" aria-hidden="true"></span>` : ''}
         <div class="booking-head">
-          <span class="bk-time">${formatClockDisplay(st)}</span>
+          <span class="bk-time"${attendue ? ` title="${attendue === 'lancer' ? 'À lancer, pas encore coché : la case se coche dans la fiche du groupe une fois le bowling lancé' : 'Pas encore coché : la case se coche dans la fiche du groupe'}"` : ''}>${formatClockDisplay(st)}</span>
           <span class="booking-name" title="${escapeHtml(fullName)}">${escapeHtml(displayName)}</span>
           ${renderCardFlags(r, { nom: displayName, essentiel, modif: modifCarte })}
           ${/* LA PUCE DE RETARD PREND SA PLACE AU LIEU DE FLOTTER DESSUS. Elle
@@ -27866,7 +27910,7 @@ function renderPlanning() {
                retard ». Elle entre donc dans la ligne, apres les marques, et
                cede son libelle toute seule quand la carte est trop courte
                (regle .booking.dens-xs deja en place). */''}
-          ${enRetardIci ? PUCE_EN_RETARD : renderDelayIndicator(r)}
+          ${retardBloc ? renderRetardDuBloc(r, retardBloc) : renderDelayIndicator(r)}
           ${renderBookingStateMark(cls)}
         </div>
         ${offreSurSaLigne ? `<div class="booking-offer">${offreHtml}</div>` : ''}
@@ -28351,7 +28395,10 @@ function lpLegende(modele, d, choisi) {
     const k = teintes.get(w);
     const suite = [lpNomUnite(w), w.arene === 'seuls' ? 'arène pour eux seuls' : '', Math.abs(w.start - d.t) > 0.001 ? `à ${lpHeure(w.start)}` : '']
       .filter(Boolean).join(' · ');
-    const enRetard = modele.enRetard.has(id);
+    // LE RETARD SUR LA CARTE DU LASER (2026-11-24, retardDuBloc) : la carte rouge et « En retard · 10 min »,
+    // puis « Arrivé avec 9 min de retard » cerne de rouge ; les minutes restent quand la carte n a qu une ligne.
+    const retardBloc = retardDuBloc(r, modele.moments.get(String(id)));
+    const enRetard = Boolean(retardBloc) && retardBloc.etat === 'encours';
     const etat = enRetard ? ' is-retard' : (r.status === 'arrived' || r.status === 'paid') ? ' is-la' : '';
     const choisiIci = choisi && choisi.id === id && choisi.unitKey === unitKey ? ' is-choisi' : '';
     const grise = modele.trouve(r) ? '' : ' is-grise';
@@ -28365,7 +28412,7 @@ function lpLegende(modele, d, choisi) {
     const coche = attendue ? ` is-a-cocher${attendue === 'noncoche' ? ' is-non-coche' : ''}` : etapeIci && etapeIci.fait ? ' is-coche' : '';
     const motCoche = attendue === 'lancer' ? ' · à lancer, pas encore coché' : attendue ? ' · pas encore coché' : etapeIci && etapeIci.fait ? ' · fait' : '';
     const titre = `${r.name || 'Groupe'} : ${lpPluriel(lpGroupe(w), 'joueur')}${suite ? `, ${suite}` : ''}. Toucher : sa fiche. Glisser : le déplacer.`;
-    const statut = r.status === 'paid' ? 'Payé' : enRetard ? 'En retard' : r.status === 'arrived' ? 'Arrivé' : 'Confirmé';
+    const statut = retardBloc ? retardBloc.long : r.status === 'paid' ? 'Payé' : r.status === 'arrived' ? 'Arrivé' : 'Confirmé';
     const partie = Number(w.countIndex || 1);
     const totalParties = getLaserGameCountForReservation(r);
     const vague = Number(w.waveIndex || w.groupWaveIndex || 1);
@@ -28379,7 +28426,8 @@ function lpLegende(modele, d, choisi) {
     // Dans une rangee serree, les pictos cedent et un coin replie dit la note : il rougit
     // avec une allergie, et l infobulle de la carte dit la note en entier.
     const noteLaser = texteNoteDeCarte(essentielDuDossier(r));
-    return `<button type="button" class="lp-g ${k}${etat}${choisiIci}${grise}${coche}${activitiesCompleteClass(r, suivi)}${/^Allergie · /.test(noteLaser) ? ' a-allergie' : ''}" ${lpAttrsGroupe(id, unitKey, { fiche: true })}${volonteLaser ? ' data-a-volonte="1"' : ''} title="${escapeHtml(`${titre} ${infos}${volonteLaser ? ` · ${volonteLaser}` : ''}${motCoche} · ${statut}${noteLaser ? ` · ${noteLaser}` : ''}`)}"><i aria-hidden="true"></i><span class="lp-g__nom"><b>${escapeHtml(r.name || 'Groupe')}</b>${lpPictos(r)}</span><span class="lp-g__sous"><span class="lp-card-info">${escapeHtml(infos)}</span>${renderActivityProgressPill(r, suivi)}<span class="lp-card-status">${statut}</span></span></button>`;
+    const puceRetard = retardBloc ? `<span class="lp-rt" aria-hidden="true">${RETARD_ICONE}${escapeHtml(retardBloc.court)}</span>` : '';
+    return `<button type="button" class="lp-g ${k}${etat}${retardBloc && !enRetard ? ' is-rt-arrive' : ''}${choisiIci}${grise}${coche}${activitiesCompleteClass(r, suivi)}${/^Allergie · /.test(noteLaser) ? ' a-allergie' : ''}" ${lpAttrsGroupe(id, unitKey, { fiche: true })}${volonteLaser ? ' data-a-volonte="1"' : ''} title="${escapeHtml(`${titre} ${infos}${volonteLaser ? ` · ${volonteLaser}` : ''}${motCoche} · ${retardBloc ? retardBloc.bulle : statut}${noteLaser ? ` · ${noteLaser}` : ''}`)}"><i aria-hidden="true"></i><span class="lp-g__nom"><b>${escapeHtml(r.name || 'Groupe')}</b>${lpPictos(r)}${puceRetard}</span><span class="lp-g__sous"><span class="lp-card-info">${escapeHtml(infos)}</span>${renderActivityProgressPill(r, suivi)}<span class="lp-card-status">${statut}</span></span></button>`;
   });
   // Un client retient ces armes en ligne : la carte dit quand elles se
   // liberent (comme la carte du planning bowling) et ne lance rien au toucher.
@@ -40466,6 +40514,24 @@ function rvPlancherDuJour(date) {
   return date && date === todayStr() ? Math.floor(currentTimeDecimal() * 2) / 2 : null;
 }
 
+// MAINTENANT, C EST LA MINUTE QU IL EST (2026-11-24, le gerant, en ligne a 20:15 : « quand on prend une
+// reservation a l heure ou on est [...] ca met pas a l heure vraiment ou on est, ca met a 20h »). Le
+// plancher ci-dessus est la demi-heure en cours : un bowling pris a 20:15 partait a 20:00, le groupe
+// « jouait » quinze minutes qu il n a pas jouees et sa piste se lisait prise depuis 20:00. Le jour meme,
+// un bowling qui commence le ticket a donc aussi la minute qu il est : elle passe devant (la plus proche
+// de maintenant), se juge au serveur a la minute (rvALaMinute) et nait arrivee (rvNaitArrive). Les heures
+// d apres restent rondes (20:30, 21:00). La minute qui ne tient pas une heure pleine laisse la place a la
+// proposition d avant. Le laser garde ses departs et une formule son arrivee : leur heure n est pas une
+// minute de comptoir. Rend la minute (en heures), ou null.
+function rvMinuteDeMaintenant(id, s = quickBookState) {
+  if (id !== 'bowling' || !s || s.lockStartTime) return null;
+  if (!(s.type === 'bowling' || (s.type === 'visite' && rvActivites()[0] === 'bowling'))) return null;
+  const plancher = rvPlancherDuJour(s.date);
+  if (plancher === null) return null;
+  const minute = Math.floor(currentTimeDecimal() * 60 + 1e-6) / 60;
+  return minute > plancher + 1e-9 ? minute : null;
+}
+
 function rvHeurePassee(date, heure) {
   if (!date) return false;
   if (typeof isPastBusinessDate === 'function' && isPastBusinessDate(date)) return true;
@@ -40615,7 +40681,13 @@ function getQuickBookAvailableSlots() {
   if (plancher !== null) minTime = Math.max(minTime, plancher);
 
   const slots = [];
-  for (let value = minTime; value <= maxTime; value += 0.5) {
+  // (la minute qu il est, pour un bowling pris maintenant : rvMinuteDeMaintenant)
+  const valeurs = [];
+  for (let value = minTime; value <= maxTime; value += 0.5) valeurs.push(value);
+  const minute = rvMinuteDeMaintenant('bowling');
+  if (minute !== null && minute >= minTime - 1e-9 && minute <= maxTime + 1e-9) valeurs.push(minute);
+  valeurs.sort((a, b) => a - b);
+  for (const value of valeurs) {
     const time = numToTime(value);
     const slotCheck = validateSlotWindow(quickBookState.date, time, totalDuration, {
       allowPastStart: quickBookAllowsPastSelectedTime(time)
@@ -43060,6 +43132,12 @@ function rvHeuresHorloge(id) {
   if (!bornes) return [];
   const heures = [];
   for (let t = Math.ceil(bornes.debut * 2) / 2; t <= bornes.fin + 1e-9; t += 0.5) heures.push(numToTime(t));
+  // (un bowling pris maintenant : la minute qu il est, entre la demi-heure en cours et la suivante)
+  const minute = rvMinuteDeMaintenant(id);
+  if (minute !== null && minute <= bornes.fin + 1e-9 && !heures.includes(numToTime(minute))) {
+    heures.push(numToTime(minute));
+    heures.sort((a, b) => timeToNum(a) - timeToNum(b));
+  }
   return heures;
 }
 
@@ -47145,7 +47223,9 @@ function rsRemplirHeure(id, x) {
   // « reste 7 », l unite est celle du bloc (les pistes du bowling, les armes du laser), et le
   // nom de la touche le dit en entier (« reste 7 pistes »).
   x.mot = x.place && !x.place.manque ? `reste ${x.place.libre}` : '';
-  if (!x.tag && id === 'bowling' && timeToNum(x.heure) === rvPlancherDuJour(s.date)) x.tag = 'maintenant';
+  // (« maintenant » est la minute qu il est, rvMinuteDeMaintenant ; pile sur la demi-heure, c est elle)
+  const maintenant = rvMinuteDeMaintenant(id) ?? rvPlancherDuJour(s.date);
+  if (!x.tag && id === 'bowling' && maintenant !== null && Math.abs(timeToNum(x.heure) - maintenant) < 1e-6) x.tag = 'maintenant';
 }
 
 // CE QU INTERNET GARDE A CETTE HEURE (2026-11-05, Ansar : « c'est pas clair direct »). La

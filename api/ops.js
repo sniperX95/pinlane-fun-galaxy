@@ -994,6 +994,9 @@ async function handleGet(req, res, options = {}) {
     const startDate = DATE_RX.test(url.searchParams.get('startDate') || '') ? url.searchParams.get('startDate') : addDays(endDate, -29);
     if (startDate > endDate) throw createHttpError('Période invalide.', 400);
     const { getCenter } = require('../lib/ops-knowledge');
+    // (un centre ne dans la console n existe qu en base : sur une instance fraiche, « Centre inconnu » et une fausse
+    // panne sur Telegram, n4-bowling le 2026-11-25 a 11:58)
+    try { await refreshCenterOverrides(getPool()); } catch (error) { /* socle fichier */ }
     const center = getCenter(centerId);
     const history = (await readAdminRangeState('2023-01-01', endDate, centerId)).reservations;
     if (action === 'dashboardAnalytics') {
@@ -3429,6 +3432,7 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     const { periodType, periodStart, periodEnd } = periodeDuBilan({ periodType: body.periodType, periodStart: body.periodStart });
     const { getCenter } = require('../lib/ops-knowledge');
     const reportCenterId = requireConcreteCenter('generateDirectionReport');
+    try { await refreshCenterOverrides(getPool()); } catch (error) { /* socle fichier */ }
     const center = getCenter(reportCenterId);
     const history = (await readAdminRangeState('2023-01-01', periodEnd, reportCenterId)).reservations;
     const current = buildDirectionAnalytics({ history, startDate: periodStart, endDate: periodEnd, center });
@@ -4101,6 +4105,7 @@ ${draftBody}`,
 
   if (action === 'improveEmailWithAi') {
     const { getCenter } = require('../lib/ops-knowledge');
+    try { await refreshCenterOverrides(getPool()); } catch (error) { /* socle fichier */ }
     const center = getCenter(centerId);
     const result = await improveEmailDraft({
       subject: body.subject,
@@ -4116,6 +4121,7 @@ ${draftBody}`,
   // proposer des objets, depuis n importe quel editeur. Lecture seule : rien ne part, rien ne s ecrit en base.
   if (action === 'emailAssist') {
     const { getCenter } = require('../lib/ops-knowledge');
+    try { await refreshCenterOverrides(getPool()); } catch (error) { /* socle fichier */ }
     const { aiderAEcrire, signatureAjouteePour } = require('../lib/email-assist');
     const { llmProvider } = require('../lib/llm-client');
     // LES VRAIS FAITS DU CENTRE (2026-11-13) : ceux de l agent qui repond aux clients (lib/email-agent

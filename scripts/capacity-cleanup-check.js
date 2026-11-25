@@ -216,7 +216,8 @@ async function testPlanRefreshRuntime() {
   const captured = { code: 0, body: null };
   http.sendJson = (res, code, obj) => { captured.code = code; captured.body = obj; };
   http.sendError = (res, code, msg) => { captured.code = code; captured.body = { error: msg }; };
-  http.readJson = async () => ({ action: 'plan', centerId: 'libramont', date: '2026-07-22', reservations: [], laneStatuses: {} });
+  let corpsLu = { action: 'plan', centerId: 'libramont', date: '2026-07-22', reservations: [], laneStatuses: {} };
+  http.readJson = async () => corpsLu;
 
   const staffAuth = require('../lib/staff-auth');
   staffAuth.requireStaffPermission = async () => ({ authorizedCenterId: 'libramont', centerId: 'libramont', member: { id: 'qa', name: 'QA' } });
@@ -241,6 +242,23 @@ async function testPlanRefreshRuntime() {
   }
   ok(captured.code === 200 && captured.body && captured.body.mockedPlan === true,
     'le plan repond 200 avec le resultat du planningAgent');
+
+  // -- Les ecrans qui lisent la fiche du centre la rechargent d abord (2026-11-25, « Centre inconnu: n4-bowling » : le
+  // tableau de bord d un centre ne dans la console, sur une instance fraiche, sonnait comme une panne).
+  opsKnowledge.getCenter = () => { calls.push('getCenter'); throw Object.assign(new Error('arret du test'), { statusCode: 400, expose: true }); };
+  const ECRANS = [
+    ['GET', 'dashboardAnalytics', {}], ['GET', 'directionAnalytics', {}],
+    ['POST', 'generateDirectionReport', { periodType: 'week' }], ['POST', 'improveEmailWithAi', { subject: 'a', body: 'b' }], ['POST', 'emailAssist', { intention: 'ecrire' }],
+  ];
+  for (const [methode, action, corps] of ECRANS) {
+    calls.length = 0;
+    corpsLu = { action, centerId: 'libramont', ...corps };
+    await opsHandler({ method: methode, url: `/api/ops?action=${action}&centerId=libramont`, headers: { host: 'localhost' } }, res);
+    // (le dernier : une lecture de politesse du portier passe avant et se passe de la fiche)
+    const lu = calls.lastIndexOf('getCenter');
+    const recharge = calls.indexOf('refreshCenterOverrides');
+    ok(lu >= 0 && recharge >= 0 && recharge < lu, `${action} recharge les centres avant de lire le sien (calls=${JSON.stringify(calls)}, ${captured.code} ${JSON.stringify(captured.body).slice(0, 80)})`);
+  }
 
   // -- Preuve structurelle + contre-preuve par mutation (source) --------------
   const opsSource = readProjectFile('api/ops.js');

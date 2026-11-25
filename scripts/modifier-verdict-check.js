@@ -33,6 +33,10 @@
 //   [V9] les phrases de fin disent vrai : un bowling retire ne se lit pas
 //        « pas sur les pistes demandées », un dossier deja « à vérifier » ne se
 //        lit pas « le moteur n’a pas pu replacer » ;
+//   [V10] CHANGER LE PRIX NE SE JUGE PAS AU PLANNING (2026-11-25, dossier 1909 de Gembloux, « un message rouge illogique
+//        qui parle de 16h ») : un dossier laser dont le minigolf commence a l arrivee et le laser plus tard, son heure
+//        d arrivee pleine d un autre groupe. Le prix, puis le nom : « Vérifié au planning. », le prix ou le nom ecrits,
+//        le plan inchange a l octet pres ; l arrivee changee juge l arene a l heure de SON laser ;
 //   [A1] deplacer un dossier a une autre annee dit l annee ;
 //   [P1] sans session, le calcul a blanc repond 401 sans rien lire : la meme
 //        reponse que le numero de dossier existe ou non (2026-11-16) ;
@@ -144,8 +148,9 @@ async function verdictPose(page) {
 }
 
 // Un cas : la fiche ouverte sur Modifier, le geste, le verdict, puis le clic.
-async function jouerCas(browser, { id, geste, sansBlanc = false, enregistrer = true }) {
-  B.semer(FIXTURE.staffState.reservations.map(ligneDepuis));
+async function jouerCas(browser, { id, geste, sansBlanc = false, enregistrer = true, journee = null }) {
+  const liste = JSON.parse(JSON.stringify(FIXTURE.staffState.reservations)).map((r) => (journee ? journee(r) : r));
+  B.semer(liste.map(ligneDepuis));
   const serveur = B.monter({ mutations: mutation ? mutation.editions.filter((ed) => ed.serveur) : [], session: B.sessionDuRole('manager', { nom: 'Rachel' }) });
   const patchs = [];
   const reponses = [];
@@ -162,6 +167,10 @@ async function jouerCas(browser, { id, geste, sansBlanc = false, enregistrer = t
   page.on('dialog', (d) => { natifs.push(d.message()); d.accept().catch(() => {}); });
   try {
     const depart = brut(id);
+    if (journee) {
+      await page.evaluate((jour) => { const fx = window.__FIXTURE__; fx.jours[fx.jour] = jour.map((x) => JSON.parse(JSON.stringify(x))); state.reservations = jour; renderStaff(); }, liste);
+      await page.waitForTimeout(300);
+    }
     await page.evaluate((i) => { closePos(); openPos(i); setTab('modifier'); }, id);
     await page.waitForTimeout(150);
     await geste(page);
@@ -258,6 +267,38 @@ async function scenarioMuet(browser) {
   ok(!c.erreurs.length && !a.erreurs.length, '[J1] aucune erreur JS (muet, autre annee)', c.erreurs.concat(a.erreurs).slice(0, 3));
 }
 
+// Le dossier 1909 de Gembloux, refait sur Manon : arrivee a 17:30 pour un minigolf, le laser en deux vagues a 19:30 et
+// 20:00 ; a 17:30, les 14 du Mouvement de jeunesse et les 10 de Sacha ne laissent que 6 places.
+function commeTbBnp(r) {
+  if (r.id === 1625 || r.id === 1607 || r.id === 1622 || r.id === 1636) return { ...r, status: 'cancelled' };
+  if (r.id !== MANON) return r;
+  const bloc = (o) => ({ type: 'activity', critical: true, players: 16, ...o });
+  const laser = (vague, start) => bloc({ resourceType: 'laser_arena', activityId: 'laser_game', label: 'Laser Game', countIndex: 1, groupWaveIndex: vague, groupWaveCount: 2, groupPlayers: 32, weaponNeed: 16, playersTotal: 16, playersBefore: 0, durationMinutes: 25,
+    start, end: start + 25, startTime: heureDe(start), endTime: heureDe(start + 25) });
+  const blocs = [
+    bloc({ resourceType: 'minigolf', activityId: 'minigolf', label: 'Minigolf', players: 32, start: 1050, end: 1095, startTime: '17:30', endTime: '18:15', durationMinutes: 45 }),
+    laser(1, 1170), laser(2, 1200),
+  ];
+  return { ...r, startTime: '17:30', pax: 32, price: 320, basePrice: 320, duration: 0.5, totalDuration: 3,
+    program: { items: [{ activityId: 'minigolf', name: 'Minigolf', participants: 32 }, { activityId: 'laser_game', name: 'Laser Game', games: 1, participants: 32 }], price: 320, priceComplete: true },
+    opsPlan: { ...r.opsPlan, games: 1, laserGames: 1, startTime: '17:30', endTime: '20:25', resourceBlocks: blocs, timeline: JSON.parse(JSON.stringify(blocs)) } };
+}
+const heureDe = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+const planDe = (id) => { const row = B.base.reservations.get(Number(id)); return JSON.stringify(typeof row.ops_plan === 'string' ? JSON.parse(row.ops_plan).resourceBlocks : row.ops_plan.resourceBlocks); };
+
+async function scenarioPrix(browser) {
+  const plan0 = JSON.stringify(commeTbBnp(FIXTURE.staffState.reservations.find((r) => r.id === MANON)).opsPlan.resourceBlocks);
+  const p = await jouerCas(browser, { id: MANON, journee: commeTbBnp, geste: champ('#editPriceInput', '300') });
+  ok(p.avant.ton === 'ok' && p.avant.verdict === 'Vérifié au planning.' && p.reponses.join() === '200' && p.base.prix === 300 && planDe(MANON) === plan0,
+    '[V10] le prix seul change sur un dossier laser dont l arrivee tombe sur un depart plein : aucun refus, le prix ecrit, le plan inchange', { ton: p.avant.ton, verdict: p.avant.verdict, reponses: p.reponses, base: p.base, erreur: p.apres && p.apres.erreur });
+  const n = await jouerCas(browser, { id: MANON, journee: commeTbBnp, geste: champ('#editNameInput', 'Team building') });
+  ok(n.avant.ton === 'ok' && n.reponses.join() === '200' && planDe(MANON) === plan0, '[V10] le nom seul : pareil', { verdict: n.avant.verdict, reponses: n.reponses });
+  // L ARRIVEE CHANGE : c est le laser du dossier (19:30, donc 19:00) qui se juge, pas 17:00 et 17:30.
+  const h = await jouerCas(browser, { id: MANON, journee: commeTbBnp, geste: champ('#editStartInput', '17:00'), enregistrer: false });
+  ok(!/Lancement de 17:/.test(h.avant.verdict), '[V10] l arrivee changee : l arene se juge a l heure du laser du dossier, jamais a l arrivee', h.avant);
+  ok([p, n, h].every((x) => !x.erreurs.length), '[J1] aucune erreur JS (prix)', [p, n, h].flatMap((x) => x.erreurs).slice(0, 3));
+}
+
 // [P1] LA PORTE (2026-11-16). Le calcul a blanc lisait le dossier AVANT de demander une
 // session : un inconnu recevait 404 pour un numero libre et un refus pour un numero pris,
 // de quoi compter les dossiers d un centre. Le vrai handler, sans navigateur.
@@ -290,6 +331,8 @@ const MUTATIONS = [
   { nom: 'conseil-qui-promet', lettre: 'V8', scenarios: REFUS, editions: [{ fichier: JS, de: '    if (jour && (!libres || libres.length < requis)) return', vers: '    if (false) return' }] },
   { nom: 'pistes-refusees-a-tort', lettre: 'V9', scenarios: PASSE, editions: [{ fichier: JS, de: "    if (!items.some((item) => item.activityId === 'bowling')) lanesVoulues.length = 0;\n", vers: '' }] },
   { nom: 'moteur-accuse-a-tort', lettre: 'V9', scenarios: PASSE, editions: [{ fichier: JS, de: " && !(previousReservation && previousReservation.validationStatus === 'staff_review');", vers: ';' }] },
+  { nom: 'prix-juge-au-planning', lettre: 'V10', scenarios: ['prix'], editions: [{ fichier: JS, de: '  const placeChangee = placeChangeeEdition(origine);', vers: '  const placeChangee = true;' }, { fichier: JS, de: '  return debuts[0] + (arrivee - timeToNum(r.startTime));', vers: '  return arrivee;' }] },
+  { nom: 'laser-juge-a-l-arrivee', lettre: 'V10', scenarios: ['prix'], editions: [{ fichier: JS, de: '  return debuts[0] + (arrivee - timeToNum(r.startTime));', vers: '  return arrivee;' }] },
   { nom: 'blanc-sans-porte', lettre: 'P1', scenarios: ['porte'], editions: [{ fichier: 'api/staff-reservations.js', serveur: true, de: '        if (!(await requireAnyStaffSession(req, res))) return;\n        await warmCenterKnowledge();\n        const blanc = await modifierABlanc(', vers: '        await warmCenterKnowledge();\n        const blanc = await modifierABlanc(' }] },
   { nom: 'annee-tue', lettre: 'A1', scenarios: ['muet'], editions: [{ fichier: JS, de: "...(autreAnnee ? { year: 'numeric' } : {}) });", vers: '});' }] },
 ];
@@ -298,6 +341,7 @@ async function jouer(browser, noms) {
   for (const nom of noms) {
     if (nom === 'refus') await scenarioRefus(browser);
     if (nom === 'passe') await scenarioPasse(browser);
+    if (nom === 'prix') await scenarioPrix(browser);
     if (nom === 'muet') await scenarioMuet(browser);
     if (nom === 'porte') await scenarioPorte();
   }
@@ -309,7 +353,7 @@ async function main() {
   const t0 = Date.now();
   try {
     if (!process.argv.includes('--contre-preuves')) {
-      await jouer(browser, ['refus', 'passe', 'muet', 'porte']);
+      await jouer(browser, ['refus', 'passe', 'prix', 'muet', 'porte']);
     } else {
       console.log('[K] contre-preuves : chaque regle retiree fait rougir sa lettre');
       for (const m of MUTATIONS.filter((x) => !process.env.MV_MUTATIONS || liste(process.env.MV_MUTATIONS).includes(x.nom))) {

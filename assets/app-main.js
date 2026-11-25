@@ -38456,6 +38456,33 @@ function gardeArriveeEdition(event) {
   event.currentTarget.blur();
 }
 
+// UN PRIX, UN NOM, UNE NOTE NE SE JUGENT PAS AU PLANNING (2026-11-25, Ansar, dossier 1909 « TB BNP » de Gembloux :
+// « je modifie le prix, ça met un message rouge illogique qui parle de 16h alors que jai rien changé par rapport à
+// ça »). Les horaires, les pistes et l arene ne se verifient que si quelque chose qui prend de la place a change.
+function placeChangeeEdition(origine) {
+  const e = state.editState;
+  if (!e || !origine) return true;
+  const autre = (cle) => e[cle] != null && String(e[cle]).trim() !== String(origine[cle] ?? '').trim();
+  return autre('date') || autre('startTime') || Number(e.pax) !== Number(origine.pax) || Number(e.duration) !== Number(origine.duration)
+    || JSON.stringify(parseLaneInput(e.lanesStr)) !== JSON.stringify(parseLaneInput(pistesDeLaFormuleSeule(origine).join(',')))
+    || Boolean(formuleChangeeEdition() || e.versProgrammeNormal || illimiteChangeEdition() || areneChangeeEdition() || poseEditionChange()
+      || editProgramAChange() || enPlusEditionChange() || demandeGroupesEdition() || heuresNouvellesEnvoyees());
+}
+
+// L HEURE DU LASER DU DOSSIER, PAS CELLE DE L ARRIVEE (2026-11-25, le meme dossier) : un minigolf a 15:30, le laser a
+// 16:30 et 17:00, et Modifier jugeait l arene a 15:30 et 16:00. Elle suit l arrivee, comme le bowling
+// (debutBowlingEdition). `null` : le plan du dossier ne se lit pas d ici (une vague posee a la main, une heure ou un
+// programme changes), le serveur juge seul.
+function debutLaserEdition(r, e, duree) {
+  if (editProgramAChange() || Object.keys(heuresChangeesEdition()).some((cle) => cle.startsWith('laser_game'))) return null;
+  const arrivee = timeToNum((e && e.startTime) || r.startTime);
+  const debuts = getLaserWindowsFromReservation(r).filter((f) => Number(f.countIndex || 1) === 1).map((f) => Number(f.start)).sort((a, b) => a - b);
+  if (!debuts.length) return arrivee;
+  const prevus = getLaserCandidateWindows(numToTime(debuts[0]), Number(r.duration) || duree, Number(r.pax)).filter((f) => Number(f.countIndex || 1) === 1).map((f) => Number(f.start));
+  if (prevus.length !== debuts.length || prevus.some((h, i) => Math.abs(h - debuts[i]) > 1 / 120)) return null;
+  return debuts[0] + (arrivee - timeToNum(r.startTime));
+}
+
 function preparerModificationEdition(options = {}) {
   const es = state.editState;
   // DEUX POSTES, UNE RESERVATION : ce que la personne a CHANGE se mesure contre
@@ -38492,7 +38519,8 @@ function preparerModificationEdition(options = {}) {
   // (des groupes regles ici partent tels que leur bloc les montre : des joueurs qui font le groupe, chacun a ses heures)
   const groupesIncomplets = groupesIncompletsEdition();
   if (groupesIncomplets) return { erreur: groupesIncomplets };
-  const slotCheck = validateSlotWindow(jourChange ? es.date : state.selectedRes.date, es.startTime, duration, { allowPastStart: true });
+  const placeChangee = placeChangeeEdition(origine);
+  const slotCheck = placeChangee ? validateSlotWindow(jourChange ? es.date : state.selectedRes.date, es.startTime, duration, { allowPastStart: true }) : { ok: true };
   if (!slotCheck.ok) return { erreur: slotCheck.message };
   // Un autre jour part avec les pistes du dossier, inchangees : le serveur les
   // remplace par celles qu il attribue ce jour-la. Celles que le formulaire a
@@ -38501,7 +38529,9 @@ function preparerModificationEdition(options = {}) {
   // CE QUE LE STAFF A COCHE, garde avant toute substitution : c'est la seule
   // reference honnete pour lui dire, apres coup, si on a du changer.
   const lanesVoulues = lanes.slice();
-  if (requiresLanes && !jourChange) {
+  // (un dossier sans piste en cherche toujours, meme pour un nom change)
+  const pistesEnJeu = placeChangee || (requiresLanes && !lanes.length);
+  if (requiresLanes && !jourChange && pistesEnJeu) {
     const suggested = getSuggestedEditLanes(requiredCount, state.selectedRes.date, debutBowlingEdition(dossierFormule, es), duration, state.selectedRes.id, es.lanesStr);
     if (!suggested || suggested.length < requiredCount) {
       return { erreur: 'Impossible de libérer ' + requiredCount + ' piste(s) pour ' + pax + ' joueurs sur ce créneau. Changez l’heure, la durée, ou libérez une piste.' };
@@ -38510,11 +38540,12 @@ function preparerModificationEdition(options = {}) {
     // (a blanc, le verdict ne touche pas aux pistes cochees)
     if (!options.aBlanc) state.editState.lanesStr = formatLaneInput(lanes);
   }
-  if (!jourChange && lanes.some(l => state.laneStatuses[l] === 'maintenance')) return { erreur: 'Une des pistes choisies est en maintenance.' };
-  const conflicts = jourChange ? [] : lanesConflict(state.selectedRes.date, debutBowlingEdition(dossierFormule, es), duration, lanes, state.selectedRes.id);
+  if (!jourChange && pistesEnJeu && lanes.some(l => state.laneStatuses[l] === 'maintenance')) return { erreur: 'Une des pistes choisies est en maintenance.' };
+  const conflicts = jourChange || !pistesEnJeu ? [] : lanesConflict(state.selectedRes.date, debutBowlingEdition(dossierFormule, es), duration, lanes, state.selectedRes.id);
   if (conflicts.length) return { erreur: `Conflit sur ce créneau avec ${String(conflicts[0].name || 'une autre réservation')}.` };
-  if (state.selectedRes.type === 'laser' && !jourChange) {
-    const laserAvailability = getLaserAvailability(state.selectedRes.date, es.startTime, duration, pax, state.selectedRes.id);
+  const debutLaser = state.selectedRes.type === 'laser' && !jourChange && placeChangee ? debutLaserEdition(state.selectedRes, es, duration) : null;
+  if (debutLaser !== null) {
+    const laserAvailability = getLaserAvailability(state.selectedRes.date, numToTime(debutLaser), duration, pax, state.selectedRes.id);
     if (!laserAvailability.ok) return { erreur: laserAvailability.message };
   }
 

@@ -49,6 +49,11 @@
 //   [M1] une heure part avec tout le reste d un seul « Enregistrer » (2026-11-20,
 //        le dossier 1953) : le deplacement, puis le dossier ; avec le telephone
 //        comme avec les joueurs, qui recalculent les heures ;
+//   [E1] PLUSIEURS HEURES D UN SEUL « ENREGISTRER » (2026-11-25, le gerant, dossier de Gembloux du 4/12 : « Ce
+//        déplacement chevauche le Laser Game du groupe, de 14:30 à 14:55 » alors que le laser bougeait aussi) : le
+//        bowling et le laser decales ensemble d une demi-heure passent avant le clic et au clic, par UN PATCH
+//        activityMoves ; les deux se disent dans la derniere modification ; deux heures qui se chevauchent a l arrivee
+//        sont refusees toutes les deux, rien n est ecrit ; avec un prix en plus, tout part ;
 //   [D1] au telephone et sur tablette : rien ne deborde, chaque heure, chaque
 //        champ et chaque heure proposee se touche au doigt ;
 //   [V1] le calcul a blanc des heures n ecrit rien ;
@@ -239,8 +244,9 @@ async function photo(page, nom, cle = '') {
 }
 
 // Un cas : la fiche ouverte sur Modifier, le geste, le verdict, puis le clic.
-async function jouerCas(browser, { id, geste, enregistrer: clic = true, avantClic = null, secondClic = false, nom = '', cle = '', apres = null, appareil = 'ordinateur', pistes = [], blocs = [], ouvertures = null, mesure = null }) {
-  B.semer(FIXTURE.staffState.reservations.map(ligneDepuis));
+async function jouerCas(browser, { id, geste, journee = null, enregistrer: clic = true, avantClic = null, secondClic = false, nom = '', cle = '', apres = null, appareil = 'ordinateur', pistes = [], blocs = [], ouvertures = null, mesure = null }) {
+  const jour = JSON.parse(JSON.stringify(FIXTURE.staffState.reservations)).map((r) => (journee ? journee(r) : r)).filter(Boolean);
+  B.semer(jour.map(ligneDepuis));
   INJECTE = { pistes, blocs };
   const serveur = B.monter({ mutations: mutation ? mutation.editions.filter((ed) => ed.serveur) : [], session: B.sessionDuRole('manager', { nom: 'Rachel' }) });
   require(path.join(ROOT, 'lib/ops-knowledge.js')).getCenter('libramont').ouverturesExceptionnelles = ouvertures || [];
@@ -257,6 +263,10 @@ async function jouerCas(browser, { id, geste, enregistrer: clic = true, avantCli
   });
   try {
     const depart = brut(id);
+    if (journee) {
+      await page.evaluate((liste) => { const fx = window.__FIXTURE__; fx.jours[fx.jour] = JSON.parse(JSON.stringify(liste)); state.reservations = liste; renderStaff(); }, jour);
+      await page.waitForTimeout(300);
+    }
     await page.evaluate((i) => { closePos(); openPos(i); setTab('modifier'); }, id);
     await page.waitForTimeout(150);
     const ouverture = await page.evaluate(lire);
@@ -512,6 +522,45 @@ async function scenarioRefus(browser) {
   ok([c, m, g, a, p, f, x, s, k, ks, j].every((y) => !y.erreurs.length), '[J1] aucune erreur JS (refus)', [c, m, g, a, p, f, x, s, k, ks, j].flatMap((y) => y.erreurs).slice(0, 3));
 }
 
+// Le dossier de Gembloux du 4 decembre, refait sur Clara : sur mesure, 7 joueurs, bowling de 16:00 a 17:00 sur les pistes
+// 1 et 2, laser de 17:00 a 17:25 ; le reste du jour s efface autour.
+function commeLe4Decembre(r) {
+  if (r.id !== CLARA) return Number(String(r.startTime).slice(0, 2)) >= 13 ? { ...r, status: 'cancelled' } : r;
+  const min = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+  const bloc = (o) => ({ type: 'activity', critical: true, players: 7, startTime: min(o.start), endTime: min(o.end), durationMinutes: o.end - o.start, ...o });
+  const blocs = [
+    bloc({ resourceType: 'bowling_lane', activityId: 'bowling', label: 'Bowling', start: 960, end: 1020, lanes: [6, 7], requiredLanes: 2 }),
+    bloc({ resourceType: 'laser_arena', activityId: 'laser_game', label: 'Laser Game', start: 1020, end: 1045, countIndex: 1, groupWaveIndex: 1, groupWaveCount: 1, groupPlayers: 7, weaponNeed: 7, playersTotal: 7 }),
+  ];
+  return { ...r, type: 'visite', startTime: '16:00', duration: 1, totalDuration: 2, lanes: [6, 7], pax: 7, label: 'Sur mesure', price: 200, basePrice: 200,
+    program: { items: [{ activityId: 'bowling', name: 'Bowling', duration: 1, participants: 7 }, { activityId: 'laser_game', name: 'Laser Game', games: 1, participants: 7 }], price: 200, priceComplete: true },
+    opsPlan: { ...(r.opsPlan || {}), startTime: '16:00', endTime: '17:25', assignedLanes: [6, 7], laserPassPlan: undefined, resourceBlocks: blocs, timeline: JSON.parse(JSON.stringify(blocs)) } };
+}
+
+async function scenarioEnsemble(browser) {
+  const deux = suite(heure('bowling', '16:30'), heure('laser_game:1.1', '17:30'));
+  const e = await jouerCas(browser, { id: CLARA, journee: commeLe4Decembre, geste: deux, nom: 'deux-heures-ensemble', cle: 'bowling' });
+  ok(e.avant.refus.length === 0 && e.avant.rouges.length === 0 && /Bowling 16:00 → 16:30/.test(e.avant.pied) && /Laser Game 17:00 → 17:30/.test(e.avant.pied),
+    '[E1] le bowling a 16:30 et le laser a 17:30 ensemble : aucun refus avant le clic (le bowling finit a 17:30, le laser n est plus a 17:00)', { verdict: e.avant.verdict, refus: e.avant.refus, pied: e.avant.pied });
+  ok(e.apres && e.apres.fermee && e.patchs.length === 1 && Array.isArray(e.patchs[0].activityMoves) && e.patchs[0].activityMoves.length === 2 && e.reponses.join() === '200'
+    && e.base.heures.bowling === '16:30' && e.base.heures['laser_game:1.1'] === '17:30' && e.base.prix === 200,
+  '[E1] « Enregistrer » : UN PATCH, les deux heures ecrites, le prix inchange', { patchs: e.patchs, reponses: e.reponses, base: e.base, apres: e.apres && e.apres.verdict });
+  ok(e.base.quoi.some((q) => /Bowling déplacé à 16:30/.test(q)) && e.base.quoi.some((q) => /Laser Game déplacé à 17:30/.test(q)), '[E1] la derniere modification dit les deux', e.base.quoi);
+  // Vers plus tot aussi (le laser passe avant le bowling) : un echange de places.
+  const x = await jouerCas(browser, { id: CLARA, journee: commeLe4Decembre, geste: suite(heure('bowling', '16:30'), heure('laser_game:1.1', '16:00')) });
+  ok(x.avant.refus.length === 0 && x.apres && x.apres.fermee && x.base.heures.bowling === '16:30' && x.base.heures['laser_game:1.1'] === '16:00',
+    '[E1] les deux echangent leur ordre (laser a 16:00, bowling a 16:30) : passe', { refus: x.avant.refus, base: x.base, apres: x.apres && x.apres.verdict });
+  // Un vrai chevauchement se refuse, tout entier.
+  const z = await jouerCas(browser, { id: CLARA, journee: commeLe4Decembre, geste: suite(heure('bowling', '17:00'), heure('laser_game:1.1', '17:30')) });
+  ok(z.avant.refus.length === 1 && /chevauche/.test(JSON.stringify(z.avant.refus)) && !z.ecrit && z.apres && !z.apres.fermee,
+    '[E1] le bowling a 17:00 et le laser a 17:30 : ils se chevauchent vraiment, refuse, et rien n est ecrit', { refus: z.avant.refus, ecrit: z.ecrit, patchs: z.patchs });
+  // Avec le prix : tout part.
+  const p = await jouerCas(browser, { id: CLARA, journee: commeLe4Decembre, geste: suite(heure('bowling', '16:30'), heure('laser_game:1.1', '17:30'), champ('#editPriceInput', '190')) });
+  ok(p.avant.refus.length === 0 && p.apres && p.apres.fermee && p.base.heures.bowling === '16:30' && p.base.heures['laser_game:1.1'] === '17:30' && p.base.prix === 190,
+    '[E1] les deux heures et le prix d un seul « Enregistrer »', { refus: p.avant.refus, base: p.base, apres: p.apres && p.apres.verdict });
+  ok([e, x, z, p].every((c) => !c.erreurs.length), '[J1] aucune erreur JS (ensemble)', [e, x, z, p].flatMap((c) => c.erreurs).slice(0, 3));
+}
+
 async function scenarioConflit(browser) {
   // Le minigolf de Lina a 16:30, mais un autre poste ecrit sur le dossier avant le clic.
   const c = await jouerCas(browser, { id: LINA, geste: heure('minigolf_blacklight', '16:30'), avantClic: collegueEcrit, secondClic: true, nom: 'autre-poste', cle: 'minigolf_blacklight' });
@@ -586,7 +635,7 @@ const MUTATIONS = [
   { nom: 'refus-en-double', lettre: 'U2', scenarios: REFUS, editions: [{ fichier: JS, de: "      noterHeuresEdition({ ton: 'refus', texte: `${deja}Pas enregistré : ${d.point.nom} à ${d.heure}.`, refus: { cle: d.cle, phrase: motif, suggestions: suggestionsConnuesEdition(d.cle) } });", vers: '      failEdit(motif);' }] },
   { nom: 'refus-pas-a-l-activite', lettre: 'U2', scenarios: REFUS, editions: [{ fichier: JS, de: '  return refus && refus.cle === cle ? refus : null;', vers: '  return null;' }] },
   { nom: 'plage-avec-tiret', lettre: 'F1', scenarios: REFUS, editions: [{ fichier: BASE, serveur: true, de: '  const horaire = (startHour, endHour) => `${minutesToClock(Math.round(startHour * 60))} à ${minutesToClock(Math.round(endHour * 60))}`;', vers: '  const horaire = (startHour, endHour) => `${minutesToClock(Math.round(startHour * 60))}-${minutesToClock(Math.round(endHour * 60))}`;' }] },
-  { nom: 'suggestions-tues', lettre: 'S1', scenarios: REFUS, editions: [{ fichier: API, serveur: true, de: '        error.suggestions = heuresLibresProches(candidat, deplacement, auPlusTot, essayer);', vers: '        error.suggestions = [];' }] },
+  { nom: 'suggestions-tues', lettre: 'S1', scenarios: REFUS, editions: [{ fichier: API, serveur: true, de: '        error.suggestions = heuresLibresProches(candidat, deplacement, auPlusTot, (base, essai) => essayer(base, essai, avecLEssai(deplacements, rang, essai)));', vers: '        error.suggestions = [];' }] },
   { nom: 'heure-actuelle-proposee', lettre: 'S1', scenarios: REFUS, editions: [{ fichier: API, serveur: true, de: '    if (minutes < 0 || minutes >= 24 * 60 || minutes === actuelle || (auPlusTot !== null && minutes < auPlusTot)) return false;', vers: '    if (minutes < 0 || minutes >= 24 * 60 || (auPlusTot !== null && minutes < auPlusTot)) return false;' }] },
   { nom: 'chevauchement-ignore', lettre: 'R2', scenarios: REFUS, editions: [{ fichier: MOVE, serveur: true, de: ' || (autre && jeuAHeure(block))));', vers: '));' }] },
   { nom: 'arrivee-ignoree', lettre: 'R3', scenarios: REFUS, editions: [{ fichier: JS, de: "      : Number.isFinite(arrivee) && minutes < arrivee ? `Avant l’arrivée du groupe à ${formatClockDisplay(arrivee / 60)}.` : '';", vers: "      : '';" }] },
@@ -595,6 +644,8 @@ const MUTATIONS = [
   { nom: 'passe-ignore', lettre: 'R6', scenarios: REFUS, editions: [{ fichier: JS, de: '    const plancher = maintenant !== null && minutes < maintenant', vers: '    const plancher = false && minutes < maintenant' }] },
   { nom: 'melange-refuse', lettre: 'M1', scenarios: REFUS, editions: [{ fichier: JS, de: '  const changees = heuresChangeesEdition();\n  const points = pointsHeureEdition(r);\n', vers: "  const changees = heuresChangeesEdition();\n  if (resumeModifsEdition().length > modifsHeuresEdition().length) return { heures: true, erreur: 'Une heure d’activité s’enregistre seule.' };\n  const points = pointsHeureEdition(r);\n" }] },
   { nom: 'conflit-mal-repris', lettre: 'C1', scenarios: ['conflit'], editions: [{ fichier: JS, de: '    if (error.conflit && error.reservation) {\n      // Un autre poste a ecrit avant', vers: '    if (false) {\n      // Un autre poste a ecrit avant' }] },
+  { nom: 'heures-une-par-une', lettre: 'E1', scenarios: ['ensemble'], editions: [{ fichier: MOVE, serveur: true, de: '  const aVenir = liste.includes(move) ? liste.slice(liste.indexOf(move) + 1) : [];', vers: '  const aVenir = [];' }] },
+  { nom: 'ensemble-sans-jugement', lettre: 'E1', scenarios: ['ensemble'], editions: [{ fichier: MOVE, serveur: true, de: '  const aVenir = liste.includes(move) ? liste.slice(liste.indexOf(move) + 1) : [];', vers: '  const aVenir = liste;' }] },
   { nom: 'doigt-trop-petit', lettre: 'D1', scenarios: ['appareils'], editions: [{ fichier: CSS, de: '  body:is(.staff-mode, .admin-mode) .fx-modal .fm-heure-suggestion { min-height: 44px; min-width: 72px; }\n', vers: '' }] },
   { nom: 'blanc-sans-porte', lettre: 'P1', scenarios: ['porte'], editions: [{ fichier: API, serveur: true, de: '        if (!(await requireAnyStaffSession(req, res))) return;\n        await warmCenterKnowledge();\n        const blanc = await deplacerABlanc(', vers: '        await warmCenterKnowledge();\n        const blanc = await deplacerABlanc(' }] },
 ];
@@ -604,6 +655,7 @@ async function jouer(browser, noms) {
     if (nom === 'passe') await scenarioPasse(browser);
     if (nom === 'types') await scenarioTypes(browser);
     if (nom === 'refus') await scenarioRefus(browser);
+    if (nom === 'ensemble') await scenarioEnsemble(browser);
     if (nom === 'conflit') await scenarioConflit(browser);
     if (nom === 'appareils') await scenarioAppareils(browser);
     if (nom === 'porte') await scenarioPorte();
@@ -616,7 +668,7 @@ async function main() {
   const t0 = Date.now();
   try {
     if (!process.argv.includes('--contre-preuves')) {
-      await jouer(browser, (liste(process.env.HA_SCENARIOS) || ['passe', 'types', 'refus', 'conflit', 'appareils', 'porte']));
+      await jouer(browser, (liste(process.env.HA_SCENARIOS) || ['passe', 'types', 'refus', 'ensemble', 'conflit', 'appareils', 'porte']));
     } else {
       console.log('[K] contre-preuves : chaque garde retiree fait rougir sa lettre');
       for (const m of MUTATIONS.filter((x) => !process.env.HA_MUTATIONS || liste(process.env.HA_MUTATIONS).includes(x.nom))) {

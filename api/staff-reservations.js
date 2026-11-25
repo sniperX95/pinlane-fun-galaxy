@@ -607,8 +607,8 @@ async function deplacerAvantLeReste(current, deplacements, session) {
   const { validateActivityMoveResources } = require('../lib/database');
   const lu = await readStaffState(current.date, current.centerId || 'libramont', { avecBlocages: true, avecFermetures: true });
   const voisins = (Array.isArray(lu.reservations) ? lu.reservations : []).filter((row) => Number(row.id) !== Number(current.id));
-  const tenir = (dossier, d) => {
-    const suivant = buildActivityMove(dossier, d, { aLaMinute: true, ensemble: deplacements });
+  const tenir = (dossier, d, ensemble = deplacements) => {
+    const suivant = buildActivityMove(dossier, d, { aLaMinute: true, ensemble });
     let verdict = null;
     try {
       verdict = validateActivityMoveResources(suivant, d, voisins, lu.laneStatuses || {}, lu.blocks || [], current.date);
@@ -621,12 +621,15 @@ async function deplacerAvantLeReste(current, deplacements, session) {
     try { dossier = tenir(dossier, deplacements[i]); } catch (error) {
       if (!error || !error.statusCode || error.statusCode >= 500 || estErreurInfra(error)) throw error;
       error.rangDuDeplacement = i;
-      error.heuresProches = heuresLibresProches(dossier, deplacements[i], null, tenir);
+      error.heuresProches = heuresLibresProches(dossier, deplacements[i], null, (base, essai) => tenir(base, essai, avecLEssai(deplacements, i, essai)));
       throw error;
     }
   }
   return dossier;
 }
+
+// Une heure proposee se juge avec les autres deplacements du geste : l essai prend la place de celui qui coince.
+const avecLEssai = (deplacements, rang, essai) => deplacements.map((d, i) => (i === rang ? essai : d));
 
 // L HEURE D UNE ACTIVITE CHANGEE DANS « MODIFIER », SANS L ECRIRE (2026-11-18, Ansar : « on doit pouvoir
 // modifier l heure de chaque activite ici »). La fenetre deplace une activite par le chemin du glisser du
@@ -706,7 +709,7 @@ async function deplacerABlanc(req, res, corps) {
         if (!error || !error.statusCode || error.statusCode >= 500 || estErreurInfra(error)) throw error;
         if (error.code === 'reservation_modifiee') throw error;
         error.rang = rang;
-        error.suggestions = heuresLibresProches(candidat, deplacement, auPlusTot, essayer);
+        error.suggestions = heuresLibresProches(candidat, deplacement, auPlusTot, (base, essai) => essayer(base, essai, avecLEssai(deplacements, rang, essai)));
         throw error;
       }
     }
@@ -1906,6 +1909,7 @@ const traiter = async (req, res) => {
       }
 
       await warmCenterKnowledge();
+      // (les heures changees ensemble dans « Modifier » aussi, 2026-11-25 : toutes, ou aucune)
       // LES VAGUES D UNE PARTIE LASER BOUGENT EN BLOC (activityMoves, 2026-11-22) : chacune jugee sur le
       // dossier que la precedente deplace, ecrites ensemble sous le verrou (lib/database.js), ou refusees
       // ensemble. Le refus dit le rang de celle qui coince (`rang`) ; rien n a bouge.
@@ -1916,7 +1920,7 @@ const traiter = async (req, res) => {
           throw createHttpError('Un déplacement d’activité ne modifie aucun autre choix du dossier.', 422);
         }
         const deplacements = plusieurs ? body.activityMoves : [body.activityMove];
-        if (plusieurs && (!Array.isArray(deplacements) || !deplacements.length || deplacements.length > ETAPES_PAR_ESSAI_MAX || deplacements.some((d) => !d || typeof d !== 'object' || Array.isArray(d)))) {
+        if (plusieurs && (!Array.isArray(deplacements) || !deplacements.length || deplacements.length > DEPLACEMENTS_A_BLANC_MAX || deplacements.some((d) => !d || typeof d !== 'object' || Array.isArray(d)))) {
           throw createHttpError('Déplacement d’activité invalide.', 400);
         }
         if (!body.baseUpdatedAt || !memeVersion(current.updatedAt, lireVersionAttendue(body.baseUpdatedAt))) {

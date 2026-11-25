@@ -2491,16 +2491,19 @@ function envoyerDeplacementsActivite(avant, activityMoves) {
     }
     const saved = payload?.reservation;
     const recus = Array.isArray(payload?.activityMoves) ? payload.activityMoves : [];
-    const unites = new Set(activityMoves.map(move => move.unitKey));
-    const cible = block => (block.resourceType === 'laser_arena' || block.activityId === 'laser_game') && unites.has(laserBlockUnitKey(block));
+    // (chaque activite du geste : une vague de laser, le bowling, une autre activite, 2026-11-25)
+    const cible = block => activityMoves.some(move => (move.activityId === 'bowling'
+      ? block.resourceType === 'bowling_lane' || block.activityId === 'bowling'
+      : move.activityId === 'laser_game'
+        ? (block.resourceType === 'laser_arena' || block.activityId === 'laser_game') && laserBlockUnitKey(block) === move.unitKey
+        : block.activityId === move.activityId && block.resourceType !== 'bowling_lane' && block.resourceType !== 'laser_arena'));
     const autres = plan => (plan?.resourceBlocks || []).filter(block => !cible(block));
     const invariants = ['date', 'startTime', 'duration', 'totalDuration', 'pax', 'price', 'basePrice', 'extras', 'program', 'status', 'activityProgress'];
     const ancienPlanExplicite = Boolean(base.opsPlan?.resourceBlocks?.length);
     const conforme = saved && String(saved.id) === String(base.id)
       && String(saved.centerId || saved.center_id) === String(base.centerId || base.center_id || getCurrentStaffCenterId())
-      && activityMoves.every(move => move.activityId === 'laser_game')
       && recus.length === activityMoves.length
-      && recus.every((recu, rang) => recu?.activityId === 'laser_game' && recu.unitKey === activityMoves[rang].unitKey && recu.unchangedActivities === true)
+      && recus.every((recu, rang) => recu?.activityId === activityMoves[rang].activityId && (recu.activityId !== 'laser_game' || recu.unitKey === activityMoves[rang].unitKey) && recu.unchangedActivities === true)
       && invariants.every(key => valeurReservationComparable(saved[key]) === valeurReservationComparable(base[key]))
       && (!ancienPlanExplicite || valeurReservationComparable(autres(saved.opsPlan)) === valeurReservationComparable(autres(base.opsPlan)))
       && (!Array.isArray(base.opsPlan?.timeline) || valeurReservationComparable((saved.opsPlan?.timeline || []).filter(block => !cible(block))) === valeurReservationComparable(base.opsPlan.timeline.filter(block => !cible(block))));
@@ -37621,8 +37624,8 @@ function suggestionsConnuesEdition(cle) {
   return refus && refus.cle === cle ? refus.suggestions || [] : [];
 }
 
-// L ENREGISTREMENT DES HEURES : un deplacement apres l autre, chacun sur la
-// version que le precedent a ecrite, puis tout le reste (joueurs, programme,
+// L ENREGISTREMENT DES HEURES : plusieurs heures partent d un bloc, jugees ensemble, toutes ou aucune (2026-11-25, le
+// gerant : bowling et laser decales d une demi-heure, refuses l un contre l ancienne place de l autre), puis tout le reste (joueurs, programme,
 // prix, contact) sur la derniere (2026-11-20). Le nouveau calcul du planning qui
 // replace une heure tapee la voit reprendre la sienne, par son chemin. Un refus
 // laisse la saisie a l ecran, son champ en rouge avec sa phrase, et la barre du
@@ -37662,12 +37665,12 @@ async function enregistrerHeuresEdition() {
     return d.point.activityId === 'laser_game' && partieCaleeEdition(dossier, d, apres);
   };
   try {
-    for (const d of deplacements) {
-      const payload = await envoyerDeplacementActivite(derniere || versionDeBase, d.move);
-      if (!tenue(payload.reservation, d)) throw new Error('Le serveur n’a pas confirmé cette heure. Actualisez le planning.');
-      derniere = payload.reservation;
-      faits.push(d);
-    }
+    const payloadHeures = deplacements.length > 1
+      ? await envoyerDeplacementsActivite(versionDeBase, deplacements.map(d => d.move))
+      : await envoyerDeplacementActivite(versionDeBase, deplacements[0].move);
+    if (deplacements.some(d => !tenue(payloadHeures.reservation, d))) throw new Error('Le serveur n’a pas confirmé cette heure. Actualisez le planning.');
+    derniere = payloadHeures.reservation;
+    faits.push(...deplacements);
     let changeEntreTemps = '';
     let planNonRefait = '';
     if (envoi) {
@@ -37677,11 +37680,14 @@ async function enregistrerHeuresEdition() {
       changeEntreTemps = payload.changeEntreTemps || '';
       planNonRefait = payload.planNonRefait || '';
       // Une heure tapee que le nouveau calcul a replacee reprend la sienne (un bowling garde ses pistes).
-      for (const d of faits.filter(f => !tenue(derniere, f))) {
-        reprise = d;
-        const pistes = d.point.activityId === 'bowling' ? [...new Set(getBowlingWindowsFromReservation(derniere).flatMap(fenetre => fenetre.lanes || []))].map(Number).sort((a, b) => a - b) : null;
-        const repris = await envoyerDeplacementActivite(derniere, pistes ? { ...d.move, lanes: pistes } : d.move);
-        if (!tenue(repris.reservation, d)) throw new Error('Le serveur n’a pas confirmé cette heure. Actualisez le planning.');
+      // (plusieurs : d un bloc aussi, les unes ne se jugent pas a l ancienne place des autres)
+      const aReprendre = faits.filter(f => !tenue(derniere, f));
+      if (aReprendre.length) {
+        reprise = aReprendre[0];
+        const pistesDuBowling = [...new Set(getBowlingWindowsFromReservation(derniere).flatMap(fenetre => fenetre.lanes || []))].map(Number).sort((a, b) => a - b);
+        const moves = aReprendre.map(d => (d.point.activityId === 'bowling' ? { ...d.move, lanes: pistesDuBowling } : d.move));
+        const repris = moves.length > 1 ? await envoyerDeplacementsActivite(derniere, moves) : await envoyerDeplacementActivite(derniere, moves[0]);
+        if (aReprendre.some(d => !tenue(repris.reservation, d))) throw new Error('Le serveur n’a pas confirmé cette heure. Actualisez le planning.');
         derniere = repris.reservation;
       }
       reprise = null;
@@ -37724,7 +37730,8 @@ async function enregistrerHeuresEdition() {
       noterHeuresEdition({ ton: 'attention', texte: `${deja}Pas enregistré : la réservation a changé sur un autre poste entre-temps. L’écran est à jour et votre saisie est gardée : enregistrez à nouveau pour l’appliquer.` });
       return;
     }
-    const d = deplacements[faits.length];
+    // (un bloc refuse : le rang de l heure qui coince, rien n a bouge)
+    const d = deplacements[!faits.length && Number.isInteger(error.payload?.rang) ? error.payload.rang : faits.length];
     const motif = phraseHeureRefus(error.message) || 'Cette heure n’a pas été enregistrée.';
     if (d && faits.length < deplacements.length) {
       noterHeuresEdition({ ton: 'refus', texte: `${deja}Pas enregistré : ${d.point.nom} à ${d.heure}.`, refus: { cle: d.cle, phrase: motif, suggestions: suggestionsConnuesEdition(d.cle) } });

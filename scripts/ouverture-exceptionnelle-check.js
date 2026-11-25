@@ -38,6 +38,11 @@ function purger() {
 function mardiLointain() {
   const d = new Date(Date.now() + 21 * 86400000);
   while (d.getUTCDay() !== 2) d.setUTCDate(d.getUTCDate() + 1);
+  // (hors vacances scolaires et feries, ou le mardi ouvre des 10 h : le 22/12 rougissait depuis le 25/11)
+  const { getSchedule } = require('../lib/booking-config');
+  const { getCenter } = require('../lib/ops-knowledge');
+  const matin = () => { const h = getSchedule(d.toISOString().slice(0, 10), getCenter('libramont')); return !h || h.open < 12; };
+  for (let k = 0; k < 30 && matin(); k += 1) d.setUTCDate(d.getUTCDate() + 7);
   return d.toISOString().slice(0, 10);
 }
 const JOUR = mardiLointain();

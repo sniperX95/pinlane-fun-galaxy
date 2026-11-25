@@ -282,7 +282,7 @@ if (argument('contre-preuves')) {
       process.exit(1);
     }
     const voulues = typeof argument('contre-preuves') === 'string' ? argument('contre-preuves').split(',') : null;
-    const file = MUTATIONS.filter((m) => !voulues || voulues.includes(m.nom));
+    const file = require('./gates-tranche').trancher(MUTATIONS.filter((m) => !voulues || voulues.includes(m.nom))); // (trois tranches : d un coup, elles passaient les 15 min)
     let rates = 0;
     const POOL = 3;
     let suivant = 0;

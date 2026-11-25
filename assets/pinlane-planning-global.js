@@ -665,7 +665,7 @@
     var attendue = cocheAttendue({ start: debut, end: e.end, libre: e.libre }, { present: true, reparti: false, now: m.maintenant });
     return attendue === 'noncoche' ? 'acocher' : attendue || 'avenir';
   }
-  // (la case vide devant l heure : la bulle dit ce qu elle attend et ou se pose la coche, 2026-11-24)
+  // (la pastille cernee : la bulle dit ce qu elle attend et ou se pose la coche, 2026-11-24)
   var GF_ETATS = { fini: 'fait', clos: 'pas coché', avenir: 'à venir', retard: 'groupe pas encore pointé', lancer: 'à lancer, pas encore coché : la case se coche dans la fiche du groupe une fois l’activité lancée', acocher: 'pas encore coché : la case se coche dans la fiche du groupe', aplacer: 'à placer' };
   // CE QUI VIENT DANS LA DEMI-HEURE SORT DU RESTE (2026-11-02). Toutes les heures
   // de la feuille etaient du meme gras : a 15:10, rien ne disait lesquelles
@@ -885,12 +885,7 @@
     }
     if (e.enPlus) bulle += ' · en plus de la formule';
     var classes = 'gf-x is-' + etat + (etat === 'fini' && gfVientDeFinir(g, e, col, m.jour) ? ' vient-de-finir' : '') + (e.libre && !e.journee ? ' is-libre' : '') + (e.credit ? ' is-credit' : '') + (gfBientot(g, e, etat, m) ? ' is-bientot' : '') + (panne ? ' is-panne' : '') + (e.enPlus ? ' is-en-plus' : '');
-    // LA CASE VIDE DEVANT L HEURE SE DIT EN MOTS (2026-11-24, le gerant, en ligne : « c quoi le petit carré à
-    // côté »). Elle attend sa coche : l heure est la et le groupe aussi, personne n a coche. Le mot se lit
-    // sous la case, « à lancer » tant que l activite court, « à cocher » une fois son heure passee ; la bulle
-    // dit ou se pose la coche (GF_ETATS).
-    var attendue = t !== '' && !montant && (etat === 'lancer' || etat === 'acocher') ? '<span class="gf-x__attend">' + (etat === 'lancer' ? 'à lancer' : 'à cocher') + '</span>' : '';
-    return '<span class="' + classes + '" title="' + gpEsc(bulle + ' · ' + GF_ETATS[etat]) + '"' + (panne ? ' data-gf-voir="bowling"' : '') + '>' + (montant ? '<b class="gf-x__t is-nu gf-x__montant">' + gpEsc(t) + '</b>' : gfHeureHtml(t, etat === 'fini', etat, gfActDe(g, e, m, t, panne), e.enPlus)) + attendue + (d ? '<span class="gf-x__d">' + gfNumerosEntiers(d) + '</span>' : '') + gfHorsHtml(d2, d3) + '</span>';
+    return '<span class="' + classes + '" title="' + gpEsc(bulle + ' · ' + GF_ETATS[etat]) + '"' + (panne ? ' data-gf-voir="bowling"' : '') + '>' + (montant ? '<b class="gf-x__t is-nu gf-x__montant">' + gpEsc(t) + '</b>' : gfHeureHtml(t, etat === 'fini', etat, gfActDe(g, e, m, t, panne), e.enPlus)) + (d ? '<span class="gf-x__d">' + gfNumerosEntiers(d) + '</span>' : '') + gfHorsHtml(d2, d3) + '</span>';
   }
   // L HEURE SE TOUCHE (2026-11-22, gfOuvrirHeure plus bas) : une heure fixe, d une activite que ce role
   // deplace, se touche et se prend. Aucun element de plus : la pastille porte son geste. (une piste en
@@ -920,12 +915,12 @@
   // heures libre faut quils soient surligne et quand c fait dcp c plus surligne et quand c fait
   // montre plus visible avec une barre [...] super clean et pro »). « Libre » prend la pastille
   // des heures fixes ; une activite finie perd la sienne et son mot est barre d un trait (CSS).
-  // LA COCHE ATTENDUE SE VOIT (2026-11-23) : a lancer ou pas encore cochee, une case vide devant
-  // l heure, la ou la coche se posera ; cochee, la coche ; repartie sans coche, ni l une ni l autre.
+  // PAS DE CASE VIDE DEVANT L HEURE (2026-11-25, Ansar : « jcomprends jms pour le petit carré à côté de l'heure
+  // [...] c inutile, donc bouge juste ») : ni carre, ni mot pour l expliquer. A lancer ou pas encore cochee, la
+  // pastille est cernee et sa bulle dit ou se pose la coche (la fiche) ; cochee, la coche.
   // UNE ACTIVITE EN PLUS D UNE FORMULE SE DISTINGUE (2026-11-23, le gerant : « ça serait cool que ça
   // distingue les activités de la formule et activité en plus qu'il a ») : un « + » en exposant sur
   // sa pastille, sans largeur de plus ; les activites de la formule n en portent pas.
-  var GF_A_COCHER = '<svg class="gf-x__ac" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="4"/></svg>';
   // (le « + » est dessine par la feuille de style : le texte de la pastille reste son heure)
   var GF_PLUS = '<i class="gf-x__plus" aria-hidden="true"></i>';
   function gfHeureHtml(t, fait, etat, act, enPlus) {
@@ -934,7 +929,7 @@
     var signe = t !== '' && (etat === 'retard' || attend);
     var libre = t === 'Libre';
     var fini = (etat === 'fini' || etat === 'clos') && t !== '';
-    var repere = fait ? GF_FAIT : attend ? GF_A_COCHER : '';
+    var repere = fait ? GF_FAIT : '';
     var plus = enPlus && t !== '' ? GF_PLUS : '';
     if (t === GF_ILLIMITE || t === GF_VOLONTE) return '<b class="gf-x__t is-illimite">' + repere + gpEsc(t) + plus + '</b>';
     if (!fixe && !signe && !repere && !fini && !libre && !plus) return gpEsc(t);

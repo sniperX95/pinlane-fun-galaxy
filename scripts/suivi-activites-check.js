@@ -39,13 +39,13 @@
 //       leger de leur teinte, un liseré, trois teintes distinctes, l etiquette pleine a 4,5:1, deux
 //       lignes au plus ;
 //   [F] LA LEGENDE du menu « ⋯ » dit « à lancer », « fait », « en plus », plus « en cours » ;
-//   [G] AU TELEPHONE (390 px) : la case vide se voit, rien ne deborde ;
+//   [G] AU TELEPHONE (390 px) : le « + » se voit, aucune case vide, rien ne deborde ;
 //   [J] aucune erreur JS.
 // --contre-preuves : chaque regle retiree (au code servi, en memoire ; le disque n est jamais touche)
 // a son ancre une fois et une seule, puis fait rougir sa lettre : la coche automatique remise, la
 // carte bowling grise d office, le depart laser joue gris d office, la fiche qui dit « Fini », la
 // planche qui ignore la coche, le suivi reserve aux formules, « en plus » non distingue ou invisible,
-// le sur mesure sans sa rubrique pleine, les notes sans fond, la case vide cachee.
+// le sur mesure sans sa rubrique pleine, les notes sans fond, la case vide revenue (2026-11-25, elle est partie).
 //   SA_MUTATIONS : un sous-ensemble (noms separes par des virgules) ; SA_BAVARD : le detail des
 //   contre-preuves.
 'use strict';
@@ -189,7 +189,8 @@ const lireCases = (page, id) => page.evaluate((rid) => {
       heure: t ? t.textContent.trim() : x.textContent.trim(),
       etat: (x.className.match(/\bis-(fini|clos|lancer|acocher|avenir|retard|aplacer)\b/) || [])[1] || '',
       enPlus: x.classList.contains('is-en-plus'),
-      vide: vu(x.querySelector('.gf-x__ac')),
+      // (la case vide devant l heure est partie le 2026-11-25 : tout dessin de plus que la coche et le « + » rougit)
+      vide: Boolean(x.querySelector('.gf-x__ac, .gf-x__attend, svg:not(.gf-x__ok)')),
       coche: vu(x.querySelector('.gf-x__ok')),
       trait: Boolean(t) && getComputedStyle(t, '::after').content !== 'none',
       barre: Boolean(t) && /line-through/.test(getComputedStyle(t).textDecorationLine),
@@ -278,11 +279,11 @@ async function lecture(browser) {
     ok(tout.attendues >= 3, '[A] les activites dont l heure est venue, groupe sur place, attendent leur coche', tout);
     const arthur = await lireCases(page, ARTHUR);
     const passe = caseA(arthur, 'Bowling', '13:30');
-    ok(Boolean(passe) && passe.etat === 'acocher' && passe.vide && !passe.coche && !passe.trait && !passe.barre && /pas encore coché/.test(passe.bulle),
-      '[A] Arthur, son bowling de 13:30 passe sans coche : « pas encore coché », une case vide devant l heure, ni trait ni coche', passe);
+    ok(Boolean(passe) && passe.etat === 'acocher' && !passe.vide && !passe.coche && !passe.trait && !passe.barre && /1\.5px/.test(passe.cerne) && /pas encore coché/.test(passe.bulle),
+      '[A] Arthur, son bowling de 13:30 passe sans coche : la pastille cernee, la bulle « pas encore coché », ni petit carre, ni trait, ni coche', passe);
     const court = caseA(arthur, 'Minigolf', '14:35');
-    ok(Boolean(court) && court.etat === 'lancer' && court.vide && !court.trait && /à lancer, pas encore coché/.test(court.bulle) && /1\.5px/.test(court.cerne),
-      '[A] Arthur, son minigolf de 14:35 court sans coche : « à lancer », la pastille cerclee, la case vide', court);
+    ok(Boolean(court) && court.etat === 'lancer' && !court.vide && !court.trait && /à lancer, pas encore coché/.test(court.bulle) && /1\.5px/.test(court.cerne),
+      '[A] Arthur, son minigolf de 14:35 court sans coche : la bulle « à lancer », la pastille cerclee, sans petit carre', court);
     const ines = await lireCases(page, INES);
     ok(Array.isArray(ines) && ines.length > 0 && ines.every((c) => c.etat === 'clos' && !c.vide && !c.coche && !c.trait && !c.barre),
       '[A] Ines, payee et repartie, sans coche : ses cases grises, ni case vide, ni coche, ni trait', ines);
@@ -290,13 +291,13 @@ async function lecture(browser) {
     await aller(page, 'bowling');
     const cartes = await lireCartes(page, ARTHUR);
     const formule = cartes.filter((c) => Math.abs(c.start - 13.5) < 0.01);
-    ok(formule.length === 2 && formule.every((c) => c.aCocher && !c.passee && /2px/.test(c.cerne) && c.vide !== 'none' && /pas encore coché/.test(c.aria)),
-      '[A] bowling : les cartes passees d Arthur (pistes 3 et 4) attendent leur coche, cernees, la case vide devant l heure, pas grisees', formule);
+    ok(formule.length === 2 && formule.every((c) => c.aCocher && !c.passee && /2px/.test(c.cerne) && c.vide === 'none' && /pas encore coché/.test(c.aria)),
+      '[A] bowling : les cartes passees d Arthur (pistes 3 et 4) attendent leur coche, cernees, sans petit carre devant l heure, pas grisees', formule);
     // Le planning laser : les parties jouees du club, sur place, gardent leur teinte et attendent.
     await aller(page, 'laser');
     const laser = await lireLaser(page, CLUB);
-    ok(laser.length === 2 && laser.every((g) => g.joue && g.aCocher && !g.coche && g.teinte && g.teinte !== g.gris && g.repere !== 'none' && /pas encore coché/.test(g.titre)),
-      '[A] laser : les deux parties jouees du club attendent leur coche, a leur teinte, pas grises, la case vide devant le nom', laser);
+    ok(laser.length === 2 && laser.every((g) => g.joue && g.aCocher && !g.coche && g.teinte && g.teinte !== g.gris && g.repere === 'none' && /pas encore coché/.test(g.titre)),
+      '[A] laser : les deux parties jouees du club attendent leur coche, a leur teinte, pas grises, sans petit carre devant le nom', laser);
     // La fiche dit « Non coché », jamais « Fini » ni « En cours ».
     await ouvrirFiche(page, CLUB);
     const fiche = await lireFiche(page);
@@ -448,11 +449,11 @@ async function telephone(browser) {
     await FX.repos(page, 200);
     const t = await page.evaluate((rid) => {
       const tr = document.querySelector(`#globalPlanningGridWrap tr.gf-r[data-gf-id="${rid}"]`);
-      const vides = tr ? Array.from(tr.querySelectorAll('.gf-x:is(.is-lancer, .is-acocher) .gf-x__ac')).filter((x) => x.getClientRects().length && getComputedStyle(x).display !== 'none') : [];
+      const vides = tr ? Array.from(tr.querySelectorAll('.gf-x:is(.is-lancer, .is-acocher)')) : [];
       const plus = tr ? Array.from(tr.querySelectorAll('.gf-x__plus')).filter((x) => x.getClientRects().length) : [];
-      return { vides: vides.length, plus: plus.length, page: document.scrollingElement.scrollWidth, iw: innerWidth, carte: tr ? Math.round(tr.getBoundingClientRect().width) : 0 };
+      return { attendues: vides.length, vides: vides.filter((x) => x.querySelector('.gf-x__ac, .gf-x__attend, svg:not(.gf-x__ok)')).length, plus: plus.length, page: document.scrollingElement.scrollWidth, iw: innerWidth, carte: tr ? Math.round(tr.getBoundingClientRect().width) : 0 };
     }, ARTHUR);
-    ok(t.vides >= 2 && t.plus === 2, '[G] au telephone, la case vide et le « + » se voient sur la carte d Arthur', t);
+    ok(t.attendues >= 2 && t.vides === 0 && t.plus === 2, '[G] au telephone, le « + » se voit sur la carte d Arthur, sans petit carre', t);
     ok(t.page <= t.iw + 1 && t.carte <= t.iw, '[G] au telephone, rien ne deborde de cote', t);
   });
 }
@@ -467,7 +468,8 @@ const MUTATIONS = [
   { nom: 'carte-grise-d-office', lettre: 'A', scenario: 'lecture', editions: [{ fichier: APP, de: "${isToday && item.window.end <= curH + 1e-6 && !attendue ? ' is-passee' : ''}", vers: "${isToday && item.window.end <= curH + 1e-6 ? ' is-passee' : ''}" }] },
   { nom: 'depart-joue-gris-d-office', lettre: 'A', scenario: 'lecture', editions: [{ fichier: CSS, de: '.lp .lp-dep.is-joue :is(.lp-g:not(.is-a-cocher), .lp-cases i) {', vers: '.lp .lp-dep.is-joue :is(.lp-g, .lp-cases i) {' }] },
   { nom: 'fiche-fini-tout-seul', lettre: 'A', scenario: 'lecture', editions: [{ fichier: APP, de: "  if (now >= etape.end) return { cle: 'noncoche', mot: 'Non coché' };", vers: "  if (now >= etape.end) return etape.exige ? { cle: 'noncoche', mot: 'Non coché' } : { cle: 'fini', mot: 'Fini' };" }] },
-  { nom: 'case-vide-cachee', lettre: 'A', scenario: 'lecture', editions: [{ fichier: PGC, de: '.gf-x__ac { display: inline-block; width: 10px;', vers: '.gf-x__ac { display: none; width: 10px;' }] },
+  { nom: 'case-vide-revenue', lettre: 'A', scenario: 'lecture', editions: [{ fichier: PG, de: "    var repere = fait ? GF_FAIT : '';", vers: "    var repere = fait ? GF_FAIT : attend ? '<svg class=\"gf-x__ac\" viewBox=\"0 0 24 24\"></svg>' : '';" }] },
+  { nom: 'case-vide-revenue-a-la-carte', lettre: 'A', scenario: 'lecture', editions: [{ fichier: CSS, de: '.lp .lp-g.is-a-cocher:not(.is-choisi) {', vers: ".booking.is-a-cocher .bk-time::before { content: ''; }\n.lp .lp-g.is-a-cocher:not(.is-choisi) {" }] },
   { nom: 'coche-ignoree', lettre: 'B', scenario: 'cocher', editions: [{ fichier: PG, de: "    if (e.fait) return 'fini';\n", vers: '' }] },
   { nom: 'suivi-reserve-aux-formules', lettre: 'C', scenario: 'lecture', editions: [{ fichier: APP, de: "function renderActivityProgressPill(r, summary = suiviDuDossier(r)) {\n  if (!summary.total) return '';", vers: "function renderActivityProgressPill(r, summary = suiviDuDossier(r)) {\n  if (!reservationHasFormulaActivities(r)) return '';\n  if (!summary.total) return '';" }] },
   { nom: 'en-plus-non-distingue', lettre: 'D', scenario: 'lecture', editions: [{ fichier: PG, de: "    var plus = enPlus && t !== '' ? GF_PLUS : '';", vers: "    var plus = '';" }] },
@@ -475,7 +477,7 @@ const MUTATIONS = [
   { nom: 'sur-mesure-en-gris', lettre: 'D', scenario: 'lecture', editions: [{ fichier: PG, de: '  var GF_NOTES = { client: true, equipe: true, mesure: true };', vers: '  var GF_NOTES = { client: true, equipe: true };' }] },
   { nom: 'notes-sans-fond', lettre: 'E', scenario: 'lecture', editions: [{ fichier: PGC, de: '.gf-i.gf-i--note { padding: 1px 6px 1px 5px; border-left: 3px solid var(--gf-i-teinte); border-radius: 0 4px 4px 0; background: color-mix(in srgb, var(--gf-i-teinte) 9%, var(--surface)); }', vers: '' }] },
   { nom: 'legende-en-cours', lettre: 'F', scenario: 'lecture', editions: [{ fichier: APP, de: "<i class=\"gf-leg is-lancer\" aria-hidden=\"true\"></i>à lancer : pas encore coché</span>", vers: "<i class=\"gf-leg is-lancer\" aria-hidden=\"true\"></i>en cours</span>" }] },
-  { nom: 'case-vide-cachee-au-telephone', lettre: 'G', scenario: 'telephone', editions: [{ fichier: PGC, de: '  .gf-x__ac { display: inline-block; }', vers: '  .gf-x__ac { display: none; }' }] },
+  { nom: 'case-vide-revenue-au-telephone', lettre: 'G', scenario: 'telephone', editions: [{ fichier: PG, de: "    var repere = fait ? GF_FAIT : '';", vers: "    var repere = fait ? GF_FAIT : attend ? '<svg class=\"gf-x__ac\" viewBox=\"0 0 24 24\"></svg>' : '';" }] },
 ];
 
 async function main() {

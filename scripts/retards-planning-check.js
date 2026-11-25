@@ -8,10 +8,9 @@
 //     bowling et laser game » ; « plein de trucs où c'est pas ingénieux et pas dans les détails ».
 // La VRAIE console (scripts/planning-v3-fixtures.js, le samedi « pic » a 15:10, 1366 x 768), le VRAI handler
 // api/staff-reservations.js et le vrai moteur sur la base en memoire (scripts/comptoir-banc.js, scripts/reserver-banc.js).
-//   [A] LE PETIT CARRE : la case vide devant l heure d une activite dont l heure est venue, le groupe la, que personne
-//       n a cochee. Au planning complet, sous l heure, « à lancer » (son heure court) ou « à cocher » (son heure est
-//       passee) ; sa bulle dit ou se pose la coche ; un groupe pas encore la n a ni case ni mot. A la carte du planning
-//       bowling, la meme case devant l heure porte la meme bulle.
+//   [A] PLUS DE PETIT CARRE (2026-11-25, Ansar : « c inutile, donc bouge juste ») : une activite dont l heure est venue,
+//       le groupe la, que personne n a cochee, ne porte devant son heure ni case vide ni mot ; sa pastille est cernee et
+//       sa bulle dit ou se pose la coche. A la carte du planning bowling, l heure porte la meme bulle, sans carre.
 //   [B] RESERVER MAINTENANT PART DE LA MINUTE : a 15:10, un bowling pour 4 s ouvre sur « Créer à 15:10 », pas 15:00 ;
 //       la touche de 15:10 dit « maintenant », celle de 15:00 non ; les heures d apres restent rondes ; le dossier nait a
 //       15:10, son bowling de 15:10 a 16:10, arrive. Le laser garde ses departs (une demi-heure apres 15:10).
@@ -87,10 +86,9 @@ const NOEL = 1637; // attendue, bowling 16:30 piste 6
 // crochet de compilation du banc, sinon la console le recoit du serveur de fichiers.
 const RETARD_FIGE = { fichier: LIB, de: ' && (etape.debut >= la || etape.fin <= maintenant));', vers: ');' };
 const MUTATIONS = [
-  // [A] la case sans son mot ; la bulle qui ne dit pas ou se pose la coche ; le mot cache ; la carte bowling muette.
-  { nom: 'case-sans-mot', lettre: 'A', fichier: PG, de: "    var attendue = t !== '' && !montant && (etat === 'lancer' || etat === 'acocher') ? '<span class=\"gf-x__attend\">' + (etat === 'lancer' ? 'à lancer' : 'à cocher') + '</span>' : '';", vers: "    var attendue = '';" },
+  // [A] le carre revenu ; la bulle qui ne dit pas ou se pose la coche ; la carte bowling muette, son carre revenu.
+  { nom: 'carre-revenu', lettre: 'A', fichier: PG, de: "    var repere = fait ? GF_FAIT : '';", vers: "    var repere = fait ? GF_FAIT : attend ? '<svg class=\"gf-x__ac\"></svg>' : '';" },
   { nom: 'bulle-sans-la-coche', lettre: 'A', fichier: PG, de: "lancer: 'à lancer, pas encore coché : la case se coche dans la fiche du groupe une fois l’activité lancée'", vers: "lancer: 'à lancer, pas encore coché'" },
-  { nom: 'mot-cache', lettre: 'A', fichier: PGC, de: '.gf-x__attend { align-self: flex-start;', vers: '.gf-x__attend { display: none; align-self: flex-start;' },
   { nom: 'heure-de-carte-sans-bulle', lettre: 'A', fichier: APP, de: "          <span class=\"bk-time\"${attendue ? ` title=\"${attendue === 'lancer' ? 'À lancer, pas encore coché : la case se coche dans la fiche du groupe une fois le bowling lancé' : 'Pas encore coché : la case se coche dans la fiche du groupe'}\"` : ''}>${formatClockDisplay(st)}</span>", vers: '          <span class="bk-time">${formatClockDisplay(st)}</span>' },
   // [B] la demi-heure en cours (la panne du gerant) ; « maintenant » sur la demi-heure.
   { nom: 'demi-heure-en-cours', lettre: 'B', fichier: APP, de: '  return minute > plancher + 1e-9 ? minute : null;', vers: '  return null;' },
@@ -257,7 +255,7 @@ async function principal() {
 
     // =======================================================================
     if (joue('A') && !SERVEUR_SEUL) {
-      section('[A] LE PETIT CARRE SE DIT EN MOTS : « à lancer », « à cocher », et sa bulle');
+      section('[A] PLUS DE PETIT CARRE DEVANT L HEURE, NI DE MOT : la pastille cernee et sa bulle');
       // Les Amis de Clara pointes arrives (bowling 15:00, pistes 6-7) : a 15:10 leur bowling attend sa coche.
       const { ctx, page, erreurs } = await ouvrir((liste) => liste.map((r) => (r.id === CLARA ? { ...r, status: 'arrived' } : r)));
       try {
@@ -267,17 +265,17 @@ async function principal() {
           const x = c && c.querySelector('.gf-x');
           if (!x) return null;
           const vu = (e) => Boolean(e) && e.getClientRects().length > 0 && getComputedStyle(e).display !== 'none' && getComputedStyle(e).visibility !== 'hidden';
-          const mot = x.querySelector('.gf-x__attend');
-          return { classe: x.className, carre: vu(x.querySelector('.gf-x__ac')), mot: vu(mot) ? mot.textContent.trim() : '', bulle: x.getAttribute('title') || '' };
+          const t2 = x.querySelector('.gf-x__t');
+          return { classe: x.className, carre: Boolean(x.querySelector('.gf-x__ac, .gf-x__attend, svg:not(.gf-x__ok)')), texte: x.textContent.trim(), cerne: vu(t2) ? getComputedStyle(t2).boxShadow : '', bulle: x.getAttribute('title') || '' };
         }, { id: String(id), titre });
         const clara = await caseDe(CLARA, 'Bowling');
         const arthur = await caseDe(ARTHUR, 'Bowling');
         const sacha = await caseDe(SACHA, 'Bowling');
-        ok(clara && /is-lancer/.test(clara.classe) && clara.mot === 'à lancer' && /à lancer, pas encore coché : la case se coche dans la fiche du groupe/.test(clara.bulle),
-          '[A] Amis de Clara, la, bowling de 15:00 : sous la case, « à lancer », et la bulle dit ou se pose la coche', clara);
-        ok(arthur && /is-acocher/.test(arthur.classe) && arthur.mot === 'à cocher' && /pas encore coché : la case se coche dans la fiche du groupe/.test(arthur.bulle),
-          '[A] Anniversaire Arthur, la, bowling de 13:30 passe sans coche : « à cocher »', arthur);
-        ok(sacha && !sacha.carre && !sacha.mot, '[A] Anniversaire Sacha, pas encore la : ni case ni mot', sacha);
+        ok(clara && /is-lancer/.test(clara.classe) && !clara.carre && !/à lancer|à cocher/.test(clara.texte) && /1\.5px/.test(clara.cerne) && /à lancer, pas encore coché : la case se coche dans la fiche du groupe/.test(clara.bulle),
+          '[A] Amis de Clara, la, bowling de 15:00 : ni carre ni mot, la pastille cernee, la bulle dit ou se pose la coche', clara);
+        ok(arthur && /is-acocher/.test(arthur.classe) && !arthur.carre && !/à lancer|à cocher/.test(arthur.texte) && /1\.5px/.test(arthur.cerne) && /pas encore coché : la case se coche dans la fiche du groupe/.test(arthur.bulle),
+          '[A] Anniversaire Arthur, la, bowling de 13:30 passe sans coche : pareil', arthur);
+        ok(sacha && !sacha.carre, '[A] Anniversaire Sacha, pas encore la : ni carre ni mot', sacha);
         await page.evaluate((id) => document.querySelector(`.gf-r[data-gf-id="${id}"]`).scrollIntoView({ block: 'center' }), String(CLARA));
         await FX.repos(page, 200);
         const ligne = await page.evaluate((id) => {
@@ -294,10 +292,10 @@ async function principal() {
         const carte = await page.evaluate((id) => {
           const c = document.querySelector(`#planningGridWrap .booking[data-booking-res-id="${id}"]`);
           const t = c && c.querySelector('.bk-time');
-          return c ? { classes: c.className, bulle: t ? t.getAttribute('title') || '' : '' } : null;
+          return c ? { classes: c.className, bulle: t ? t.getAttribute('title') || '' : '', carre: t ? getComputedStyle(t, '::before').content : '' } : null;
         }, String(CLARA));
-        ok(carte && /is-a-cocher/.test(carte.classes) && /^À lancer, pas encore coché : la case se coche dans la fiche du groupe/.test(carte.bulle),
-          '[A] au planning bowling, la case devant l heure de la carte porte la meme bulle', carte);
+        ok(carte && carte.carre === 'none' && /is-a-cocher/.test(carte.classes) && /^À lancer, pas encore coché : la case se coche dans la fiche du groupe/.test(carte.bulle),
+          '[A] au planning bowling, l heure de la carte porte la meme bulle, sans carre', carte);
         ok(erreurs.length === 0, '[*] zero erreur JavaScript (A)', erreurs.slice(0, 3).join(' | '));
       } finally { await ctx.close(); }
     }
@@ -562,6 +560,6 @@ async function principal() {
   }
   console.log(rouges
     ? `\nretards-planning-check: ${rouges} ROUGE(S)`
-    : '\nretards-planning-check: ALL OK - la case vide se dit en mots, Reserver part de la minute, le retard pose a la main decale et le retard se voit en rouge au bowling et au laser');
+    : '\nretards-planning-check: ALL OK - plus de petit carre devant l heure, Reserver part de la minute, le retard pose a la main decale et le retard se voit en rouge au bowling et au laser');
   process.exit(rouges ? 1 : 0);
 }

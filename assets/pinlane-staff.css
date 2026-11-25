@@ -1820,17 +1820,15 @@ button.staff-date-label:focus-visible,
 }
 /* LA COCHE ATTENDUE (2026-11-23, le gerant : « faut cocher tout le temps manuellement prcq sinon
    on sait pas voir si c lancé ou pas ») : son heure venue, le groupe sur place, le bowling que
-   personne n a coche se cerne de la barre de son etat et porte une case vide devant son heure.
-   Passee sans coche, la carte ne grise pas (is-passee ne s y pose pas). Aucune largeur de plus
-   que la case : le cadre est une ombre interne. */
+   personne n a coche se cerne de la barre de son etat. Passee sans coche, la carte ne grise pas
+   (is-passee ne s y pose pas). Aucune largeur de plus : le cadre est une ombre interne.
+   (2026-11-25, Ansar : le petit carre vide devant l heure est parti, « c inutile ») */
 .booking.is-a-cocher:is(.conf, .arr, .paid) { box-shadow: inset 1px 0 0 var(--bk-barre), inset 0 0 0 2px var(--bk-barre); }
-.booking.is-a-cocher .bk-time::before { content: ''; display: inline-block; box-sizing: border-box; width: 9px; height: 9px; margin-right: 3px; border: 1.5px solid currentColor; border-radius: 2px; vertical-align: 0; }
-/* LE PLANNING LASER, LA MEME REGLE PAR PARTIE : a cocher, cernee de sa teinte et une case vide
-   devant le nom, meme dans un depart joue ; cochee, une coche devant le nom. */
+/* LE PLANNING LASER, LA MEME REGLE PAR PARTIE : a cocher, cernee de sa teinte, meme dans un depart
+   joue ; cochee, une coche devant le nom. */
 .lp .lp-g.is-a-cocher:not(.is-choisi) { box-shadow: inset 0 0 0 1.5px var(--lp-c); }
 .lp-compact .lp-g.is-a-cocher:not(.is-choisi) { box-shadow: inset 3px 0 0 var(--lp-c), inset 0 0 0 1.5px var(--lp-c); }
-.lp .lp-g.is-a-cocher .lp-g__nom::before, .lp .lp-g.is-coche .lp-g__nom::before { content: ''; flex: none; box-sizing: border-box; width: 10px; height: 10px; border-radius: 2px; }
-.lp .lp-g.is-a-cocher .lp-g__nom::before { border: 1.5px solid var(--lp-c); }
+.lp .lp-g.is-coche .lp-g__nom::before { content: ''; flex: none; box-sizing: border-box; width: 10px; height: 10px; border-radius: 2px; }
 .lp .lp-g.is-coche .lp-g__nom::before { background: currentColor; -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5' fill='none' stroke='%23000' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5' fill='none' stroke='%23000' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat; }
 .lp .lp-g .activity-pill { flex: none; }
 

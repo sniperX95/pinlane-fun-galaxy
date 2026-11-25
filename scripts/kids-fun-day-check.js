@@ -757,17 +757,17 @@ async function scenarioH(browser) {
 // ---------------------------------------------------------------------------
 // [I] LES BANDEAUX « À VOLONTÉ »
 // ---------------------------------------------------------------------------
-const PHRASES = { bowling: ['planningVolonte', 'Aucune piste réservée : ils jouent quand une piste est libre.'], laser: ['laserVolonte', 'Aucune arme réservée : ils jouent quand un départ a de la place.'] };
+const PHRASES = { bowling: ['planningVolonte', 'À volonté, sans piste réservée : faites-les jouer dès qu’une piste est libre.'], laser: ['laserVolonte', 'À volonté, sans arme réservée : faites-les jouer dès qu’un départ a de la place.'] };
 async function bandeauxDuJour(browser) {
   await avec(browser, 'bandeaux', {}, async (page, m) => {
     for (const [vue, [zone, phrase]] of Object.entries(PHRASES)) {
       await aller(page, vue);
       await photo(page, `kids-fun-day-planning-${vue}`);
       const b = await lireBandeau(page, zone);
-      ok(b.vu && b.titre === `À volonté Kids Fun Day ${phrase}`, `[I] ${vue} : le bandeau dit « À volonté », la formule et la phrase`, b.titre);
+      ok(b.vu && b.titre === `Kids Fun Day 6 groupes, 68 joueurs, jusqu’à 17:00 ${phrase}`, `[I] ${vue} : le bandeau dit la formule, combien ils sont, jusqu a quand et quoi faire`, b.titre);
       ok(b.groupes.map((g) => g.id).join() === [NORA, CLUB, COLLIN, BASTIN, ECOLE, m.idNeuf].join(), `[I] ${vue} : les groupes du jour dans l ordre, sans l annule, l absent ni l adapte avec bowling`, b.groupes.map((g) => [g.id, g.nom]));
-      ok(b.groupes.map((g) => g.texte).join(' | ') === ['Anniversaire Nora (7 ans) 8 joueurs Arrivé jusqu’à 17:00', 'Club des enfants du mercredi 10 joueurs Arrivé jusqu’à 17:00', 'Famille Collin 8 joueurs Arrivé jusqu’à 17:00', 'Cousins Bastin 4 joueurs En retard jusqu’à 17:00', 'École communale 35 joueurs Arrivé jusqu’à 17:00', 'Famille Dethier 3 joueurs Attendu à 14:30 jusqu’à 17:00'].join(' | '), `[I] ${vue} : chaque groupe dit ses joueurs, son etat et jusqu a quelle heure`, b.groupes.map((g) => g.texte));
-      ok(b.groupes.map((g) => g.etat).join() === 'la,la,la,retard,la,attendu' && b.groupes.every((g) => /Ouvrir sa fiche$/.test(g.aria)), `[I] ${vue} : l etat se voit aussi a sa couleur, le bouton se dit aux lecteurs d ecran`, b.groupes.map((g) => [g.etat, g.aria]));
+      ok(b.groupes.map((g) => g.texte).join(' | ') === ['Arrivé Anniversaire Nora (7 ans) 8 joueurs', 'Arrivé Club des enfants du mercredi 10 joueurs', 'Arrivé Famille Collin 8 joueurs', 'En retard Cousins Bastin 4 joueurs', 'Arrivé École communale 35 joueurs', 'Attendu à 14:30 Famille Dethier 3 joueurs'].join(' | '), `[I] ${vue} : chaque groupe dit son etat et ses joueurs`, b.groupes.map((g) => g.texte));
+      ok(b.groupes.map((g) => g.etat).join() === 'la,la,la,retard,la,attendu' && b.groupes.every((g) => /jusqu’à 17:00\. Ouvrir sa fiche$/.test(g.aria)), `[I] ${vue} : l etat se voit aussi a sa couleur, le bouton se dit aux lecteurs d ecran`, b.groupes.map((g) => [g.etat, g.aria]));
       ok(b.groupes.every((g) => g.clair > 200 && /Geist/.test(g.police) && g.taille >= 13), `[I] ${vue} : sobre, en Geist, jamais un bouton noir`, b.groupes.map((g) => [g.clair, g.police, g.taille]));
       await page.locator(`#${zone} [data-volonte="${BASTIN}"]`).click();
       await page.waitForFunction(() => !document.getElementById('posOverlay').classList.contains('hidden'), null, { timeout: 6000 }).catch(() => null);
@@ -812,7 +812,27 @@ async function leSoir(browser) {
     await aller(page, 'bowling');
     const b = await lireBandeau(page, 'planningVolonte');
     const par = Object.fromEntries(b.groupes.map((g) => [g.id, g]));
-    ok(par[CLUB].etat === 'parti' && /10 joueurs Parti jusqu’à 17:00/.test(par[CLUB].texte) && par[NORA].etat === 'la' && /Arrivé/.test(par[NORA].texte), '[I] le soir, un groupe paye et fini se dit « Parti »', b.groupes.map((g) => [g.nom, g.etat, g.texte]));
+    ok(par[CLUB].etat === 'parti' && /^Parti .*10 joueurs$/.test(par[CLUB].texte) && par[NORA].etat === 'la' && /Arrivé/.test(par[NORA].texte), '[I] le soir, un groupe paye et fini se dit « Parti »', b.groupes.map((g) => [g.nom, g.etat, g.texte]));
+  });
+  // PAYE ET ENCORE LA : « Payé », aux couleurs de la legende (Arrivé orange, Payé vert).
+  await avec(browser, 'bandeaux, paye et encore la', { neuf: false, payes: [CLUB] }, async (page) => {
+    await aller(page, 'bowling');
+    const b = await lireBandeau(page, 'planningVolonte');
+    const par = Object.fromEntries(b.groupes.map((g) => [g.id, g]));
+    const teintes = await page.evaluate(([club, nora]) => [club, nora].map((id) => getComputedStyle(document.querySelector(`#planningVolonte [data-volonte="${id}"] .pl-volonte__e`)).color), [CLUB, NORA]);
+    ok(/^Payé /.test(par[CLUB].texte) && /^Arrivé /.test(par[NORA].texte) && teintes.join() === 'rgb(15, 123, 60),rgb(163, 82, 0)', '[I] un groupe paye et encore la se dit « Payé », en vert ; « Arrivé » en orange', { club: par[CLUB].texte, nora: par[NORA].texte, teintes });
+    // DES FINS DIFFERENTES : chacune sur son groupe, plus dans le titre.
+    const fins = await page.evaluate((club) => {
+      const vrai = resolveDisplayFormule;
+      const leSien = state.reservations.find((x) => x.id === club);
+      const id = leSien.formuleId;
+      leSien.formuleId = `${id} `;
+      window.resolveDisplayFormule = (f) => (f === `${id} ` ? { ...vrai(id), timeLimit: { ...(vrai(id).timeLimit || {}), max: 18 } } : vrai(f));
+      try { renderBandeauVolonte('bowling'); } finally { window.resolveDisplayFormule = vrai; }
+      const z = document.getElementById('planningVolonte');
+      return { titre: z.querySelector('.pl-volonte__c').textContent, textes: [...z.querySelectorAll('.pl-volonte__g')].map((g) => g.textContent.replace(/\s+/g, ' ').trim()) };
+    }, CLUB);
+    ok(!/jusqu/.test(fins.titre) && fins.textes.some((t) => /jusqu’à 18:00$/.test(t)) && fins.textes.filter((t) => /jusqu’à 17:00$/.test(t)).length === fins.textes.length - 1, '[I] des fins differentes : chaque groupe dit la sienne', fins);
   });
 }
 // UN MERCREDI CHARGE (26 groupes) : la liste defile dans le tiers de l ecran, la grille garde sa place, et un groupe
@@ -854,6 +874,8 @@ async function ecransDuBandeau(browser) {
           if (appareil === 'tablette' || appareil === 'telephone') ok(b.groupes.every((g) => g.h >= 44), `[I] ${taille} px, ${vue} : chaque groupe se touche au doigt (44 px)`, b.groupes.map((g) => g.h));
           const grille = await page.evaluate((v) => { const w = document.getElementById(v === 'laser' ? 'laserPlanningGridWrap' : 'planningGridWrap').getBoundingClientRect(); return { haut: Math.round(w.height), bas: Math.round(w.bottom), ih: window.innerHeight }; }, vue);
           ok(grille.haut > 160, `[I] ${taille} px${plein ? ', plein écran' : ''}, ${vue} : la grille garde sa place dessous`, grille);
+          const rognes = vue === 'laser' ? await page.evaluate(() => [...document.querySelectorAll('#laserPlanningGridWrap .lp-compact .lp-g')].filter((g) => g.scrollHeight > g.clientHeight + 1).map((g) => [g.textContent.trim().slice(0, 40), g.clientHeight, g.scrollHeight])) : [];
+          ok(!rognes.length, `[I] ${taille} px${plein ? ', plein écran' : ''}, ${vue} : les cartes du laser ne sont pas rognees sous le bandeau`, rognes);
           if (plein) { await page.evaluate((v) => (v === 'laser' ? toggleLaserPlanningExpanded() : togglePlanningExpanded()), vue); await FX.repos(page, 400); }
         }
       });
@@ -911,16 +933,18 @@ const MUTATIONS = [
   { nom: 'annules-et-absents-montres', lettre: 'I', scenario: bandeauxDuJour, editions: [K(APP, '    .filter(r => tientSesPlaces(r) && dossierToutIllimite(r))', '    .filter(r => dossierToutIllimite(r))')] },
   { nom: 'activite-absente-ignoree', lettre: 'I', scenario: bandeauxDuJour, editions: [K(APP, "  if (typeof dossierToutIllimite !== 'function' || !activitesToutIllimite().some(activite => String(activite.id) === activityId)) return [];", "  if (typeof dossierToutIllimite !== 'function') return [];")] },
   { nom: 'retard-oublie', lettre: 'I', scenario: bandeauxDuJour, editions: [K(APP, '    const retard = !la && groupeEnRetardAuPlanning(r, moment);', '    const retard = false;')] },
-  { nom: 'sans-fiche', lettre: 'I', scenario: bandeauxDuJour, editions: [K(APP, '. Ouvrir sa fiche`)}" onclick="openPos(${Number(r.id)})"><i aria-hidden="true">', '. Ouvrir sa fiche`)}"><i aria-hidden="true">')] },
-  { nom: 'bouton-noir', lettre: 'I', scenario: bandeauxDuJour, editions: [K(CSS, 'border-radius: 10px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-strong); color: var(--muted); font: inherit; font-size: 13px;', 'border-radius: 10px; background: #111; color: var(--muted); font: inherit; font-size: 13px;')] },
+  { nom: 'sans-fiche', lettre: 'I', scenario: bandeauxDuJour, editions: [K(APP, '. Ouvrir sa fiche`)}" onclick="openPos(${Number(r.id)})"><span class="pl-volonte__e">', '. Ouvrir sa fiche`)}"><span class="pl-volonte__e">')] },
+  { nom: 'bouton-noir', lettre: 'I', scenario: bandeauxDuJour, editions: [K(CSS, 'border-radius: 10px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-strong); color: var(--text); font: inherit; font-size: 14px;', 'border-radius: 10px; background: #111; color: var(--text); font: inherit; font-size: 14px;')] },
   { nom: 'bandeau-vide-affiche', lettre: 'I', scenario: grilleEtCompteurs, editions: [K(APP, '  zone.innerHTML = html;\n  zone.hidden = !html;\n  if (haut && liste)', '  zone.innerHTML = html;\n  zone.hidden = false;\n  if (haut && liste)'), K(APP, '  if (zone.__rendu === html) return;\n  zone.__rendu = html;\n  // (un groupe pointe ailleurs', '  // (un groupe pointe ailleurs')] },
   { nom: 'ancien-plan-dessine', lettre: 'I', scenario: grilleEtCompteurs, editions: [K(BC, '(Array.isArray(reservation.opsPlan?.resourceBlocks) ? reservation.opsPlan.resourceBlocks : []).filter(block => !toutIllimite || (block && block.enPlus));', '(Array.isArray(reservation.opsPlan?.resourceBlocks) ? reservation.opsPlan.resourceBlocks : []);')] },
   { nom: 'partie-fantome', lettre: 'I', scenario: grilleEtCompteurs, editions: [K(BC, '  if (dossierToutIllimite(reservation) && !getLaserWindowsFromReservation(reservation).length) return [];\n', '')] },
+  { nom: 'paye-oublie', lettre: 'I', scenario: leSoir, editions: [K(APP, "parti ? 'Parti' : paye ? 'Payé' : la", "parti ? 'Parti' : la")] },
   { nom: 'parti-oublie', lettre: 'I', scenario: leSoir, editions: [K(APP, '    const parti = la && groupeReparti(r, moment, maintenant, span);', '    const parti = false;')] },
   { nom: 'liste-sans-borne', lettre: 'I', scenario: mercrediCharge, editions: [K(CSS, 'min-width: 0; max-height: 30vh; margin: -3px;', 'min-width: 0; margin: -3px;')] },
   { nom: 'la-liste-saute', lettre: 'I', scenario: mercrediCharge, editions: [K(APP, "  if (haut && liste) zone.querySelector('.pl-volonte__l').scrollTop = haut;\n", '')] },
   { nom: 'le-clavier-saute', lettre: 'I', scenario: mercrediCharge, editions: [K(APP, '  if (vise) vise.focus({ preventScroll: true });\n}\n\nfunction renderPlanning() {', '}\n\nfunction renderPlanning() {')] },
-  { nom: 'une-seule-ligne', lettre: 'I', scenario: ecransDuBandeau, editions: [K(CSS, '.pl-volonte__l { display: flex; flex-wrap: wrap; gap: 6px;', '.pl-volonte__l { display: flex; flex-wrap: nowrap; gap: 6px;'), K(CSS, '.pl-volonte__g { --pl-volonte-c: var(--accent); box-sizing: border-box; display: inline-flex; flex-wrap: wrap;', '.pl-volonte__g { --pl-volonte-c: var(--accent); flex: none; box-sizing: border-box; display: inline-flex; flex-wrap: nowrap;')] },
+  { nom: 'une-seule-ligne', lettre: 'I', scenario: ecransDuBandeau, editions: [K(CSS, '.pl-volonte__l { display: flex; flex-wrap: wrap; gap: 8px;', '.pl-volonte__l { display: flex; flex-wrap: nowrap; gap: 8px;'), K(CSS, '.pl-volonte__g { --pl-volonte-c: var(--accent-strong); --pl-volonte-f: var(--accent-soft); box-sizing: border-box; display: inline-flex; flex-wrap: wrap;', '.pl-volonte__g { --pl-volonte-c: var(--accent-strong); flex: none; box-sizing: border-box; display: inline-flex; flex-wrap: nowrap;')] },
+  { nom: 'laser-rogne', lettre: 'I', scenario: ecransDuBandeau, editions: [K(APP, "  lp.classList.toggle('lp-cards-juste', rowHeight >= 38 && rowHeight < 42);\n", '')] },
   { nom: 'trop-petit-au-doigt', lettre: 'I', scenario: ecransDuBandeau, editions: [K(CSS, '@media (pointer: coarse) { .pl-volonte__g { min-height: 44px; } }', '')] },
 ];
 

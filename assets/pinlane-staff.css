@@ -2037,21 +2037,20 @@ button.staff-date-label:focus-visible,
 /* LE BANDEAU « À VOLONTÉ » DES PLANNINGS BOWLING ET LASER (2026-11-24, renderBandeauVolonte) : les groupes Kids Fun Day
    du jour, en tete de la boite, au-dessus de la grille. Une ligne quand ils tiennent ; chaque groupe se touche. Un jour
    charge, la liste defile dans le tiers de l ecran : la grille garde sa place. */
-.pl-volonte { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; min-width: 0; padding: 7px 10px; border-bottom: 1px solid var(--line); background: var(--surface); color: var(--text); font-family: var(--font-ui); font-size: 14px; line-height: 1.35; font-variant-numeric: tabular-nums; }
+.pl-volonte { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 24px; min-width: 0; padding: 10px 12px 10px 16px; border-bottom: 1px solid var(--line); background: var(--accent-soft); box-shadow: inset 4px 0 0 var(--accent); color: var(--text); font-family: var(--font-ui); font-size: 15px; line-height: 1.35; font-variant-numeric: tabular-nums; }
 .pl-volonte[hidden] { display: none; }
-.pl-volonte__t { display: flex; flex-wrap: wrap; align-items: baseline; gap: 1px 8px; min-width: 0; margin: 0; color: var(--muted); }
-.pl-volonte__t b { font-weight: 650; color: var(--text); }
-.pl-volonte__f { padding: 1px 8px; border-radius: 6px; background: var(--subtle); color: var(--text); font-size: 13px; font-weight: 600; }
-.pl-volonte__l { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; max-height: 30vh; margin: -3px; padding: 3px; overflow-y: auto; overscroll-behavior: contain; }
-.pl-volonte__g { --pl-volonte-c: var(--accent); box-sizing: border-box; display: inline-flex; flex-wrap: wrap; align-items: center; gap: 1px 8px; max-width: 100%; min-width: 0; min-height: 32px; padding: 3px 10px; border: 0; border-radius: 10px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-strong); color: var(--muted); font: inherit; font-size: 13px; text-align: left; cursor: pointer; transition: background-color 140ms ease; }
-.pl-volonte__g i { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--pl-volonte-c); }
-.pl-volonte__g b { min-width: 0; font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
-.pl-volonte__e { font-weight: 600; color: var(--text); }
-.pl-volonte__g.is-la { --pl-volonte-c: var(--success); }
-.pl-volonte__g.is-la .pl-volonte__e { color: var(--success); }
-.pl-volonte__g.is-retard { --pl-volonte-c: var(--danger); }
-.pl-volonte__g.is-retard .pl-volonte__e { color: var(--danger); }
-.pl-volonte__g.is-parti { --pl-volonte-c: var(--faint); }
+.pl-volonte__t { display: flex; flex-wrap: wrap; align-items: baseline; gap: 1px 10px; min-width: 0; margin: 0; color: var(--text); }
+.pl-volonte__t b { font-size: 18px; font-weight: 700; line-height: 1.25; }
+.pl-volonte__c { font-weight: 600; }
+.pl-volonte__p { flex: 1 0 100%; font-size: 14px; }
+.pl-volonte__l { display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; max-height: 30vh; margin: -3px; padding: 3px; overflow-y: auto; overscroll-behavior: contain; }
+.pl-volonte__g { --pl-volonte-c: var(--accent-strong); --pl-volonte-f: var(--accent-soft); box-sizing: border-box; display: inline-flex; flex-wrap: wrap; align-items: center; gap: 1px 10px; max-width: 100%; min-width: 0; min-height: 40px; padding: 5px 12px 5px 6px; border: 0; border-radius: 10px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-strong); color: var(--text); font: inherit; font-size: 14px; text-align: left; cursor: pointer; transition: background-color 140ms ease; }
+.pl-volonte__g b { min-width: 0; font-size: 15px; font-weight: 700; overflow-wrap: anywhere; }
+.pl-volonte__e { flex: none; padding: 4px 10px; border-radius: 7px; background: var(--pl-volonte-f); color: var(--pl-volonte-c); font-weight: 700; }
+.pl-volonte__g.is-la { --pl-volonte-c: var(--warning); --pl-volonte-f: var(--warning-soft); }
+.pl-volonte__g.is-paye { --pl-volonte-c: var(--success); --pl-volonte-f: var(--success-soft); }
+.pl-volonte__g.is-retard { --pl-volonte-c: var(--danger); --pl-volonte-f: var(--danger-soft); box-shadow: inset 0 0 0 2px var(--danger); }
+.pl-volonte__g.is-parti { --pl-volonte-c: var(--muted); --pl-volonte-f: var(--subtle); }
 .pl-volonte__g:is(.is-parti, .is-grise) { opacity: 0.6; }
 .pl-volonte__g:hover { background: var(--subtle); }
 .pl-volonte__g:focus-visible { outline: 2px solid var(--console-focus); outline-offset: 1px; }
@@ -2059,7 +2058,7 @@ button.staff-date-label:focus-visible,
 @media (max-width: 768px) {
   .pl-volonte__l { width: calc(100% + 6px); }
   .pl-volonte__g { width: 100%; }
-  .pl-volonte__g b { flex: 1 1 calc(100% - 24px); }
+  .pl-volonte__g b { flex: 1 1 0; }
 }
 .planning-blocked-banner {
   margin: 0 0 8px;
@@ -19966,6 +19965,8 @@ body.lp-glisse, body.lp-glisse * { cursor: grabbing !important; user-select: non
   .lp-compact .lp-card-status { flex: none; margin-left: auto; color: var(--lp-c); font-size: 13px; font-weight: 600; }
   .lp-compact.lp-cards-tight .lp-g { height: calc(100% - 2px); padding: 0 8px 0 10px; }
   .lp-compact.lp-cards-tight .lp-g__sous { display: none; }
+  /* (juste la hauteur de deux lignes : la carte prend toute la rangee, le texte n est plus rogne, 2026-11-25) */
+  .lp-compact.lp-cards-juste .lp-g { height: 100%; padding-top: 0; padding-bottom: 0; }
   .lp-compact .lp-qui .lp-g:focus-visible { outline-offset: -2px; }
   .lp-compact .lp-libre { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--lp-group-font, 14px); }
   .lp-compact.lp-cards-tight .lp-dep__h::after { display: none; }

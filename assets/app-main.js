@@ -27601,10 +27601,12 @@ function poserVariableSiChange(el, nom, valeur) {
 // planning bowling et lasergame »). Un groupe Kids Fun Day n a ni piste ni arme : il joue quand il y a de la place
 // (dossierToutIllimite, booking-core). Le bandeau dit qui est attendu ou la, et jusqu a quelle heure ; un toucher ouvre
 // la fiche. Il ne compte dans aucun total et se tait un jour sans ces groupes, ou pour une activite que le centre
-// n a pas.
+// n a pas. (2026-11-25, Ansar : « plus visible et compréhensible » : la formule en grand, combien ils sont, quoi faire ;
+// chaque groupe montre son etat dans une pastille, aux couleurs de la legende. La meme fin pour tous se dit une fois,
+// dans le titre.)
 const BANDEAUX_VOLONTE = {
-  bowling: { zone: 'planningVolonte', phrase: 'Aucune piste réservée : ils jouent quand une piste est libre.' },
-  laser_game: { zone: 'laserVolonte', phrase: 'Aucune arme réservée : ils jouent quand un départ a de la place.' },
+  bowling: { zone: 'planningVolonte', phrase: 'À volonté, sans piste réservée : faites-les jouer dès qu’une piste est libre.' },
+  laser_game: { zone: 'laserVolonte', phrase: 'À volonté, sans arme réservée : faites-les jouer dès qu’un départ a de la place.' },
 };
 
 function groupesAVolonte(activityId) {
@@ -27625,20 +27627,27 @@ function renderBandeauVolonte(activityId) {
   // (« Kids Fun Day », le nom de la formule tel que le planning complet l ecrit)
   const formules = [...new Set(groupes.map(r => String((resolveDisplayFormule(r.formuleId || r.formulaId) || {}).name || r.label || '')))].filter(Boolean)
     .map(nom => nom === nom.toUpperCase() ? nom.toLowerCase().replace(/(^|[\s/])(\p{L})/gu, (x, avant, lettre) => avant + lettre.toUpperCase()) : nom);
+  const fins = new Map(groupes.map(r => {
+    const formule = resolveDisplayFormule(r.formuleId || r.formulaId);
+    const periode = Number(formule && formule.timeLimit && formule.timeLimit.max);
+    return [r, formatClockDisplay(periode > 0 ? periode : getStaffTerrainSpan(r).end)];
+  }));
+  const finCommune = new Set(fins.values()).size === 1 ? [...fins.values()][0] : '';
   const liste = groupes.map(r => {
     const span = getStaffTerrainSpan(r);
     const moment = moments.get(String(r.id));
-    const la = r.status === 'arrived' || r.status === 'paid';
+    const paye = r.status === 'paid';
+    const la = r.status === 'arrived' || paye;
     const parti = la && groupeReparti(r, moment, maintenant, span);
     const retard = !la && groupeEnRetardAuPlanning(r, moment);
-    const formule = resolveDisplayFormule(r.formuleId || r.formulaId);
-    const periode = Number(formule && formule.timeLimit && formule.timeLimit.max);
-    const etat = parti ? 'Parti' : la ? 'Arrivé' : retard ? 'En retard' : `Attendu à ${formatClockDisplay(timeToNum(r.startTime))}`;
-    const morceaux = [joueursDuDossier(r), etat, `jusqu’à ${formatClockDisplay(periode > 0 ? periode : span.end)}`];
+    const etat = parti ? 'Parti' : paye ? 'Payé' : la ? 'Arrivé' : retard ? 'En retard' : `Attendu à ${formatClockDisplay(timeToNum(r.startTime))}`;
+    const morceaux = [joueursDuDossier(r), etat, `jusqu’à ${fins.get(r)}`];
     const nom = r.name || 'Groupe';
-    return `<button type="button" class="pl-volonte__g${parti ? ' is-parti' : la ? ' is-la' : retard ? ' is-retard' : ''}${trouve(r) ? '' : ' is-grise'}" data-volonte="${Number(r.id)}" aria-label="${escapeHtml(`${[nom, ...morceaux].join(', ')}. Ouvrir sa fiche`)}" onclick="openPos(${Number(r.id)})"><i aria-hidden="true"></i> <b>${escapeHtml(nom)}</b> <span>${escapeHtml(morceaux[0])}</span> <span class="pl-volonte__e">${escapeHtml(etat)}</span> <span>${escapeHtml(morceaux[2])}</span></button>`;
+    return `<button type="button" class="pl-volonte__g${parti ? ' is-parti' : paye ? ' is-la is-paye' : la ? ' is-la' : retard ? ' is-retard' : ''}${trouve(r) ? '' : ' is-grise'}" data-volonte="${Number(r.id)}" aria-label="${escapeHtml(`${[nom, ...morceaux].join(', ')}. Ouvrir sa fiche`)}" onclick="openPos(${Number(r.id)})"><span class="pl-volonte__e">${escapeHtml(etat)}</span> <b>${escapeHtml(nom)}</b> <span>${escapeHtml(morceaux[0])}</span>${finCommune ? '' : ` <span>${escapeHtml(morceaux[2])}</span>`}</button>`;
   }).join('');
-  const html = liste ? `<p class="pl-volonte__t"><b>À volonté</b> <span class="pl-volonte__f">${escapeHtml(formules.join(', '))}</span> <span>${escapeHtml(phrase)}</span></p><div class="pl-volonte__l">${liste}</div>` : '';
+  const joueurs = groupes.reduce((total, r) => total + Math.max(0, Number(r.pax) || 0), 0);
+  const combien = `${groupes.length} groupe${groupes.length > 1 ? 's' : ''}, ${joueurs} joueur${joueurs > 1 ? 's' : ''}${finCommune ? `, jusqu’à ${finCommune}` : ''}`;
+  const html = liste ? `<p class="pl-volonte__t"><b>${escapeHtml(formules.join(', ') || 'À volonté')}</b> <span class="pl-volonte__c">${escapeHtml(combien)}</span> <span class="pl-volonte__p">${escapeHtml(phrase)}</span></p><div class="pl-volonte__l">${liste}</div>` : '';
   if (zone.__rendu === html) return;
   zone.__rendu = html;
   // (un groupe pointe ailleurs : la liste garde sa place et le clavier son groupe)
@@ -28724,6 +28733,7 @@ function lpAjusterJournee(wrap) {
   const columnRows = Math.ceil(rows / columns);
   const rowHeight = Math.max(22, Math.floor(available / columnRows));
   lp.classList.toggle('lp-cards-tight', rowHeight < 38);
+  lp.classList.toggle('lp-cards-juste', rowHeight >= 38 && rowHeight < 42);
   poserVariableSiChange(lp, '--lp-row-height', `${rowHeight}px`);
   poserVariableSiChange(lp, '--lp-group-font', rowHeight >= 26 ? '14px' : '13px');
   poserVariableSiChange(lp, '--lp-hour-font', rowHeight >= 26 ? '16px' : '14px');
